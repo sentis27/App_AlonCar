@@ -1,0 +1,17 @@
+{
+  "name": "local-mcp-server",
+  "version": "1.0.0",
+  "description": "Local MCP server to bridge AI requests to local n8n, Google Sheets, and GitHub APIs",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "googleapis": "^144.0.0",
+    "@octokit/rest": "^21.0.2"
+  }
+}

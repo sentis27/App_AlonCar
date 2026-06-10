@@ -7,8 +7,8 @@
 En esta sección se documenta cómo interactúan Antigravity, el servidor MCP, n8n y Google Workspace.
 * **1.3.1 - Creación de Conexiones y Variables Locales:** `docs/01_conexiones/1.3.1_crear_conexiones.md`
   *(Contiene: Estructura del .env, uso de Service Accounts y protección de credenciales).*
-* **[Próximamente] - Arquitectura del Servidor MCP:** `docs/01_conexiones/arquitectura_mcp.md`
-  *(Contendrá: Métodos expuestos para n8n y Google Sheets).*
+* **Arquitectura del Servidor MCP:** [arquitectura_mcp.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/01_conexiones/arquitectura_mcp.md)
+  *(Contiene: Métodos expuestos para n8n y Google Sheets).*
 
 ## 2. Automatización y n8n
 * **Reglas de Diseño y Estructura:** Las reglas de diseño para inyectar flujos no están locales, el agente debe usar la herramienta MCP de GitHub para leerlas desde los repositorios de referencia.
