@@ -59,6 +59,15 @@ docs/mapa_proyecto.md (reemplazado por INDICE_CENTRAL.md)
 
 
 🟡 FASE 2: Lógica de Negocio (PRÓXIMA)
+2.0 Mapeo y Extracción de Datos Legacy
+
+ Mapeo Profundo del Legado (Sheets)
+
+Archivo: `docs/02_producto/mapeo_legado_sheets.md` (o en `03_negocio/`)
+Qué: Lectura e ingeniería inversa de las 14-16 planillas actuales del astillero.
+Reglas: Extraer lógica de negocio real, tipos de datos, columnas y restricciones.
+Prioridad: Crítica (Paso 0 para poder diseñar los módulos y la DB).
+
 2.1 Diseño de Módulos
 
  Módulo 1: Activos y Clientes
