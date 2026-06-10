@@ -1,39 +1,28 @@
-# App_AlonCar
-# ERP NAVAL E INDUSTRIAL - DOCUMENTO MAESTRO
+# App_AlonCar - ERP Naval e Industrial
 
-## METODOLOGÍA DE DESARROLLO
-Este proyecto se construye bajo la metodología Spec Driven Development (SDD). La documentación técnica en formato Markdown (.md) dentro de este repositorio actúa como la "Constitución" y fuente de verdad absoluta para el diseño, las reglas de negocio y el comportamiento de los agentes de Inteligencia Artificial.
+## FASE ACTUAL: 1 - Infraestructura y Conexiones
 
-## ARQUITECTURA DEL SISTEMA (HÍBRIDA)
-* **Interfaz Operativa de Entrada:** Google Sheets (Legado/Transición).
-* **Orquestador y Aduana de Datos:** n8n (Instancia Local/Docker) conectado vía Webhooks y API.
-* **Cerebro de Procesamiento:** Servidor MCP (Model Context Protocol) local integrado en el IDE.
-* **Base de Datos Central:** Supabase / PostgreSQL Relacional.
+Este proyecto se construye bajo la metodología **Spec Driven Development (SDD)**.
 
----
+### Stack Técnico
+- **Entrada de datos:** Google Sheets
+- **Orquestador:** n8n (instancia local/Docker)
+- **Servidor de procesamiento:** MCP (Model Context Protocol)
+- **Base de datos:** Supabase / PostgreSQL
+- **Asesor técnico:** Antigravity (Claude MCP)
 
-## INVENTARIO DE MÓDULOS (SISTEMA ÓSEO)
+### Estado Actual
+- ✅ Estructura de conexiones (Fase 1)
+- ✅ Servidor MCP base y dependencias locales (Fase 1)
+- ⏳ Integración de herramientas MCP (en progreso)
+- 🔜 Lógica de negocio (Fase 2 - ver [ROADMAP_NEGOCIO.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/ROADMAP_NEGOCIO.md))
+- 🔜 Módulos de datos (Fase 3)
 
-### 1. Módulo de Activos y Clientes (Core Naval)
-* **Entidades:** Razones Sociales (Propietarios) y Barcos (Activos).
-* **Regla Core:** Las Órdenes de Trabajo se aplican al Barco; la facturación y deuda se asocian a la Razón Social. El historial del activo es indivisible.
+### Cómo empezar
+1. Clonar el repo.
+2. Leer el índice central del proyecto: [docs/INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/INDICE_CENTRAL.md).
+3. Leer [docs/01_infraestructura/README.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/01_infraestructura/README.md).
+4. Configurar el entorno local `.env` siguiendo [docs/01_infraestructura/02_configuracion_env.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/01_infraestructura/02_configuracion_env.md).
 
-### 2. Módulo de Recursos (Mano de Obra y Proveedores)
-* **Entidades:** Proveedores, Talleres Externos, Operarios Internos/Externos, Tarifario por categoría.
-* **Regla Core:** Los operarios externos dependen obligatoriamente de un taller externo homologado.
-
-### 3. Módulo de Operaciones y Control de Costos (El Motor)
-* **Entidades:** Órdenes de Trabajo (OTs), Registro de Asistencia (Reloj Biométrico), Asignación de Personal (Imputación de Horas).
-* **Regla Core:** Centraliza el "Triángulo del Costo" (Mano de obra, materiales y servicios terceros). n8n concilia automáticamente las horas de presencia (Reloj) contra las horas facturables (Imputación) para mitigar errores humanos. Soporta carga en bloque por cuadrillas.
-
-### 4. Módulo de Logística y Suministros
-* **Entidades:** Catálogo de Materiales, Inventario (Stock Físico/Virtual), Órdenes de Compra, Consumos por OT.
-* **Regla Core:** Cada salida de pañol resta stock automáticamente. Las compras directas a obra esquivan el stock físico e impactan directo en el costo vivo de la OT.
-
-### 5. Módulo Comercial (Presupuestos y Cierre)
-* **Entidades:** Presupuestos (Cotizaciones), Anexos de Factura (Liquidación final).
-* **Regla Core:** Clonación inteligente de presupuestos hacia anexos. Clasificación estricta mediante switch de ítems: "Mano de Obra" (Exento) o "Materiales" (Gravado con IVA) para automatizar el cálculo del PDF final.
-
-### 6. Módulo de Cierre, Auditoría y Archivo Histórico
-* **Jerarquía:** [BARCO] ➔ [VISITAS / PROYECTOS] ➔ [ÓRDENES DE TRABAJO].
-* **Regla Core:** Data Locking automático por n8n. Cuando un lote de OTs pasa a estado "Facturado", el sistema bloquea y rebota cualquier intento de carga posterior. Divide los tableros en "Costo Vivo" (Obra actual) y "Costo Histórico" (Auditoría por año) para barcos recurrentes.
+### Para el Agente (IA/Antigravity)
+Antes de procesar cualquier tarea, debes consultar de manera obligatoria [docs/INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/INDICE_CENTRAL.md) y seguir las directrices en [docs/REGLAS_AGENTE.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/REGLAS_AGENTE.md) para garantizar la coherencia y el orden de la documentación.
