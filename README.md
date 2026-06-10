@@ -20,9 +20,56 @@ Este proyecto se construye bajo la metodología **Spec Driven Development (SDD)*
 
 ### Cómo empezar
 1. Clonar el repo.
-2. Leer el índice central del proyecto: [docs/INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/INDICE_CENTRAL.md).
-3. Leer [docs/01_infraestructura/README.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/01_infraestructura/README.md).
-4. Configurar el entorno local `.env` siguiendo [docs/01_infraestructura/02_configuracion_env.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/01_infraestructura/02_configuracion_env.md).
+2. Leer el índice central del proyecto: [INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/INDICE_CENTRAL.md).
+3. Configurar el entorno local `.env` siguiendo [docs/01_infraestructura/02_configuracion_env.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/01_infraestructura/02_configuracion_env.md).
 
-### Para el Agente (IA/Antigravity)
-Antes de procesar cualquier tarea, debes consultar de manera obligatoria [docs/INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/INDICE_CENTRAL.md) y seguir las directrices en [docs/REGLAS_AGENTE.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/REGLAS_AGENTE.md) para garantizar la coherencia y el orden de la documentación.
+---
+
+## 📚 Documentación
+
+La estructura completa del proyecto está distribuida de la siguiente manera:
+
+```text
+App_AlonCar/
+├── README.md                  ← Resumen del proyecto
+├── INDICE_CENTRAL.md          ← Empieza aquí (Mapa de navegación)
+├── TAREAS_PENDIENTES.md       ← Backlog central y checklist
+├── ROADMAP_NEGOCIO.md         ← Visión de Fase 2+
+├── GUIA_ANTIGRAVITY.md        ← Reglas de comportamiento del agente
+└── docs/
+    ├── 01_infraestructura/    ← FASE 1 (Actual)
+    │   ├── README.md          ← Índice de infraestructura
+    │   ├── 01_stack_tecnico.md
+    │   ├── 02_configuracion_env.md
+    │   ├── 03_seguridad_credenciales.md
+    │   └── 04_servidor_mcp.md
+    │
+    ├── 02_producto/           ← Referencia educativa/comercial
+    │   ├── README.md          ← Índice de producto
+    │   └── registro_paso_a_paso.md
+    │
+    └── 03_negocio/            ← FASE 2+ (Futuro)
+        └── README.md          ← Esqueleto de lógica de negocio
+```
+
+---
+
+## 👥 Para Agentes IA (Antigravity)
+
+Antes de procesar cualquier solicitud, debes leer y cumplir estrictamente las siguientes instrucciones:
+1. **Consulta del Índice:** Revisa de manera obligatoria [INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/INDICE_CENTRAL.md) antes de procesar tareas complejas.
+2. **Optimización de Contexto:** No leas documentos completos si no están listados en el índice central o si están fuera de tu ámbito técnico.
+3. **Control del Backlog:** Si necesitas verificar tareas o archivos faltantes, consulta [TAREAS_PENDIENTES.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/TAREAS_PENDIENTES.md).
+4. **Rol de Asesor:** Tu rol es de **asesor técnico crítico** durante la Fase 1; posteriormente serás colaborador en el diseño lógico de negocio durante las Fases 2 y 3. Debes actuar con criterio analítico desafiando supuestos incorrectos. Ver normas detalladas en [GUIA_ANTIGRAVITY.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/GUIA_ANTIGRAVITY.md).
+
+---
+
+## 📖 Visión a Futuro (Fase 2+)
+
+El proyecto implementará progresivamente 6 módulos funcionales centrales:
+* **Módulo de Activos y Clientes:** Gestión unificada de Barcos y razones sociales.
+* **Módulo de Recursos:** Tarifarios de operarios internos/externos y talleres.
+* **Módulo de Operaciones y Control de Costos:** Órdenes de Trabajo y asistencia.
+* **Módulo de Logística y Suministros:** Inventario y compras imputadas a OTs.
+* **Módulo Comercial:** Presupuestos dinámicos y facturación estructurada.
+* **Módulo de Cierre y Auditoría:** Cierre contable y archivo histórico bloqueado.
