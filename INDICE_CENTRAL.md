@@ -30,7 +30,7 @@ ArchivoContenidoEstadoREADME.mdÍndice de la lógica de negocio🔜 Próximament
 
 📖 Sección 4: Skills del Agente IA (FASE 1/2/3)
 Habilidades pre-programadas y protocolos estandarizados para que el Agente IA trabaje consistentemente.
-ArchivoContenidoPara Quién05_skills/README.mdGuía para crear nuevas SkillsDevs/Arquitectos05_skills/INDICE_SKILLS.mdDirectorio de Skills ActivasAgentes IA
+ArchivoContenidoPara Quién.agents/skills/README.mdGuía para crear nuevas SkillsDevs/Arquitectos.agents/skills/legacy-mapping/SKILL.mdMapeo de planillas viejasAgentes IA.agents/skills/session-audit/SKILL.mdAuditoría de cierre de sesiónAgentes IA
 
 📋 Documentos Transversales
 ArchivoPropósitoREADME.md (raíz)Portada del proyecto, stack, cómo empezarINDICE_CENTRAL.mdEste archivo. Tu brújula.TAREAS_PENDIENTES.mdQué falta por hacer, priorizado por faseROADMAP_NEGOCIO.mdVisión de Fase 2+: los 6 módulos y reglas de negocioGUIA_ANTIGRAVITY.mdInstrucciones maestras para el Agente IA
@@ -85,13 +85,16 @@ App_AlonCar/
 │   │   └── registro_paso_a_paso.md
 │   │
 │   └── 03_negocio/                    ← FASE 2+ (Futuro)
-│       ├── README.md (esqueleto)
-│       └── 00_plantilla_mapeo_sheets.md
+│       └── README.md (esqueleto)
 │
-│   └── 05_skills/                     ← Comportamientos del Agente
+├── .agents/                           ← Comportamientos del Agente
+│   └── skills/
 │       ├── README.md
-│       ├── INDICE_SKILLS.md
-│       └── 01_mapeo_legacy.md
+│       ├── legacy-mapping/
+│       │   ├── SKILL.md
+│       │   └── recursos/template_mapeo.md
+│       └── session-audit/
+│           └── SKILL.md
 │
 ├── .env                               ← Local only (en .gitignore)
 ├── service-account.json               ← Local only (en .gitignore)
