@@ -28,6 +28,10 @@ ArchivoContenidoPara Quiénregistro_paso_a_paso.mdGuía educativa: por qué prot
 Diseño de los 6 módulos del ERP.
 ArchivoContenidoEstadoREADME.mdÍndice de la lógica de negocio🔜 Próximamentemodulos/Especificaciones de cada módulo🔜 Próximamente
 
+📖 Sección 4: Skills del Agente IA (FASE 1/2/3)
+Habilidades pre-programadas y protocolos estandarizados para que el Agente IA trabaje consistentemente.
+ArchivoContenidoPara Quién05_skills/README.mdGuía para crear nuevas SkillsDevs/Arquitectos05_skills/INDICE_SKILLS.mdDirectorio de Skills ActivasAgentes IA
+
 📋 Documentos Transversales
 ArchivoPropósitoREADME.md (raíz)Portada del proyecto, stack, cómo empezarINDICE_CENTRAL.mdEste archivo. Tu brújula.TAREAS_PENDIENTES.mdQué falta por hacer, priorizado por faseROADMAP_NEGOCIO.mdVisión de Fase 2+: los 6 módulos y reglas de negocioGUIA_ANTIGRAVITY.mdInstrucciones maestras para el Agente IA
 
@@ -81,7 +85,13 @@ App_AlonCar/
 │   │   └── registro_paso_a_paso.md
 │   │
 │   └── 03_negocio/                    ← FASE 2+ (Futuro)
-│       └── README.md (esqueleto)
+│       ├── README.md (esqueleto)
+│       └── 00_plantilla_mapeo_sheets.md
+│
+│   └── 05_skills/                     ← Comportamientos del Agente
+│       ├── README.md
+│       ├── INDICE_SKILLS.md
+│       └── 01_mapeo_legacy.md
 │
 ├── .env                               ← Local only (en .gitignore)
 ├── service-account.json               ← Local only (en .gitignore)

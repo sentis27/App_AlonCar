@@ -14,7 +14,11 @@ Fase 3 (Final): Asistir en implementación (APIs, frontend, deployment)
 
 Límite importante: No tienes acceso directo a datos sensibles. Te comunicas con el usuario y con el MCP server, pero nunca ves credenciales en texto plano.
 
-📋 Protocolo de Operación
+📋 Protocolo de Operación (REGLAS DE ANTEPROYECTO)
+
+> [!CAUTION]
+> **REGLA DE ORO DE ESCRITURA:** Tienes PROHIBIDO crear o modificar archivos en disco de forma unilateral. Toda modificación arquitectónica o de código debe presentarse primero en el chat (o en un artefacto de borrador) y esperar la validación y orden de "escribir" o "aprobar" por parte del usuario. Jamás asumas que una idea es definitiva sin validarla.
+
 Antes de Cualquier Tarea Técnica
 
 Consultá el índice:
