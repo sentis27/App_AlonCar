@@ -18,3 +18,33 @@ Cuando la IA necesita un dato, se lo pide al robot. El robot va a Google Sheets,
 ## 3. Tip de Oro (Valor Premium)
 Creá la cerradura antes de traer el tesoro.
 Antes de escribir tu primer token en el archivo `.env` o de descargar tu archivo `.json` de Google, lo primero que debes crear es tu archivo `.gitignore` y escribir los nombres de esos archivos adentro. De esta manera, activás el escudo protector de Git desde el segundo cero. Si te olvidas de hacerlo y haces un guardado (commit), tus claves viajarán a la nube y tendrás que revocarlas y empezar de nuevo. La seguridad proactiva es la marca de un profesional.
+
+---
+
+## 4. Sesión Técnica: Arquitectura MCP, Modelado de Datos y Ecosistema de Skills
+Durante la planificación del servidor MCP y la extracción de datos de Google Sheets, nos encontramos con varios dilemas arquitectónicos fundamentales. Así los detectamos y resolvimos:
+
+### El Dilema del Servidor: Local vs Nube (VPS)
+- **La Duda:** Si configuro el MCP en mi máquina local para poder programar fluidamente, mi máquina tendrá que estar encendida 24/7 para que las automatizaciones de negocio de n8n funcionen. ¿Deberíamos desarrollarlo directo en Hostinger?
+- **La Solución (Capa de Transporte):** Diseñamos el código del servidor para que sea "agnóstico". Durante el desarrollo (Fases 1 y 2), el MCP corre en local usando `StdioServerTransport`, permitiendo que el IDE (Antigravity) se comunique nativamente con él. Para producción (Fase 3), usaremos el *mismo código exacto*, cambiando únicamente una línea para usar un transporte de red (HTTP/SSE) y alojarlo en el VPS.
+
+### El Problema de las Planillas "Frontend"
+- **La Duda:** En mis planillas de Google, la fila 1 no tiene los encabezados. La parte superior actúa como un panel de control con sumatorias y filtros rápidos. Los datos reales pueden empezar en la fila 5.
+- **La Solución:** En lugar de codificar reglas rígidas ("lee siempre la fila 1"), dotamos al MCP de un algoritmo de autodescubrimiento heurístico: el código descarga un bloque de 100 filas y busca matemáticamente la fila con mayor densidad de datos contiguos para identificar el verdadero encabezado, ignorando la "basura" visual de arriba.
+
+### La Barrera Oculta de Google: Apps Script
+- **La Duda:** Me interesa que el MCP extraiga no solo los datos, sino las fórmulas embebidas y el código de Apps Script atado a la planilla.
+- **La Solución:** Para las fórmulas, usamos la API nativa de Sheets con el parámetro `valueRenderOption="FORMULA"`. Sin embargo, los scripts están bloqueados por la seguridad de Google. Identificamos que es un requisito técnico innegociable crear una tarea bloqueadora en el proyecto: habilitar la "Google Apps Script API" en Google Cloud para otorgar permisos avanzados a la Service Account.
+
+### ¿Qué es exactamente una "Skill" en IA?
+- **La Duda:** Creamos una plantilla Markdown muy detallada para estandarizar cómo documentar las planillas viejas. ¿Esto se considera una "Skill" o es solo un documento pasivo?
+- **La Solución:** Redefinimos el concepto. En el desarrollo de agentes autónomos, una Skill es una trinidad: La Herramienta técnica (Código Node.js) + El Formato de Salida (La Plantilla Markdown) + La Directiva Cognitiva (Las reglas del prompt). La plantilla combinada con el motor del agente constituye una Skill sumamente avanzada.
+
+### Lección Arquitectónica: No luches contra el ecosistema nativo
+- **El Error:** Intentamos guardar las nuevas Skills en una carpeta arbitraria que creamos a mano llamada `docs/05_skills/`. 
+- **El Problema:** Esto convertía las skills en simples archivos de texto "muertos". El agente tenía que ir a buscarlas manualmente leyendo el directorio, desaprovechando el motor nativo del IDE.
+- **La Corrección:** Tras leer el manual oficial, integramos el estándar del editor, moviendo todo a la carpeta nativa `.agents/skills/`. Al hacerlo, el propio IDE ahora inyecta automáticamente estas habilidades en el "cerebro" del agente al inicio de cada conversación sin necesidad de buscar (Auto-descubrimiento).
+
+### El Escudo de la Memoria: Reglas de Anteproyecto
+- **La Duda:** No quiero que el agente IA escriba código directamente en el disco duro sin que yo lo valide antes, porque un malentendido del contexto puede ser destructivo para el repositorio.
+- **La Solución Implementada:** Inyectamos en la constitución del agente (`GUIA_ANTIGRAVITY.md`) la "Regla de Anteproyecto". El agente ahora tiene estrictamente prohibido modificar archivos reales sin antes presentar un borrador en el chat y recibir un "OK" explícito del usuario. Esta barrera humana es vital para elevar el desarrollo con IA de un nivel "experimental" a un "estándar corporativo seguro".

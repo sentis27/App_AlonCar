@@ -69,10 +69,20 @@ Prioridad: Crítica (Antes de empezar el Mapeo).
 2.0 Mapeo y Extracción de Datos Legacy
 
  Mapeo Profundo del Legado (Sheets)
+   Archivo/Lugar: docs/03_negocio/
+   Qué: Ejecutar la Skill de Mapeo Legacy (usando MCP read_sheet_logic) para auditar las 14-16 planillas actuales de Google Sheets y documentarlas con la plantilla estandarizada.
+   Propósito: Entender las dependencias cruzadas (ej. VLOOKUPs entre hojas) y reglas duras antes de diseñar las tablas de SQL.
 
-Archivo: `docs/02_producto/mapeo_legado_sheets.md` (o en `03_negocio/`)
-Qué: Lectura e ingeniería inversa de las 14-16 planillas actuales del astillero.
-Reglas: Extraer lógica de negocio real, tipos de datos, columnas y restricciones.
+2.1 Metadatos de Documentación (Roles)
+   Archivo/Lugar: INDICE_CENTRAL.md
+   Qué: Modificar el índice para incluir una columna estricta de "Rol" para cada archivo (ej. Guía, Protocolo, Roadmap).
+   Propósito: Facilitar la lectura semántica para el agente durante las auditorías de cierre de sesión.
+
+2.2 Skill de Recolección (Producto)
+   Archivo/Lugar: .agents/skills/
+   Qué: Diseñar una Skill estandarizada dedicada exclusivamente a extraer y formatear información comercial/educativa hacia `docs/02_producto/`.
+   Propósito: Garantizar que la documentación del producto (manuales, historiales) nunca se desordene y siga un patrón predecible.
+
 Prioridad: Crítica (Paso 0 para poder diseñar los módulos y la DB).
 
 2.1 Diseño de Módulos
