@@ -40,6 +40,8 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-06-10 | ERR-002 | Apps Script bloqueado por Service Account | error |
 | 2026-06-10 | CON-002 | Modelo Zero Trust para credenciales | concepto |
 | 2026-06-10 | PRO-001 | Configuración de entorno desde cero | proceso |
+| 2026-06-10 | DEC-003 | Separación de Índice Humano vs Tabla Máquina | decision |
+| 2026-06-10 | CON-003 | Arquitectura de la Bitácora de Producto | concepto |
 
 ---
 
@@ -49,6 +51,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 |---|---|---|---|---|
 | DEC-001 | Transporte MCP agnóstico local/VPS | 1 | borrador | 2026-06-10 |
 | DEC-002 | Autodescubrimiento heurístico de encabezados | 1 | borrador | 2026-06-10 |
+| DEC-003 | Separación de Índice Humano vs Tabla Máquina | 1 | borrador | 2026-06-10 |
 
 ## Errores
 
@@ -63,6 +66,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 |---|---|---|---|---|---|
 | CON-001 | Trinidad de una skill real | 1 | borrador | 2026-06-10 | 2026-06-10 |
 | CON-002 | Modelo Zero Trust para credenciales | 1 | borrador | 2026-06-10 | 2026-06-10 |
+| CON-003 | Arquitectura de la Bitácora de Producto | 1 | borrador | 2026-06-10 | 2026-06-10 |
 
 ## Procesos
 
