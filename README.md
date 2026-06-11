@@ -33,6 +33,7 @@ La estructura completa del proyecto está distribuida de la siguiente manera:
 App_AlonCar/
 ├── README.md                  ← Resumen del proyecto
 ├── INDICE_CENTRAL.md          ← Empieza aquí (Mapa de navegación)
+├── INDICE_METADATOS.md        ← Tabla máquina (auditorías IA)
 ├── TAREAS_PENDIENTES.md       ← Backlog central y checklist
 ├── ROADMAP_NEGOCIO.md         ← Visión de Fase 2+
 ├── GUIA_ANTIGRAVITY.md        ← Reglas de comportamiento del agente
@@ -58,9 +59,10 @@ App_AlonCar/
 
 Antes de procesar cualquier solicitud, debes leer y cumplir estrictamente las siguientes instrucciones:
 1. **Consulta del Índice:** Revisa de manera obligatoria [INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/INDICE_CENTRAL.md) antes de procesar tareas complejas.
-2. **Optimización de Contexto:** No leas documentos completos si no están listados en el índice central o si están fuera de tu ámbito técnico.
-3. **Control del Backlog:** Si necesitas verificar tareas o archivos faltantes, consulta [TAREAS_PENDIENTES.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/TAREAS_PENDIENTES.md).
-4. **Rol de Asesor:** Tu rol es de **asesor técnico crítico** durante la Fase 1; posteriormente serás colaborador en el diseño lógico de negocio durante las Fases 2 y 3. Debes actuar con criterio analítico desafiando supuestos incorrectos. Ver normas detalladas en [GUIA_ANTIGRAVITY.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/GUIA_ANTIGRAVITY.md).
+2. **Metadatos para Auditoría:** Para auditorías de cierre de sesión, consulta [INDICE_METADATOS.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/INDICE_METADATOS.md) — tabla máquina con tipos, comportamientos y dependencias.
+3. **Optimización de Contexto:** No leas documentos completos si no están listados en el índice central o si están fuera de tu ámbito técnico.
+4. **Control del Backlog:** Si necesitas verificar tareas o archivos faltantes, consulta [TAREAS_PENDIENTES.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/TAREAS_PENDIENTES.md).
+5. **Rol de Asesor:** Tu rol es de **asesor técnico crítico** durante la Fase 1; posteriormente serás colaborador en el diseño lógico de negocio durante las Fases 2 y 3. Debes actuar con criterio analítico desafiando supuestos incorrectos. Ver normas detalladas en [GUIA_ANTIGRAVITY.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/GUIA_ANTIGRAVITY.md).
 
 ---
 

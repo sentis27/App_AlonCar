@@ -73,10 +73,17 @@ Prioridad: Crítica (Antes de empezar el Mapeo).
    Qué: Ejecutar la Skill de Mapeo Legacy (usando MCP read_sheet_logic) para auditar las 14-16 planillas actuales de Google Sheets y documentarlas con la plantilla estandarizada.
    Propósito: Entender las dependencias cruzadas (ej. VLOOKUPs entre hojas) y reglas duras antes de diseñar las tablas de SQL.
 
-2.1 Metadatos de Documentación (Roles)
-   Archivo/Lugar: INDICE_CENTRAL.md
-   Qué: Modificar el índice para incluir una columna estricta de "Rol" para cada archivo (ej. Guía, Protocolo, Roadmap).
-   Propósito: Facilitar la lectura semántica para el agente durante las auditorías de cierre de sesión.
+✓ HECHO — 2.1 Metadatos de Documentación (Roles + Dependencias)
+   Resultado: Creado INDICE_METADATOS.md (tabla máquina de 8 columnas) separado de INDICE_CENTRAL.md (narrativo humano).
+   Subtareas completadas:
+   - 2.1.0: Auditoría de impacto completada
+   - 2.1.1: INDICE_METADATOS.md creado (schema-version 1.0)
+   - 2.1.2: 21 documentos mapeados con tipos, comportamientos y dependencias
+   - 2.1.3: Archivos dependientes modificados (GUIA_ANTIGRAVITY, README)
+   - 2.1.4: INDICE_CENTRAL.md refactorizado (solo narrativo)
+   - 2.1.5: session-audit Step 4 expandido (detección de dependencias en repo)
+   - 2.1.6: session-audit Step 5 expandido (auto-update de metadatos + resumen)
+   - 2.1.7: Validación de integridad de INDICE_METADATOS agregada (Step 6)
 
 2.2 Skill de Recolección (Producto)
    Archivo/Lugar: .agents/skills/

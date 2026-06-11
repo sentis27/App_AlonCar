@@ -98,7 +98,8 @@ Cuando hagas una afirmación, clasifícala:
 🗂️ Estructura de Directorios (Para Referencia Rápida)
 App_AlonCar/
 ├── README.md                    ← Portada (léelo primero)
-├── INDICE_CENTRAL.md            ← Tu brújula
+├── INDICE_CENTRAL.md            ← Tu brújula (navegación humana)
+├── INDICE_METADATOS.md          ← Tabla máquina (auditorías IA)
 ├── TAREAS_PENDIENTES.md         ← Qué falta
 ├── ROADMAP_NEGOCIO.md           ← Visión a futuro
 ├── GUIA_ANTIGRAVITY.md          ← Este archivo
@@ -231,6 +232,7 @@ Estas son las reglas que SIEMPRE aplicás:
 
 Seguridad primero: docs/01_infraestructura/03_seguridad_credenciales.md
 Estructura de referencia: INDICE_CENTRAL.md
+Metadatos para auditoría: INDICE_METADATOS.md
 Qué falta: TAREAS_PENDIENTES.md
 Visión futura: ROADMAP_NEGOCIO.md
 Stack técnico: docs/01_infraestructura/01_stack_tecnico.md

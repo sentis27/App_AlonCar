@@ -1,7 +1,7 @@
 🗺️ Índice Central - App_AlonCar
 
 Este es tu mapa. Úsalo antes de cualquier tarea para localizar la información exacta.
-Para Agentes IA (Antigravity): Consultá este índice para saber dónde buscar. No leas documentos completos si no están listados aquí.
+Para Agentes IA (Antigravity): Consultá este índice para navegación general. Para auditorías de cierre de sesión, usá `INDICE_METADATOS.md` (tabla máquina con tipos, comportamientos y dependencias).
 
 
 📍 Estado Actual del Proyecto
@@ -33,7 +33,7 @@ Habilidades pre-programadas y protocolos estandarizados para que el Agente IA tr
 ArchivoContenidoPara Quién.agents/skills/README.mdGuía para crear nuevas SkillsDevs/Arquitectos.agents/skills/legacy-mapping/SKILL.mdMapeo de planillas viejasAgentes IA.agents/skills/session-audit/SKILL.mdAuditoría de cierre de sesiónAgentes IA
 
 📋 Documentos Transversales
-ArchivoPropósitoREADME.md (raíz)Portada del proyecto, stack, cómo empezarINDICE_CENTRAL.mdEste archivo. Tu brújula.TAREAS_PENDIENTES.mdQué falta por hacer, priorizado por faseROADMAP_NEGOCIO.mdVisión de Fase 2+: los 6 módulos y reglas de negocioGUIA_ANTIGRAVITY.mdInstrucciones maestras para el Agente IA
+ArchivoPropósitoREADME.md (raíz)Portada del proyecto, stack, cómo empezarINDICE_CENTRAL.mdEste archivo. Tu brújula de navegación.INDICE_METADATOS.mdTabla máquina para auditorías IA (tipos, comportamientos, dependencias).TAREAS_PENDIENTES.mdQué falta por hacer, priorizado por faseROADMAP_NEGOCIO.mdVisión de Fase 2+: los 6 módulos y reglas de negocioGUIA_ANTIGRAVITY.mdInstrucciones maestras para el Agente IA
 
 🎯 Cómo Usar Este Índice
 Si estás configurando el entorno local:
@@ -70,7 +70,8 @@ Quiero saber:
 📈 Estructura de Directorios
 App_AlonCar/
 ├── README.md                          ← Portada (empieza aquí)
-├── INDICE_CENTRAL.md                  ← Este archivo (brújula)
+├── INDICE_CENTRAL.md                  ← Este archivo (brújula humana)
+├── INDICE_METADATOS.md                ← Tabla máquina (auditorías IA)
 ├── TAREAS_PENDIENTES.md               ← Qué falta
 ├── ROADMAP_NEGOCIO.md                 ← Visión Fase 2+
 ├── GUIA_ANTIGRAVITY.md                ← Instrucciones Agente
