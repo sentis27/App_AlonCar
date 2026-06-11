@@ -60,6 +60,15 @@ Respect the `Lectura` column:
 - `primera-vez`: Read fully only in the first session, then treat as `cambios`.
 - `ignorar`: Do not read.
 
+**TRIGGER PRODUCT-COLLECTOR (CRITICAL):**
+While processing the session, you MUST invoke the `product-collector` skill if you detect AT LEAST ONE of the following occurred during the session:
+- An architectural decision was made and justified.
+- An error was solved with a validated solution.
+- A new conceptual understanding was reached that didn't exist at the start.
+- A step-by-step process was executed and worked.
+
+If any of these are true, pause the audit to execute `product-collector` and capture these learnings before proceeding to Step 4.
+
 ### Step 4: Dependency Detection and Consistency Check
 For each file modified during this session (from `git status`):
 1. Search for Markdown links: `[text](path/to/file.md)` — register as dependency.

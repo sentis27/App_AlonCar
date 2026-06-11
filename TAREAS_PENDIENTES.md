@@ -85,10 +85,9 @@ Prioridad: Crítica (Antes de empezar el Mapeo).
    - 2.1.6: session-audit Step 5 expandido (auto-update de metadatos + resumen)
    - 2.1.7: Validación de integridad de INDICE_METADATOS agregada (Step 6)
 
-2.2 Skill de Recolección (Producto)
-   Archivo/Lugar: .agents/skills/
-   Qué: Diseñar una Skill estandarizada dedicada exclusivamente a extraer y formatear información comercial/educativa hacia `docs/02_producto/`.
-   Propósito: Garantizar que la documentación del producto (manuales, historiales) nunca se desordene y siga un patrón predecible.
+✓ HECHO — 2.2 Skill de Recolección (product-collector)
+   Resultado: Creada `.agents/skills/product-collector/SKILL.md` y la arquitectura de carpetas `docs/02_producto/` (00_raw, 01_decisiones, 02_errores, 03_conceptos, 04_procesos).
+   Se implementó la lógica inmutable (para errores y decisiones) y mutable (para procesos y conceptos), junto con la función DIFERIR y auto-trigger desde `session-audit`.
 
 Prioridad: Crítica (Paso 0 para poder diseñar los módulos y la DB).
 
