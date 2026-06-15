@@ -33,9 +33,9 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | Archivo | Tipo | Comportamiento-IA | Lectura | Fase | Estado | Última revisión | Depende de |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | README.md | portada | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
-| INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-06-10 | ninguno |
-| INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |
-| TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |
+| INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-06-14 | ninguno |
+| INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-06-14 | INDICE_CENTRAL.md |
+| TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-06-14 | INDICE_CENTRAL.md |
 | ROADMAP_NEGOCIO.md | roadmap | auditar-avances | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | GUIA_ANTIGRAVITY.md | instrucciones-agente | auditar-reglas | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md \| ROADMAP_NEGOCIO.md |
 | docs/01_infraestructura/README.md | indice | ninguno | ignorar | fase-1 | activo | 2026-06-10 | INDICE_CENTRAL.md |
@@ -44,9 +44,10 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/01_infraestructura/03_seguridad_credenciales.md | protocolo | ninguno | completo | fase-1 | activo | 2026-06-10 | ninguno |
 | docs/01_infraestructura/04_arquitectura_mcp.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-06-10 | docs/01_infraestructura/01_stack_tecnico.md |
 | docs/01_infraestructura/04_servidor_mcp.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-06-10 | docs/01_infraestructura/01_stack_tecnico.md |
-| docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-06-11 | INDICE_CENTRAL.md |
+| docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-06-14 | INDICE_CENTRAL.md |
 | docs/02_producto/registro_paso_a_paso.md | registro | auditar-decisiones | cambios | transversal | activo | 2026-06-10 | ninguno |
 | docs/02_producto/01_decisiones/DEC-003-separacion-indices.md | decision | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
+| docs/02_producto/02_errores/ERR-003-service-account-permisos-sheets.md | error | ninguno | cambios | transversal | activo | 2026-06-14 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-003-arquitectura-bitacora.md | concepto | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/03_negocio/README.md | indice | ninguno | ignorar | fase-2 | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | .agents/skills/README.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
@@ -54,5 +55,5 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | .agents/skills/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | .agents/skills/legacy-mapping/SKILL.md |
 | .agents/skills/session-audit/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-10 | GUIA_ANTIGRAVITY.md \| INDICE_CENTRAL.md \| INDICE_METADATOS.md |
 | .agents/skills/product-collector/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-10 | GUIA_ANTIGRAVITY.md \| INDICE_CENTRAL.md \| INDICE_METADATOS.md |
-| mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | docs/01_infraestructura/04_arquitectura_mcp.md |
+| mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |
 | mcp-server/package.json | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | mcp-server/index.js |

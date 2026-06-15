@@ -42,6 +42,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-06-10 | PRO-001 | Configuración de entorno desde cero | proceso |
 | 2026-06-10 | DEC-003 | Separación de Índice Humano vs Tabla Máquina | decision |
 | 2026-06-10 | CON-003 | Arquitectura de la Bitácora de Producto | concepto |
+| 2026-06-14 | ERR-003 | Google Sheets API: The caller does not have permission | error |
 
 ---
 
@@ -59,6 +60,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 |---|---|---|---|---|---|
 | ERR-001 | Skills en docs/ vs .agents/skills/ nativo | 1 | borrador | 2026-06-10 | — |
 | ERR-002 | Apps Script bloqueado por Service Account | 1 | borrador | 2026-06-10 | — |
+| ERR-003 | Google Sheets API: The caller does not have permission | 1 | borrador | 2026-06-14 | — |
 
 ## Conceptos
 
