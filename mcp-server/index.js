@@ -7,9 +7,7 @@ import {
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import axios from "axios";
 import { google } from "googleapis";
-import { Octokit } from "@octokit/rest";
 
 // Setup path helpers for ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -25,7 +23,7 @@ const logger = {
 };
 
 // Validate environment variables
-const requiredEnv = ["N8N_API_URL", "N8N_API_KEY", "GITHUB_TOKEN", "GOOGLE_APPLICATION_CREDENTIALS"];
+const requiredEnv = ["GOOGLE_APPLICATION_CREDENTIALS"];
 const missingEnv = requiredEnv.filter((env) => !process.env[env]);
 if (missingEnv.length > 0) {
   logger.error(`Missing required environment variables: ${missingEnv.join(", ")}`);
@@ -43,7 +41,7 @@ if (googleCredsPath && !path.isAbsolute(googleCredsPath)) {
 const server = new Server(
   {
     name: "local-mcp-server",
-    version: "1.0.0",
+    version: "1.1.0",
   },
   {
     capabilities: {
@@ -55,48 +53,35 @@ const server = new Server(
 // Define tools schemas
 const TOOLS = [
   {
-    name: "n8n_list_workflows",
-    description: "List all workflows from local n8n instance",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "google_sheets_read_headers",
-    description: "Read the header row (first row) of a Google Sheets spreadsheet",
+    name: "read_sheet_schema",
+    description: "Lee la estructura de una planilla Google Sheets (encabezados) e infiere tipos basados en las primeras 50 filas de datos.",
     inputSchema: {
       type: "object",
       properties: {
         spreadsheetId: {
           type: "string",
-          description: "The spreadsheet ID (can be extracted from the sheet URL)",
+          description: "El ID de la planilla (extraído de la URL).",
         },
-        range: {
+        sheetName: {
           type: "string",
-          description: "Range to read, e.g., 'Sheet1!A1:Z1'",
-          default: "A1:Z1",
+          description: "Nombre de la hoja específica a leer (ej: 'Datos'). Si se omite, lee la primera hoja por defecto.",
         },
       },
       required: ["spreadsheetId"],
     },
   },
   {
-    name: "github_get_repo",
-    description: "Get information about a GitHub repository to verify token permissions",
+    name: "download_apps_script",
+    description: "Descarga el código fuente (.gs y .html) de un proyecto de Google Apps Script asociado a una planilla.",
     inputSchema: {
       type: "object",
       properties: {
-        owner: {
+        scriptId: {
           type: "string",
-          description: "The owner of the GitHub repository",
-        },
-        repo: {
-          type: "string",
-          description: "The name of the GitHub repository",
+          description: "El ID del proyecto de Apps Script. (Obtenido desde la URL del editor de scripts).",
         },
       },
-      required: ["owner", "repo"],
+      required: ["scriptId"],
     },
   },
 ];
@@ -114,71 +99,82 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
-      case "n8n_list_workflows": {
-        const response = await axios.get(`${process.env.N8N_API_URL}/workflows`, {
-          headers: {
-            "X-N8N-API-KEY": process.env.N8N_API_KEY,
-          },
-        });
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "google_sheets_read_headers": {
+      case "read_sheet_schema": {
         const auth = new google.auth.GoogleAuth({
           keyFile: googleCredsPath,
           scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
         });
         const sheets = google.sheets({ version: "v4", auth });
         const spreadsheetId = args.spreadsheetId;
-        const range = args.range || "A1:Z1";
+        
+        // Lee la fila 1 a la 51 para tener encabezado + 50 filas de muestra
+        const range = args.sheetName ? `${args.sheetName}!A1:ZZ51` : "A1:ZZ51";
 
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId,
           range,
         });
 
+        const rows = response.data.values || [];
+        if (rows.length === 0) {
+          return {
+            content: [{ type: "text", text: "Sheet is empty." }],
+          };
+        }
+
+        const headers = rows[0];
+        const schema = headers.map((header, index) => {
+          let type = "string"; // default
+          let hasValue = false;
+          
+          for (let i = 1; i < rows.length; i++) {
+            const val = rows[i][index];
+            if (val !== undefined && val !== null && val !== "") {
+              hasValue = true;
+              const numericVal = Number(val.toString().replace(/,/g, ''));
+              
+              if (!isNaN(numericVal) && val.trim() !== "") {
+                type = "number";
+              } else if (val.toLowerCase() === "true" || val.toLowerCase() === "false" || val.toLowerCase() === "verdadero" || val.toLowerCase() === "falso") {
+                type = "boolean";
+              } else {
+                type = "string"; // if any string is found, we assume the column is string
+                break;
+              }
+            }
+          }
+          
+          if (!hasValue) type = "unknown";
+          
+          return { column: header, inferredType: type };
+        });
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(response.data.values || [], null, 2),
+              text: JSON.stringify({ schema, sampleRowsCount: rows.length - 1 }, null, 2),
             },
           ],
         };
       }
 
-      case "github_get_repo": {
-        const octokit = new Octokit({
-          auth: process.env.GITHUB_TOKEN,
+      case "download_apps_script": {
+        const auth = new google.auth.GoogleAuth({
+          keyFile: googleCredsPath,
+          scopes: ["https://www.googleapis.com/auth/script.projects.readonly"],
         });
-        const { owner, repo } = args;
-        const response = await octokit.rest.repos.get({
-          owner,
-          repo,
+        const script = google.script({ version: "v1", auth });
+        
+        const response = await script.projects.getContent({
+          scriptId: args.scriptId,
         });
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  id: response.data.id,
-                  name: response.data.name,
-                  full_name: response.data.full_name,
-                  private: response.data.private,
-                  description: response.data.description,
-                  html_url: response.data.html_url,
-                },
-                null,
-                2
-              ),
+              text: JSON.stringify(response.data.files || [], null, 2),
             },
           ],
         };
@@ -194,7 +190,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: `Error executing tool ${name}: ${error.response?.data?.message || error.message}`,
+          text: `Error executing tool ${name}: ${error.response?.data?.error?.message || error.message}`,
         },
       ],
     };
