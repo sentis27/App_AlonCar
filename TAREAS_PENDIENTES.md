@@ -59,12 +59,13 @@ docs/mapa_proyecto.md (reemplazado por INDICE_CENTRAL.md)
 
 
 🟡 FASE 2: Lógica de Negocio (PRÓXIMA)
-1.4 [BLOQUEADOR] Habilitación de Google Apps Script API
-
-Archivo/Lugar: Google Cloud Console (GCP)
-Qué: Habilitar "Google Apps Script API" y agregar el scope `https://www.googleapis.com/auth/script.projects.readonly` a la Service Account.
-Propósito: Permitir que el servidor MCP descargue el código `.gs` de las planillas automáticamente.
-Prioridad: Crítica (Antes de empezar el Mapeo).
+✓ HECHO — 1.4 Habilitación de Google Apps Script API
+   Archivo/Lugar: Google Cloud Console (GCP)
+   Qué: Habilitar "Google Apps Script API" y agregar el scope `https://www.googleapis.com/auth/script.projects.readonly` a la Service Account.
+   Propósito: Permitir que el servidor MCP descargue el código `.gs` de las planillas automáticamente.
+   
+✓ HECHO — 1.5 Refactor Servidor MCP para Fase 2
+   Resultado: `mcp-server/index.js` ahora expone `read_sheet_schema` y `download_apps_script`.
 
 2.0 Mapeo y Extracción de Datos Legacy
 
