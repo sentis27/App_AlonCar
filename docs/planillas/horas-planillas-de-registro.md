@@ -1,4 +1,4 @@
-# Mapeo Legacy: HORAS PLANILLAS DE REGISTRO
+# Mapeo Legacy: HORAS PLANILLAS DE REGISTRO (Borrador - Pendiente de Revisión)
 
 > [!IMPORTANT]
 > **Fuentes de información cruzadas:** Descripción del usuario (sesión 2026-06-17), documento técnico SDD_RegistroHoras_Aloncar_V1_v2.0 (PDF anexo), y lectura directa vía MCP (Google Sheets API).
@@ -76,10 +76,10 @@
 | M | PRECIO/UNI | Number | FORMULA / IMPORTADO | Valor unitario por hora. Traído de B.D PARA HORAS |
 | N | COSTO TOTAL | Calculated | FORMULA | `= G * M` (aproximado). Multiplicación de horas por valor unitario |
 | O | PESO | Number | MANUAL_LIBRE | No computa para esta planilla |
-| P | CENTRO DE COSTO | Enum | LISTA_SIMPLE | Por defecto siempre "CLIENTE". Otros valores: ASTILLERO |
+| P | CENTRO DE COSTO | Enum | LISTA_SIMPLE | Por defecto siempre "CLIENTE". Otros valores: "" (vacío) |
 | Q | CATEGORIA | String | MANUAL_LIBRE | No influye en el cómputo de horas |
-| R | TIPO DE COMPROBANTE | Enum | MANUAL_VALIDADO | Valores: PRC (presupuesto) o vacío |
-| S | N PRC | String | MANUAL_LIBRE | Número de presupuesto vinculado |
+| R | TIPO DE COMPROBANTE | Enum | AUTOMATICO | `=SI(F19="PRESUPUESTO";"PRC";"")` |
+| S | N PRC | String | AUTOMATICO | `=SI(F19="HORA";"";(SI.ERROR(BUSCARV(AC19;IMPORT.AVANCE_OBRA!A:F;5;FALSO))))` |
 | T | OBSERVACIONES | String | MANUAL_LIBRE | Notas del operario para el supervisor |
 | U | MARCA TEMPORAL | Date | AUTOMATICO | Timestamp de cuándo se cargó el registro. Permite medir delay de carga (24-36 hs típicamente) |
 | V | SIN RUBRO | Formula | FORMULA | Alerta para hoja ALERTAS. Evalúa si J está vacío |
@@ -168,13 +168,14 @@ Matriz barcos (fila 1) × órdenes de trabajo (filas 2+). 45 columnas, cada colu
   - Columna R (TIPO DE COMPROBANTE) → Si = "PRC", entonces columna S (Nº PRC) es obligatoria
 
 - **Alertas Visuales (Columnas V a AB):**
-  - Columna V: SIN RUBRO → Si J vacío → Marca "C.R" (campo requerido) o vacío
-  - Columna W: SIN O.T → Si D vacío → Marca "COMPLETO" o genera alerta
-  - Columna X: SIN TIP.TRABAJO → Si F vacío → Genera alerta "C.TP"
-  - Columna Y: SIN CENT.COST → Si P vacío → Genera alerta "C.CC"
+  - Columna V: SIN RUBRO → Si J vacío (y otras condiciones relativas al tipo de trabajo) → Marca "C.R" o vacío
+  - Columna W: SIN O.T → Si D vacío (y la fila tiene datos) → Marca "COMPLETO" o genera alerta
+  - Columna X: SIN TIP.TRABAJO → Si F vacío (y hay datos en la fila) → Genera alerta "C.TP"
+  - Columna Y: SIN CENT.COST → Si P vacío (condicionado a que haya información) → Genera alerta "C.CC"
   - Columna Z: SIN COSTO VALORIZADO → Si N = 0 o vacío → Genera alerta "C.CV"
   - Columna AA: COSTO MAL CARGADA → Verifica coherencia entre horas y costo → Marca "OK" o alerta
   - Columna AB: SIN Nº PRC → Si R = "PRC" y S vacío → Genera alerta "C.NºPRC"
+  - *Nota General sobre Alertas:* No evalúan únicamente si la celda está vacía, sino que cruzan condiciones lógicas (ej. si está vacía PERO requiere estar llena por otro dato cargado en la fila).
 
 - **Fórmulas de Control Clave:**
   - Celda B1 (HORAS): `=COUNTIF(A:A,"R")` — Contador global de filas que requieren revisión
