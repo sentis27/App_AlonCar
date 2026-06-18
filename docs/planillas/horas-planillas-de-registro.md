@@ -206,7 +206,7 @@ Matriz barcos (fila 1) × órdenes de trabajo (filas 2+). 45 columnas, cada colu
 | B.D.NewSystemm | `1OHFCkWKOwaknei6eV6wBZrEXHlye2QK3RJUqC0yDT-4` | PersonalClasificacionCostos | A (nombre), B (grupo), C (USD/hora), D (rubro), H (estado=ACTIVO) | Alimenta catálogo de personal activo, rubros y costos |
 | B.D.NewSystemm | `1OHFCkWKOwaknei6eV6wBZrEXHlye2QK3RJUqC0yDT-4` | BaseDatosP/PlanillasRegistro | Columna C | Fuente de verdad de los rubros disponibles |
 | LISTA_TRABAJOS | `1rmjCqJoy7lz0YPlbmzHxp9Jj_pMHfSNBmpvS3BhxAlQ` | UNIFICADO | A (barco), C (OT), D (descripcion), E (estado), F (comentario), G (contratista), H (jefe obra) | Fuente de barcos y OTs activas. Filtro: estado = "En ejecución/En curso" |
-| Planilla de Avance de Obra | Desconocido — pendiente de validación (2026-06-17) | — | CODIGO, CLIENTE, OT, CONTRATISTA, Nº PRC | Alimenta números de presupuesto para vincular horas con PRC |
+| Planilla de Avance de Obra | `1kC8l09AD4uV4k27iCyMRQgcSQAUtYpETB__dUT0LVH8` | gid=1609788168 | CODIGO, CLIENTE, OT, CONTRATISTA, Nº PRC | Alimenta números de presupuesto para vincular horas con PRC |
 | Planilla de Liquidación de Sueldos | Desconocido — pendiente de validación (2026-06-17) | — | Resumen quincenal | Consume el resumen de horas para calcular sueldos |
 
 ### Dependencias Salientes (Quién consume esta planilla):
@@ -314,7 +314,7 @@ Fecha, Barco, OT, Contratista, Tipo de Trabajo, Horas (normales, 50%, 100%), Rub
 ### Deuda Técnica:
 | Problema | Riesgo |
 | :--- | :--- |
-| Hoja CONTROL DESCANSOS abandonada con errores #REF! | Confusión para usuarios. Debería eliminarse o repararse. |
+| Hoja CONTROL DESCANSOS abandonada con errores #REF! | Los descansos son de interés para control operativo. No descartar la funcionalidad; migrar el concepto a Supabase con estructura limpia. |
 | Hoja ImportNewB.DCostosH/h es una mejora incompleta | Coexiste con B.D PARA HORAS sin estar integrada. Ambigüedad sobre cuál es la fuente de verdad. |
 | RESUMEN.QUINCENA: desglose diario (cols H-W) no funcional | El operario no puede usar esta funcionalidad para detectar días con pocas horas. |
 | Apps Script con `onEdit` sin filtro de columna | Se ejecuta en cada edición de cualquier celda, generando latencia innecesaria. |
