@@ -69,10 +69,12 @@ docs/mapa_proyecto.md (reemplazado por INDICE_CENTRAL.md)
 
 2.0 Mapeo y Extracción de Datos Legacy
 
- Mapeo Profundo del Legado (Sheets)
-   Archivo/Lugar: docs/03_negocio/
-   Qué: Ejecutar la Skill de Mapeo Legacy (usando MCP read_sheet_logic) para auditar las 14-16 planillas actuales de Google Sheets y documentarlas con la plantilla estandarizada.
+  Mapeo Profundo del Legado (Sheets)
+   Archivo/Lugar: docs/planillas/
+   Qué: Ejecutar la Skill de Mapeo Legacy (usando MCP read_sheet_schema) para auditar las 14-16 planillas actuales de Google Sheets y documentarlas con la plantilla estandarizada.
    Propósito: Entender las dependencias cruzadas (ej. VLOOKUPs entre hojas) y reglas duras antes de diseñar las tablas de SQL.
+   Progreso:
+   - [x] HORAS_PLANILLAS_DE_REGISTRO (Borrador - pendiente revisión de negocio)
 
 ✓ HECHO — 2.1 Metadatos de Documentación (Roles + Dependencias)
    Resultado: Creado INDICE_METADATOS.md (tabla máquina de 8 columnas) separado de INDICE_CENTRAL.md (narrativo humano).
