@@ -2,12 +2,20 @@
 
 > [!IMPORTANT]
 > **REGLA DE AGENTE (ANTIGRAVITY):** Si estás leyendo este documento para mapear una planilla, es **PROHIBIDO** dejar campos vacíos o con "[Falta Dato]". Si falta contexto, debes detenerte y preguntar al usuario.
+>
+> **TAG DE CONFIANZA:** Cada sección numerada (1 a 9) debe cerrar con una línea
+> `> Confianza: [CONFIRMADO | INFERIDO | PENDIENTE]`.
+> - **CONFIRMADO** = leído vía MCP o validado por el usuario.
+> - **INFERIDO** = deducido por estructura/nombres/fórmulas, sin confirmar.
+> - **PENDIENTE** = falta validación humana.
+> Esto permite, con 16 planillas mapeadas, filtrar qué quedó sin validar sin releer todo.
 
 ## 1. Clasificación de la Planilla
 - **Tipo de Planilla:** [TIPO A (Entrada) / TIPO B (Transformación) / TIPO C (Salida) / TIPO D (Híbrida)]
 - **Justificación:** [Por qué pertenece a este tipo]
 
 ## 2. Identidad y Contexto de Negocio
+- **ID Planilla:** [GS-0XX — asignar el próximo libre consultando INDICE_PLANILLAS.md]
 - **Nombre Técnico/Funcional:** [Ej: Control_Materiales_v3]
 - **URL / ID:** [Enlace a la planilla]
 - **Departamento Propietario:** [Ej: Pañol / Logística]
@@ -17,7 +25,7 @@
 - **Integraciones Manuales Actuales:** [¿De dónde copian/pegan datos para llenar esto? ¿Hacia dónde exportan?]
 
 ## 3. Estructura Visual y Navegación
-- **Hojas Existentes:** [Listar pestañas]
+- **Hojas Existentes:** [Listar pestañas. A cada hoja CRÍTICA asignarle un ID estable TAB-0XX único dentro de esta planilla, ej: TAB-001 = HORAS. Las hojas auxiliares/importación pueden quedar sin ID si no son referenciadas por dependencias.]
 - **Fila Real de Encabezados:** [Fila donde empiezan los nombres de las columnas]
 - **Dashboard / Sumatorias Superiores:** [Métricas previas a la tabla]
 - **Enlaces Rápidos Identificados:** [Celdas con links a otras partes]
@@ -58,7 +66,12 @@
   | [Planilla] | [Hoja] | [Rango] | [Uso en destino] |
 
 ## 8. Requerimientos de Migración a Supabase/n8n
-- **Tablas Implicadas:** [A qué tabla futura de Supabase va la info]
+> **REGLA:** Toda tabla implicada DEBE mapearse contra una entidad del catálogo en
+> `INDICE_PLANILLAS.md` (Ship, Worker, WorkOrder, CostCenter, Material, etc.).
+> Si un dato no calza con ninguna entidad existente, registrarlo como **GAP DE ROADMAP**
+> (campo nuevo necesario), no como tabla inventada.
+- **Entidades del catálogo implicadas:** [Listar entidades existentes que esta planilla alimenta, ej: TimeImput, Worker, CostCenter]
+- **Gaps de Roadmap detectados:** [Datos que no calzan con ninguna entidad actual → candidatos a entidad/campo nuevo, con justificación]
 - **Campos a Conservar:** [Lista]
 - **Campos a Descartar (Basura):** [Lista con justificación]
 - **Campos Faltantes (Necesarios a futuro):** [Lista]

@@ -7,7 +7,7 @@
 ## Vocabularios Controlados
 
 ### Tipo
-`portada` · `indice` · `pendientes` · `roadmap` · `instrucciones-agente` · `protocolo` · `documentacion-tecnica` · `guia` · `registro` · `skill` · `codigo`
+`portada` · `indice` · `pendientes` · `roadmap` · `instrucciones-agente` · `protocolo` · `documentacion-tecnica` · `documentacion-negocio` · `guia` · `registro` · `skill` · `codigo`
 
 ### Comportamiento-IA
 `auditar-tareas` · `auditar-avances` · `auditar-reglas` · `auditar-decisiones` · `auditar-dependencias` · `consultar-siempre` · `validar-integridad` · `ignorar-en-auditoria` · `ninguno`
@@ -36,6 +36,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-06-14 | ninguno |
 | INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-06-14 | INDICE_CENTRAL.md |
 | TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-06-14 | INDICE_CENTRAL.md |
+| INDICE_PLANILLAS.md | indice | consultar-siempre | completo | fase-2 | activo | 2026-06-18 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md |
 | ROADMAP_NEGOCIO.md | roadmap | auditar-avances | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | GUIA_ANTIGRAVITY.md | instrucciones-agente | auditar-reglas | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md \| ROADMAP_NEGOCIO.md |
 | docs/01_infraestructura/README.md | indice | ninguno | ignorar | fase-1 | activo | 2026-06-10 | INDICE_CENTRAL.md |
@@ -52,8 +53,8 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/03_negocio/README.md | indice | ninguno | ignorar | fase-2 | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | docs/planillas/horas-planillas-de-registro.md | documentacion-negocio | ninguno | completo | fase-2 | borrador | 2026-06-17 | .agents/skills/legacy-mapping/SKILL.md |
 | .agents/skills/README.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
-| .agents/skills/legacy-mapping/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-10 | GUIA_ANTIGRAVITY.md |
-| .agents/skills/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | .agents/skills/legacy-mapping/SKILL.md |
+| .agents/skills/legacy-mapping/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-18 | GUIA_ANTIGRAVITY.md |
+| .agents/skills/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-18 | .agents/skills/legacy-mapping/SKILL.md |
 | .agents/skills/session-audit/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-10 | GUIA_ANTIGRAVITY.md \| INDICE_CENTRAL.md \| INDICE_METADATOS.md |
 | .agents/skills/product-collector/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-10 | GUIA_ANTIGRAVITY.md \| INDICE_CENTRAL.md \| INDICE_METADATOS.md |
 | mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |

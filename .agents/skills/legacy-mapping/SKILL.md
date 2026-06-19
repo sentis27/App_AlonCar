@@ -22,6 +22,7 @@ Before opening the sheet, ask the user:
 2. Do I have active MCP access for this sheet, or will I work solely on your description?
 3. Is this a new mapping or are we updating an existing one?
 *Rule:* If a mapping document already exists in the repository, read it first to avoid duplicating work.
+*Rule:* Open `INDICE_PLANILLAS.md` first. Assign the next free `GS-0XX` ID and confirm whether this sheet (or its dependencies) are already registered there.
 
 ### Step 1: Spreadsheet Classification
 Determine the type of sheet using these criteria. If unable to determine, ask the user.
@@ -58,7 +59,7 @@ Document incoming dependencies (this sheet consumes from others) and outgoing de
 *Rule:* If you cannot detect dependencies via MCP, explicitly ask the user.
 
 ### Step 8: Migration Requirements
-Document target Supabase tables, fields to keep, fields to discard (trash data), missing fields (needed for future), necessary transformations, and n8n automation candidates.
+Map every candidate table against the entity catalog in `INDICE_PLANILLAS.md` (Ship, Worker, WorkOrder, CostCenter, Material, etc.). Do NOT invent standalone table names. If a piece of data does not fit any existing entity, log it as a **roadmap gap**, not as a new table. Then document: fields to keep, fields to discard (trash data), necessary transformations, and n8n automation candidates.
 
 ### Step 9: Observations, Problems, and Improvements
 This block is MANDATORY.
@@ -70,7 +71,8 @@ Document: Detected frequent problems, Identified improvements (High, Medium, Low
 - **User mentions documented sheet:** Read existing doc first, ask what changed.
 - **Undocumented dependency detected:** Add to Step 7 of the corresponding doc, notify user.
 - **Improvement detected:** Add to Step 9 before session close.
-- **User wants full relational map:** Consolidate dependencies from all mappings.
+- **User wants full relational map:** Consolidate dependencies from all mappings using `INDICE_PLANILLAS.md` as the consolidation layer.
+- **Mapping completed or updated:** Update the corresponding row in `INDICE_PLANILLAS.md` (Type, Mapping Status, Target Module, dependencies).
 
 ## Unbreakable Rules
 1. No field stays empty. Ask before continuing.
@@ -78,6 +80,8 @@ Document: Detected frequent problems, Identified improvements (High, Medium, Low
 3. Dependencies are as critical as the sheet itself.
 4. The improvements block is mandatory.
 5. Always read existing documents before creating new ones.
+6. Every numbered section must carry a confidence tag (CONFIRMADO / INFERIDO / PENDIENTE).
+7. After mapping, update the sheet's row in `INDICE_PLANILLAS.md` before closing the session.
 
 **Location for output:**
 Save generated mapping documents using the Spanish template located at `.agents/skills/legacy-mapping/recursos/template_mapeo.md` into `docs/planillas/[nombre-tecnico-planilla].md`.
