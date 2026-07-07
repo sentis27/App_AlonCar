@@ -263,6 +263,7 @@
 | Reporte Retiros diarioMateriales | **Ya implementado** | WhatsApp cada 2hs con retiros vs stock. Migrar lectura a Supabase. |
 | Reportes visitas pañol quincena | **Ya implementado** | Reporte quincenal por email. Migrar fuente de datos a Supabase. |
 | Congelamiento quincenal de precios | **Candidato CRÍTICO** | Automatizar el proceso manual actual de copiar valores, eliminar fórmulas, actualizar dólar. Debe ser "2 clics": elegir valor dólar + quincena, y congelar todo automáticamente. |
+| Separación quincenal de centro de costo por contratista | **Candidato CRÍTICO** | Hoy se hace manual (~1.5-2 hs/quincena). Agrupar consumos de CONSUMIBLES y ELEM_SEGURIDAD por contratista, barco y OT, con nº consecutivo de remito para trazabilidad. Genera informe para descontar del pago quincenal del contratista. **⚠ ALERTA: Falta definir el formato ideal del informe de salida.** Nivel 2-3: envío automático al contratista por mensaje + PDF una vez aprobado por humano. |
 | Alerta de stock mínimo | Candidato | Notificación cuando stock físico < stock mínimo |
 | Cálculo automático de peso | Candidato (baja prioridad) | Para materiales ferrosos, calcular peso basado en dimensiones y densidad constante |
 
@@ -316,10 +317,28 @@ Cuando se envían materiales a un taller externo, se genera un remito (cols R-S)
 2. Se vincula al costo del taller en la planilla de TERCEROS.
 3. Permite auditar que lo entregado coincide con lo cargado.
 
+### Separación Quincenal de Centro de Costo por Contratista (Proceso Manual Crítico)
+Cada quincena, la administración debe generar un informe por contratista que detalle:
+- Todos los retiros de **CONSUMIBLES** y **ELEM_SEGURIDAD** cuyo centro de costo sea **CONTRATISTA** (es decir, que el contratista paga).
+- Agrupados por **contratista → barco → orden de trabajo**.
+- Con un **número consecutivo de remito** por quincena para trazabilidad.
+
+**Para qué sirve:** Si un contratista trabajó 15 horas = $1000, pero retiró $200 en consumibles que le corresponde pagar, se le pagan $800. Este informe es la base documental para el descuento.
+
+**Dolor actual:** Se hace manualmente con filtros en la planilla. Consume entre **1.5 y 2 horas por quincena**. Es tedioso, propenso a errores, y no tiene trazabilidad formal.
+
+**Visión de automatización:**
+- **Nivel 1:** Generación automática del informe agrupado con nº consecutivo. Aprobación humana.
+- **Nivel 2:** Envío del informe al contratista por mensaje (WhatsApp/SMS) + conversión a PDF.
+- **Nivel 3:** Flujo completo: generar → aprobar → enviar → registrar como descontado en liquidación.
+
+> ⚠ **ALERTA:** Falta que Andrés defina el formato ideal del informe de salida (qué columnas, qué agrupamiento, qué totales). Pendiente para próxima sesión.
+
 ### Visión de Mejora (Rumbo a la App)
 1. **Formulario de retiro simplificado:** El pañolero solo debería ver: barco, OT, material (con autocompletado), cantidad. Todo lo demás (precio, rubro, categoría, centro de costo, peso) se resuelve en el backend.
 2. **Congelamiento automático:** Botón "Cerrar Quincena" que congele precios, actualice dólar, y genere resumen automáticamente.
-3. **Historial de precios:** Tabla de auditoría que registre cada cambio de precio con fecha, valor anterior, valor nuevo, y tipo de cambio.
-4. **Stock en tiempo real:** El stock disponible se calcula en Supabase como una vista materializada, no como una importación periódica.
-5. **Alertas push:** Reemplazar la hoja ALERTAS por notificaciones proactivas cuando se detecte un retiro sin OT o un material agotándose.
+3. **Separación automática de centro de costo:** Al cerrar quincena, generar automáticamente el informe por contratista para descuento de pagos.
+4. **Historial de precios:** Tabla de auditoría que registre cada cambio de precio con fecha, valor anterior, valor nuevo, y tipo de cambio.
+5. **Stock en tiempo real:** El stock disponible se calcula en Supabase como una vista materializada, no como una importación periódica.
+6. **Alertas push:** Reemplazar la hoja ALERTAS por notificaciones proactivas cuando se detecte un retiro sin OT o un material agotándose.
 > Confianza: CONFIRMADO
