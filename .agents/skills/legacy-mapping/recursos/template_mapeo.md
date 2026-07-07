@@ -65,7 +65,14 @@
   | :--- | :--- | :--- | :--- |
   | [Planilla] | [Hoja] | [Rango] | [Uso en destino] |
 
-## 8. Requerimientos de Migración a Supabase/n8n
+## 8. Validaciones y Constraints de Negocio
+> ⚠ **REGLA:** Está PROHIBIDO documentar validaciones técnicas de formulario. Cada regla debe responder: ¿qué error financiero, operativo o contable ocurre si esta regla no existe?
+
+| Regla de Negocio / Constraint (¿Qué debe bloquear o fallar?) | Entidad / Tabla Responsable en SQL | Estado Actual en el Astillero |
+| :--- | :--- | :--- |
+| [Ej: No se puede retirar material sin una Orden de Trabajo activa] | [Ej: WorkOrder + Consumption] | [Ej: Vacío de control / Control manual] |
+
+## 9. Requerimientos de Migración a Supabase/n8n
 > **REGLA:** Toda tabla implicada DEBE mapearse contra una entidad del catálogo en
 > `INDICE_PLANILLAS.md` (Ship, Worker, WorkOrder, CostCenter, Material, etc.).
 > Si un dato no calza con ninguna entidad existente, registrarlo como **GAP DE ROADMAP**
@@ -78,7 +85,7 @@
 - **Transformaciones Necesarias:** [Limpieza de datos]
 - **Automatizaciones Candidatas (n8n):** [Flujos manuales a reemplazar]
 
-## 9. Observaciones, Problemas Frecuentes y Mejoras
+## 10. Observaciones, Problemas Frecuentes y Mejoras
 - **Problemas Frecuentes:**
   - [Problema] -> [Impacto] -> [Frecuencia]
 - **Mejoras Identificadas:**
