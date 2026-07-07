@@ -19,32 +19,28 @@ Límite importante: No tienes acceso directo a datos sensibles. Te comunicas con
 > [!CAUTION]
 > **REGLA DE ORO DE ESCRITURA:** Tienes PROHIBIDO crear o modificar archivos en disco de forma unilateral. Toda modificación arquitectónica o de código debe presentarse primero en el chat (o en un artefacto de borrador) y esperar la validación y orden de "escribir" o "aprobar" por parte del usuario. Jamás asumas que una idea es definitiva sin validarla.
 
-Antes de Cualquier Tarea Técnica
+Apertura de Sesión y Pre-Tarea
 
-Consultá el índice:
+1. Estado del Grafo de Planillas (OBLIGATORIO):
+   - Leer INDICE_PLANILLAS.md.
+   - Reportar en el chat: cuántas planillas hay en cada estado (`borrador` / `revision-negocio` / `confirmado` / `revision-por-cambio-en-origen`).
+   - Si hay alguna en estado `revision-por-cambio-en-origen`, alertar al usuario antes de continuar.
+   - **Regla:** No avanzar sin que el usuario tome nota.
 
-Abre INDICE_CENTRAL.md
-¿El tema está listado?
+2. Consultá el índice general:
+   - Abre INDICE_CENTRAL.md
+   - ¿El tema está listado?
+     - SÍ: Apunta al archivo exacto
+     - NO: Revisa TAREAS_PENDIENTES.md y sugiere documentarlo
 
-SÍ: Apunta al archivo exacto
-NO: Revisa TAREAS_PENDIENTES.md y sugiere documentarlo
+3. ¿Qué fase es?
+   - Fase 1 (conexiones) → Enfócate en infraestructura
+   - Fase 2+ (negocio) → Referencia ROADMAP_NEGOCIO.md
 
-
-
-
-¿Qué fase es?
-
-Fase 1 (conexiones) → Enfócate en infraestructura
-Fase 2+ (negocio) → Referencia ROADMAP_NEGOCIO.md
-
-
-¿Es sobre seguridad?
-
-Prioridad máxima
-Cita docs/01_infraestructura/03_seguridad_credenciales.md
-Alerta si algo se ve inseguro
-
-
+4. ¿Es sobre seguridad?
+   - Prioridad máxima
+   - Cita docs/01_infraestructura/03_seguridad_credenciales.md
+   - Alerta si algo se ve inseguro
 
 Durante la Tarea
 Sé específico:
@@ -56,15 +52,17 @@ Apunta a documentos exactos:
 No inventes información:
 ❌ "Probablemente n8n está en localhost:5678"
 ✅ "[Seguro] n8n corre en localhost:5678 (confirmado en 02_configuracion_env.md)"
+
 Después de la Tarea
 Documenta lo que aprendiste:
-
-¿Descubriste algo nuevo? → Sugiere un archivo nuevo o una actualización
-¿Encontraste un error en los docs? → Notificalo
+- ¿Descubriste algo nuevo? → Sugiere un archivo nuevo o una actualización
+- ¿Encontraste un error en los docs? → Notificalo
 
 Ejemplo:
-
 "Descubrí que la Service Account de Google necesita permiso 'sheets.readonly' además de 'drive'. Propongo actualizar 03_seguridad_credenciales.md con esto."
+
+> ⚠ **PROTOCOLO DE CIERRE DE SESIÓN Y PROPAGACIÓN DE IMPACTO (OBLIGATORIO):**
+> ¿El mapeo de esta sesión descubrió dependencias nuevas o modificó reglas ya documentadas? → Actualizar obligatoriamente las columnas `Depende de (consume)` y `Consumida por` en `INDICE_PLANILLAS.md`. Si ese cambio impacta planillas ya documentadas, cambiar su estado a `revision-por-cambio-en-origen` y agregar una tarea en `TAREAS_PENDIENTES.md` con el detalle del impacto. Esto no es opcional.
 
 
 🔒 Reglas de Seguridad (CRÍTICAS)
