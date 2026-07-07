@@ -18,8 +18,8 @@
 ### Módulo Destino
 `M1-activos` · `M2-recursos` · `M3-operaciones` · `M4-logistica` · `M5-comercial` · `M6-cierre` · `transversal`
 
-### Dependencias
-IDs de planilla (`GS-0XX`) separados por `|`. `ninguno` si no aplica. `pendiente-deteccion` si no se analizó.
+### Dependencias [EN CONSTRUCCIÓN - se completa progresivamente por sesión]
+IDs de planilla (`GS-0XX`) o nombres técnicos temporales separados por `|`. `ninguno` si no aplica. `pendiente-deteccion` si no se analizó.
 
 ---
 
@@ -27,8 +27,8 @@ IDs de planilla (`GS-0XX`) separados por `|`. `ninguno` si no aplica. `pendiente
 
 | ID | Nombre Técnico | Tipo | Estado Mapeo | Módulo Destino | Depende de (consume) | Consumida por | Doc |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| GS-001 | HORAS_PLANILLAS_DE_REGISTRO | D-hibrida | borrador | M3-operaciones | pendiente-deteccion | pendiente-deteccion | docs/planillas/horas-planillas-de-registro.md |
-| GS-002 | MATERIALES_PLANILLAS_REGISTRO | D-hibrida | borrador | M4-logistica | pendiente-deteccion | pendiente-deteccion | docs/planillas/materiales-planillas-registro.md |
+| GS-001 | HORAS_PLANILLAS_DE_REGISTRO | D-hibrida | borrador | M3-operaciones | T.D_ASTILLERO \| DETALLE_PRESUPUESTOS \| B.D.NewSystemm \| LISTA_TRABAJOS | ninguno | docs/planillas/horas-planillas-de-registro.md |
+| GS-002 | MATERIALES_PLANILLAS_REGISTRO | D-hibrida | borrador | M4-logistica | B.D.NewSystemm \| LISTA_TRABAJOS \| CONTROL_DE_STOCK \| COMPRAS | CONTROL_DE_STOCK \| DASH_BOARD | docs/planillas/materiales-planillas-registro.md |
 
 ---
 
