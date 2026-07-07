@@ -28,6 +28,7 @@ IDs de planilla (`GS-0XX`) separados por `|`. `ninguno` si no aplica. `pendiente
 | ID | Nombre Técnico | Tipo | Estado Mapeo | Módulo Destino | Depende de (consume) | Consumida por | Doc |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | GS-001 | HORAS_PLANILLAS_DE_REGISTRO | D-hibrida | borrador | M3-operaciones | pendiente-deteccion | pendiente-deteccion | docs/planillas/horas-planillas-de-registro.md |
+| GS-002 | MATERIALES_PLANILLAS_REGISTRO | D-hibrida | borrador | M4-logistica | pendiente-deteccion | pendiente-deteccion | docs/planillas/materiales-planillas-registro.md |
 
 ---
 
