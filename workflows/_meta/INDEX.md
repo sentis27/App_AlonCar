@@ -5,7 +5,7 @@ Tabla maestra de todos los workflows de automatización. Actualizar esta tabla c
 | Nombre | Dominio | Estado | Migración Sheets→Supabase | Dependencias | SDD |
 |---|---|---|---|---|---|
 | reporte-ordenes-trabajo | operaciones | activo-sin-SDD | pendiente | — | pendiente |
-| reporte-horas | operaciones | activo-sin-SDD | pendiente | — | pendiente |
+| reporte-horas | operaciones | activo | pendiente | — | completo |
 
 **Estado:** `activo` (corriendo en producción, SDD completo) / `activo-sin-SDD` (corriendo en producción, SDD pendiente) / `desarrollo` (en construcción, no productivo)
 **Migración Sheets→Supabase:** `pendiente` / `en curso` / `completo`
