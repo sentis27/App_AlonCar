@@ -22,6 +22,26 @@ Bloqueador: Sin esto, n8n no sabe qué métodos llamar
 ✓ HECHO — 1.1.x Documentar convención de Workflows n8n
    Resultado: Creada estructura workflows/ (_meta/INDEX.md, PLANTILLA.md, migracion.md) y docs/01_infraestructura/05_integraciones_n8n.md. Dos workflows registrados como activo-sin-SDD (ya corren en producción): reporte-ordenes-trabajo, reporte-horas (README.md + SDD.md creados, SDD pendiente de completar, migración pendiente).
 
+1.1.y Mantenimiento reporte-horas (post-producción, ver workflows/operaciones/reporte-horas/SDD.md)
+
+- [ ] Diagnosticar "R en todas las filas"
+   Prioridad: Crítica — afecta la utilidad real del sistema.
+   Para la próxima sesión traer: (1) un mensaje de entrada simple (2-3 líneas, todo claro), (2) el output de E4 para ese mensaje (array `tareas` con `needs_review` y `motivo_revision`).
+
+- [ ] Definir regla de negocio: bifurcación OT con adicionales
+   Prioridad: Alta — bloqueador de código.
+   Caso "trabajo base + adicional de la misma OT" genera ambigüedad en el matching. Decidir antes de tocar código: ¿fila separada con la misma OT, OT distinta, o campo extra?
+
+- [ ] Ajustar mensaje de respuesta (E9a - PrepararRespuesta)
+   Prioridad: Media.
+   Revisar texto, formato y datos que muestra al emisor.
+
+- [ ] Prompt: agregar CONTRATISTA HINT en Caso 5 (Set - PromptConfig)
+   Prioridad: Media.
+   Agregar regla de extracción de `contratista_hint` desde "para [nombre]"; agregar `"contratista_hint": null` como campo en el few-shot MSG5.
+
+Ninguna de las 4 está completa — no hay evidencia en SDD.md ni en el repo de que ya se haya resuelto alguna.
+
 
 
 1.2 Testing y Validación
