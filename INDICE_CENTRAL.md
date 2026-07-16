@@ -13,11 +13,10 @@ Tareas pendientes: Ver TAREAS_PENDIENTES.md
 📚 Índice por Sección
 🔧 Sección 1: Infraestructura (FASE 1 - ACTUAL)
 Documentación técnica de conectividad, configuración y seguridad.
-ArchivoContenidoPara Quién01_stack_tecnico.mdDescripción del stack: Google Sheets, n8n, MCP, Supabase, AntigravityTodos (orientación general)02_configuracion_env.mdCómo crear y llenar el archivo .env paso a pasoDevs que configuren el entorno local03_seguridad_credenciales.mdProtección de credenciales, modelo Zero Trust, Google Service AccountsTodos (responsabilidad crítica)
+ArchivoContenidoPara Quién01_stack_tecnico.mdDescripción del stack: Google Sheets, n8n, MCP, Supabase, AntigravityTodos (orientación general)02_configuracion_env.mdCómo crear y llenar el archivo .env paso a pasoDevs que configuren el entorno local03_seguridad_credenciales.mdProtección de credenciales, modelo Zero Trust, Google Service AccountsTodos (responsabilidad crítica)05_integraciones_n8n.mdUbicación y convenciones de los workflows de n8n (workflows/), incluyendo regla de SDD obligatorioDevs / Agentes IA
 Próximamente:
 
 04_arquitectura_mcp.md — Métodos expuestos por el servidor MCP
-05_integraciones_n8n.md — Flujos base de n8n
 
 
 📖 Sección 2: Producto Digital (REFERENCIA)

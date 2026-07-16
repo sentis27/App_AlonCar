@@ -19,13 +19,8 @@ Prioridad: Alta
 Bloqueador: Sin esto, n8n no sabe qué métodos llamar
 
 
- 05_integraciones_n8n.md — Flujos base
-
-Flujo: Google Sheets → n8n → Validación → Supabase
-Flujo: Consulta datos desde MCP
-Flujo: Webhook de entrada
-Prioridad: Alta
-Bloqueador: Sin esto, no hay automatización
+✓ HECHO — 1.1.x Documentar convención de Workflows n8n
+   Resultado: Creada estructura workflows/ (_meta/INDEX.md, PLANTILLA.md, migracion.md) y docs/01_infraestructura/05_integraciones_n8n.md. Dos workflows registrados como activo-sin-SDD (ya corren en producción): reporte-ordenes-trabajo, reporte-horas (README.md + SDD.md creados, SDD pendiente de completar, migración pendiente).
 
 
 
