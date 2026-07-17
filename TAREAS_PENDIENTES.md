@@ -3,6 +3,23 @@
 Este archivo es tu lista de trabajo. Priorizada por fase y criticidad.
 Nota: Actualízalo conforme cierres tareas. El agente IA también puede consultar este archivo para saber qué documentar.
 
+🤖 Agentes Especializados — Instalación por Etapa
+
+[ ] Instalar y configurar database-optimizer
+    Etapa: migración Sheets→Supabase
+    Trigger: cuando esté definido el modelo relacional en Supabase
+    Fuente: agency-agents/engineering/engineering-database-optimizer.md
+
+[ ] Instalar y configurar Graphify (pip install graphifyy)
+    Etapa: desarrollo de la app en código real
+    Trigger: cuando haya código Python/JS con módulos y dependencias reales
+    Nota: no útil sobre documentación Markdown — esperar a que haya codebase real
+
+[ ] Instalar y configurar minimal-change-engineer
+    Etapa: cuando haya un caso concreto de bug en producción
+    Trigger: cuando la tarea sea corregir algo puntual sin tocar nada más
+    Fuente: agency-agents/engineering/engineering-minimal-change-engineer.md
+
 
 🔴 FASE 1: Infraestructura y Conexiones (ACTUAL)
 1.1 Documentación Técnica Base

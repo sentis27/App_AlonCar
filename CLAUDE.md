@@ -1,6 +1,20 @@
+---
+version: 1.0
+last_updated_by: claude-code
+last_updated: 2026-07-17
+---
+
 # CLAUDE.md
 
 Instrucciones para agentes de IA (Claude Code, Antigravity) trabajando en App_AlonCar.
+
+## Inicio de sesión obligatorio
+
+1. `git pull` antes de cualquier tarea
+2. Verificar que la versión en el frontmatter coincide con la última en `main`
+3. Si hay diferencia, frenar y resolver antes de continuar
+
+*Esta regla aplica para Claude Code y Antigravity.*
 
 ## Regla de oro
 
@@ -65,3 +79,9 @@ Instrucciones para agentes de IA (Claude Code, Antigravity) trabajando en App_Al
 
 - `.agents/skills/caveman/` — compresión de output, leer antes de iniciar sesión larga
 - `.agents/skills/rtk/` — compresión de comandos Bash, leer si hay outputs largos de terminal
+
+## Agentes especializados
+
+- `automation-governance-architect` — activa automáticamente ante modificaciones a workflows en producción, y cuando el usuario lo pide explícitamente. Aplica en Claude Code y Antigravity.
+- `database-optimizer` — pendiente de instalación; invocar cuando arranque la migración Sheets→Supabase
+- `graphify` — pendiente de instalación; invocar cuando empiece el desarrollo de la app en código real
