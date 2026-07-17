@@ -8,8 +8,7 @@ Léelo completamente antes de empezar a trabajar en App_AlonCar.
 Eres el asesor técnico y colaborador de desarrollo de App_AlonCar.
 Tus responsabilidades:
 
-Fase 1 (Actual): Ayudar a construir y documentar infraestructura (MCP, n8n, conexiones)
-Fase 2 (Próxima): Colaborar en diseño de lógica de negocio (6 módulos)
+Fase 1/2 (Actual): Documentación de infraestructura y conectividad completada. En transición hacia el diseño y documentación de lógica de negocio (Fase 2) y gobernanza de workflows de n8n en producción.
 Fase 3 (Final): Asistir en implementación (APIs, frontend, deployment)
 
 Límite importante: No tienes acceso directo a datos sensibles. Te comunicas con el usuario y con el MCP server, pero nunca ves credenciales en texto plano.
@@ -21,10 +20,12 @@ Límite importante: No tienes acceso directo a datos sensibles. Te comunicas con
 
 Apertura de Sesión y Pre-Tarea
 
-1. Estado del Grafo de Planillas (OBLIGATORIO):
-   - Leer INDICE_PLANILLAS.md.
-   - Reportar en el chat: cuántas planillas hay en cada estado (`borrador` / `revision-negocio` / `confirmado` / `revision-por-cambio-en-origen`).
+1. Inicio de Sesión Obligatorio (CLAUDE.md):
+   - Ejecutar `git pull` antes de cualquier tarea.
+   - Verificar que la versión en el frontmatter de CLAUDE.md coincide con la última en `main`. Si hay diferencias, resolver antes de continuar.
+   - Reportar el estado de planillas en INDICE_PLANILLAS.md (conteo por estados: `borrador` / `revision-negocio` / `confirmado` / `revision-por-cambio-en-origen`).
    - Si hay alguna en estado `revision-por-cambio-en-origen`, alertar al usuario antes de continuar.
+   - Reportar el estado de los workflows en `workflows/_meta/INDEX.md` (activo / activo-sin-SDD / desarrollo).
    - **Regla:** No avanzar sin que el usuario tome nota.
 
 2. Consultá el índice general:
@@ -34,7 +35,7 @@ Apertura de Sesión y Pre-Tarea
      - NO: Revisa TAREAS_PENDIENTES.md y sugiere documentarlo
 
 3. ¿Qué fase es?
-   - Fase 1 (conexiones) → Enfócate en infraestructura
+   - Fase 1/2 (actual) → Gobernanza de workflows + documentación de negocio
    - Fase 2+ (negocio) → Referencia ROADMAP_NEGOCIO.md
 
 4. ¿Es sobre seguridad?
@@ -54,15 +55,17 @@ No inventes información:
 ✅ "[Seguro] n8n corre en localhost:5678 (confirmado en 02_configuracion_env.md)"
 
 Después de la Tarea
-Documenta lo que aprendiste:
+Documenta lo que aprendiste y mantén la integridad del repositorio:
 - ¿Descubriste algo nuevo? → Sugiere un archivo nuevo o una actualización
 - ¿Encontraste un error en los docs? → Notificalo
+- Registrar todo archivo nuevo como fila en INDICE_CENTRAL.md e INDICE_METADATOS.md.
+- Si se modificaron o descubrieron dependencias en planillas, actualizar las columnas de dependencias de INDICE_PLANILLAS.md.
 
-Ejemplo:
-"Descubrí que la Service Account de Google necesita permiso 'sheets.readonly' además de 'drive'. Propongo actualizar 03_seguridad_credenciales.md con esto."
-
-> ⚠ **PROTOCOLO DE CIERRE DE SESIÓN Y PROPAGACIÓN DE IMPACTO (OBLIGATORIO):**
-> ¿El mapeo de esta sesión descubrió dependencias nuevas o modificó reglas ya documentadas? → Actualizar obligatoriamente las columnas `Depende de (consume)` y `Consumida por` en `INDICE_PLANILLAS.md`. Si ese cambio impacta planillas ya documentadas, cambiar su estado a `revision-por-cambio-en-origen` y agregar una tarea en `TAREAS_PENDIENTES.md` con el detalle del impacto. Esto no es opcional.
+> ⚠ **PROTOCOLO DE CIERRE DE SESIÓN (OBLIGATORIO):**
+> Al final de cada sesión de trabajo, actualizar obligatoriamente `workflows/_meta/INDEX.md` y `TAREAS_PENDIENTES.md` con lo realizado. No cerrar una sesión con cambios en disco sin reflejar en estos dos archivos.
+> Toda propuesta de archivo nuevo o cambio se muestra en el chat y requiere aprobación explícita.
+> Si el mapeo de la sesión descubrió dependencias nuevas en planillas, actualizar las columnas `Depende de (consume)` y `Consumida por` en `INDICE_PLANILLAS.md`. Si ese cambio impacta planillas ya documentadas, cambiar su estado a `revision-por-cambio-en-origen` y agregar una tarea en `TAREAS_PENDIENTES.md`. Esto no es opcional.
+> Formato de commits: `tipo: descripción corta` (feat, fix, docs, refactor). Un commit por tarea. Push solo con confirmación explícita en el chat.
 
 
 🔒 Reglas de Seguridad (CRÍTICAS)
@@ -96,11 +99,25 @@ Cuando hagas una afirmación, clasifícala:
 🗂️ Estructura de Directorios (Para Referencia Rápida)
 App_AlonCar/
 ├── README.md                    ← Portada (léelo primero)
+├── CLAUDE.md                    ← Reglas maestras del repositorio (léelo ante todo)
 ├── INDICE_CENTRAL.md            ← Tu brújula (navegación humana)
 ├── INDICE_METADATOS.md          ← Tabla máquina (auditorías IA)
 ├── TAREAS_PENDIENTES.md         ← Qué falta
 ├── ROADMAP_NEGOCIO.md           ← Visión a futuro
 ├── GUIA_ANTIGRAVITY.md          ← Este archivo
+│
+├── .agents/
+│   └── skills/
+│       └── automation-governance/   ← Skill activo: gobernanza de workflows n8n
+│           └── SKILL.md             ← Activá ante: nuevo n8n workflow, SDD, INDEX.md
+│
+├── workflows/
+│   ├── _meta/
+│   │   ├── INDEX.md             ← Índice maestro de todos los workflows
+│   │   └── PLANTILLA.md         ← Plantilla SDD de 14 secciones
+│   └── operaciones/
+│       ├── reporte-horas/       ← Activo. SDD completo.
+│       └── reporte-ordenes-trabajo/ ← Activo. SDD completo.
 │
 ├── docs/
 │   ├── 01_infraestructura/      ← FASE 1
@@ -111,7 +128,7 @@ App_AlonCar/
 │   ├── 02_producto/             ← Educativo/comercial
 │   │   └── registro_paso_a_paso.md
 │   │
-│   └── 03_negocio/              ← FASE 2+ (vacío ahora)
+│   └── 03_negocio/              ← FASE 2+ (en construcción)
 │       └── README.md
 │
 ├── .env                         ← LOCAL ONLY
@@ -234,6 +251,8 @@ Metadatos para auditoría: INDICE_METADATOS.md
 Qué falta: TAREAS_PENDIENTES.md
 Visión futura: ROADMAP_NEGOCIO.md
 Stack técnico: docs/01_infraestructura/01_stack_tecnico.md
+Gobernanza de workflows: workflows/_meta/INDEX.md + .agents/skills/automation-governance/SKILL.md
+**Reglas maestras del repositorio: CLAUDE.md** (primero antes que esta guía si hay contradicción)
 
 
 ✅ Checklist: Estoy Listo Para Empezar
@@ -247,5 +266,5 @@ Stack técnico: docs/01_infraestructura/01_stack_tecnico.md
 
 Si marcaste todo: ¡Listo! Esperando instrucciones.
 
-Última actualización: 2026-06-10
-Próxima revisión: Fin de Fase 1
+Última actualización: 2026-07-17
+Próxima revisión: Inicio de Fase 2 (diseño de módulos de negocio)
