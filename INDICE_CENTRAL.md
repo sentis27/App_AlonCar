@@ -19,9 +19,12 @@ Próximamente:
 04_arquitectura_mcp.md — Métodos expuestos por el servidor MCP
 
 
-📖 Sección 2: Producto Digital (REFERENCIA)
-Redacción comercial y educativa. No es crítica para desarrollo.
-ArchivoContenidoPara Quiénregistro_paso_a_paso.mdGuía educativa: por qué proteger credenciales, cómo funciona el sistemaUsuarios finales / Clientes
+📖 Sección 2: Producto Digital (REFERENCIA & BITÁCORA)
+Documentación de producto, decisiones arquitectónicas, errores resueltos, conceptos y procesos.
+| Archivo | Contenido | Para Quién |
+| :--- | :--- | :--- |
+| `docs/02_producto/README.md` | Catálogo central de bitácora (Decisiones, Errores, Conceptos, Procesos) | Todos |
+| `docs/02_producto/registro_paso_a_paso.md` | Guía educativa: por qué proteger credenciales, cómo funciona el sistema | Usuarios finales / Clientes |
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)
 Diseño de los 6 módulos del ERP.

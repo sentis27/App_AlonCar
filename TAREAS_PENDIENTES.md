@@ -125,6 +125,12 @@ docs/mapa_proyecto.md (reemplazado por INDICE_CENTRAL.md)
    Resultado: Creada `.agents/skills/product-collector/SKILL.md` y la arquitectura de carpetas `docs/02_producto/` (00_raw, 01_decisiones, 02_errores, 03_conceptos, 04_procesos).
    Se implementó la lógica inmutable (para errores y decisiones) y mutable (para procesos y conceptos), junto con la función DIFERIR y auto-trigger desde `session-audit`.
 
+- [ ] **PENDIENTE — 1.6 Refinamiento y Ordenamiento del Mensaje al Usuario WhatsApp (`E9a - PrepararRespuesta`)**
+   Archivo/Lugar: Workflow n8n (`E9a - PrepararRespuesta`) / `PRO-003-alertas-humanizadas-e9a.md`
+   Qué: Terminar de definir, ordenar y dar estructura visual definitiva al mensaje final de confirmación y diagnóstico que se envía al usuario vía WhatsApp (`waText`).
+   Propósito: El mensaje actual requiere mayor orden y jerarquía para que sea 100% claro e intuitivo para los operarios y supervisores al leerlo desde sus teléfonos móviles.
+   Prioridad: Alta
+
 Prioridad: Crítica (Paso 0 para poder diseñar los módulos y la DB).
 
 2.1 Diseño de Módulos

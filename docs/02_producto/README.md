@@ -43,6 +43,14 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-06-10 | DEC-003 | Separación de Índice Humano vs Tabla Máquina | decision |
 | 2026-06-10 | CON-003 | Arquitectura de la Bitácora de Producto | concepto |
 | 2026-06-14 | ERR-003 | Google Sheets API: The caller does not have permission | error |
+| 2026-07-19 | DEC-004 | Desdoblamiento del nodo E4 en ValidarOperario y ValidarRubroYOT | decision |
+| 2026-07-19 | DEC-005 | Eliminación del desdoblamiento automático de horas en OTs ambiguas | decision |
+| 2026-07-19 | DEC-006 | Lógica determinística en 4 reglas para E3a (Router v2.3) y filtrado de catálogos | decision |
+| 2026-07-19 | DEC-007 | Blindaje anti-alucinaciones en Set - PromptConfig vs. parches JS | decision |
+| 2026-07-19 | DEC-008 | Enrutamiento de WhatsApp por participantPn al teléfono emisor | decision |
+| 2026-07-19 | CON-004 | Modelo de paginación por operario en mensajes múltiples | concepto |
+| 2026-07-19 | PRO-002 | Mapeo blindado de estadísticas y tokens en E8 - EscribirLog | proceso |
+| 2026-07-19 | PRO-003 | Diseño de alertas humanizadas con doble variante en E9a | proceso |
 
 ---
 
@@ -53,6 +61,11 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | DEC-001 | Transporte MCP agnóstico local/VPS | 1 | borrador | 2026-06-10 |
 | DEC-002 | Autodescubrimiento heurístico de encabezados | 1 | borrador | 2026-06-10 |
 | DEC-003 | Separación de Índice Humano vs Tabla Máquina | 1 | borrador | 2026-06-10 |
+| DEC-004 | Desdoblamiento del nodo E4 en ValidarOperario y ValidarRubroYOT | 1 | borrador | 2026-07-19 |
+| DEC-005 | Eliminación del desdoblamiento automático de horas en OTs ambiguas | 1 | borrador | 2026-07-19 |
+| DEC-006 | Lógica determinística en 4 reglas para E3a (Router v2.3) y filtrado de catálogos | 1 | borrador | 2026-07-19 |
+| DEC-007 | Blindaje anti-alucinaciones en Set - PromptConfig vs. parches JS | 1 | borrador | 2026-07-19 |
+| DEC-008 | Enrutamiento de WhatsApp por participantPn al teléfono emisor | 1 | borrador | 2026-07-19 |
 
 ## Errores
 
@@ -69,12 +82,15 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | CON-001 | Trinidad de una skill real | 1 | borrador | 2026-06-10 | 2026-06-10 |
 | CON-002 | Modelo Zero Trust para credenciales | 1 | borrador | 2026-06-10 | 2026-06-10 |
 | CON-003 | Arquitectura de la Bitácora de Producto | 1 | borrador | 2026-06-10 | 2026-06-10 |
+| CON-004 | Modelo de paginación por operario en mensajes múltiples | 1 | borrador | 2026-07-19 | 2026-07-19 |
 
 ## Procesos
 
 | ID | Título | Fase | Estado | Fecha | Última revisión |
 |---|---|---|---|---|---|
 | PRO-001 | Configuración de entorno desde cero | 1 | borrador | 2026-06-10 | 2026-06-10 |
+| PRO-002 | Mapeo blindado de estadísticas y tokens en E8 - EscribirLog | 1 | borrador | 2026-07-19 | 2026-07-19 |
+| PRO-003 | Diseño de alertas humanizadas con doble variante en E9a | 1 | borrador | 2026-07-19 | 2026-07-19 |
 
 ## Raw sin clasificar
 

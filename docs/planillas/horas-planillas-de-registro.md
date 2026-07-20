@@ -112,7 +112,7 @@
 La planilla es el motor central donde los operarios y la administración interactúan diariamente para dejar registro de "quién trabajó, dónde, y por cuánto tiempo". Al ser al mismo tiempo formulario de carga y base de datos precaria, funciona como un embudo crítico.
 
 ### Interacciones Clave
-1. **Operario / Contratista:** Carga los datos crudos. A veces usa Slack (vía automatización de n8n). Suele tener dificultades para mantener actualizados los descansos.
+1. **Operario / Contratista:** Carga los datos crudos. A veces usa WhatsApp (vía automatización de n8n con Evolution API). Suele tener dificultades para mantener actualizados los descansos.
 2. **Supervisor:** Ve las "R" rojas, corrige, y aprueba pasando a "S" o "RRR".
 3. **Administración:** Usa la hoja ALERTAS para detectar velozmente personal trabajando "por presupuesto" pero sin un "Nº PRC" asignado. Esto evita huecos en la facturación y el control de costos.
 4. **María José (Liquidación):** Es la consumidora final y principal de la salida del sistema (`RESUMEN.QUINCENA`), tomándola como la fuente sagrada de verdad para emitir pagos.
