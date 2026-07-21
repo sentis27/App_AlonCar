@@ -287,7 +287,8 @@ Es el corazón de la inteligencia de negocio en esta planilla. Tres categorías 
 - **CONSUMIBLES** (discos, trapos, etc.) → A veces paga el CLIENTE, a veces el CONTRATISTA. Depende del contrato de cada contratista.
 - **ELEM_SEGURIDAD** (guantes, protectores, etc.) → Misma lógica que consumibles.
 
-Esta tabulación ya está resuelta en `B.D.NewSystemm` y se importa a esta planilla. En Supabase, será una tabla de reglas por contratista con campos `consumibles_paga` y `seguridad_paga`.
+**Lógica de Porcentajes (NUEVO REQUERIMIENTO):**
+Actualmente el sistema legacy es determinístico (`SI` / `NO` = 100% o 0%). En la nueva aplicación (`B.D.NewSystemm` / Supabase), la tabla de reglas por contratista admitirá un **porcentaje parametrizable de descuento de consumibles** (ej. 100%, 60%, etc.). El porcentaje restante (ej. 40%) se imputará automáticamente como costo de la obra/cliente, **eliminando la doble imputación manual** actual que obligaba a cargar las diferencias en la planilla de `TERCEROS` como "gastos varios al trabajo".
 
 ### El Problema del Dólar y el Congelamiento Quincenal
 Todos los precios de materiales están en pesos argentinos pero se convierten a dólares para facturar y reportar. Cada quincena, Andrés debe:
@@ -336,9 +337,10 @@ Cada quincena, la administración debe generar un informe por contratista que de
 
 ### Visión de Mejora (Rumbo a la App)
 1. **Formulario de retiro simplificado:** El pañolero solo debería ver: barco, OT, material (con autocompletado), cantidad. Todo lo demás (precio, rubro, categoría, centro de costo, peso) se resuelve en el backend.
-2. **Congelamiento automático:** Botón "Cerrar Quincena" que congele precios, actualice dólar, y genere resumen automáticamente.
-3. **Separación automática de centro de costo:** Al cerrar quincena, generar automáticamente el informe por contratista para descuento de pagos.
-4. **Historial de precios:** Tabla de auditoría que registre cada cambio de precio con fecha, valor anterior, valor nuevo, y tipo de cambio.
-5. **Stock en tiempo real:** El stock disponible se calcula en Supabase como una vista materializada, no como una importación periódica.
-6. **Alertas push:** Reemplazar la hoja ALERTAS por notificaciones proactivas cuando se detecte un retiro sin OT o un material agotándose.
+2. **Terminal de Despacho & Pañol (Verificación Visual):** Incorporar en la entidad `Material` (`B.D MATERIALES`) la columna `imagen_url` / `foto_producto`. En el tablero/terminal del operario de pañol, al seleccionar o escanear un producto se mostrará inmediatamente la imagen de referencia para validar visualmente que el item físico entregado coincide con lo que se está imputando.
+3. **Congelamiento automático:** Botón "Cerrar Quincena" que congele precios, actualice dólar, y genere resumen automáticamente.
+4. **Separación automática de centro de costo (con Porcentajes):** Calcular automáticamente los descuentos por contratista aplicando reglas de porcentaje (ej. 60%/40%), imputando la diferencia al cliente/obra sin doble imputación manual en Terceros.
+5. **Historial de precios:** Tabla de auditoría que registre cada cambio de precio con fecha, valor anterior, valor nuevo, y tipo de cambio.
+6. **Stock en tiempo real:** El stock disponible se calcula en Supabase como una vista materializada, no como una importación periódica.
+7. **Alertas push:** Reemplazar la hoja ALERTAS por notificaciones proactivas cuando se detecte un retiro sin OT o un material agotándose.
 > Confianza: CONFIRMADO

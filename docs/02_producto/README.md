@@ -51,6 +51,8 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-07-19 | CON-004 | Modelo de paginación por operario en mensajes múltiples | concepto |
 | 2026-07-19 | PRO-002 | Mapeo blindado de estadísticas y tokens en E8 - EscribirLog | proceso |
 | 2026-07-19 | PRO-003 | Diseño de alertas humanizadas con doble variante en E9a | proceso |
+| 2026-07-21 | DEC-009 | Lógica de porcentajes parametrizables de consumibles por contratista | decision |
+| 2026-07-21 | DEC-010 | Terminal de Pañol con verificación visual y ocultamiento de costos por rol | decision |
 
 ---
 
@@ -66,6 +68,8 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | DEC-006 | Lógica determinística en 4 reglas para E3a (Router v2.3) y filtrado de catálogos | 1 | borrador | 2026-07-19 |
 | DEC-007 | Blindaje anti-alucinaciones en Set - PromptConfig vs. parches JS | 1 | borrador | 2026-07-19 |
 | DEC-008 | Enrutamiento de WhatsApp por participantPn al teléfono emisor | 1 | borrador | 2026-07-19 |
+| DEC-009 | Lógica de porcentajes parametrizables de consumibles por contratista | 2 | borrador | 2026-07-21 |
+| DEC-010 | Terminal de Pañol con verificación visual y ocultamiento de costos por rol | 2 | borrador | 2026-07-21 |
 
 ## Errores
 
