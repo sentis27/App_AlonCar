@@ -55,6 +55,8 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/01_decisiones/DEC-008-enrutamiento-whatsapp-participantpn.md | decision | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/01_decisiones/DEC-009-porcentajes-descuento-consumibles.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-21 | docs/02_producto/README.md \| docs/planillas/materiales-planillas-registro.md |
 | docs/02_producto/01_decisiones/DEC-010-terminal-panol-verificacion-visual.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-21 | docs/02_producto/README.md \| docs/planillas/materiales-planillas-registro.md |
+| docs/02_producto/01_decisiones/DEC-011-cierre-ot-dashboard-historico.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-22 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
+| docs/02_producto/01_decisiones/DEC-012-estandarizacion-dimension-quincenal.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-22 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/02_errores/ERR-003-service-account-permisos-sheets.md | error | ninguno | cambios | transversal | activo | 2026-06-14 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-003-arquitectura-bitacora.md | concepto | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-004-modelo-paginacion-por-operario.md | concepto | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/planillas/horas-planillas-de-registro.md |
@@ -64,6 +66,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/planillas/horas-planillas-de-registro.md | documentacion-negocio | ninguno | completo | fase-2 | borrador | 2026-07-19 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/materiales-planillas-registro.md | documentacion-negocio | ninguno | completo | fase-2 | borrador | 2026-07-06 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/lista-trabajos-en-progreso.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-22 | .agents/skills/legacy-mapping/SKILL.md |
+| docs/planillas/resumen-gerencial.md | documentacion-negocio | ninguno | completo | fase-2 | no-iniciado | 2026-07-22 | .agents/skills/legacy-mapping/SKILL.md |
 | .agents/skills/README.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
 | .agents/skills/legacy-mapping/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-18 | GUIA_ANTIGRAVITY.md |
 | .agents/skills/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-18 | .agents/skills/legacy-mapping/SKILL.md |
