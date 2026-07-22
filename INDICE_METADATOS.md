@@ -63,6 +63,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/03_negocio/README.md | indice | ninguno | ignorar | fase-2 | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | docs/planillas/horas-planillas-de-registro.md | documentacion-negocio | ninguno | completo | fase-2 | borrador | 2026-07-19 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/materiales-planillas-registro.md | documentacion-negocio | ninguno | completo | fase-2 | borrador | 2026-07-06 | .agents/skills/legacy-mapping/SKILL.md |
+| docs/planillas/lista-trabajos-en-progreso.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-22 | .agents/skills/legacy-mapping/SKILL.md |
 | .agents/skills/README.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
 | .agents/skills/legacy-mapping/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-18 | GUIA_ANTIGRAVITY.md |
 | .agents/skills/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-18 | .agents/skills/legacy-mapping/SKILL.md |
