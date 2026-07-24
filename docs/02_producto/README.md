@@ -55,6 +55,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-07-21 | DEC-010 | Terminal de Pañol con verificación visual y ocultamiento de costos por rol | decision |
 | 2026-07-22 | DEC-011 | Flujo de Cierre por Facturación, Archivo Histórico y Preservación de Integridad de Stock | decision |
 | 2026-07-22 | DEC-012 | Estandarización de la Dimensión Quincenal para Registros y Cierres | decision |
+| 2026-07-23 | DEC-013 | Separación estricta de Horas Tabuladas vs Presupuestos Fijos | decision |
 
 ---
 
@@ -74,6 +75,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | DEC-010 | Terminal de Pañol con verificación visual y ocultamiento de costos por rol | 2 | borrador | 2026-07-21 |
 | DEC-011 | Flujo de Cierre por Facturación, Archivo Histórico y Preservación de Integridad de Stock | 2 | borrador | 2026-07-22 |
 | DEC-012 | Estandarización de la Dimensión Quincenal para Registros y Cierres | 2 | borrador | 2026-07-22 |
+| DEC-013 | Separación estricta de Horas Tabuladas vs Presupuestos Fijos | 2 | borrador | 2026-07-23 |
 
 ## Errores
 
