@@ -18,7 +18,7 @@
 - **URL / ID:** `https://docs.google.com/spreadsheets/d/1QbU6NnKpfTZYlLYa3SIEQSnt5PFfE4xj31U9Zuvl7t0/edit`
 - **Departamento Propietario:** Operaciones / Administración
 - **Usuarios Principales y Rol:** Operario de carga, Supervisor, Liquidador de sueldos.
-- **Propósito Principal:** Registro contable de horas. Fuente de verdad para liquidación de sueldos y costos por rubro.
+- **Propósito Principal:** Registro contable de horas. Fuente de verdad para liquidación de sueldos y costos por rubro. Adicionalmente, sentará las bases para **análisis históricos de costos hora hombre por quincena**, y reportes detallados de **ausencias, enfermedad y vacaciones** del personal.
 - **Frecuencia de Uso:** Diaria / Quincenal
 - **Integraciones Manuales Actuales:** Copiar/pegar desde LISTA PERSONAL, flujo automatizado (RegistroHoras_Aloncar_V1), consumo externo por liquidación.
 > Confianza: CONFIRMADO

@@ -198,6 +198,7 @@
 ### Automatizaciones n8n Activas
 
 **Flujo 1: `Reporte Retiros diarioMateriales` (WF_AvisoRetirosGrandes_v1)**
+> 📂 **Respaldo:** El JSON original de esta automatización fue provisto por el usuario y guardado en `workflows/legacy/Reporte_Retiros_diarioMateriales.json` como referencia de lógica.
 | Componente | Descripción |
 |---|---|
 | **Trigger** | Cron: `0 9-17/2 * * 1-5` (cada 2 horas, L-V, 9-17hs) |

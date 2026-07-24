@@ -1,0 +1,785 @@
+{
+  "name": "Reporte Retiros diarioMateriales",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9-17/2 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "41af6fbf-d66e-4b03-8499-541889f76061",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1LQSPDxbFR-l5Y4XUEDFDCtbXrHYPIukdvOhLBwOdqJk",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1192771653,
+          "mode": "list",
+          "cachedResultName": "AvisoRetirosGrandes",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LQSPDxbFR-l5Y4XUEDFDCtbXrHYPIukdvOhLBwOdqJk/edit#gid=1192771653"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 2
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        0
+      ],
+      "id": "4c054f70-0df8-4948-9091-249b3ad4f14e",
+      "name": "RetirosMateriales",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MnhfvA01hdQRG1JX",
+          "name": "WF_ALONCAR_GSHEETS_v2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1mtUrzk0cOe1q3agZmVPpE3ojlZl8TsC-jVBQcYlNHIA",
+          "mode": "list",
+          "cachedResultName": "CONTROL DE STOCK",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1mtUrzk0cOe1q3agZmVPpE3ojlZl8TsC-jVBQcYlNHIA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "CONTROL STOCK",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1mtUrzk0cOe1q3agZmVPpE3ojlZl8TsC-jVBQcYlNHIA/edit#gid=0"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 2
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        640,
+        0
+      ],
+      "id": "a275c196-2c4e-473c-b67d-c289572448bf",
+      "name": "ControlStock",
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "MnhfvA01hdQRG1JX",
+          "name": "WF_ALONCAR_GSHEETS_v2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * n8n Code node — PROCESAR DATOS\n * ---------------------------------------------------------\n * OBJETIVO\n *  - Tomar los retiros filtrados (no avisados) desde \"FiltroRetiros\".\n *  - Cruzar esos materiales contra el stock (FiltroStock → fallback ControlStock).\n *  - Agrupar por material, sumar cantidades, redondear a enteros.\n *  - Añadir `source_rows` con los rowNumber de retiros (para update después).\n *\n * NOTAS:\n *  - Se eliminó $input.all(): ahora el origen de datos es fijo → los retiros SIEMPRE\n *    se leen desde el nodo \"FiltroRetiros\".\n *  - Esto garantiza que no se cuelen 1890 filas de stock como antes.\n */\n\n/* ──────────────────────────────────────────── */\n/* 0) Nombres de nodos (ajustar si cambian)     */\n/* ──────────────────────────────────────────── */\nconst NODE_RETIROS = 'FiltroRetiros';\nconst NODE_STOCK   = 'FiltroStock';      // fallback: 'ControlStock'\n\n/* ──────────────────────────────────────────── */\n/* 1) Helpers                                   */\n/* ──────────────────────────────────────────── */\nfunction norm(s) {\n  if (s == null) return '';\n  return String(s)\n    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .toLowerCase();\n}\nfunction num(v) {\n  if (v == null || v === '') return 0;\n  if (typeof v === 'number') return v;\n  const n = Number(String(v).replace(',', '.'));\n  return isNaN(n) ? 0 : n;\n}\nfunction pickField(obj, candidates) {\n  for (const c of candidates) {\n    if (Object.prototype.hasOwnProperty.call(obj, c)) return c;\n    const k = Object.keys(obj).find(k => norm(k) === norm(c));\n    if (k) return k;\n  }\n  return null;\n}\nfunction safeItems(node) {\n  try { return $items(node, 0, 0) || []; }\n  catch { return []; }\n}\n\n/* ──────────────────────────────────────────── */\n/* 2) Entradas                                  */\n/* ──────────────────────────────────────────── */\nconst retirosItems = safeItems(NODE_RETIROS);\nlet stockItems     = safeItems(NODE_STOCK);\nif (!stockItems.length) stockItems = safeItems('ControlStock');\n\nif (!retirosItems.length) {\n  return [{ warning: 'No llegaron retiros desde FiltroRetiros' }];\n}\nif (!stockItems.length) {\n  return [{ warning: 'No llegaron datos de stock (FiltroStock ni ControlStock)' }];\n}\n\n/* ──────────────────────────────────────────── */\n/* 3) Descubrir columnas                        */\n/* ──────────────────────────────────────────── */\nconst sampleRet   = retirosItems[0].json || {};\nconst sampleStock = stockItems[0].json   || {};\n\nconst COL_MATERIAL_RETIROS = pickField(sampleRet, ['MATERILAES','MATERIALES','MATERIAL','Material','material']);\nconst COL_CANTIDAD         = pickField(sampleRet, ['CANTIDAD','Cantidad','cantidad','QTY','Qty','qty']);\nconst COL_ROWNUMBER        = pickField(sampleRet, ['rowNumber','RowNumber','row_number','__row__']);\n\nif (!COL_MATERIAL_RETIROS || !COL_CANTIDAD) {\n  return [{ error: 'Faltan columnas en RETIROS', sampleRet }];\n}\nconst COL_MATERIAL_STOCK = pickField(sampleStock, ['MATERIAL','Material','material']);\nconst COL_FISICO         = pickField(sampleStock, ['FISICO','Stock Fisico','stock fisico','E']);\nconst COL_VIRTUAL        = pickField(sampleStock, ['VIRTUAL','Stock Virtual','stock virtual','F']);\n\n/* ──────────────────────────────────────────── */\n/* 4) Agrupar retiros                           */\n/* ──────────────────────────────────────────── */\nconst retirosMap = new Map();\n\nfor (const it of retirosItems) {\n  const row     = it.json || {};\n  const rawName = row[COL_MATERIAL_RETIROS];\n  const qty     = num(row[COL_CANTIDAD]);\n  if (!rawName || !qty) continue;\n\n  const key = norm(rawName);\n  const current = retirosMap.get(key) || {\n    material_display: String(rawName).trim(),\n    retiro_total: 0,\n    source_rows: []\n  };\n\n  current.retiro_total += qty;\n  const rn = COL_ROWNUMBER ? Number(row[COL_ROWNUMBER]) : undefined;\n  if (Number.isFinite(rn)) current.source_rows.push(rn);\n\n  retirosMap.set(key, current);\n}\n\n/* ──────────────────────────────────────────── */\n/* 5) Indexar stock                             */\n/* ──────────────────────────────────────────── */\nconst stockMap = new Map();\nfor (const it of stockItems) {\n  const row = it.json || {};\n  const rawName = row[COL_MATERIAL_STOCK];\n  if (!rawName) continue;\n  const key = norm(rawName);\n  stockMap.set(key, {\n    fisico:  COL_FISICO  ? num(row[COL_FISICO])  : null,\n    virtual: COL_VIRTUAL ? num(row[COL_VIRTUAL]) : null\n  });\n}\n\n/* ──────────────────────────────────────────── */\n/* 6) Cruce y salida                            */\n/* ──────────────────────────────────────────── */\nconst out = [];\nfor (const [key, agg] of retirosMap.entries()) {\n  const hit = stockMap.get(key);\n  out.push({\n    MATERIAL: agg.material_display,\n    RETIRO_TOTAL: Math.round(agg.retiro_total),\n    STOCK_FISICO: hit ? Math.round(hit.fisico)   : null,\n    STOCK_VIRTUAL: hit ? Math.round(hit.virtual) : null,\n    EN_STOCK: !!hit,\n    source_rows: agg.source_rows\n  });\n}\nout.sort((a,b)=>norm(a.MATERIAL).localeCompare(norm(b.MATERIAL)));\n\nreturn out.map(o => ({ json: o }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        0
+      ],
+      "id": "99f31e4e-acfe-4ae3-b2e7-fed9360494e7",
+      "name": "ProcesarDatos",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "OnliwAI Oficial",
+        "remoteJid": "=5492262587575@s.whatsapp.net",
+        "messageText": "={{ $json.body }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        2384,
+        16
+      ],
+      "id": "ac7bba37-da1c-46d5-8671-44b1c54f88f2",
+      "name": "MensajeLinkAgenda",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "evolutionApi": {
+          "id": "ewBJEovSD5jaQ8MA",
+          "name": "Evolution OnliwAI oficial"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1) Intentamos obtener variables de entorno con un bloque de seguridad\nlet destTo = \"5492262587575@s.whatsapp.net\";\nlet pageSize = 15;\n\ntry {\n  // Intentamos leer del entorno, si falla usamos los valores por defecto definidos arriba\n  destTo = $env.EVOLUTION_TO || destTo;\n  pageSize = Number($env.PAGE_SIZE || pageSize);\n} catch (e) {\n  // Si n8n bloquea el acceso, el código seguirá usando los valores por defecto sin dar error\n  console.log(\"Acceso a variables de entorno denegado, usando valores por defecto.\");\n}\n\n// 2) Tomamos todos los items del nodo anterior\nconst items = $input.all().map(i => i.json);\n\n// 3) Helper para formatear cada línea\nfunction lineOf(row) {\n  const mat = String(row.MATERIAL || \"\").trim();\n  const ret = Math.round(Number(row.RETIRO_TOTAL || 0));\n  const fis = row.STOCK_FISICO == null ? \"—\" : Math.round(Number(row.STOCK_FISICO));\n  const vir = row.STOCK_VIRTUAL == null ? \"—\" : Math.round(Number(row.STOCK_VIRTUAL));\n\n  return `• *${mat}*\\n    Retiro: *${ret}* | Físico: *${fis}* | Virtual: *${vir}*`;\n}\n\nconst allLines = items.map(lineOf);\n\n// 4) Paginamos\nconst pages = [];\nfor (let i = 0; i < allLines.length; i += pageSize) {\n  const slice = allLines.slice(i, i + pageSize);\n  pages.push(slice);\n}\n\n// 5) Armamos salida\nconst total = pages.length || 1;\nconst now = new Date();\nconst fecha = now.toLocaleDateString('es-AR');\nconst hora = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });\n\n// Si no hay items, devolvemos al menos un objeto vacío para no romper el flujo\nif (pages.length === 0) {\n    return [{ json: { to: destTo, message: \"No hay datos para mostrar.\" } }];\n}\n\nreturn pages.map((lines, idx) => {\n  return {\n    json: {\n      to: destTo,\n      page_index: idx + 1,\n      page_count: total,\n      header: `*Retiros vs Stock* — ${fecha} ${hora} (pág. ${idx + 1}/${total})`,\n      lines\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        0
+      ],
+      "id": "33540288-3188-40d1-b430-7af8c4b924c6",
+      "name": "ArmarMensaje"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1776,
+        0
+      ],
+      "id": "476081b4-1aef-4ecc-a374-1d536925087e",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2112,
+        16
+      ],
+      "id": "4fd468b6-3fb5-4ddd-b265-487b8478dac5",
+      "name": "Wait",
+      "webhookId": "3366455d-5640-49c3-8b45-3a548afa85e2"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * n8n Code node — Recolectar rowNumber únicos para marcar \"ya avisado\"\n * Debe existir en el nodo \"ProcesarDatos\" un campo `source_rows: number[]` por ítem.\n * Este code:\n *  - Junta todos los rowNumber\n *  - Los desduplica\n *  - Emite 1 item por fila con los valores a escribir en la hoja\n */\n\nconst SOURCE_NODE = 'ProcesarDatos';     // <-- AJUSTÁ si tu nodo se llama distinto\nconst COL_ALERTA  = 'ALERTA_ENVIO';      // <-- nombre de columna a escribir\nconst COL_TS      = 'ALERTA_TS';         // <-- otra columna (timestamp)\n\nconst all = $items(SOURCE_NODE, 0, 0) || [];\n\nconst set = new Set();\nfor (const it of all) {\n  const rows = (it.json && it.json.source_rows) || [];\n  for (const rn of rows) {\n    if (rn != null) set.add(Number(rn));\n  }\n}\n\n// Si no encontró nada, devolvemos un aviso (no error)\nif (set.size === 0) {\n  return [{\n    json: {\n      info: 'No se hallaron rowNumber para marcar. Verificá que ProcesarDatos emita source_rows[].'\n    }\n  }];\n}\n\n// Timestamp legible\nconst now = new Date();\nconst ts  = now.toISOString(); // o toLocaleString('es-AR')\n\n// Emitimos 1 item por fila a actualizar\nreturn Array.from(set).map(rowNumber => ({\n  json: {\n    rowNumber,\n    [COL_ALERTA]: 'SI',\n    [COL_TS]: ts\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        -256
+      ],
+      "id": "bc15a7cf-ebcb-4b32-9cfb-d67e7568c6bd",
+      "name": "CapturarNumeroFila"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * n8n Code node — Construir body de WhatsApp por página\n */\n\n// 1) Obtener límite de caracteres con fallback de seguridad\nlet maxChars = 3500;\ntry {\n  maxChars = Number($env.WHATSAPP_MAX_CHARS || 3500);\n} catch (e) {\n  // Si falla el acceso a env, usamos el valor por defecto\n  maxChars = 3500;\n}\n\nfunction buildBody({ header, lines }, limit) {\n  // Encabezado + líneas separadas\n  const text = `${header}\\n\\n${lines.join('\\n\\n')}`;\n  if (text.length <= limit) return text;\n\n  // Si se excede, recortamos líneas manteniendo el encabezado\n  const out = [header, \"\"];\n  let acc = header.length + 2;\n  \n  for (const ln of lines) {\n    const plus = ln.length + 2; // +2 por los saltos de línea \\n\\n\n    if (acc + plus > limit - 40) { // Margen para el aviso de truncado\n      out.push(\"\\n_(Contenido truncado por longitud)_\");\n      break;\n    }\n    out.push(ln);\n    out.push(\"\"); // Espacio entre items\n    acc += plus;\n  }\n  return out.join('\\n').trim();\n}\n\nconst results = [];\n\n// 2) Procesar cada item que viene del nodo de paginación\nfor (const item of $input.all()) {\n  const data = item.json;\n  const { to, header, lines, page_index, page_count } = data;\n\n  if (!to) {\n    results.push({\n      json: {\n        error: true,\n        reason: \"Falta 'to' (destinatario). Revisa las variables de entorno o el nodo anterior.\",\n        originalData: data\n      }\n    });\n    continue;\n  }\n\n  // Si lines no es un array (por seguridad), lo manejamos\n  const safeLines = Array.isArray(lines) ? lines : [];\n  const body = buildBody({ header, lines: safeLines }, maxChars);\n\n  results.push({\n    json: {\n      number: to, // Renombrado a 'number' si es lo que pide Evolution API, o mantén 'to'\n      body,\n      page_metadata: {\n        current: page_index,\n        total: page_count\n      }\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        0
+      ],
+      "id": "418cbc07-7b08-488c-a632-2bea2058390f",
+      "name": "DividirMensaje"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1LQSPDxbFR-l5Y4XUEDFDCtbXrHYPIukdvOhLBwOdqJk",
+          "mode": "list",
+          "cachedResultName": "MATERIALES PLANILLAS DE REGISTRO",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LQSPDxbFR-l5Y4XUEDFDCtbXrHYPIukdvOhLBwOdqJk/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1192771653,
+          "mode": "list",
+          "cachedResultName": "AvisoRetirosGrandes",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LQSPDxbFR-l5Y4XUEDFDCtbXrHYPIukdvOhLBwOdqJk/edit#gid=1192771653"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.rowNumber }}",
+            "ALERTA_ENVIO": "={{ $json.ALERTA_ENVIO }}",
+            "ALERTA_TS": "={{ $json.ALERTA_TS }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "FECHA",
+              "displayName": "FECHA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CLIENTE",
+              "displayName": "CLIENTE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ORDEN DE TRABAJO",
+              "displayName": "ORDEN DE TRABAJO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CONTRATISTA",
+              "displayName": "CONTRATISTA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "TIPO DE TRABAJO",
+              "displayName": "TIPO DE TRABAJO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "NORMALES",
+              "displayName": "NORMALES",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "HORAS AL 50%",
+              "displayName": "HORAS AL 50%",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "HORAS AL 100%",
+              "displayName": "HORAS AL 100%",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "RUBRO",
+              "displayName": "RUBRO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "MATERILAES",
+              "displayName": "MATERILAES",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CANTIDAD",
+              "displayName": "CANTIDAD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "PRECIO/UNI US$",
+              "displayName": "PRECIO/UNI US$",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "COSTO TOTAL US$",
+              "displayName": "COSTO TOTAL US$",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "PESO",
+              "displayName": "PESO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CENTRO DE COSTO",
+              "displayName": "CENTRO DE COSTO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CATEGORIA",
+              "displayName": "CATEGORIA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "TIPO DE COMPROBANTE",
+              "displayName": "TIPO DE COMPROBANTE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "NºFACTURA",
+              "displayName": "NºFACTURA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "OBSERVACIONES",
+              "displayName": "OBSERVACIONES",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "MARCA TEMPORAL",
+              "displayName": "MARCA TEMPORAL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ALERTA_ENVIO",
+              "displayName": "ALERTA_ENVIO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ALERTA_TS",
+              "displayName": "ALERTA_TS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "locationDefine": {
+            "values": {
+              "headerRow": 2
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2400,
+        -256
+      ],
+      "id": "f3854e0f-1c4e-4195-85cf-e4c0036d5936",
+      "name": "Update row in sheet",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "M6FF619uSPERdITs",
+          "name": "WF_OnliwAI_GDrive_v2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# 📝 Reporte de configuración — WF_AvisoRetirosGrandes_v1\n\n## 1. Nombre y objetivo\n- **Nombre del flujo:** WF_AvisoRetirosGrandes_v1  \n- **Objetivo:** Detectar retiros de materiales, cruzar con stock y enviar alertas por WhatsApp vía Evolution API.  \n  Además, marcar en la hoja qué filas ya fueron avisadas y limpiar las columnas de alerta diariamente.\n\n---\n\n## 2. Disparador (Trigger)\n- **Nodo:** Schedule Trigger  \n- **Expresión Cron:** `0 9-17/2 * * 1-5`  \n- **Frecuencia:** Cada 2 horas, entre las 09:00 y las 17:00, de lunes a viernes.  \n- **Limpieza adicional:** a las 17:30 un Apps Script borra las columnas ALERTA_ENVIO (U) y ALERTA_TS (V).\n\n---\n\n## 3. Flujo de nodos\n1. **RetirosMateriales** → Lee hoja de retiros.  \n2. **Se generó el reporte?** (Filter) → Evita procesar duplicados.  \n3. **ControlStock** → Lee hoja de stock.  \n4. **Filter** → Aplica condiciones adicionales.  \n5. **ProcesarDatos** (Code) →  \n   - Agrupa materiales.  \n   - Suma cantidades.  \n   - Cruza con stock.  \n   - Añade `source_rows` (rowNumber).  \n6. **ArmarMensaje** (Code) → Prepara string para WhatsApp.  \n7. **DividirMensaje / Loop Over Items + Wait** → Maneja paginado y rate-limit.  \n8. **MensajeLinkAgenda** (HTTP Evolution) → Envía mensaje por WhatsApp.  \n9. **Rama `done` del loop** →  \n   - **CapturarNumeroFila** (Code) → Deduplica `rowNumber` y genera payload.  \n   - **Update row in sheet** → Marca `ALERTA_ENVIO=\"SI\"` y `ALERTA_TS=timestamp`.\n\n---\n\n## 4. Resultados esperados\n- Mensajes de WhatsApp con detalle de retiros vs stock.  \n- Marca en la hoja qué filas ya fueron notificadas.  \n- Limpieza automática diaria de columnas U y V a las 17:30.\n\n---\n\n## 5. Notas técnicas\n- **rowNumber** debe estar disponible; si no, usar una columna `ID` como clave.  \n- Si cambian encabezados en Sheets, ajustar detección en `ProcesarDatos`.  \n- Evolution API: verificar formato del número (`+549...`) y límites de envío.  \n- Apps Script: confirmar zona horaria y fila de encabezados correcta.  \n- Mantener este Sticky Notes actualizado al modificar rangos, triggers o mensajes.\n",
+        "height": 1552,
+        "width": 928
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -736,
+        -576
+      ],
+      "id": "8875f6fe-a83b-49c3-bdd4-6b1143d977c4",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7453de33-4f3c-463c-b987-a44fba05fe24",
+              "leftValue": "={{ $json.ALERTA_ENVIO }}",
+              "rightValue": "SI",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        400,
+        0
+      ],
+      "id": "01589f3a-85b7-44f0-8cda-22f1d65d3e3d",
+      "name": "FiltroRetiros"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fc755d54-893e-4192-bf2c-fd4109ab3705",
+              "leftValue": "={{ $json.MATERIAL }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "1fc934e2-f0d4-4ccb-ae61-119fddf52fbc",
+              "leftValue": "",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "53c97303-1077-48cd-a221-cf0b1daf0443",
+      "name": "FiltroStock"
+    }
+  ],
+  "pinData": {
+    "Schedule Trigger": [
+      {
+        "json": {
+          "timestamp": "2026-05-13T09:00:00.078-03:00",
+          "Readable date": "May 13th 2026, 9:00:00 am",
+          "Readable time": "9:00:00 am",
+          "Day of week": "Wednesday",
+          "Year": "2026",
+          "Month": "May",
+          "Day of month": "13",
+          "Hour": "09",
+          "Minute": "00",
+          "Second": "00",
+          "Timezone": "America/Argentina/Buenos_Aires (UTC-03:00)"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "RetirosMateriales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RetirosMateriales": {
+      "main": [
+        [
+          {
+            "node": "FiltroRetiros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ControlStock": {
+      "main": [
+        [
+          {
+            "node": "FiltroStock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ProcesarDatos": {
+      "main": [
+        [
+          {
+            "node": "ArmarMensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ArmarMensaje": {
+      "main": [
+        [
+          {
+            "node": "DividirMensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "CapturarNumeroFila",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MensajeLinkAgenda": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "MensajeLinkAgenda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DividirMensaje": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CapturarNumeroFila": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FiltroRetiros": {
+      "main": [
+        [
+          {
+            "node": "ControlStock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FiltroStock": {
+      "main": [
+        [
+          {
+            "node": "ProcesarDatos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "BgGaLsdbPiaEO8m8",
+    "timeSavedMode": "fixed",
+    "availableInMCP": false
+  },
+  "versionId": "f816082f-bb09-4fe8-922e-ff6187399ec2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "eb8da7bc0530f29bee0203553d0878dd25d91afdc5edb1a2f10779d3726c1a19"
+  },
+  "id": "4lu2nlJKzHMpBes5",
+  "tags": [
+    {
+      "updatedAt": "2025-07-30T01:25:02.040Z",
+      "createdAt": "2025-07-30T01:25:02.040Z",
+      "id": "85cdj8ilibq5auKf",
+      "name": "Manipulación GoogleSheet"
+    },
+    {
+      "updatedAt": "2025-07-30T00:52:06.426Z",
+      "createdAt": "2025-07-30T00:52:06.426Z",
+      "id": "B0LnSphN08kP3ShN",
+      "name": "Alon Car"
+    },
+    {
+      "updatedAt": "2025-07-30T01:26:35.386Z",
+      "createdAt": "2025-07-30T01:26:35.386Z",
+      "id": "gDsnVD5GilaJcs19",
+      "name": "Integracion WhatsApp"
+    }
+  ]
+}
