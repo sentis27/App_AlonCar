@@ -30,9 +30,64 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 Diseño de los 6 módulos del ERP.
 ArchivoContenidoEstadoREADME.mdÍndice de la lógica de negocio🔜 Próximamentemodulos/Especificaciones de cada módulo🔜 Próximamente
 
-📖 Sección 4: Skills del Agente IA (FASE 1/2/3)
-Habilidades pre-programadas y protocolos estandarizados para que el Agente IA trabaje consistentemente.
-ArchivoContenidoPara Quién.agents/skills/README.mdGuía para crear nuevas SkillsDevs/Arquitectos.agents/skills/legacy-mapping/SKILL.mdMapeo de planillas viejasAgentes IA.agents/skills/session-audit/SKILL.mdAuditoría de cierre de sesiónAgentes IA
+📖 Sección 4: Skills de Antigravity (Estructura Modular)
+
+Las Skills están organizadas por módulo del ERP, según patrón agency-agents. 
+Esto permite especialización por dominio y previene Skills "hagan todo".
+
+### Skills Transversales (Aplican a Todos los Módulos)
+
+Estas 6 Skills son fundacionales — se usan en cualquier contexto del proyecto:
+
+- **automation-governance** (`.agents/skills/transversal/automation-governance/SKILL.md`)
+  - Governa cambios a workflows n8n en producción
+  - Valida contra SDD y business rules
+  
+- **caveman** (`.agents/skills/transversal/caveman/SKILL.md`)
+  - [Ver SKILL.md para descripción detallada]
+  
+- **legacy-mapping** (`.agents/skills/transversal/legacy-mapping/SKILL.md`)
+  - Documenta Google Sheets legacy antes de migración
+  - Foundation para mapeo Sheets → Supabase/n8n
+  
+- **product-collector** (`.agents/skills/transversal/product-collector/SKILL.md`)
+  - [Ver SKILL.md para descripción detallada]
+  
+- **rtk** (`.agents/skills/transversal/rtk/SKILL.md`)
+  - [Ver SKILL.md para descripción detallada]
+  
+- **session-audit** (`.agents/skills/transversal/session-audit/SKILL.md`)
+  - Audita estado del repo al cierre de sesión
+  - Asegura consistencia y trazabilidad
+
+### Skills por Módulo ERP
+
+La estructura modular permite crear Skills especializadas para cada pilar del ERP:
+
+| Módulo | Carpeta | Estado | Skills |
+|---|---|---|---|
+| M1-activos | `.agents/skills/M1-activos/` | ▶️ En expansión | — |
+| M2-recursos | `.agents/skills/M2-recursos/` | ▶️ En expansión | — |
+| M3-operaciones | `.agents/skills/M3-operaciones/` | ▶️ En expansión | — |
+| M4-logistica | `.agents/skills/M4-logistica/` | ▶️ En expansión | — |
+| M5-comercial | `.agents/skills/M5-comercial/` | ▶️ En expansión | — |
+| M6-cierre | `.agents/skills/M6-cierre/` | ▶️ En expansión | — |
+
+### Índice Maestro de Skills
+
+Para ver todas las Skills, sus dependencias y estado:
+
+→ **`.agents/skills/SKILLS_REGISTRY.md`** (fuente única de verdad para Skills)
+
+### Cómo Funcionan las Skills
+
+Las Skills siguen patrón **progressive disclosure**:
+
+1. **Discovery**: Al iniciar sesión, Antigravity ve lista de Skills disponibles
+2. **Activation**: Si una Skill es relevante, Antigravity lee su SKILL.md completo
+3. **Execution**: Antigravity aplica la Skill mientras trabaja
+
+No necesitas mencionar explícitamente una Skill — Antigravity la activa por contexto.
 
 📋 Documentos Transversales
 ArchivoPropósitoREADME.md (raíz)Portada del proyecto, stack, cómo empezarINDICE_CENTRAL.mdEste archivo. Tu brújula de navegación.INDICE_METADATOS.mdTabla máquina para auditorías IA (tipos, comportamientos, dependencias).TAREAS_PENDIENTES.mdQué falta por hacer, priorizado por faseROADMAP_NEGOCIO.mdVisión de Fase 2+: los 6 módulos y reglas de negocioGUIA_ANTIGRAVITY.mdInstrucciones maestras para el Agente IA

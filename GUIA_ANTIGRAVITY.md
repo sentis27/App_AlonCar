@@ -96,6 +96,71 @@ Cuando hagas una afirmación, clasifícala:
 
   [Adivinando] MCP podría usar websockets para comunicarse con n8n, pero hay que confirmarlo
 
+## Estructura de Skills por Módulo (Patrón Agency-Agents)
+
+App_AlonCar organiza sus Skills siguiendo el patrón del repo **agency-agents** de msitarzewski:
+cada módulo del ERP (M1-M6) tiene su propia carpeta de Skills especializadas.
+
+### Estructura Actual
+.agents/skills/
+├── transversal/ ← Skills que aplican a TODOS
+│ ├── automation-governance/ (govern workflows n8n)
+│ ├── caveman/
+│ ├── legacy-mapping/ (mapeo Sheets legacy)
+│ ├── product-collector/
+│ ├── rtk/
+│ ├── session-audit/ (auditoría de sesión)
+│ └── DIVISION.md (doc de la división transversal)
+│
+├── M1-activos/ ← Skills específicas de Activos
+│ └── DIVISION.md (en expansión)
+│
+├── M2-recursos/ ← Skills específicas de Recursos
+│ └── DIVISION.md (en expansión)
+│
+├── M3-operaciones/ ← Skills específicas de Operaciones
+│ └── DIVISION.md (en expansión)
+│
+├── M4-logistica/ ← Skills específicas de Logística
+│ └── DIVISION.md (en expansión)
+│
+├── M5-comercial/ ← Skills específicas de Comercial
+│ └── DIVISION.md (en expansión)
+│
+├── M6-cierre/ ← Skills específicas de Cierre
+│ └── DIVISION.md (en expansión)
+│
+└── SKILLS_REGISTRY.md ← Índice maestro de todas las Skills
+
+### Beneficios del Patrón Modular
+1. **Especialización por Dominio** — Cada módulo tiene sus propias reglas y contexto
+2. **Previene Skills Gigantes** — Una Skill por concepto clave, no "hagan todo"
+3. **Metadata Indexada** — SKILLS_REGISTRY.md para tracking de dependencias
+4. **Escalabilidad Limpia** — Agregar Skills nuevas sin romper estructura existente
+5. **Multi-Herramienta Portabilidad** — Compatible con Antigravity + Claude Code
+
+### Regla: Cuándo Crear una Skill Modular
+Una Skill nueva debe crearse cuando:
+✅ Hay instrucciones que se repiten en múltiples tareas del módulo
+✅ Hay estándares/convenciones que el agente debe vigilar automáticamente
+✅ Hay decisiones arbóreas (elegir entre enfoques según situación)
+✅ La lógica es específica del módulo (no transversal)
+
+**Flujo Obligatorio para Skills de Lógica de Negocio:**
+SPEC → Documenta en docs/02_Especificacion/modulo_XX.md
+VALIDACIÓN → Usuario revisa y aprueba la spec
+SKILL → Recién entonces se crea .agents/skills/MX-modulo/nombre-skill/SKILL.md
+
+**Nunca crear una Skill de negocio sin spec validada previa.**
+
+### Cómo Activar una Skill en tu Prompt
+**Implícitamente** (automático):
+"Diseña el schema de BD para M3 respetando los estándares del proyecto"
+→ Antigravity automáticamente activa Skills relevantes de M3
+
+**Explícitamente** (cuando necesitas garantizar):
+"Usa la Skill 'automation-governance' para validar este cambio a n8n"
+
 🗂️ Estructura de Directorios (Para Referencia Rápida)
 App_AlonCar/
 ├── README.md                    ← Portada (léelo primero)
@@ -108,8 +173,9 @@ App_AlonCar/
 │
 ├── .agents/
 │   └── skills/
-│       └── automation-governance/   ← Skill activo: gobernanza de workflows n8n
-│           └── SKILL.md             ← Activá ante: nuevo n8n workflow, SDD, INDEX.md
+│       └── transversal/
+│           └── automation-governance/   ← Skill activo: gobernanza de workflows n8n
+│               └── SKILL.md             ← Activá ante: nuevo n8n workflow, SDD, INDEX.md
 │
 ├── workflows/
 │   ├── _meta/
