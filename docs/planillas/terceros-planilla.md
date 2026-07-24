@@ -109,6 +109,7 @@
 | **Cruce Remito-Material (Integridad Operativa):** El "N° Remito Aloncar" cargado aquí DEBE existir en la base de Consumos del pañol. | `ThirdPartyService` -> `MaterialConsumption` (Cruce) | **Manual visual.** El usuario debe tipear el ID en "Búsqueda" y comparar visualmente que coincidan. |
 | **Seguimiento de RPF:** Todo registro en estado RPF (Remito pendiente factura) debe transicionar a FCR en el tiempo, de lo contrario bloquea pagos o genera alertas contables. | `InvoiceAttachment` / `BillingItem` | **Alerta visual.** Solo se marca con una bandera en el dashboard `ALERTAS`. |
 | **Dólar Quincenal Unificado:** La tasa de conversión (USD/AR$) para liquidar a los terceros no puede ser una celda escrita a mano; debe ser oficial por período. | `CurrencyExchange` / RateCard | **Hardcodeado.** Se tipea manualmente (1500) en L1. |
+| **Generación Automática de PRC $0 desde WorkItem (DEC-014):** Al crear un trabajo de terceros en `WorkItem`, la App genera automáticamente el registro en `ThirdPartyService` como PRC $0, heredando Barco, OT, Proveedor (relación 1-a-1) y Descripción en Observaciones. | `WorkItem` -> `ThirdPartyService` (DB Trigger) | **Definido para App.** Elimina doble carga manual. |
 
 > Confianza: CONFIRMADO
 

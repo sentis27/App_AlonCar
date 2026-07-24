@@ -56,6 +56,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-07-22 | DEC-011 | Flujo de Cierre por Facturación, Archivo Histórico y Preservación de Integridad de Stock | decision |
 | 2026-07-22 | DEC-012 | Estandarización de la Dimensión Quincenal para Registros y Cierres | decision |
 | 2026-07-23 | DEC-013 | Separación estricta de Horas Tabuladas vs Presupuestos Fijos | decision |
+| 2026-07-24 | DEC-014 | Generación Automática de PRC $0 en Terceros desde WorkItem y Regla 1-a-1 de Contratistas | decision |
 
 ---
 
@@ -76,6 +77,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | DEC-011 | Flujo de Cierre por Facturación, Archivo Histórico y Preservación de Integridad de Stock | 2 | borrador | 2026-07-22 |
 | DEC-012 | Estandarización de la Dimensión Quincenal para Registros y Cierres | 2 | borrador | 2026-07-22 |
 | DEC-013 | Separación estricta de Horas Tabuladas vs Presupuestos Fijos | 2 | borrador | 2026-07-23 |
+| DEC-014 | Generación Automática de PRC $0 en Terceros desde WorkItem y Regla 1-a-1 de Contratistas | 2 | borrador | 2026-07-24 |
 
 ## Errores
 

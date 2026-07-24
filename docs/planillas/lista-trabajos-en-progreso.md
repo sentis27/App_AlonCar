@@ -230,6 +230,8 @@
 | Un contratista solo puede ser asignado si existe en la base de datos | Worker/Workshop FK constraint | **Vacío de control.** Se escribe a mano sin validación |
 | Todo trabajo debe tener: Barco + OT + Descripción + Contratista antes de estar "En ejecución" | WorkItem (NOT NULL constraints) | **Control parcial.** Las alertas (cols N-Q) detectan faltantes pero no bloquean la carga |
 | No se puede facturar sin número de comprobante | WorkItem.status + InvoiceAttachment | **Control parcial.** Alerta en col Q pero no bloquea el cambio de estado |
+| **Relación 1-a-1 WorkItem -> Contratista (DEC-014):** 1 WorkItem pertenece estrictamente a 1 Contratista/Taller específico. Queda prohibida la carga con comas en la misma celda. Si intervienen varios talleres, se registran como WorkItems independientes. | `WorkItem` (FK `contractor_id` NOT NULL) | **Definido para App.** En legacy se cargaban comas de forma informal. En la App es relación 1-a-1 estricta. |
+| **Auto-generación de PRC $0 en Terceros (DEC-014):** Al registrar o marcar un WorkItem que corresponda a un tercero, se crea automáticamente la fila equivalente en `ThirdPartyService` en estado PRC $0. | `WorkItem` -> `ThirdPartyService` (DB Trigger) | **Definido para App.** Elimina doble carga manual entre planillas. |
 
 > Confianza: CONFIRMADO
 
