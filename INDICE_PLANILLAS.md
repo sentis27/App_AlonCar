@@ -29,9 +29,9 @@ IDs de planilla (`GS-0XX`) o nombres técnicos temporales separados por `|`. `ni
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | GS-001 | HORAS_PLANILLAS_DE_REGISTRO | D-hibrida | borrador | M3-operaciones | T.D_ASTILLERO \| DETALLE_PRESUPUESTOS \| B.D.NewSystemm \| LISTA_TRABAJOS | ninguno | docs/planillas/horas-planillas-de-registro.md |
 | GS-002 | MATERIALES_PLANILLAS_REGISTRO | D-hibrida | borrador | M4-logistica | B.D.NewSystemm \| LISTA_TRABAJOS \| CONTROL_DE_STOCK \| COMPRAS | CONTROL_DE_STOCK \| DASH_BOARD | docs/planillas/materiales-planillas-registro.md |
-| GS-003 | LISTA_TRABAJOS_EN_PROGRESO | D-hibrida | borrador | M3-operaciones | B.D.NewSystemm | GS-001 \| GS-002 \| n8n:aviso-nuevas-OTs \| ANEXO_FACTURA | docs/planillas/lista-trabajos-en-progreso.md |
-| GS-004 | RESUMEN_GERENCIAL | C-salida | no-iniciado | M6-cierre | HORAS \| MATERIALES \| TERCEROS \| B.D.NewSystemm | ninguno | docs/planillas/resumen-gerencial.md |
-| GS-005 | TERCEROS_PLANILLA_COSTOS | D-hibrida | borrador | M3-operaciones | B.D.NewSystemm \| MATERIALES \| BD_Talleres | GS-004 | docs/planillas/terceros-planilla.md |
+| GS-003 | LISTA_TRABAJOS_EN_PROGRESO | D-hibrida | confirmado | M3-operaciones | B.D.NewSystemm | GS-001 \| GS-002 \| n8n:aviso-nuevas-OTs \| ANEXO_FACTURA | docs/planillas/lista-trabajos-en-progreso.md |
+| GS-004 | RESUMEN_GERENCIAL | C-salida | confirmado | M6-cierre | HORAS \| MATERIALES \| TERCEROS \| B.D.NewSystemm | ninguno | docs/planillas/resumen-gerencial.md |
+| GS-005 | TERCEROS_PLANILLA_COSTOS | D-hibrida | confirmado | M3-operaciones | B.D.NewSystemm \| MATERIALES \| BD_Talleres | GS-004 | docs/planillas/terceros-planilla.md |
 ---
 
 ## Catálogo de Entidades Objetivo (referencia para Step 8 de la skill)
