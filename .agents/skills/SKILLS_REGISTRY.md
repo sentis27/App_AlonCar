@@ -36,9 +36,12 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 
 | ID | Nombre | Tipo | Módulo | Estado | Depende de | Descripción | Archivo |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| SKL-001 | project-architecture-and-audit-practices | governance | transversal | active | ninguno | Gobierna conducta del agente, prohibe secretos hardcodeados, exige Conventional Commits | transversal/project-architecture-and-audit-practices/SKILL.md |
-| SKL-002 | clean-code-standards | architecture | transversal | active | SKL-001 | Calidad técnica: PEP 8 en Python, ES6+ en JavaScript, Type Hints, docstrings | transversal/clean-code-standards/SKILL.md |
-| SKL-003 | n8n-and-data-engineering | data-engineering | transversal | active | SKL-001 | Workflows n8n, Pandas eficiente, Google Sheets, mapeo defensivo de campos | transversal/n8n-and-data-engineering/SKILL.md |
+| SKL-001 | automation-governance | governance | transversal | active | ninguno | Governa cambios a workflows n8n en producción, valida contra SDD y business rules | transversal/automation-governance/SKILL.md |
+| SKL-002 | caveman | architecture | transversal | active | ninguno | [Leer SKILL.md para descripción] | transversal/caveman/SKILL.md |
+| SKL-003 | legacy-mapping | data-engineering | transversal | active | SKL-001 | Documenta Google Sheets legacy antes de migración a Supabase/n8n | transversal/legacy-mapping/SKILL.md |
+| SKL-004 | product-collector | integration | transversal | active | SKL-003 | [Leer SKILL.md para descripción] | transversal/product-collector/SKILL.md |
+| SKL-005 | rtk | architecture | transversal | active | ninguno | [Leer SKILL.md para descripción] | transversal/rtk/SKILL.md |
+| SKL-006 | session-audit | governance | transversal | active | SKL-001 | Audita estado del repo al cierre de sesión, asegura consistencia y trazabilidad | transversal/session-audit/SKILL.md |
 
 ---
 
@@ -48,9 +51,12 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 
 | ID | Nombre | Estado | Propósito |
 | :--- | :--- | :--- | :--- |
-| SKL-001 | project-architecture-and-audit-practices | active | Gobierno general |
-| SKL-002 | clean-code-standards | active | Estándares de código |
-| SKL-003 | n8n-and-data-engineering | active | Integración y datos |
+| SKL-001 | automation-governance | active | Governa cambios n8n en prod |
+| SKL-002 | caveman | active | [Leer SKILL.md] |
+| SKL-003 | legacy-mapping | active | Documenta Sheets legacy |
+| SKL-004 | product-collector | active | [Leer SKILL.md] |
+| SKL-005 | rtk | active | [Leer SKILL.md] |
+| SKL-006 | session-audit | active | Audita repo al cierre de sesión |
 
 ### M1-activos
 
