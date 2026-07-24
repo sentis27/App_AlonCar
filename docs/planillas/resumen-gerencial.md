@@ -123,10 +123,10 @@ En base a la evolución del modelo, se incorporarán tres herramientas analític
 - **Objetivo:** Evaluar la evolución del costo por Hora-Hombre a lo largo de las quincenas.
 - **Propuesta de Análisis y Cruce de Datos:**
   1. **Eje Temporal (X):** Agrupación estricta por `Quincena`.
-  2. **Eje de Costo Horas (Y1):** Métrica `(Total US$ pagado al Contratista) / (Cantidad de Horas)`. Devuelve la tarifa US$/Hora promedio real.
-  3. **Eje de Consumos (Y2):** Métrica `(Total US$ en Consumibles y EPP del contratista) / (Cantidad de Horas)`. Revela cuánto le cuesta al astillero (en insumos) cada hora que trabaja esa persona.
+  2. **Eje de Costo Horas (Y1):** Métrica de **Valor Tabulado (US$/Hora)**. Aquí **no** se mezclan ni se promedian los trabajos por presupuesto cerrado (eso irá en "Avance de Obra"). Se grafica puramente la evolución de la tarifa plana por hora-hombre pactada con ese contratista.
+  3. **Eje de Consumos (Y2):** Métrica `(Total US$ en Consumibles y EPP del contratista) / (Cantidad de Horas)`. Revela cuánto le cuesta al astillero (en insumos) cada hora tabulada que trabaja esa persona.
   4. **Cruce Cambiario (Dólar):** Se superpone una línea de tendencia del valor Dólar de la quincena (extraído del Dashboard Maestro). 
-  5. **Insight de Negocio:** Este gráfico de triple variable (doble eje Y) permite detectar visualmente si un aumento de costos se debió a (A) suba real de tarifa, (B) salto cambiario que devaluó el peso, o (C) derroche de consumibles del pañol por parte del contratista.
+  5. **Insight de Negocio:** Este gráfico permite detectar visualmente si un aumento de costos se debió a (A) actualización de la tarifa tabulada, (B) salto cambiario, o (C) derroche de consumibles del pañol por parte del contratista.
 
 ## 10. Conclusión del Módulo
 
