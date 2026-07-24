@@ -1,7 +1,7 @@
 # Índice de Metadatos — App_AlonCar
 
 > **schema-version:** 1.0
-> **Última actualización:** 2026-06-10
+> **Última actualización:** 2026-07-23
 > **Propósito:** Tabla máquina para consumo exclusivo del Agente IA. Para navegación humana, usar `INDICE_CENTRAL.md`.
 
 ## Vocabularios Controlados
@@ -71,9 +71,20 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/planillas/terceros-planilla.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
 | workflows/legacy/Reporte_Retiros_diarioMateriales.json | codigo | ninguno | ignorar | transversal | archivado | 2026-07-23 | ninguno |
 | .agents/skills/README.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
-| .agents/skills/legacy-mapping/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-18 | GUIA_ANTIGRAVITY.md |
-| .agents/skills/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-18 | .agents/skills/legacy-mapping/SKILL.md |
-| .agents/skills/session-audit/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-10 | GUIA_ANTIGRAVITY.md \| INDICE_CENTRAL.md \| INDICE_METADATOS.md |
-| .agents/skills/product-collector/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-06-10 | GUIA_ANTIGRAVITY.md \| INDICE_CENTRAL.md \| INDICE_METADATOS.md |
+| .agents/skills/transversal/automation-governance/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/caveman/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/legacy-mapping/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-18 | .agents/skills/transversal/legacy-mapping/SKILL.md |
+| .agents/skills/transversal/product-collector/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/rtk/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/session-audit/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/M1-activos/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/M2-recursos/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/M3-operaciones/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/M4-logistica/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/M5-comercial/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/M6-cierre/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/SKILLS_REGISTRY.md | indice | consultar-siempre | completo | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |
 | mcp-server/package.json | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | mcp-server/index.js |
