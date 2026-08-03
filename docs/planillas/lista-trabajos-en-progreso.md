@@ -75,6 +75,9 @@
 | T | ENVIO AVISO | String | AUTOMATICO | Escrito por n8n: "DD/MM/YYYY, Enviado" — timestamp del envío de notificación |
 | U | SlackChannel_ID | String | FORMULA | `=IF(A6="";"";VLOOKUP(A6;ValidacionBarcos!A:B;2;FALSE))` — Busca el canal de Slack del barco para enviar la notificación |
 | V | SeCreoOT | String | AUTOMATICO | Escrito por n8n: "CreadaOT" (nueva OT) o "YaExiste" (trabajo agregado a OT existente) |
+| W | Tipo de Trabajo | Enum | LISTA_SIMPLE | Valores: "Hora", "Presupuesto", "Control" |
+| X | Tipo de Asignación | Enum | LISTA_SIMPLE | Valores: "Presupuesto General", "Adicional / Específico" (Centro de Costos) |
+| Y | Nº Presupuesto Esp. | String | MANUAL | Llave de vinculación con DETALLE_PRESUPUESTO cuando la asignación es un Adicional |
 
 **(TAB-003) ALERTAS** — Dashboard. Columna A dinámica vía `SORT(UNIQUE(FILTER(...)))`.
 | Col | Nombre | Fórmula |
@@ -232,6 +235,7 @@
 | No se puede facturar sin número de comprobante | WorkItem.status + InvoiceAttachment | **Control parcial.** Alerta en col Q pero no bloquea el cambio de estado |
 | **Relación 1-a-1 WorkItem -> Contratista (DEC-014):** 1 WorkItem pertenece estrictamente a 1 Contratista/Taller específico. Queda prohibida la carga con comas en la misma celda. Si intervienen varios talleres, se registran como WorkItems independientes. | `WorkItem` (FK `contractor_id` NOT NULL) | **Definido para App.** En legacy se cargaban comas de forma informal. En la App es relación 1-a-1 estricta. |
 | **Auto-generación de PRC $0 en Terceros (DEC-014):** Al registrar o marcar un WorkItem que corresponda a un tercero, se crea automáticamente la fila equivalente en `ThirdPartyService` en estado PRC $0. | `WorkItem` -> `ThirdPartyService` (DB Trigger) | **Definido para App.** Elimina doble carga manual entre planillas. |
+| **Vinculación de Presupuesto Adicional:** Si un WorkItem se clasifica como "Adicional / Específico", el campo `specific_budget_id` debería completarse obligatoriamente para vincularlo a su cotización independiente y evitar que infle el presupuesto general del barco. | `WorkItem` (Conditional NOT NULL) | **Definido para App (y mejora manual en Legacy).** Separación clara de centros de costo (Proyectos vs Sub-proyectos). |
 
 > Confianza: CONFIRMADO
 
@@ -280,6 +284,9 @@
 - `total_cost` — Costo consolidado (horas + materiales + terceros) por OT.
 - `assigned_workers[]` — Array de contratistas (hoy es texto libre separado por comas).
 - `foreman_id` — FK a tabla de jefes de obra.
+- `work_type` — Tipo de trabajo (Hora, Presupuesto, Control).
+- `assignment_type` — Tipo de asignación (Presupuesto General, Adicional / Específico).
+- `specific_budget_id` — FK a tabla de presupuestos (`Quote`) para aislar costos adicionales.
 - `created_by` — FK a AppUser.
 - `updated_at` — Timestamp de última modificación.
 - `closed_at` — Timestamp de cierre de OT.
