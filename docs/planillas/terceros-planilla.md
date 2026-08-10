@@ -63,6 +63,20 @@
 | V | Nº REMITO ALONCAR | String | MANUAL | CRÍTICO. Vincula este trabajo de mano de obra con los materiales entregados en Pañol (cruce directo). |
 | W-AE | ALERTAS INTERNAS | Boolean | FORMULA | Columnas ocultas que detectan si falta OT, Rubro, Precio, etc., alimentando el Dashboard `ALERTAS`. |
 
+### Glosario y Evolución de Tipos de Comprobante (Columna Q)
+La clasificación del comprobante define la ubicación geográfica del trabajo, el tipo de constancia y su estado de facturación.
+
+- **PRC (Presupuesto / Trabajo en Planta):** Se utiliza para **TODO trabajo realizado por el tercero dentro de las instalaciones del astillero**. No importa si el contratista pasó el costo antes de empezar o después de terminar.
+  - *Evolución:* **Ninguna. Siempre es PRC.** (Estado definitivo).
+- **RMO (Remito Mano de Obra):** Exclusivo para **trabajos que el tercero realiza en su propio taller** (fuera de planta). Indica que el tercero está realizando, va a realizar, o ya realizó el trabajo y el astillero le entrega un remito como constancia.
+  - *Evolución lógica:* `RMO` ➔ `FCR` (si trae factura) o `SDT` (si no aporta factura).
+- **RPF (Remito Pendiente de Factura):** Estado transitorio y de control. Remito valorizado que genera una alerta administrativa para exigir la factura al proveedor.
+  - *Evolución obligatoria:* `RPF` ➔ `FCR`.
+- **FCR (Factura):** Comprobante fiscal oficial definitivo.
+  - *Estado final.*
+- **SDT (Sin Documentación):** Estado final para costos o trabajos cerrados en los que el proveedor excepcionalmente no aporta factura.
+  - *Estado final.*
+
 > Confianza: CONFIRMADO
 
 ## 5. Lógica de Validaciones y Alertas

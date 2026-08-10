@@ -59,6 +59,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-07-24 | DEC-014 | Generación Automática de PRC $0 en Terceros desde WorkItem y Regla 1-a-1 de Contratistas | decision |
 | 2026-08-09 | DEC-015 | Interfaz de Grilla con Edición Inline Condicional por Permisos | decision |
 | 2026-08-09 | DEC-016 | Tooltip con Descripción de OT en Dropdown de Selección | decision |
+| 2026-08-10 | DEC-017 | Leyendas de ayuda interactiva (Tooltips) para Tipos de Comprobante | decision |
 
 ---
 
@@ -82,6 +83,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | DEC-014 | Generación Automática de PRC $0 en Terceros desde WorkItem y Regla 1-a-1 de Contratistas | 2 | borrador | 2026-07-24 |
 | DEC-015 | Interfaz de Grilla con Edición Inline Condicional por Permisos | 2 | borrador | 2026-08-09 |
 | DEC-016 | Tooltip con Descripción de OT en Dropdown de Selección | 2 | borrador | 2026-08-09 |
+| DEC-017 | Leyendas de ayuda interactiva (Tooltips) para Tipos de Comprobante | 2 | borrador | 2026-08-10 |
 
 ## Errores
 
