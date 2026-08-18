@@ -143,7 +143,8 @@ App_AlonCar/
 │   │   └── registro_paso_a_paso.md
 │   │
 │   └── 03_negocio/                    ← FASE 2+ (Futuro)
-│       └── README.md (esqueleto)
+│       ├── README.md
+│       └── revision_planillas.md      ← Sistema de tickets y auditoría
 │
 ├── .agents/                           ← Comportamientos del Agente
 │   └── skills/

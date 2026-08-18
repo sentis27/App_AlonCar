@@ -4,8 +4,10 @@ Esta sección contendrá las especificaciones y reglas de negocio detalladas del
 
 ## Documentos Disponibles
 
-* **Roadmap de Módulos:** [ROADMAP_NEGOCIO.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/ROADMAP_NEGOCIO.md)
+* **Roadmap de Módulos:** [ROADMAP_NEGOCIO.md](../../ROADMAP_NEGOCIO.md)
   *(Detalles funcionales y reglas principales de los 6 módulos planificados).*
+* **Sistema de Revisión y Auditoría:** [revision_planillas.md](revision_planillas.md)
+  *(Define el ciclo de vida, roles y bloqueos para la corrección de datos en las planillas).*
 
 ---
 *Volver al [Índice Central](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/INDICE_CENTRAL.md)*
