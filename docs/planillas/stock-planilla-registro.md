@@ -47,11 +47,12 @@ La planilla funciona como un agregador complejo con las siguientes hojas princip
 - Crear una tabla `stock_adjustments` que requiera seleccionar un `reason_type` estandarizado (Ej: `INVENTORY_CHECK`, `DAMAGE`, `INITIALIZATION`, `OTHER`).
 - El usuario que realiza el ajuste quedará registrado automáticamente mediante el log de auditoría del sistema (FK a `users`), eliminando la necesidad de escribir el nombre en la observación.
 
-### 4.2 🟡 Registro de Controles Desvinculado del Ajuste
-**Problema:** Actualmente, si un control de stock (REG.CONTROL DE STOCK) da ERROR, el operario debe ir a la hoja ENTRADAS a realizar el ajuste compensatorio de forma manual.
+### 4.2 🟡 Registro de Controles Desvinculado del Ajuste y Carga Manual Uno a Uno
+**Problema:** Actualmente, si un control de stock (REG.CONTROL DE STOCK) da ERROR, el operario debe ir a la hoja ENTRADAS a realizar el ajuste compensatorio de forma manual, haciendo las restas mentalmente. Además, cargar ítems de a uno es lento cuando se audita un rubro entero.
 **Solución propuesta:**
-- Unificar el flujo: Al realizar un "Control de Stock" (Auditoría), el usuario ingresa la cantidad física contada.
-- Si hay diferencia con el sistema, el sistema propone crear automáticamente un `stock_adjustment` por la diferencia para conciliar, en un solo paso.
+- **Auditoría en Lote (Por Rubro):** La interfaz permitirá seleccionar uno o varios "Rubros" (ej: Planchuelas y Caños). El sistema traerá automáticamente a la vista de auditoría todos los materiales de esos rubros con su stock actual teórico.
+- **Cálculo de Diferencia Automático:** Al ingresar la cantidad física contada (`counted_quantity`), el sistema calculará instantáneamente la diferencia (`counted_quantity - system_quantity`).
+- **Ajuste en 1-Clic:** Si hay diferencia, la interfaz mostrará la sugerencia exacta del ajuste (positivo o negativo) y permitirá crear el `stock_adjustment` compensatorio con un solo botón, unificando el control y el ajuste en el mismo paso.
 
 ### 4.3 🟡 Valorización del Inventario (NUEVO)
 **Problema:** El control de stock debe permitir conocer cuánto dinero representa el inventario (físico y mermas).
@@ -98,6 +99,7 @@ El concepto monolítico de "CONTROL STOCK" desaparece como tabla estática y pas
 | `material_id` | MATERIAL | FK a `materials.id` |
 | `system_quantity` | CANTIDAD (STOCK) | DECIMAL (Stock virtual al momento del control) |
 | `counted_quantity` | CANTIDAD (REAL) | DECIMAL (Stock físico contado) |
+| `calculated_delta` | Col G | DECIMAL (Calculado: counted_quantity - system_quantity). Sugerencia de ajuste. |
 | `status` | ESTADO DEL CONTROL | ENUM: `OK`, `DISCREPANCY` (Derivado matemáticamente) |
 | `adjustment_id` | - | FK a `stock_adjustments.id` (El ajuste automático que resolvió la discrepancia, si aplica) |
 | `audited_by` | - | FK a `users.id` |
