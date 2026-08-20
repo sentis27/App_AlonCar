@@ -416,6 +416,28 @@ Al escribir en el campo de material, el sistema ofrece **sugerencias en tiempo r
 
 **Pendiente:** Agregar un nuevo permiso en B.D.NewSystem para que un proveedor pueda solicitar materiales en compras (nuevo flag `enabled_purchase_request`).
 
+### 12.6 🔵 Asistente Estadístico para Comprador (NUEVO)
+
+**Problema:** Al momento de comprar un material recurrente, el comprador no sabe rápidamente a quién se lo compró más veces en el pasado, requiriendo análisis manual o memoria.
+
+**Solución aprobada:**
+1. Crear el rol **Comprador**, con permisos limitados y específicos para operar esta planilla.
+2. Añadir un botón on-demand **"📊 Solicitar Estadística"** junto al material (solo visible si el material ya existe en la B.D.).
+3. Al hacer clic, el sistema filtra el historial de `purchase_orders` de ese material donde el estado sea `RECIBIDO` o `RECIB.COMP.DIRECT`.
+4. Devuelve un popup ágil con el desglose porcentual de proveedores (ej: *Ferremat 60%, Casa Carlitos 30%, Otros 10%*). Se hace on-demand para no sobrecargar el sistema calculando esto para todas las filas.
+
+### 12.7 🔵 Checkpoint de Revisión de Facturas "Línea Morada" (NUEVO)
+
+**Problema:** El supervisor compara las compras registradas contra las facturas recibidas de los proveedores. Actualmente, pinta de morado la última fila revisada de un proveedor para saber que "de ahí para atrás ya está controlado".
+
+**Solución propuesta:**
+Implementar un sistema de **Conciliación de Facturas (Reconciliation)** ágil:
+1. En la vista de compras, agrupar o filtrar por Proveedor.
+2. Cada fila de compra tendrá un pequeño checkbox o estado visual de **"Conciliado con Factura"**.
+3. En lugar de ir uno por uno, el supervisor puede hacer clic derecho sobre una compra específica y seleccionar: **"✅ Conciliar hasta aquí"**.
+4. El sistema marca automáticamente esa compra y todas las anteriores de ese proveedor como "Conciliadas" (`is_reconciled = true`).
+5. Visualmente, el sistema puede mostrar una línea divisoria gruesa (el equivalente a la "línea morada") debajo de la última compra conciliada de cada proveedor, ocultando por defecto las ya conciliadas para mantener la vista limpia.
+
 ---
 
 ## 13. Datos Muestra (Hoja COMPRAS — Mayo 2026)
@@ -459,6 +481,8 @@ Al escribir en el campo de material, el sistema ofrece **sugerencias en tiempo r
 | `quote_status` | Col AB | ENUM: `OK`, `EXPIRED`, `NA` |
 | `is_new_material` | Col AF | BOOLEAN (derivado de "error") |
 | `fortnight_period` | Calculado | TEXT: `YYYY-QN` (ej: `2026-Q1`, `2026-Q2`). Derivado de order_date: días 1-15 = Q1, 16-fin = Q2 |
+| `is_reconciled` | Nuevo | BOOLEAN. Reemplaza la "línea morada" de revisión de facturas |
+| `reconciled_at` | Nuevo | TIMESTAMP. Cuándo fue conciliado por el supervisor |
 
 ### Tabla `suppliers` (ampliada desde PROVEEDORES)
 
@@ -516,20 +540,22 @@ graph LR
 
 ### 17.1 Matriz de Permisos por Acción
 
-| Acción | Operario / Pañolero | Supervisor | Administración |
-|--------|:-------------------:|:----------:|:--------------:|
-| Cargar pedido de compra | ✅ | ✅ | ✅ |
-| Buscar material (autocompletado) | ✅ | ✅ | ✅ |
-| Escribir material nuevo (texto libre) | ✅ | ✅ | ✅ |
-| **Dar alta a material nuevo en B.D** | ❌ | ✅ | ✅ |
-| Cambiar estado del pedido | ⚠️ Limitado | ✅ | ✅ |
-| Aprobar/rechazar cotización | ❌ | ✅ | ✅ |
-| Editar costo POR PAÑOL (in situ) | ❌ | ✅ | ✅ |
-| Modificar precio en B.D MATERIALES | ❌ | ✅ | ✅ |
-| Ver costos y precios | ❌ Pañolero | ✅ | ✅ |
-| Configurar tipo de cambio quincenal | ❌ | ✅ | ✅ |
-| Ver historial de precios | ❌ | ✅ | ✅ |
-| Administrar proveedores | ❌ | ⚠️ Lectura | ✅ |
+| Acción | Operario / Pañolero | Comprador | Supervisor | Administración |
+|--------|:-------------------:|:---------:|:----------:|:--------------:|
+| Cargar pedido de compra | ✅ | ✅ | ✅ | ✅ |
+| Buscar material (autocompletado) | ✅ | ✅ | ✅ | ✅ |
+| Escribir material nuevo (texto libre) | ✅ | ✅ | ✅ | ✅ |
+| **Dar alta a material nuevo en B.D** | ❌ | ❌ | ✅ | ✅ |
+| Cambiar estado del pedido | ⚠️ Limitado | ✅ | ✅ | ✅ |
+| Aprobar/rechazar cotización | ❌ | ❌ | ✅ | ✅ |
+| Editar costo POR PAÑOL (in situ) | ❌ | ❌ | ✅ | ✅ |
+| Modificar precio en B.D MATERIALES | ❌ | ❌ | ✅ | ✅ |
+| Consultar estadística de compras | ❌ | ✅ | ✅ | ✅ |
+| Marcar compras como conciliadas | ❌ | ❌ | ✅ | ✅ |
+| Ver costos y precios | ❌ Pañolero | ✅ | ✅ | ✅ |
+| Configurar tipo de cambio quincenal | ❌ | ❌ | ✅ | ✅ |
+| Ver historial de precios | ❌ | ❌ | ✅ | ✅ |
+| Administrar proveedores | ❌ | ⚠️ Lectura | ✅ | ✅ |
 
 ### 17.2 Estandarización de Nomenclatura de Materiales
 
