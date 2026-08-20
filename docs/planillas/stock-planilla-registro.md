@@ -53,7 +53,20 @@ La planilla funciona como un agregador complejo con las siguientes hojas princip
 - Unificar el flujo: Al realizar un "Control de Stock" (Auditoría), el usuario ingresa la cantidad física contada.
 - Si hay diferencia con el sistema, el sistema propone crear automáticamente un `stock_adjustment` por la diferencia para conciliar, en un solo paso.
 
-### 4.3 🟡 Cálculo de Pedido (Estadística de Consumo)
+### 4.3 🟡 Valorización del Inventario (NUEVO)
+**Problema:** El control de stock debe permitir conocer cuánto dinero representa el inventario (físico y mermas).
+**Solución propuesta:**
+- Cada registro de stock y ajuste multiplicará la cantidad por el **precio unitario actual** del material (proveniente de la B.D MATERIALES o su último precio de compra).
+- El sistema ofrecerá un reporte ágil de "Valorización de Inventario", permitiendo ver cuánto capital está inmovilizado en stock y cuánto dinero se "perdió" o "ganó" tras un ajuste por control.
+
+### 4.4 🟡 Estados del Material (NUEVO)
+**Problema:** No todos los materiales en stock están en las mismas condiciones para ser usados.
+**Solución propuesta:**
+- Añadir el concepto de **Estado del Material** (`material_condition` o `status`) en el sistema.
+- Estados propuestos: `DISPONIBLE` (listo para usar), `EN CUARENTENA` (pendiente de revisión técnica), `OBSOLETO` (ya no se usa pero ocupa espacio), `DAÑADO` (para descarte).
+- Durante el control o ajuste, el operario podrá categorizar si una merma es porque el material se rompió (pasa a `DAÑADO`) o si simplemente faltaba.
+
+### 4.5 🟡 Cálculo de Pedido (Estadística de Consumo)
 **Problema:** La hoja de "Cálculo de Pedido" es pesada al ser calculada mediante fórmulas en Sheets.
 **Solución propuesta:**
 - Trasladar esta lógica a una **Vista Estadística / Dashboard** en el Frontend.
