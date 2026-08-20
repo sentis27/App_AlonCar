@@ -327,6 +327,37 @@ Quién facturó
 
 
 
+7️⃣ Módulo de Analítica y BI (Business Intelligence)
+¿Qué es?
+La herramienta interactiva para cruzar datos, visualizar rendimiento y tomar decisiones estratégicas.
+
+Entidades Principales:
+DASHBOARD / CANVAS (Analytics Workspace)
+├─ Lienzo interactivo (Drag & Drop)
+├─ Widgets personalizables (Gráficos, KPIs, Tablas dinámicas)
+└─ Filtros globales (Período, Empleado, Barco, Centro de Costo)
+
+VISTA GUARDADA (Saved View / Favoritos)
+├─ ID del Usuario (propietario de la vista)
+├─ Configuración del cruce (dimensiones y métricas seleccionadas)
+├─ Nombre personalizado (ej. "Control de Faltas vs Retiros de EPP")
+└─ Acceso rápido desde la barra lateral o inicio
+
+DATA MART / CUBOS (Pre-aggregated Data)
+├─ Consultas pre-optimizadas para cruces rápidos
+└─ Agrupaciones automáticas por quincena, mes, trimestre, etc.
+
+Reglas Core:
+
+✅ Cruce Libre de Variables
+El usuario puede arrastrar una métrica (ej. Cantidad de material retirado) y cruzarla con variables de otros módulos (ej. Faltas en Recursos Humanos) en un mismo Canvas.
+
+✅ Personalización y Guardado
+Cada usuario puede guardar su configuración exacta del Canvas como una "Vista Favorita" para no tener que rearmar el reporte cada vez que ingresa.
+
+✅ Exportación Dinámica
+Cualquier widget o tabla generada en el Canvas puede ser exportada rápidamente a Excel/CSV o PDF para presentar informes externos.
+
 
 🔄 Flujos Principales (Casos de Uso)
 Flujo 1: Crear y Ejecutar una Orden de Trabajo
