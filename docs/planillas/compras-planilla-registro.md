@@ -355,15 +355,32 @@ flowchart TD
 
 ## 12. Problemas Identificados y Soluciones Propuestas
 
-### 12.1 🔴 Alta de Materiales Nuevos (CRÍTICO)
+### 12.1 🔴 Alta de Materiales Nuevos (CRÍTICO) — ✅ DECISIÓN TOMADA
 
 **Problema:** Cuando un material no existe en B.D MATERIALES, el operario lo escribe manualmente. El supervisor luego identifica estos materiales (triángulo rojo en Google Sheets) y los copia/pega manualmente a la B.D. Es un proceso tedioso y propenso a errores.
 
-**Solución propuesta:**
-1. Al escribir un material que no se encuentra en la B.D → mostrar botón/ícono para **"Crear material nuevo"**
-2. Se abre un formulario inline con campos: nombre, rubro, categoría, costo estimado, peso
-3. El supervisor puede editar y aprobar el alta → se agrega automáticamente a la tabla `materials`
-4. El campo de la compra se vincula al material recién creado
+**Solución aprobada:**
+
+#### A) Búsqueda con Autocompletado (todos los roles)
+Al escribir en el campo de material, el sistema ofrece **sugerencias en tiempo real** basadas en materiales existentes en la B.D:
+- El usuario escribe `bulon` → el sistema sugiere: `BULON ZINCADO 1/2" x 2"`, `BULON ZINCADO 3/8" x 1"`, `BULON INOX 1/4" x 1 1/2"`, etc.
+- Esto sirve como **guía de nomenclatura** para que el usuario vea el formato correcto
+- Si encuentra lo que busca → lo selecciona y NO es un ítem nuevo
+- Si no encuentra → puede escribir un nombre libre → se marca como material nuevo pendiente de alta
+
+#### B) Alta Formal de Material Nuevo (🔒 solo SUPERVISOR)
+1. El supervisor ve la alerta de materiales sin registro (col AF / panel ALERTAS)
+2. Accede al material pendiente y abre formulario de alta con campos: nombre estandarizado, rubro, categoría, costo AR$, peso, ubicación
+3. **Estandarización obligatoria:** El nombre debe seguir convenciones de nomenclatura:
+   - Bulones: `BULON [TIPO] [MEDIDA_PULGADAS]" x [LARGO]"` → ej: `BULON ZINCADO 1/2" x 2"`
+   - Bulones con dureza especial: nomenclatura de grado (ej: `BULON G8 1/2" x 3"`)
+   - Caños: `CAÑO [MATERIAL] [DIAMETRO] x [ESPESOR]`
+   - Chapas: `CHAPA [CALIDAD] DE [ESPESOR] (lado x lado) [TRATAMIENTO]`
+4. El supervisor aprueba el alta → se agrega a la tabla `materials` con marca temporal y auditoría
+5. El campo de la compra se vincula al material recién creado
+
+> [!CAUTION]
+> El alta de materiales es una operación de **nivel de seguridad SUPERVISOR** porque impacta directamente en la base de datos maestra. Un material mal nombrado contamina estadísticas, búsquedas y costos de forma permanente.
 
 ### 12.2 🟡 Comparación de Precios (MEJORA)
 
@@ -371,18 +388,23 @@ flowchart TD
 - % de variación (aumento/disminución)
 - Fecha de última actualización del precio en sistema
 
-**Solución propuesta:**
+**Solución aprobada:**
 - Agregar un indicador visual automático: ⬆️ +15% | ⬇️ -5%
-- Mostrar la fecha de `MARCA TEMPORAL` del material consultado
-- Histórico de precios por material
+- Mostrar la fecha de `MARCA TEMPORAL` del material consultado (última actualización de precio)
+- **Tooltip en estado COTIZACION:** Al pasar el mouse sobre un estado de pedido que diga "COTIZACION" o similar, mostrar un micro-informe con:
+  - Días transcurridos desde que se pidió la cotización
+  - Estado de vigencia ("4 días — vigente" / "12 días — ⚠️ vencida")
+  - Precio del sistema vs. precio cotizado con % de variación
+- **Log de historial de precios** por material (ver sección 17.3)
 
-### 12.3 🟡 Ítems "POR PAÑOL" con Costo Manual
+### 12.3 🟡 Ítems "POR PAÑOL" con Costo Manual — ✅ APROBADA c/restricción
 
 **Problema:** Ítems agrupados (ej: "materiales eléctricos varios") se cargan con costo $0 en la B.D. y el supervisor edita manualmente el precio en la planilla de materiales.
 
-**Solución propuesta:**
+**Solución aprobada (🔒 solo SUPERVISOR):**
 - Permitir edición in situ del costo unitario cuando se selecciona la opción `POR PAÑOL`
 - Cambiar el flujo: el supervisor carga el costo real → se convierte en `DIRECTO` → entra al sistema normalmente
+- Esta edición queda registrada en el log de auditoría (quién editó, cuándo, valor anterior → valor nuevo)
 
 ### 12.4 🟡 Columnas Heredadas sin Uso
 
@@ -416,14 +438,14 @@ flowchart TD
 | Campo Sistema | Origen en Sheets | Notas |
 |--------------|------------------|-------|
 | `id` | Autogenerado | UUID |
-| `charge_type` | Col A (CARGA DIRECTA) | ENUM: `DIRECT`, `STANDBY`, `VIA_PANOL`, `STOCK` |
+| `charge_type` | Col A (CARGA DIRECTA) | ENUM: `DIRECT`, `STANDBY`, `VIA_PANOL`. ⚠️ No existe opción `STOCK`; las compras para stock se identifican por `ship_id` = ASTILLERO + `work_order_id` = STOCK |
 | `order_date` | Col B (FECHA) | DATE |
-| `ship_id` | Col C → `ships.id` | FK |
-| `work_order_id` | Col D → `work_orders.id` | FK |
-| `requested_by` | Col E → `workers.id` o texto | FK o texto libre |
-| `work_type` | Col F | ENUM o texto |
-| `material_id` | Col K → `materials.id` | FK (nullable si material nuevo) |
-| `material_name_raw` | Col K | Texto original ingresado |
+| `ship_id` | Col C → `ships.id` | FK. Cuando es compra para stock: siempre `ASTILLERO` |
+| `work_order_id` | Col D → `work_orders.id` | FK. Cuando es compra para stock: siempre `STOCK` |
+| `requested_by` | Col E → `workers.id` o texto | FK o texto libre. Cuando es stock: siempre `PAÑOL` |
+| `work_type` | Col F | Siempre `MATERIALES`. Es constante porque esta planilla solo registra compras de materiales. Permite agrupar en análisis de OT junto con mano de obra |
+| `material_id` | Col K → `materials.id` | FK (nullable si material nuevo pendiente de alta) |
+| `material_name_raw` | Col K | Texto original ingresado (se preserva siempre para trazabilidad) |
 | `quantity` | Col L | DECIMAL |
 | `supplier_quoted_price` | Col N | DECIMAL (nullable) |
 | `system_unit_price` | Col S | DECIMAL (calculado de materials) |
@@ -433,9 +455,10 @@ flowchart TD
 | `stock_condition` | Col X | ENUM: `PHYSICAL`, `VIRTUAL`, `MISSING_INFO` |
 | `charge_destination` | Col Y | ENUM: `PANOL`, `DIRECT` |
 | `observations` | Col Z | TEXT |
-| `days_elapsed` | Calculado | INTEGER (server-side) |
+| `days_elapsed` | Calculado | INTEGER (server-side, fecha_actual - order_date) |
 | `quote_status` | Col AB | ENUM: `OK`, `EXPIRED`, `NA` |
 | `is_new_material` | Col AF | BOOLEAN (derivado de "error") |
+| `fortnight_period` | Calculado | TEXT: `YYYY-QN` (ej: `2026-Q1`, `2026-Q2`). Derivado de order_date: días 1-15 = Q1, 16-fin = Q2 |
 
 ### Tabla `suppliers` (ampliada desde PROVEEDORES)
 
@@ -474,11 +497,90 @@ graph LR
 
 ---
 
-## 16. Preguntas Abiertas
+## 16. Preguntas Abiertas — ✅ RESUELTAS (2026-08-20)
+
+| # | Pregunta | Decisión |
+|---|----------|----------|
+| 1 | **Control de Stock** — ¿Cuándo escaneamos? | Escanear lo antes posible. Próxima prioridad. |
+| 2 | **Proveedores duplicados** — ¿Se unifican? | ✅ Sí. Todo se unifica en una sola tabla `suppliers`. |
+| 3 | **Tipo de cambio** — ¿Manual o automático? | Actualización **por quincena** manual. El supervisor configura el tipo de cambio en un panel de parámetros quincenales. Q1 = días 1-15, Q2 = días 16-fin de mes. Todos los datos se orientan a la quincena vigente. |
+| 4 | **Historial de precios** — ¿Se necesita? | ✅ Sí. Log obligatorio con: fecha, quién cambió, valor anterior → valor nuevo, motivo. Permite análisis de evolución de precios en el tiempo. Ver sección 17.3. |
+| 5 | **POR PAÑOL con costo $0** — ¿Aprobada? | ✅ Aprobada con restricción de seguridad: **solo SUPERVISOR** puede editar costo in situ. Queda en log de auditoría. |
+
+---
+
+## 17. Modelo de Seguridad y Permisos — Compras
 
 > [!IMPORTANT]
-> 1. **Control de Stock:** La planilla de CONTROL DE STOCK está pendiente de escaneo. ¿Cuándo la abordamos?
-> 2. **Proveedores duplicados:** Hay proveedores en PROVEEDORES y también en B.D.IMPORTADA. ¿Se unifican en una sola tabla `suppliers`?
-> 3. **Tipo de cambio:** B.D MATERIALES usa un tipo de cambio fijo ($1.500). ¿Se actualiza manualmente o se automatiza con cotización del Banco Nación?
-> 4. **Historial de precios:** ¿Se necesita un log de cambios de precios por material? (Útil para la comparación del punto 12.2)
-> 5. **POR PAÑOL con costo $0:** ¿Aprobás la solución propuesta de edición in situ + conversión a DIRECTO?
+> Cada módulo/planilla debe tener su nivel de seguridad definido en la tabla de permisos del sistema. Las acciones sensibles requieren roles específicos.
+
+### 17.1 Matriz de Permisos por Acción
+
+| Acción | Operario / Pañolero | Supervisor | Administración |
+|--------|:-------------------:|:----------:|:--------------:|
+| Cargar pedido de compra | ✅ | ✅ | ✅ |
+| Buscar material (autocompletado) | ✅ | ✅ | ✅ |
+| Escribir material nuevo (texto libre) | ✅ | ✅ | ✅ |
+| **Dar alta a material nuevo en B.D** | ❌ | ✅ | ✅ |
+| Cambiar estado del pedido | ⚠️ Limitado | ✅ | ✅ |
+| Aprobar/rechazar cotización | ❌ | ✅ | ✅ |
+| Editar costo POR PAÑOL (in situ) | ❌ | ✅ | ✅ |
+| Modificar precio en B.D MATERIALES | ❌ | ✅ | ✅ |
+| Ver costos y precios | ❌ Pañolero | ✅ | ✅ |
+| Configurar tipo de cambio quincenal | ❌ | ✅ | ✅ |
+| Ver historial de precios | ❌ | ✅ | ✅ |
+| Administrar proveedores | ❌ | ⚠️ Lectura | ✅ |
+
+### 17.2 Estandarización de Nomenclatura de Materiales
+
+El alta de materiales requiere seguir convenciones para mantener la integridad de la base de datos:
+
+| Categoría | Formato | Ejemplo |
+|-----------|---------|--------|
+| Bulones zincados | `BULON ZINCADO [ancho]" x [largo]"` | `BULON ZINCADO 1/2" x 2"` |
+| Bulones con grado | `BULON G[grado] [ancho]" x [largo]"` | `BULON G8 1/2" x 3"` |
+| Bulones inox | `BULON INOX [ancho]" x [largo]"` | `BULON INOX 3/8" x 1 1/2"` |
+| Tuercas | `TUERCA [TIPO] [medida]` | `TUERCA ZINCADA 7/16" 14 HILOS` |
+| Caños | `CAÑO [MATERIAL] [diámetro] x [espesor]` | `CAÑO INOX 2" x 2mm` |
+| Chapas | `CHAPA [CALIDAD] DE [espesor] (lado x lado) [TRATAMIENTO]` | `CHAPA NAVAL DE 1/4" (6mm) SIN PINTAR` |
+| Abrazaderas | `ABRAZADERA [TIPO] [medida]` | `ABRAZADERA HIERRO Nº 108` |
+| Discos | `DISCO [TIPO] GRANO [nº]` | `DISCO LIJA GRANO 36` |
+
+> [!TIP]
+> El autocompletado al escribir material sirve como guía de formato: el usuario ve cómo están nombrados materiales similares y replica la convención.
+
+### 17.3 Log de Historial de Precios
+
+Tabla `material_price_log`:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | UUID | PK |
+| `material_id` | FK → materials | Material afectado |
+| `previous_price_ars` | DECIMAL | Precio anterior en AR$ |
+| `new_price_ars` | DECIMAL | Precio nuevo en AR$ |
+| `previous_price_usd` | DECIMAL | Precio anterior en US$ |
+| `new_price_usd` | DECIMAL | Precio nuevo en US$ |
+| `exchange_rate` | DECIMAL | Tipo de cambio quincenal aplicado |
+| `fortnight_period` | TEXT | Quincena: `YYYY-MM-Q1` o `YYYY-MM-Q2` |
+| `changed_by` | FK → users | Quién realizó el cambio |
+| `changed_at` | TIMESTAMP | Cuándo se realizó |
+| `reason` | TEXT | Motivo del cambio (opcional) |
+| `source` | ENUM | `MANUAL`, `PURCHASE_UPDATE`, `BULK_IMPORT` |
+
+### 17.4 Parámetros Quincenales del Supervisor
+
+Tabla `fortnight_settings`:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | UUID | PK |
+| `period` | TEXT | `YYYY-MM-Q1` o `YYYY-MM-Q2` |
+| `exchange_rate_usd` | DECIMAL | Tipo de cambio AR$/US$ para la quincena |
+| `security_factor` | DECIMAL | Factor de seguridad default (ej: 1.06) |
+| `set_by` | FK → users | Supervisor que configuró |
+| `set_at` | TIMESTAMP | Fecha/hora de configuración |
+| `notes` | TEXT | Observaciones del supervisor |
+
+> [!NOTE]
+> Los cortes quincenales (Q1: días 1-15, Q2: días 16-fin de mes) aplican a todo el sistema: pagos, liquidaciones, análisis y purificación de datos.
