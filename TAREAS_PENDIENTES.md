@@ -110,6 +110,7 @@ docs/mapa_proyecto.md (reemplazado por INDICE_CENTRAL.md)
    - [x] MATERIALES_PLANILLAS_REGISTRO (Borrador - pendiente revisión de negocio)
    - [x] BD_NEWSYSTEMM / B.D.NewSystemm (Confirmado)
    - [x] BD_NUEVAS_PLANILLAS & IMPUTACION_HORAS_VS_MATERIALES (Confirmado)
+   - [x] RESUMEN_GERENCIAL, DETALLE_DE_PRESUPUESTOS & PROTOTIPO_PUESTA_EN_SECO (Confirmado)
 
 ✓ HECHO — 2.1 Metadatos de Documentación (Roles + Dependencias)
    Resultado: Creado INDICE_METADATOS.md (tabla máquina de 8 columnas) separado de INDICE_CENTRAL.md (narrativo humano).

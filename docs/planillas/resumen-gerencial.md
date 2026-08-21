@@ -1,135 +1,113 @@
-# Mapeo Legacy: RESUMEN GERENCIAL (GS-004)
+# Mapeo Legacy: Resumen Gerencial & Remitos de Cobro al Cliente
 
 > [!IMPORTANT]
-> **Fuentes de información cruzadas:** Descripción exhaustiva del usuario (sesión 2026-07-23), lectura de metadatos vía MCP (detectando 18+ hojas internas y consultas QUERY complejas).
+> **Fuentes de información cruzadas:** Descripción del usuario (sesiones 2026-08-20 / 2026-08-21), inspección técnica directa vía Google Sheets API (v4) de las planillas `Resumen Gerencial` (`106QJ8vzUH9c2kRiL7a6vmNPkL2KgfEMwtjsT51Evefw`), `DETALLE DE PRESUPUESTOS` (`1hUPr8ZQNdaDhuzRnIjAtDjfN0pGcOvmcKqsOD77FLu4`), `LISTA TRABAJOS EN PROGRESO` (`GS-003`), `Copia de PROTOTIPO MODELO BARCO HASTA30m` (`10OUtQqL2q2dM-F4YMeJm7P0es_-4Jl0acvsHHmaa0OM`) y la decisión `DEC-014`.
 
 ---
 
-## 1. Clasificación de la Planilla
-- **Tipo de Planilla:** TIPO C (Salida / Reporte)
-- **Justificación:** Es el núcleo analítico (Dashboard) del sistema. No es su función principal capturar datos nuevos, sino **consolidar y procesar** la información proveniente de Horas, Materiales y Terceros para presentar resúmenes ejecutivos.
-> Confianza: CONFIRMADO
+## PARTE A: Diseño Técnico (Para IA / App)
 
-## 2. Identidad y Contexto de Negocio
-- **ID Planilla:** GS-004
-- **Nombre Técnico/Funcional:** RESUMEN_GERENCIAL (Dashboard de Costos de Obra)
-- **URL / ID:** `https://docs.google.com/spreadsheets/d/1pcHSIPRWmcCDMijy_jccdsxKyVxu3wnC5ltCcYYW8ck/edit`
-- **Departamento Propietario:** Dirección de Obra / Gerencia / Administración
-- **Usuarios Principales y Rol:** Jefes de Obra y Directivos que requieren visibilidad total de los costos para toma de decisiones y facturación.
-- **Propósito Principal:** Centralizar y desglosar todos los costos de la obra agrupados por Barco/Cliente y por Orden de Trabajo. Permite identificar desviaciones, revisar horas invertidas vs presupuestadas y emitir el análisis final previo a la facturación.
-- **Integraciones Manuales Actuales:** 
-  - Selección humana del Cliente/Barco (B4) y la Orden de Trabajo (C4) para detonar los filtros interactivos en la hoja `RESUMEN`.
-  - Padece de cuellos de botella enormes: requiere consolidar previamente exportaciones de Terceros, Materiales y Horas mediante fórmulas (ej. `sort`) generando una tabla (`B.D RESUM.GERENCIAL`) con más de 60,000 registros, de los cuales solo el 30% está activo.
-> Confianza: CONFIRMADO
+### 1. Clasificación de las Planillas
+- **IDs de Planillas:** 
+  - `GS-004`: `RESUMEN_GERENCIAL`
+  - `GS-011`: `DETALLE_DE_PRESUPUESTOS`
+  - `GS-012`: `PROTOTIPO_MODELO_PUESTA_EN_SECO`
+- **Tipo de Planilla:** TIPO C (Salida / Dashboard Ejecutivo) y TIPO D (Híbrida de transformación).
+> Confianza: CONFIRMADO (Inspeccionado vía API)
 
-## 3. Estructura Visual y Navegación
-La planilla es extremadamente densa, compuesta por 18+ hojas (muchas de paso intermedio). Las principales son:
+---
 
-- **Dashboard Principal (`RESUMEN`):** 
-  - Panel interactivo. Tiene 2 niveles de análisis:
-    1. *Costo General de Obra* (filas 7-16): Muestra métricas totales de toda la obra con gráficos de distribución (pasteles para costo por OT, Kg distribuidos, horas por rubro, etc.).
-    2. *Costos Específicos por OT* (filas 18-28): Mismas métricas pero filtradas a nivel microscópico por la Orden seleccionada.
-  - Posee hipervínculos como accesos directos para saltar a otras hojas de desglose.
-- **Resumen Tabular (`resumen 2`):** 
-  - Pantallazo rápido (tabla) con todas las OTs. Desglosa: Terceros, Materiales, Consumibles, Horas.
-  - Presenta Agrupadores: *Materiales (Material + Consumibles)* y *Mano de Obra (Horas + Terceros)*. Muestra el Peso (Kg) total y la descripción textual de la OT.
-- **Alertas de Costos (`Resumen 3`):** 
-  - Matriz de OT vs Rubros de Horas.
-  - **Función Clave:** Muestra "Datos sin Valor" (ítems sin valorizar). Esencial para detectar cuando un trabajo fue cargado pero falta asignarle precio/tarifa (ej. contratistas nuevos).
-- **Reporte Jefe de Obra (`descripcion trabajos`):**
-  - Muestra OT, descripción y cantidad de Horas. Servía de puente para exportar a un dashboard externo.
-- **Vistas Especiales:** `Rubros vs Costos` (para detectar picos atípicos por errores de tipeo de operarios) y hojas resumen directas (`HORAS`, `TERCEROS`, `MATERIALES`).
-- **Cálculo Backend (`CALC.GENERALES`, `CALC.OT`):** Hojas ocultas/intermedias donde se preparan los datos crudos para alimentar los gráficos del dashboard.
-> Confianza: CONFIRMADO
+### 2. Identidad y Contexto de Negocio
+- **URL GS-004:** `https://docs.google.com/spreadsheets/d/106QJ8vzUH9c2kRiL7a6vmNPkL2KgfEMwtjsT51Evefw/edit`
+- **URL GS-011:** `https://docs.google.com/spreadsheets/d/1hUPr8ZQNdaDhuzRnIjAtDjfN0pGcOvmcKqsOD77FLu4/edit`
+- **URL GS-012:** `https://docs.google.com/spreadsheets/d/10OUtQqL2q2dM-F4YMeJm7P0es_-4Jl0acvsHHmaa0OM/edit`
+- **Departamento Propietario:** Dirección General / Gerencia de Operaciones / Jefatura de Obra / Facturación.
+- **Usuarios Principales y Roles:** 
+  - *Gerente General (Acceso Nivel Alfa):* Revisa costos globales, modifica tarifas base del tarifario maestro, determina precios de venta, valoriza trabajos in-situ, aprueba el Remito Comercial y monitorea márgenes globales de obra.
+  - *Jefe de Obra / Supervisor:* Revisa avances por OT, materiales consumidos, kilos instalados, completa los inputs operativos (días, $m^3$, válvulas, flags) e históricos de trabajos.
 
-## 4. Estructura de Datos y Métricas Clave
+---
 
-A diferencia de las planillas de carga (Tipo A/D), aquí importan los **Indicadores (KPIs)** presentados:
+### 3. Estructura Visual y Navegación Extraída
 
-| KPI / Métrica | Nivel de Agrupación | Fuente de Datos | Notas |
+#### Hojas Clave Identificadas:
+1. `RESUMEN` (GS-004 - TAB-001): Dashboard principal con selectores `CLIENTE` (B4) y `ORDEN TRABAJO` (C4).
+2. `CALC.GENERALES` (GS-004 - TAB-002): Motor de cálculo que acumula Materiales, Consumibles, Terceros, Horas, Horas Pendientes ("R") y Kilos para la obra completa.
+3. `CALC.O.T` (GS-004 - TAB-003): Motor de cálculo filtrado exclusivamente para la OT seleccionada.
+4. `DETALLE DE PRESUPUESTOS` (GS-011 - TAB-001): Padrón global de contratos PRC con métricas de avance, horas estimadas y peso.
+5. `import.ListaDeTrabajos` (GS-004 - TAB-004): Importación cruzada desde `LISTA_TRABAJOS_EN_PROGRESO` (`GS-003`) que trae la **Descripción Funcional del Trabajo**.
+6. `Copia de PROTOTIPO MODELO BARCO HASTA30m` (GS-012 - TAB-001): Modelo estandarizado de cobro para puestas en seco con indicadores técnicos y precios unitarios base.
+
+---
+
+### 4. Mapa Relacional de Dependencias
+
+```mermaid
+graph TD
+    GS008[GS-008: B.D.NewSystemm] -->|Padrón & Tarifarios| GS004[GS-004: RESUMEN GERENCIAL]
+    GS001[GS-001: HORAS] -->|Horas Directas & Pendientes R| GS004
+    GS002[GS-002: MATERIALES] -->|Vales Pañol & Peso KGS| GS004
+    GS005[GS-005: TERCEROS] -->|Comprobantes FCR, RT, RMO, PRC| GS004
+    GS003[GS-003: LISTA TRABAJOS] -->|Descripción Funcional Trabajo| GS004
+    GS011[GS-011: DETALLE PRESUPUESTOS] -->|Padrón General PRC & % Avance| GS004
+    GS012[GS-012: PROTOTIPO PUESTA EN SECO] -->|Tarifario Nivel Alfa & Precios Base| GS004
+    GS004 -->|Edición In-Situ & Valoración| REMITO[App: Remito / Anexo Factura Cliente]
+```
+
+---
+
+### 5. Requerimientos de Migración a Supabase/n8n
+
+| Concepto Legacy | Entidad Supabase Objetivo | Módulo | Notas de Transformación |
 |---|---|---|---|
-| COSTO DIRECTO TOTAL US$ | Por Obra / Por OT | Sumatoria Global | El valor central para facturación. |
-| TOTAL MATERIALES | Por Obra / Por OT | Planilla GS-002 | Separado conceptualmente de "Consumibles". |
-| TOTAL MAT. CONSUMIBLES | Por Obra / Por OT | Planilla GS-002 | Permite analizar el gasto invisible de la obra (discos, electrodos, gas). |
-| TOTAL TERCEROS | Por Obra / Por OT | Planilla GS-005 | Gasto en talleres y proveedores externos. |
-| TOTAL HORAS (US$ y Cantidad) | Por Obra / Por OT | Planilla GS-001 | Costo interno + horas de grúa/pala separadas. |
-| TOTAL PESO (Kg) | Por Obra / Por OT | Planilla GS-002 | Distribución del tonelaje de acero/metales despachado. |
-| FECHA ÚLTIMO REPORTE | Por Obra | `descripcion trabajos` | Actualmente usa `=HOY()`. **Regla futura:** Debe calcular el `MAX(Fecha)` real de los consumos de ese cliente. |
+| Tarifario Gerencial Nivel Alfa | `DrydockRateCard` | M2-recursos | Catálogo maestro de descripciones textuales y precios unitarios base para Puesta en Seco (Editables **solo por Nivel Alfa**). Documentado en `docs/03_negocio/tarifario_puesta_en_seco_alfa.md`. |
+| Plantilla de Cobro | `BillingTemplate` | M5-comercial | Plantilla Puesta en Seco (hasta 30m) vs Prototipo Básico Aflote. |
+| Inputs Cuantitativos de Obra | `WorkItemMetric` | M3-operaciones | Días, Horas, Metros Cúbicos ($m^3$), Válvulas, Ánodos de Zinc, Flags `1/0`. |
+| Comprobantes Terceros | `ThirdPartyInvoice` | M3-operaciones | Soporta todo tipo de comprobante (FCR, RT, RPF, RMO, PRC). |
+| Remito Final al Cliente | `InvoiceAttachment` | M5-comercial | Remito oficial consolidado de cobro generado al cliente armador. |
 
-> Confianza: CONFIRMADO
+---
 
-## 5. Lógica de Validaciones y Alertas
-- **Control de Integridad (Ítems sin Valorizar):** La hoja `Resumen 3` hace un barrido de las imputaciones buscando costos $0.00. Si un operario cargó horas, pero no tiene tarifa asignada, alerta al supervisor administrativo para que asigne el costo antes de facturar.
-- **Detección de Anomalías (Picos):** El gráfico de `Rubros vs Costos` es una herramienta forense. Si se tipea accidentalmente 1000 horas en lugar de 10, este gráfico revienta, permitiendo al auditor cazar el error antes de presentar la liquidación al cliente final.
-> Confianza: CONFIRMADO
+## PARTE B: Lógica de Negocio (Para Humanos)
 
-## 6. Lógica de Código (Apps Script / Fórmulas)
-- **Extensivo uso de `=QUERY()`:** El backend del Excel funciona a base de Queries complejas a la gigantesca hoja `B.D RESUM.GERENCIAL` (ej. `=QUERY('B.D RESUM.GERENCIAL'!A:T,"SELECT * WHERE B='"&B4&"'")`).
-- **Problema de Rendimiento Crítico:** Mantener 60,000+ filas, de las cuales 42,000 son datos históricos "muertos", obliga a la herramienta a procesar arreglos innecesariamente grandes en cada cambio de celda (B4), volviendo la planilla lenta y propensa a cuelgues.
-> Confianza: CONFIRMADO
+### Propósito y Uso en la Vida Real
+El Resumen Gerencial es el tablero maestro del astillero. Se utiliza para monitorear el estado económico y técnico de las obras y **preparar el Remito Comercial / Anexo de Factura al cliente**. El gerente lo usa para cruzar los costos reales cargados con la descripción del trabajo, definir el precio de venta al cliente (desglosado en Mano de Obra y Materiales por cuestiones de IVA) y consolidar el remito global.
 
-## 7. Mapa Relacional de Dependencias (CRÍTICO)
+---
 
-- **Dependencias Entrantes (De dónde consume):**
-  | Planilla Origen | Lógica de Negocio |
-  | :--- | :--- |
-  | GS-001 (HORAS) | Imputaciones de operarios, grúas, pala. |
-  | GS-002 (MATERIALES) | Remitos de pañol, consumibles, chapas y pesos. |
-  | GS-005 (TERCEROS) | Certificados de talleres externos, remitos de MO. |
-  | B.D.NewSystemm | Lista maestra de Barcos y OTs. |
-  | Consolidado Final (Puente) | *Workaround* actual del usuario para hacer un "UNION" (sort) de todas las planillas de costos antes de meterlas aquí. |
+### Reglas de Negocio Clave
 
-- **Dependencias Salientes (Quién la consume):**
-  - Finanzas / Dirección (Para emitir presupuestos finales, facturas y reportes de rentabilidad).
-> Confianza: CONFIRMADO
+#### 1. Unificación en Pantalla Única (Costo Interno Incurrido vs Remito Comercial):
+- **Eliminación del Pimpón de Idas y Vueltas:** En lugar de navegar entre la planilla de costos internos (`CALC.GENERALES`/`CALC.O.T`) y la redacción del remito comercial, la App unifica ambos aspectos en una sola vista dividida:
+  - **Panel Izquierdo (Costo Interno Real):** Muestra automáticamente los costos incurridos de Materiales, Consumibles, Horas Directas, Terceros y Peso (KG) calculados para la OT.
+  - **Panel Derecho (Redacción Comercial del Remito):** Muestra las descripciones textuales literales pre-cargadas desde la plantilla seleccionada, con sus **tarifas unitarias fijas** y los **campos cuantitativos abiertos para carga operativa**.
 
-## 8. Validaciones y Constraints de Negocio
+#### 2. Tarifario Maestro Gerencial (Nivel de Acceso Nivel Alfa):
+- **Catálogo Estandarizado de Puesta en Seco (`DrydockRateCard`):**
+  - Contiene las descripciones textuales exactas e inalterables de las tareas tabuladas (ej. *"Maniobra de halaje y botadura con anguilera"*, *"Estadía en varadero. Por día."*, *"Sondajes ultrasónicos en casco..."*), junto con sus **Precios Unitarios Base en USD**. Documentado y tabulado en [`docs/03_negocio/tarifario_puesta_en_seco_alfa.md`](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/03_negocio/tarifario_puesta_en_seco_alfa.md).
+- **Seguridad Nivel Alfa (Gerencial Superior):**
+  - **Únicamente el Gerente General (Nivel Alfa)** tiene permiso para ingresar a este tarifario maestro y modificar los precios unitarios base.
+  - Los Supervisores y Jefes de Obra **no pueden alterar los precios unitarios base del tarifario**, solo pueden cargar las cantidades físicas ejecutadas.
 
-| Regla de Negocio / Constraint | Entidad / Tabla Responsable en SQL | Estado Actual en el Astillero |
-| :--- | :--- | :--- |
-| **Fecha Real de Carga:** El "Último dato cargado" para el Jefe de Obra debe reflejar el `MAX(Timestamp)` de las imputaciones de ese barco, para auditar demoras en la carga humana. | `TimeImput` / `Consumption` | Usa fórmula estática `=HOY()`. |
-| **Control de Acceso (RLS):** Siendo el cerebro financiero de la empresa, no todos los operarios deben verla. El Jefe de Obra A solo debería ver los costos de los Barcos de A. | Roles y Permisos (Supabase RLS) | Abierta / Compartida sin segmentación real por fila. |
-| **Archivo Histórico:** Datos de obras finalizadas y facturadas deben congelarse y salir de la vista de cálculo activo para no perjudicar la performance. | `HistoricalData` / Flag `is_archived` | Todo vive en la misma matriz de 60,000 líneas. |
+#### 3. Distinción Estricta: Campos Fijos Pre-cargados vs Campos Abiertos para Carga Operativa:
+Al seleccionar la **Plantilla Puesta en Seco (Barco hasta 30m)**, el sistema autocompleta la estructura y distingue claramente:
+- **🔒 Campos Fijos (Autocompletados desde el Tarifario Nivel Alfa):** Descripciones textuales literales exactas, Precios Unitarios USD base y leyendas de recargos (maniobra nocturna 25%, día inhábil 35%).
+- **✏️ Campos Abiertos para Carga Operativa (Inputs Cuantitativos de Obra):**
+  - Cantidades / Días / Horas (días de varadero, días de muelle, horas de grúa).
+  - Mecánica Naval: Checkboxes / Flags `1` o `0` para tareas realizadas (ej. desarme/armado de guardacabos, romper/reponer cemento de platina).
+  - Tanques: Metros cúbicos ($m^3$) de cada tanque.
+  - Válvulas de Casco: Cantidad de válvulas recorridas.
+  - Protección Galvánica: Cantidad de recambios de ánodos de zinc.
+  - Sondajes Ultrasónicos: Cantidad de puntos de medición adicionales.
 
-> Confianza: CONFIRMADO
+#### 4. Modalidad Aflote / Prototipo Básico (Escritura Libre):
+- Si la obra no requiere puesta en seco (trabajos en el agua, reparaciones de muelle o piezas de taller enviadas al cliente), se selecciona el **Prototipo Básico**, el cual habilita un formato de **escritura libre** (descripción abierta, cantidad, precio unitario USD, IVA si/no).
 
-## 9. Requerimientos de Migración a Supabase/n8n
-
-- **Entidades del catálogo implicadas:** Módulo M6 (`ClosureLog`, `HistoricalData`, `AuditTrail`) y M5 (`BillingItem`).
-- **La Solución al Rendimiento (Supabase SQL Views):**
-  - **TODO** el dolor de cabeza de "exportar, ordenar (sort) y consolidar planillas" desaparece en PostgreSQL. 
-  - Se creará una **Materialized View** (ej. `vw_costos_consolidados`) que haga un `UNION ALL` nativo de las tablas `TimeImput`, `Consumption` y `ThirdPartyService`. Esto permitirá agrupar y sumar costos (GROUP BY WorkOrder) en milisegundos sin importar si hay 60,000 o 1,000,000 de filas.
-- **Dashboard en UI Moderno (Next.js / Retool):**
-  - La hoja `RESUMEN` será reemplazada por un verdadero Dashboard analítico con filtros dinámicos superiores (Cliente, OT, Fechas).
-  - Los gráficos (Recharts / Chart.js) tomarán la data ya calculada por la base de datos, eliminando la necesidad de hojas puente como `CALC.GENERALES`.
-- **Automatizaciones y Flujos Candidatos:** 
-  1. **"Congelamiento de Obra" (Botón de Archivo):** Al finalizar y facturar una obra, un botón en la UI cambiará el estado de la obra a "Archivada" (`is_archived = TRUE`), moviendo automáticamente todos sus costos a `HistoricalData` (o particionando la tabla), liberando la caché y memoria de la operación diaria.
-  2. **Alerta Proactiva "Costos sin Valor":** Un cron job (n8n) que revise cada noche si hay imputaciones en OTs activas con tarifa $0.00, enviando un recordatorio/email a Administración para que pacte precios antes de que el trabajo se enfríe.
-  3. **Row Level Security (RLS) en UI:** Autenticación donde el perfil del usuario determine si puede ver solo el progreso de "Barco X" o todo el "Resumen Gerencial" (Rol: Admin).
-
-## 9.5. Analíticas Avanzadas Solicitadas (Nuevos Requerimientos)
-
-En base a la evolución del modelo, se incorporarán tres herramientas analíticas interactivas en la nueva aplicación, resolviendo limitaciones actuales de Excel:
-
-### A. Filtro Interactivo de Horas de Contratista por OT
-- **Problema:** El Jefe de Obra necesita ver rápidamente las horas exclusivas de un contratista en un barco/OT, excluyendo horas de presupuesto cerrado que ya entran como costo de "Terceros" (para evitar duplicidad). Hoy esto requiere filtros manuales complejos en GS-001.
-- **Solución Propuesta:** Un módulo visual de "Auditoría de Contratista". Con simples selectores desplegables (dropdowns) de Barco y Contratista, el sistema consultará directamente a `TimeImput` (filtrando tipos de trabajo) y devolverá las horas directas. Una UI a prueba de errores para usuarios sin experiencia en planillas.
-
-### B. Dashboard Interactivo Libre (Estilo Tabla Dinámica / Canva)
-- **Problema:** El análisis estático actual no permite aislar variables al vuelo (ej. ver solo costos de "corte y plegado" en un barco específico).
-- **Solución Propuesta (Data Grid / Pivot UI):** Se implementará un componente de "Tabla Dinámica Web" (Pivot Table). Esto funciona visualmente arrastrando y soltando (drag & drop) etiquetas ("Barco", "Rubro", "Contratista") hacia los ejes de filas o columnas, recalculando los costos instantáneamente. Es la versión moderna, segura y ultra rápida de cruzar datos, permitiendo armar tableros (Canva) dinámicos sin tocar código ni fórmulas.
-
-### C. Análisis Histórico de Variación de Costos (Hora Hombre vs Consumibles)
-- **Objetivo:** Evaluar la evolución del costo por Hora-Hombre a lo largo de las quincenas.
-- **Propuesta de Análisis y Cruce de Datos:**
-  1. **Eje Temporal (X):** Agrupación estricta por `Quincena`.
-  2. **Eje de Costo Horas (Y1):** Métrica de **Valor Tabulado (US$/Hora)**. Aquí **no** se mezclan ni se promedian los trabajos por presupuesto cerrado (eso irá en "Avance de Obra"). Se grafica puramente la evolución de la tarifa plana por hora-hombre pactada con ese contratista.
-  3. **Eje de Consumos (Y2):** Métrica `(Total US$ en Consumibles y EPP del contratista) / (Cantidad de Horas)`. Revela cuánto le cuesta al astillero (en insumos) cada hora tabulada que trabaja esa persona.
-  4. **Cruce Cambiario (Dólar):** Se superpone una línea de tendencia del valor Dólar de la quincena (extraído del Dashboard Maestro). 
-  5. **Insight de Negocio:** Este gráfico permite detectar visualmente si un aumento de costos se debió a (A) actualización de la tarifa tabulada, (B) salto cambiario, o (C) derroche de consumibles del pañol por parte del contratista.
-
-## 10. Conclusión del Módulo
-
-Esta planilla no se "migra" celda por celda. **Se reconstruye conceptualmente.** Las hojas de cálculo intermedio (`CALC`, `B.D`) se evaporan en favor de consultas SQL puras. El esfuerzo de desarrollo aquí estará 100% centrado en crear una interfaz de usuario visualmente imponente (Dashboard) y en configurar las políticas de seguridad de la base de datos (RLS) para proteger los costos del astillero.
-
-> Confianza: CONFIRMADO
+#### 5. Resumen Acumulado Comercial & Margen Global de Obra:
+- Conforme se completan las cantidades en las OTs, la cabecera comercial autocalcula:
+  * `Total Exento ($ USD)`
+  * `Total Gravado ($ USD)`
+  * `I.V.A. (21%) ($ USD)`
+  * `TOTAL REMITO A COBRAR ($ USD)`
+  * `MARGEN GLOBAL REAL DE OBRA ($ USD y %)` (Equilibrando OTs de bajo margen con OTs de alto margen)
+- **Emisión en 1 Clic:** Botón para generar el PDF/Excel oficial idéntico al formato legacy para presentar al cliente armador.

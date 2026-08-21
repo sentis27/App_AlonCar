@@ -58,17 +58,18 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/01_decisiones/DEC-011-cierre-ot-dashboard-historico.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-22 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/01_decisiones/DEC-012-imputacion-horas-materiales-dolar-quincenal.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-08-21 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/01_decisiones/DEC-013-reconciliacion-horas-materiales-inbox.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-08-21 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
-| docs/02_producto/01_decisiones/DEC-014-autocarga-prc-terceros-desde-workitem.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-24 | docs/02_producto/README.md \| docs/planillas/lista-trabajos-en-progreso.md \| docs/planillas/terceros-planilla.md |
+| docs/02_producto/01_decisiones/DEC-014-resumen-gerencial-horas-presupuestos-workspace.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-08-21 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/02_errores/ERR-003-service-account-permisos-sheets.md | error | ninguno | cambios | transversal | activo | 2026-06-14 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-003-arquitectura-bitacora.md | concepto | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-004-modelo-paginacion-por-operario.md | concepto | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/planillas/horas-planillas-de-registro.md |
 | docs/02_producto/04_procesos/PRO-002-mapeo-blindado-estadisticas-log.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/04_procesos/PRO-003-alertas-humanizadas-e9a.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/03_negocio/README.md | indice | ninguno | ignorar | fase-2 | activo | 2026-06-10 | INDICE_CENTRAL.md |
+| docs/03_negocio/tarifario_puesta_en_seco_alfa.md | catalogo-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | docs/planillas/resumen-gerencial.md |
 | docs/planillas/horas-planillas-de-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/materiales-planillas-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/lista-trabajos-en-progreso.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
-| docs/planillas/resumen-gerencial.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
+| docs/planillas/resumen-gerencial.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/terceros-planilla.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/bd-newsystemm.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/reconciliacion-horas-materiales.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/legacy-mapping/SKILL.md |

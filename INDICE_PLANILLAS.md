@@ -37,6 +37,8 @@ IDs de planilla (`GS-0XX`) o nombres técnicos temporales separados por `|`. `ni
 | GS-008 | BD_NEWSYSTEMM | D-hibrida | confirmado | M2-recursos | B.D_MATERIALES | GS-001 \| GS-002 \| GS-003 \| GS-004 \| GS-005 \| GS-006 \| GS-007 | docs/planillas/bd-newsystemm.md |
 | GS-009 | BD_NUEVAS_PLANILLAS | D-hibrida | confirmado | M3-operaciones | GS-008 \| GS-001 \| GS-002 | GS-010 | docs/planillas/reconciliacion-horas-materiales.md |
 | GS-010 | IMPUTACION_HORAS_VS_MATERIALES | D-hibrida | confirmado | M3-operaciones | GS-001 \| GS-002 \| GS-009 | ninguno | docs/planillas/reconciliacion-horas-materiales.md |
+| GS-011 | DETALLE_DE_PRESUPUESTOS | D-hibrida | confirmado | M5-comercial | GS-005 \| GS-008 | GS-004 | docs/planillas/resumen-gerencial.md |
+| GS-012 | PROTOTIPO_MODELO_PUESTA_EN_SECO | C-salida | confirmado | M5-comercial | GS-004 \| DrydockRateCard | ninguno | docs/planillas/resumen-gerencial.md |
 ---
 
 ## Catálogo de Entidades Objetivo (referencia para Step 8 de la skill)
