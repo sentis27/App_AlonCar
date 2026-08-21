@@ -57,7 +57,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/01_decisiones/DEC-010-terminal-panol-verificacion-visual.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-21 | docs/02_producto/README.md \| docs/planillas/materiales-planillas-registro.md |
 | docs/02_producto/01_decisiones/DEC-011-cierre-ot-dashboard-historico.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-22 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/01_decisiones/DEC-012-imputacion-horas-materiales-dolar-quincenal.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-08-21 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
-| docs/02_producto/01_decisiones/DEC-013-separacion-horas-tabuladas-presupuestos.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-23 | docs/02_producto/README.md \| docs/planillas/resumen-gerencial.md |
+| docs/02_producto/01_decisiones/DEC-013-reconciliacion-horas-materiales-inbox.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-08-21 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/01_decisiones/DEC-014-autocarga-prc-terceros-desde-workitem.md | decision | ninguno | cambios | fase-2 | borrador | 2026-07-24 | docs/02_producto/README.md \| docs/planillas/lista-trabajos-en-progreso.md \| docs/planillas/terceros-planilla.md |
 | docs/02_producto/02_errores/ERR-003-service-account-permisos-sheets.md | error | ninguno | cambios | transversal | activo | 2026-06-14 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-003-arquitectura-bitacora.md | concepto | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
@@ -71,6 +71,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/planillas/resumen-gerencial.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/terceros-planilla.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
 | docs/planillas/bd-newsystemm.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/legacy-mapping/SKILL.md |
+| docs/planillas/reconciliacion-horas-materiales.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/legacy-mapping/SKILL.md |
 | workflows/legacy/Reporte_Retiros_diarioMateriales.json | codigo | ninguno | ignorar | transversal | archivado | 2026-07-23 | ninguno |
 | .agents/skills/README.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
 | .agents/skills/transversal/automation-governance/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
