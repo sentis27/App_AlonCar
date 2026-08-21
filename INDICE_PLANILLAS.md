@@ -34,6 +34,7 @@ IDs de planilla (`GS-0XX`) o nombres técnicos temporales separados por `|`. `ni
 | GS-005 | TERCEROS_PLANILLA_COSTOS | D-hibrida | confirmado | M3-operaciones | B.D.NewSystemm \| MATERIALES \| BD_Talleres | GS-004 | docs/planillas/terceros-planilla.md |
 | GS-006 | COMPRAS_PLANILLAS_REGISTRO | D-hibrida | confirmado | M4-logistica | B.D.NewSystemm \| B.D_MATERIALES \| PROVEEDORES | CONTROL_DE_STOCK \| FILTER.CARGA.DIRECTA \| COSTO_OBRA | docs/planillas/compras-planilla-registro.md |
 | GS-007 | CONTROL_DE_STOCK | D-hibrida | confirmado | M4-logistica | B.D.NewSystemm \| MATERIALES \| COMPRAS | GS-002 \| GS-006 | docs/planillas/stock-planilla-registro.md |
+| GS-008 | BD_NEWSYSTEMM | D-hibrida | confirmado | M2-recursos | B.D_MATERIALES | GS-001 \| GS-002 \| GS-003 \| GS-004 \| GS-005 \| GS-006 \| GS-007 | docs/planillas/bd-newsystemm.md |
 ---
 
 ## Catálogo de Entidades Objetivo (referencia para Step 8 de la skill)
