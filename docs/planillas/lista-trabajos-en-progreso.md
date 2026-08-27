@@ -416,5 +416,8 @@ Hoy, el paso 4 es 100% manual: copiar descripciones, sumar costos a mano, pegar 
 6. **Auditoría robusta:** Reemplazar LOG.OTs con un `AuditTrail` completo en Supabase que registre cada cambio de campo, no solo la creación.
 7. **Selector de contratistas normalizado:** Multi-select desde tabla `Worker`/`Workshop` con categorización (interno/externo/taller).
 8. **Pantalla interactiva de carga con descripción flotante:** Interfaz especializada para Pañol, Carga de Horas y Terceros que filtra OTs por Barco + Contratista y muestra el texto del trabajo de forma flotante como ayuda memoria.
+9. **Panel de Gestión Administrativa (Bulk Actions & Auditoría):** Interfaz exclusiva para que el administrador controle masivamente el ciclo de vida de los datos (ej. filtrado por cliente, año, estado).
+   - **Trazabilidad obligatoria:** Toda acción masiva (ej. reasignar trabajos a una nueva OT porque la original se volvió muy grande) exige completar un campo de "Motivo / Detalle del cambio" antes de guardar, dejando un registro en el historial (similar al flujo de commit/publish de un sistema).
+   - **Integridad referencial estricta:** Durante acciones de reasignación (bulk update), el sistema NO permite escribir o inventar nombres de OTs al vuelo. La OT destino debe seleccionarse siempre de un menú desplegable alimentado por las OTs ya dadas de alta en el sistema, garantizando que esta tabla siga siendo el único habilitador válido.
 
 > Confianza: CONFIRMADO
