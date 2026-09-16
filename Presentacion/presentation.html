@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App_AlonCar - Presentación</title>
+    <!-- Reveal.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reset.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/black.min.css" id="theme">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #00f2fe;
+            --secondary: #4facfe;
+            --accent: #10b981;
+            --bg-dark: #0f172a;
+            --glass-bg: rgba(15, 23, 42, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            background: linear-gradient(135deg, #020617 0%, #0f172a 100%);
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+
+        .reveal .slides {
+            font-family: 'Inter', sans-serif;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Outfit', sans-serif !important;
+            text-transform: none !important;
+            font-weight: 800 !important;
+            background: -webkit-linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px !important;
+        }
+
+        h2 {
+            font-size: 2.5em !important;
+        }
+
+        h3 {
+            font-size: 1.8em !important;
+        }
+
+        /* Glassmorphism Cards */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            text-align: left;
+            margin-bottom: 20px;
+        }
+
+        .glass-card p, .glass-card li {
+            color: #cbd5e1;
+            font-size: 0.9em;
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+
+        .glass-card ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .glass-card ul li::before {
+            content: '✓';
+            color: var(--accent);
+            font-weight: bold;
+            display: inline-block;
+            width: 1em;
+            margin-left: -1em;
+        }
+
+        /* Two Column Layout */
+        .col-container {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+        }
+        
+        .col {
+            flex: 1;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.7em !important;
+            color: #cbd5e1;
+            margin-top: 20px !important;
+        }
+        
+        th, td {
+            padding: 15px !important;
+            text-align: left !important;
+            border-bottom: 1px solid var(--glass-border) !important;
+        }
+
+        th {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* Highlights */
+        .highlight {
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        .highlight-danger {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        /* Video Mockup sequence */
+        .mockup-img {
+            max-width: 100%;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            border: 1px solid var(--glass-border);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent);
+            font-size: 0.6em;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="reveal">
+    <div class="slides">
+
+        <!-- ============================================== -->
+        <!-- TRAMO 1: LA VISIÓN                             -->
+        <!-- ============================================== -->
+
+        <!-- T1-01 -->
+        <section>
+            <h1>App_AlonCar</h1>
+            <h3>Sistema de Gestión de Costos Naval</h3>
+            <p style="color: #94a3b8; font-size: 0.7em; margin-top: 50px;">Propuesta de solución integral para el Astillero</p>
+        </section>
+
+        <!-- T1-02 -->
+        <section>
+            <h2>Agenda de la Reunión</h2>
+            <div class="glass-card">
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <div style="border-left: 4px solid var(--primary); padding-left: 20px;">
+                        <h4 style="margin:0; font-size: 1.2em;">TRAMO 1 (Visión General)</h4>
+                        <p style="margin:5px 0 0 0;">Qué pidieron, cómo estamos hoy y la solución propuesta.</p>
+                    </div>
+                    <div style="border-left: 4px solid #475569; padding-left: 20px;">
+                        <h4 style="margin:0; font-size: 1.2em; color: #94a3b8;">☕ PAUSA / CAFÉ</h4>
+                    </div>
+                    <div style="border-left: 4px solid var(--secondary); padding-left: 20px;">
+                        <h4 style="margin:0; font-size: 1.2em;">TRAMO 2 (Profundidad Técnica)</h4>
+                        <p style="margin:5px 0 0 0;">Análisis módulo por módulo y el rol de la Inteligencia Artificial.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- T1-03 -->
+        <section>
+            <h2>El Pedido Original</h2>
+            <div class="glass-card">
+                <p>Ustedes plantearon necesidades claras:</p>
+                <ul>
+                    <li>Un sistema de costos más <b>ágil, adaptable y seguro</b>.</li>
+                    <li>Un <b>mapeo del flujo de información</b> y manual de procedimientos.</li>
+                    <li>Mejor <b>orden y trazabilidad</b> de los datos (saber quién hace qué).</li>
+                </ul>
+                <p style="margin-top: 30px; font-style: italic; color: var(--primary);">"Todo lo que van a ver hoy fue diseñado para responder exactamente a esto."</p>
+            </div>
+        </section>
+
+        <!-- T1-04 -->
+        <section>
+            <h2>El Sistema Actual</h2>
+            <div class="col-container">
+                <div class="col glass-card">
+                    <h3>12 Planillas Interconectadas</h3>
+                    <p>Cubren: horas, materiales, terceros, stock, compras, presupuestos y resumen gerencial.</p>
+                    <p>Fueron creadas internamente y funcionaron para llegar hasta acá, pero su arquitectura ya llegó a su límite técnico.</p>
+                </div>
+                <div class="col text-center">
+                    <!-- Concept Diagram using text layout -->
+                    <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+                        <p style="color: #94a3b8; font-size: 0.6em;">Horas (GS-001) ➔ Operaciones (GS-003) ➔ <b>BD Central (GS-008)</b></p>
+                        <p style="color: #94a3b8; font-size: 0.6em;">Compras (GS-006) ➔ Stock (GS-007) ➔ <b>Materiales (GS-002)</b></p>
+                        <p style="color: #94a3b8; font-size: 0.6em;"><b>BD Central</b> ➔ Terceros (GS-005) ➔ <b>Resumen (GS-004)</b></p>
+                        <p style="color: #ef4444; font-size: 0.6em; margin-top: 20px;">Red compleja y frágil ante errores humanos.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- T1-05 -->
+        <section>
+            <h2>La Información</h2>
+            <div class="glass-card">
+                <p>El problema no es qué datos tenemos, sino cómo fluyen.</p>
+                <table>
+                    <tr>
+                        <th>Dato que recolectamos hoy</th>
+                        <th>Para qué lo usamos</th>
+                    </tr>
+                    <tr>
+                        <td><b>Horas de operarios</b> (reloj + imputación)</td>
+                        <td>Calcular el costo de mano de obra por OT.</td>
+                    </tr>
+                    <tr>
+                        <td><b>Materiales</b> (consumos pañol + directo a obra)</td>
+                        <td>Calcular el costo de insumos por OT.</td>
+                    </tr>
+                    <tr>
+                        <td><b>Servicios de Terceros</b> (talleres, contratistas)</td>
+                        <td>Calcular servicios externos por OT.</td>
+                    </tr>
+                    <tr>
+                        <td><b>Datos de Barcos y Clientes</b></td>
+                        <td>Organizar el historial y facturar correctamente.</td>
+                    </tr>
+                </table>
+            </div>
+        </section>
+
+        <!-- T1-06 -->
+        <section>
+            <h2>Los Problemas Reales</h2>
+            <div class="glass-card">
+                <ul>
+                    <li><span class="highlight-danger">Dependencia de una persona:</span> Si el que sabe cómo funciona la planilla no está, el sistema se frena.</li>
+                    <li><span class="highlight-danger">Sin conciliación automática:</span> Las discrepancias (ej. reloj vs imputación) se descubren tarde.</li>
+                    <li><span class="highlight-danger">Información dispersa:</span> Saber el costo real de una OT implica cruzar 3-4 planillas a mano.</li>
+                    <li><span class="highlight-danger">Sin trazabilidad:</span> No sabemos quién cargó qué, ni cuándo se modificó un dato histórico.</li>
+                    <li><span class="highlight-danger">Capacitación difícil:</span> El personal nuevo no tiene un sistema que lo guíe.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- T1-07 -->
+        <section>
+            <h2>La Solución</h2>
+            <h3 style="color: #f8fafc; font-size: 1.2em; font-weight: normal !important; text-transform: none;">Una plataforma unificada, automatizada y con asistente IA.</h3>
+            <br>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="glass-card" style="padding: 20px; text-align: center;">
+                    <h4 style="margin-bottom: 10px;">📊 Orden</h4>
+                    <p style="font-size: 0.8em; margin: 0;">Toda la info en una sola base.</p>
+                </div>
+                <div class="glass-card" style="padding: 20px; text-align: center;">
+                    <h4 style="margin-bottom: 10px;">⚡ Automatización</h4>
+                    <p style="font-size: 0.8em; margin: 0;">Controles que hoy se hacen a mano.</p>
+                </div>
+                <div class="glass-card" style="padding: 20px; text-align: center;">
+                    <h4 style="margin-bottom: 10px;">🎓 Capacitación</h4>
+                    <p style="font-size: 0.8em; margin: 0;">El sistema guía mientras se usa.</p>
+                </div>
+                <div class="glass-card" style="padding: 20px; text-align: center;">
+                    <h4 style="margin-bottom: 10px;">🤖 Inteligencia</h4>
+                    <p style="font-size: 0.8em; margin: 0;">Hablás con el sistema y te responde.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- T1-08 -->
+        <section>
+            <h2>Arquitectura Modular</h2>
+            <div class="glass-card">
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: center;">
+                    <span style="background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 8px;">🚢 M1: Barcos y Clientes</span>
+                    <span style="background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 8px;">👷 M2: Personal y Talleres</span>
+                    <span style="background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 8px;">📋 M3: Operaciones (OTs)</span>
+                    <span style="background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 8px;">📦 M4: Logística (Pañol)</span>
+                    <span style="background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 8px;">💰 M5: Comercial</span>
+                    <span style="background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 8px;">🔒 M6: Cierre y Auditoría</span>
+                    <span style="background: rgba(0, 242, 254, 0.2); border: 1px solid var(--primary); padding: 10px 20px; border-radius: 8px;">🤖 M7: Conocimiento (IA)</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- T1-09 VISIÓN (Secuencia de imágenes emulando el video) -->
+        <section data-auto-animate>
+            <h2>Visión: El Día a Día</h2>
+            <p>Acceso seguro para cada rol.</p>
+            <img src="mockup_login_1789584664733.jpg" class="mockup-img" style="height: 400px; object-fit: cover;">
+        </section>
+        
+        <section data-auto-animate>
+            <h2>Visión: El Día a Día</h2>
+            <p>Un panel centralizado para tener el control total.</p>
+            <img src="mockup_dashboard_1789584725854.jpg" class="mockup-img" style="height: 400px; object-fit: cover;">
+        </section>
+
+        <section data-auto-animate>
+            <h2>Visión: El Día a Día</h2>
+            <p>El "Triángulo del Costo" en cada Orden de Trabajo.</p>
+            <img src="mockup_ot_detail_1789584737336.jpg" class="mockup-img" style="height: 400px; object-fit: cover;">
+        </section>
+
+        <!-- T1-10 -->
+        <section>
+            <h2>Diseño a Futuro</h2>
+            <div class="glass-card">
+                <ul>
+                    <li><span class="highlight">Modular y Escalable:</span> Si mañana queremos agregar liquidación de sueldos, se suma un módulo sin romper lo anterior.</li>
+                    <li><span class="highlight">Altamente Auditable:</span> Cada acción, click y modificación queda registrada de por vida (Data Locking).</li>
+                    <li><span class="highlight">IA Nativa:</span> No es un agregado superficial. Es una herramienta central para estandarizar el conocimiento del astillero.</li>
+                </ul>
+                <p style="margin-top: 20px;">No es un parche. Es una plataforma corporativa.</p>
+            </div>
+        </section>
+
+        <!-- T1-11 -->
+        <section>
+            <h1 style="font-size: 4em;">☕ Pausa</h1>
+            <p>A continuación: Profundidad Técnica de cada Módulo.</p>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TRAMO 2: LA PROFUNDIDAD                        -->
+        <!-- ============================================== -->
+
+        <!-- T2-01 -->
+        <section>
+            <span class="badge">MÓDULO 1</span>
+            <h2>Barcos y Clientes</h2>
+            <div class="glass-card">
+                <p>Reemplaza a: <b>GS-008 (Base Maestra)</b></p>
+                <p><b>El Problema:</b> Hoy el historial de un barco (visitas, reparaciones, costos) está disperso en múltiples hojas y años.</p>
+                <p><b>La Solución:</b> Gestión centralizada del Activo. Entrás al barco y ves <i>todo</i> su historial.</p>
+                <p><i style="color: var(--primary);">"¿Cuánto nos costó este barco en los últimos 2 años? Hoy lleva horas cruzar los datos. Con el sistema, son 3 clics."</i></p>
+            </div>
+        </section>
+
+        <!-- T2-02 -->
+        <section>
+            <span class="badge">MÓDULO 2</span>
+            <h2>Personal y Talleres</h2>
+            <div class="glass-card">
+                <p>Reemplaza a: <b>GS-008</b> + <b>GS-005 (Terceros)</b></p>
+                <p><b>El Problema:</b> Los tarifarios se actualizan a mano y se pierde el valor histórico. Faltan vínculos obligatorios entre operario externo y taller.</p>
+                <p><b>La Solución:</b> Tarifarios con vigencia temporal. Control estricto de proveedores.</p>
+                <p><i style="color: var(--primary);">"Cambiar una tarifa crea una tarjeta nueva. El sistema sabe qué cobrar hoy y qué cobrar por el trabajo de hace un mes."</i></p>
+            </div>
+        </section>
+
+        <!-- T2-03 -->
+        <section>
+            <span class="badge">MÓDULO 3</span>
+            <h2>Operaciones (El Motor)</h2>
+            <div class="glass-card">
+                <p>Reemplaza a: <b>GS-001 (Horas)</b>, <b>GS-003 (OTs en progreso)</b>, <b>GS-009/010 (Conciliación)</b></p>
+                <p><b>El Problema:</b> La conciliación entre lo que marca el reloj y lo que se imputa es manual. Los errores se ven tarde.</p>
+                <p><b>La Solución:</b> Automatización total. El "Triángulo del Costo" en tiempo real.</p>
+                <p><i style="color: var(--primary);">"Si Juan marca 8 horas en reloj pero se imputan 4 a la OT, el sistema alerta al gerente en el mismo día."</i></p>
+            </div>
+        </section>
+
+        <!-- T2-04 -->
+        <section>
+            <span class="badge">MÓDULO 4</span>
+            <h2>Logística (Pañol)</h2>
+            <div class="glass-card">
+                <p>Reemplaza a: <b>GS-002 (Materiales)</b>, <b>GS-006 (Compras)</b>, <b>GS-007 (Stock)</b></p>
+                <p><b>El Problema:</b> Restar stock es manual. Compras directas a obra se pierden o imputan mal.</p>
+                <p><b>La Solución:</b> Inventario vivo. Retiro de material = descuento automático. Alertas de stock mínimo.</p>
+            </div>
+        </section>
+
+        <!-- T2-05 -->
+        <section>
+            <span class="badge">MÓDULO 5</span>
+            <h2>Presupuestos y Facturación</h2>
+            <div class="glass-card">
+                <p>Reemplaza a: <b>GS-011 (Presupuestos)</b>, <b>GS-012 (Cotizador)</b></p>
+                <p><b>El Problema:</b> El presupuesto y la liquidación final (el Anexo) están desconectados del costo real (vivo).</p>
+                <p><b>La Solución:</b> El presupuesto se clona al Anexo final. El sistema separa la mano de obra (exenta) de los materiales (21% IVA) automáticamente.</p>
+            </div>
+        </section>
+
+        <!-- T2-06 -->
+        <section>
+            <span class="badge">MÓDULO 6</span>
+            <h2>Cierre y Auditoría</h2>
+            <div class="glass-card">
+                <p>Reemplaza a: <b>GS-004 (Resumen Gerencial parcial)</b></p>
+                <p><b>El Problema:</b> Un dato cerrado se puede modificar accidentalmente, arruinando históricos.</p>
+                <p><b>La Solución:</b> Data Locking.</p>
+                <p><i style="color: var(--primary);">"Cuando la OT se factura, se bloquea. Queda grabada en piedra. Sabemos quién la creó, quién imputó, y quién la cerró."</i></p>
+            </div>
+        </section>
+
+        <!-- T2-07 -->
+        <section>
+            <span class="badge">FLUJO DE DATOS</span>
+            <h2>Manual de Procedimientos Vivo</h2>
+            <div class="glass-card" style="font-size: 0.9em;">
+                <p>El sistema obliga a seguir el orden correcto:</p>
+                <ol style="color: #cbd5e1; margin-left: 20px;">
+                    <li style="margin-bottom: 5px;">Se crea la OT (M3) asociada al Barco (M1).</li>
+                    <li style="margin-bottom: 5px;">Se asignan Operarios (M2) y marcan Reloj.</li>
+                    <li style="margin-bottom: 5px;">Se imputan horas (M3). Conciliación automática.</li>
+                    <li style="margin-bottom: 5px;">Pañol entrega materiales (M4). Baja el stock.</li>
+                    <li style="margin-bottom: 5px;">El costo total (MO + Mat) sube en vivo.</li>
+                    <li style="margin-bottom: 5px;">Gerencia emite Anexo facturable (M5).</li>
+                    <li style="margin-bottom: 5px;">Se cierra y bloquea la OT (M6).</li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- T2-08 -->
+        <section>
+            <span class="badge">SEGURIDAD</span>
+            <h2>Niveles de Autorización</h2>
+            <table style="font-size: 0.6em !important;">
+                <tr>
+                    <th>Rol</th>
+                    <th>Puede Hacer</th>
+                    <th>No Puede Hacer</th>
+                </tr>
+                <tr>
+                    <td><b>Operario / Carga</b></td>
+                    <td>Cargar horas, registrar consumos de pañol.</td>
+                    <td>Ver costos globales, modificar tarifas, cerrar OTs.</td>
+                </tr>
+                <tr>
+                    <td><b>Supervisor</b></td>
+                    <td>Aprobar horas, ver alertas de su área.</td>
+                    <td>Cerrar y facturar, modificar presupuestos.</td>
+                </tr>
+                <tr>
+                    <td><b>Gerencia</b></td>
+                    <td>Cierre, facturación, reportes BI, auditoría total.</td>
+                    <td><i>Acceso Total.</i></td>
+                </tr>
+            </table>
+        </section>
+
+        <!-- T2-09 IA PROCEDIMIENTOS -->
+        <section>
+            <span class="badge">MÓDULO 7 (NOVEDAD)</span>
+            <h2>IA: Procedimientos y Conocimiento</h2>
+            <div class="glass-card">
+                <p><b>Parte 1: El Redactor</b><br>
+                Planteás un problema ("Hay que archivar remitos así...") y la IA redacta en segundos un manual de procedimiento corporativo estandarizado. Lo aprobás y lo notifica.</p>
+                <p><b>Parte 2: El Asistente Operativo</b><br>
+                Un empleado duda: <i>"¿Cómo archivo esto?"</i>. Le pregunta al sistema, y la IA busca en los manuales aprobados y le da la respuesta exacta.</p>
+                <p><i style="color: var(--primary);">"El conocimiento queda en la empresa, no en la cabeza de las personas."</i></p>
+            </div>
+        </section>
+
+        <!-- T2-10 IA DATOS -->
+        <section>
+            <span class="badge">MÓDULO 7</span>
+            <h2>IA: Análisis de Datos (BI)</h2>
+            <div class="col-container">
+                <div class="col glass-card" style="font-size: 0.8em;">
+                    <p>Le hablás al sistema en lenguaje natural:</p>
+                    <ul>
+                        <li><i>"¿Cuál es el costo del Barco Libertad esta semana?"</i></li>
+                        <li><i>"¿Qué materiales bajaron del stock mínimo?"</i></li>
+                    </ul>
+                    <p style="margin-top:20px;">Toda la info de las ex-planillas está interrelacionada. La IA te la resume.</p>
+                </div>
+                <div class="col">
+                    <img src="mockup_ai_assistant_1789584864974.jpg" class="mockup-img">
+                </div>
+            </div>
+        </section>
+
+        <!-- T2-11 IA GERENCIA -->
+        <section>
+            <h2>¿Qué significa la IA para Gerencia?</h2>
+            <div class="glass-card">
+                <ul>
+                    <li><span class="highlight">Estandariza:</span> Transforma el caos diario en procedimientos formales, sin que el gerente tenga que perder horas escribiendo.</li>
+                    <li><span class="highlight">Detecta:</span> Encuentra discrepancias financieras (horas sin imputar) antes de que impacten en la facturación.</li>
+                    <li><span class="highlight">Capacita 24/7:</span> Guía al personal sobre qué hacer y cómo hacerlo (carga asistida).</li>
+                </ul>
+                <p style="margin-top: 20px; font-weight: bold; color: var(--primary);">La IA no reemplaza a nadie. Le saca el trabajo administrativo pesado a la gerencia y le da superpoderes.</p>
+            </div>
+        </section>
+
+        <!-- T2-12 CIERRE -->
+        <section>
+            <h2>¿Preguntas?</h2>
+            <img src="mockup_logo_outro_1789584919190.jpg" class="mockup-img" style="height: 350px;">
+        </section>
+
+
+        <!-- ============================================== -->
+        <!-- BONUS: LOS NÚMEROS                             -->
+        <!-- ============================================== -->
+
+        <!-- B-01 -->
+        <section>
+            <h1 style="font-size: 3em;">Análisis del Proyecto</h1>
+            <p>Estado, Costos y Modelo</p>
+        </section>
+
+        <!-- B-02 -->
+        <section>
+            <h2>Estado del Desarrollo</h2>
+            <div class="glass-card">
+                <ul>
+                    <li>✅ <b>Diseño y reglas de negocio:</b> Completado.</li>
+                    <li>✅ <b>Mapeo de las 12 planillas:</b> Completado (documentado).</li>
+                    <li>✅ <b>Infraestructura y Base de Datos:</b> Funcionando.</li>
+                    <li>🔧 <b>Interfaces y Automatizaciones (App):</b> En desarrollo.</li>
+                    <li>📋 <b>Puesta en marcha:</b> Pendiente.</li>
+                </ul>
+                <p style="color: var(--primary);"><b>Timeline estimado:</b> 3 a 5 meses para la primera versión operativa.</p>
+            </div>
+        </section>
+
+        <!-- B-03 -->
+        <section>
+            <h2>Valor vs. Costo</h2>
+            <div class="glass-card" style="font-size: 0.85em;">
+                <p>En el mercado (Septiembre 2026), un desarrollo ERP a medida de este tamaño cuesta entre <b>US$ 20.000 y US$ 35.000</b>.</p>
+                <p>Solo el trabajo de "Relevamiento de Negocio" (entender cómo funciona el astillero para poder programarlo) le cuesta a un externo meses de trabajo (US$ 5.000+).</p>
+                <br>
+                <p style="color: var(--accent);"><b>Nuestra ventaja:</b> Yo ya tengo el 100% de ese conocimiento (creé las planillas actuales) y utilizo Inteligencia Artificial para multiplicar mi velocidad de desarrollo. El costo real para nosotros es una fracción del valor de mercado.</p>
+            </div>
+        </section>
+
+        <!-- B-04 -->
+        <section>
+            <h2>Propuesta de Modelo</h2>
+            <div class="col-container">
+                <div class="col glass-card" style="border-color: var(--primary);">
+                    <h3 style="font-size: 1.2em; text-align: center;">Suscripción (Recomendado)</h3>
+                    <p style="font-size: 0.8em; text-align: center;">Sin riesgo inicial.</p>
+                    <ul style="font-size: 0.8em;">
+                        <li>Uso completo de los 7 módulos.</li>
+                        <li>Hosting de servidores.</li>
+                        <li>Mantenimiento técnico mío.</li>
+                        <li>El día que no sirva, se cancela.</li>
+                    </ul>
+                </div>
+                <div class="col glass-card">
+                    <h3 style="font-size: 1.2em; text-align: center;">Venta Directa</h3>
+                    <p style="font-size: 0.8em; text-align: center;">Por valor de mercado.</p>
+                    <ul style="font-size: 0.8em;">
+                        <li>Se entrega el sistema "llave en mano".</li>
+                        <li>Las mejoras futuras o nuevos módulos (ej. sueldos) se cotizan aparte.</li>
+                        <li>Costo de servidores no incluido.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+    </div>
+</div>
+
+<!-- Reveal.js JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+<script>
+    Reveal.initialize({
+        hash: true,
+        controls: true,
+        progress: true,
+        center: true,
+        transition: 'fade', // transiciones más profesionales
+        backgroundTransition: 'fade'
+    });
+</script>
+</body>
+</html>
