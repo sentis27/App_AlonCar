@@ -47,12 +47,13 @@
 | B | `GRUPO DE TRABAJO` | String | FORMULA / MANUAL | `=E6` (Toma el Centro Administrativo o el Taller asignado). |
 | C | `U$/HORA` | Currency (USD) | FORMULA | `=I6/$G$2` (Divide valor ARS por el tipo de cambio de la quincena). |
 | D | `RUBRO` | Enum | DESPLEGABLE | Raschinaje, Calderería, Carpintería, Mecánica, Mandados, etc. |
-| E | `CENTRO ADMINISTRATIVO` | Enum | DESPLEGABLE | ASTILLERO, CONTRATISTA, TALLER. |
+| E | `CENTRO ADMINISTRATIVO` | Enum (Array) | DESPLEGABLE MÚLTIPLE | ASTILLERO, CONTRATISTA, TALLER, ASTILLERO ADMINISTRACION. (Admite selección múltiple, ej: ASTILLERO + ASTILLERO ADMINISTRACION). |
+| E2| `DEPARTAMENTO` | Enum (Array) | DESPLEGABLE MÚLTIPLE | Pañol, Compras, Logística, Sueldos, RRHH, Contabilidad, Operaciones, Gerencia, Finanzas, Ventas, Supervisión. (Admite selección múltiple). |
 | F | `CONSUMIBLES` | Enum | DESPLEGABLE | CLIENTE, CONTRATISTA (Regla % parametrizable en DEC-009). |
 | G | `ELEM_SEGURIDAD` | Enum | DESPLEGABLE | CONTRATISTA (100% costo a cargo del contratista). |
 | H | `ESTADO` | Enum | DESPLEGABLE | ACTIVO, INACTIVO (Soft Delete para altas/bajas rápidas). |
 | I | `AR$/HORA` | Currency (ARS) | FORMULA | `=IF(J6="";"";VLOOKUP(J6;BD_ValorHoraHombre!B$2:C$100;2;FALSE))` |
-| J | `CATEGORIA` | Enum | DESPLEGABLE | AYUDANTE, OFICIAL, 1/2 OFICIAL, APRENDIZ, MANDADOS, MISCELANEOS... |
+| J | `CATEGORIA` | Enum | DESPLEGABLE | AYUDANTE, OFICIAL, 1/2 OFICIAL, APRENDIZ, MANDADOS, MISCELANEOS, ADMINISTRATIVO... |
 | K | `CARGA MATERIALES` | Boolean | DESPLEGABLE | SI / NO (Permiso para retirar consumibles/materiales en pañol). |
 | L | `COSTO HORAS` | Boolean | DESPLEGABLE | SI / NO (Permiso para imputar horas presenciales). |
 | M | `CODIGO GRUPO TRABAJO. RUBRO` | String | FORMULA | `=IF(A6="";"";CONCATENATE(B6;".";D6))` (Ej. `ASTILLERO.RASCHINAJE`). |
