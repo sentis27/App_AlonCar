@@ -103,6 +103,18 @@ Un sistema unificado que reemplaza las 12 planillas por una arquitectura de mód
 
 ---
 
+### T2-00 — El Origen del Dato: Ficha Técnica Dinámica (Módulo M1)
+
+**El Problema:**
+- Hoy no existe un registro estandarizado de las especificaciones de cada barco. Como en la industria naval cada barco es un mundo, si intentamos crear un formulario rígido con cientos de campos fijos, termina siendo inusable y el Jefe de Obra no lo completa. Y si lo dejamos todo en texto libre, no podemos calcular nada.
+
+**Mejora:**
+- Se implementa una **Ficha Técnica Híbrida**. Por un lado, tenemos los **Datos Matemáticos Fijos** (Eslora, Manga, M2 de casco) que el sistema usa automáticamente para calcular litros de pintura, presupuestos de raschinaje, etc.
+- Por otro lado, los **Componentes Dinámicos**. Una lista donde el Jefe de Obra simplemente pone cantidades (ej: Tanques de combustible: 4). Si hay componentes, se abre un campo de *Observaciones* libres (ej: "2 bodega 10m3, 1 popa boyante 15m3, 1 tanque diario 2m3").
+- Esto mantiene la plataforma limpia, fácil de usar, y a nivel sistema guarda un "paquete de datos" perfecto que la Inteligencia Artificial usará después para advertir sobre dificultades pasadas (ej: *"Atención, estos pocetes suelen estar sucios con aceite pesado"*).
+
+---
+
 ### T2-01 — Planilla de Horas (→ Módulo Operaciones)
 
 **Actualmente:**
