@@ -94,6 +94,7 @@ La App reemplazará por completo las planillas de cruce mediante una **Bandeja d
 1. **Conciliación Relacional Automática:** El backend (Supabase) cruza constantemente los retiros de pañol (`Consumption`) contra la carga de horas (`TimeImput`) y las asignaciones de trabajo (`WorkOrder`).
 2. **Alertas Clarificadas:** Se despliegan tarjetas de inconsistencia etiquetadas como **`⚠️ Material sin Carga de Horas / Trabajo Reportado`**.
 3. **Resolución en un Clic (In-Place Editing):**
+   - **Asistencia Contextual (Vista Rápida):** El sistema asiste al supervisor mostrando las horas que SÍ cargó ese operario/taller en esa semana, brindando contexto inmediato para descubrir si hubo un error de tipeo en la OT sin ir a buscar a otra planilla.
    - **Boton ✏️ Corregir Imputación de Material:** Permite corregir la OT o el Barco del retiro de pañol desde la misma pantalla en caso de error del pañolero.
    - **Boton ➕ Cargar Horas Faltantes:** Abre el formulario de carga de horas con el Barco, OT, Taller y Fecha **pre-completados automáticamente**.
    - **Boton 🛡️ Excepción Justificada:** Permite autorizar retiros especiales sin horas adjuntando una justificación breve.
