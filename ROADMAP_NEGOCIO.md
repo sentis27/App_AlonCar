@@ -280,8 +280,7 @@ REGISTRO DE AUDITORÍA (AuditTrail)
 ├─ Quién hizo qué
 ├─ Cuándo lo hizo
 ├─ Qué cambió (antes/después)
-├─ IP y dispositivo
-└─ Firma digital (si requiere)
+└─ IP y dispositivo
 
 DATOS HISTÓRICOS (HistoricalData)
 ├─ Snapshot de OT después de cierre

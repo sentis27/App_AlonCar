@@ -9,5 +9,8 @@ Esta sección contendrá las especificaciones y reglas de negocio detalladas del
 * **Sistema de Revisión y Auditoría:** [revision_planillas.md](revision_planillas.md)
   *(Define el ciclo de vida, roles y bloqueos para la corrección de datos en las planillas).*
 
+* **Especificación Técnica Definitiva (v7):** [spec_tabla_de_tablas_v7.md](../spec_tabla_de_tablas_v7.md)
+  *(Mapeo completo de las 22 tablas del ERP Supabase integrando todas las planillas escaneadas).*
+
 ---
 *Volver al [Índice Central](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/INDICE_CENTRAL.md)*
