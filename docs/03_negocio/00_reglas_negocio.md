@@ -64,3 +64,10 @@ El formulario de Pañol permite seleccionar la OT una sola vez y agregar una gri
 3. **Generación de Mensaje:** Consulta el medio de contacto registrado en `suppliers` (Email o WhatsApp) y redacta un mensaje formal con el listado agrupado.
 4. **Transición de Estado:** Las solicitudes seleccionadas cambian su estado de `PEDIR` a `PEDIDO`.
 5. **Trazabilidad de Auditoría:** El log del sistema registra si el pedido fue realizado por la automatización (`created_by_automation = true`) o manualmente por un operario.
+
+---
+
+## 5. Estándar de Idioma de la Plataforma (UI / UX)
+Toda la interfaz de usuario (UI), notificaciones, alertas, mensajes del asistente de IA y exportaciones (PDF, Excel) deben estar estricta y obligatoriamente en **ESPAÑOL**. 
+- **Cero tolerancia al Spanglish:** Términos como "Dashboard", "Work Order", "Submit", "Loading" deben traducirse a sus equivalentes precisos en español (ej. Panel de Control, Orden de Trabajo, Enviar, Cargando). 
+- El personal del astillero, desde pañol hasta gerencia, requiere una herramienta nativa en su idioma que no genere fricción cognitiva.
