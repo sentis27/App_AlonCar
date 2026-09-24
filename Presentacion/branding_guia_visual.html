@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alon Car — Guía Visual de Branding</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1E3A5F;
+            --primary-light: #00F2FE;
+            --secondary: #F97316;
+            --secondary-light: #FB923C;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+            --info: #3B82F6;
+            --bg-dark: #0F172A;
+            --bg-card: rgba(15,23,42,0.7);
+            --bg-input: #1E293B;
+            --text-primary: #F8FAFC;
+            --text-secondary: #94A3B8;
+            --border: rgba(255,255,255,0.12);
+            --role-operario: #F97316;
+            --role-supervisor: #10B981;
+            --role-gerencia: #00F2FE;
+            --role-admin: #8B5CF6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            padding: 40px;
+            line-height: 1.6;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            padding: 40px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3em;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--primary-light), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .header .tagline {
+            font-size: 1.2em;
+            color: var(--text-secondary);
+            font-weight: 300;
+        }
+
+        .section {
+            margin-bottom: 60px;
+        }
+
+        .section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.8em;
+            font-weight: 800;
+            color: var(--primary-light);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-title .section-number {
+            background: var(--secondary);
+            color: #fff;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7em;
+        }
+
+        .section-desc {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            margin-bottom: 30px;
+        }
+
+        /* ========== PALETA DE COLORES ========== */
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .color-card {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .color-swatch {
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.1em;
+        }
+
+        .color-info {
+            background: var(--bg-input);
+            padding: 12px 16px;
+        }
+
+        .color-info .token {
+            font-family: monospace;
+            font-size: 0.8em;
+            color: var(--primary-light);
+        }
+
+        .color-info .hex {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .color-info .uso {
+            font-size: 0.78em;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            border-top: 1px solid var(--border);
+            padding-top: 6px;
+        }
+
+        /* ========== TIPOGRAFÍA ========== */
+        .typo-row {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 28px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .typo-example {
+            flex: 1;
+        }
+
+        .typo-meta {
+            text-align: right;
+            min-width: 200px;
+        }
+
+        .typo-meta .font-name {
+            font-size: 0.75em;
+            color: var(--secondary);
+            font-weight: 600;
+        }
+
+        .typo-meta .font-details {
+            font-size: 0.7em;
+            color: var(--text-secondary);
+        }
+
+        .typo-label {
+            font-size: 0.65em;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        /* ========== BOTONES ========== */
+        .btn-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .btn-showcase {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn {
+            padding: 12px 28px;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            font-size: 0.9em;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+            min-width: 180px;
+            text-align: center;
+        }
+
+        .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+
+        .btn-primary { background: var(--secondary); color: #fff; }
+        .btn-secondary { background: transparent; color: var(--secondary); border: 2px solid var(--secondary); }
+        .btn-success { background: var(--success); color: #fff; }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-ghost { background: transparent; color: var(--text-secondary); }
+        .btn-ghost:hover { color: var(--text-primary); }
+
+        .btn-label {
+            font-size: 0.7em;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        /* ========== TARJETAS (Glass) ========== */
+        .card-demo-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card-demo {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+        }
+
+        .card-demo h4 {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .card-demo p {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .card-demo-light {
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .card-demo-light h4 {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            color: #0F172A;
+            margin-bottom: 8px;
+        }
+
+        .card-demo-light p {
+            font-size: 0.85em;
+            color: #64748B;
+            line-height: 1.5;
+        }
+
+        /* ========== FORMULARIO DEMO ========== */
+        .form-demo {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            max-width: 500px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.75em;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9em;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            border-color: var(--secondary);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9em;
+            appearance: none;
+        }
+
+        /* ========== ROLES ========== */
+        .role-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .role-card {
+            background: var(--bg-input);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .role-accent {
+            height: 6px;
+        }
+
+        .role-content {
+            padding: 20px;
+            text-align: center;
+        }
+
+        .role-emoji {
+            font-size: 2em;
+            margin-bottom: 8px;
+        }
+
+        .role-name {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 0.95em;
+            margin-bottom: 4px;
+        }
+
+        .role-desc {
+            font-size: 0.75em;
+            color: var(--text-secondary);
+        }
+
+        /* ========== SIDEBAR DEMO ========== */
+        .sidebar-demo-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .sidebar-demo {
+            width: 220px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 0;
+            flex-shrink: 0;
+        }
+
+        .sidebar-demo .sidebar-title {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 0.7em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            padding: 0 20px;
+            margin-bottom: 12px;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-item:hover {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.03);
+        }
+
+        .sidebar-item.active {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.05);
+        }
+
+        /* ========== ALERTAS ========== */
+        .alert {
+            padding: 14px 18px;
+            border-radius: 10px;
+            font-size: 0.85em;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .alert-success { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+        .alert-danger { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+        .alert-warning { background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
+        .alert-info { background: rgba(59,130,246,0.15); color: var(--info); border: 1px solid rgba(59,130,246,0.3); }
+
+        /* ========== TABLA DEMO ========== */
+        .table-demo {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85em;
+        }
+
+        .table-demo th {
+            text-align: left;
+            padding: 12px 16px;
+            color: var(--primary-light);
+            font-weight: 600;
+            border-bottom: 2px solid var(--border);
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .table-demo td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .table-demo tr:hover td {
+            background: rgba(255,255,255,0.03);
+        }
+
+        .badge-sm {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .badge-ok { background: rgba(16,185,129,0.2); color: var(--success); }
+        .badge-pending { background: rgba(245,158,11,0.2); color: var(--warning); }
+        .badge-error { background: rgba(239,68,68,0.2); color: var(--danger); }
+
+        /* ========== MODO CLARO ========== */
+        .light-mode-demo {
+            background: #F8FAFC;
+            border-radius: 16px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+
+        .light-mode-demo h4 {
+            color: #0F172A;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .light-mode-demo .form-input-light {
+            width: 100%;
+            padding: 10px 14px;
+            background: #F1F5F9;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            color: #0F172A;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9em;
+            margin-bottom: 12px;
+        }
+
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 40px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <div class="header">
+        <h1>ALON CAR</h1>
+        <div class="tagline">Gestión Naval Inteligente — Guía Visual de Branding</div>
+    </div>
+
+    <!-- ==================== SECCIÓN 1: COLORES ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">1</span> Paleta de Colores</div>
+        <div class="section-desc">Colores principales y semánticos. Hacé clic derecho → "Inspeccionar" sobre cualquier color para ver su código hex exacto.</div>
+
+        <h3 style="font-family: Outfit; color: var(--primary-light); margin-bottom: 16px; font-size: 1.1em;">Colores Principales</h3>
+        <div class="color-grid">
+            <div class="color-card">
+                <div class="color-swatch" style="background: #1E3A5F; color: #fff;">Primario</div>
+                <div class="color-info">
+                    <div class="token">--primary</div>
+                    <div class="hex">#1E3A5F</div>
+                    <div class="uso">Sidebar, headers, fondos de sección</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #00F2FE; color: #0F172A;">Primario Claro</div>
+                <div class="color-info">
+                    <div class="token">--primary-light</div>
+                    <div class="hex">#00F2FE</div>
+                    <div class="uso">Títulos, links activos, íconos seleccionados</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #F97316; color: #fff;">Secundario</div>
+                <div class="color-info">
+                    <div class="token">--secondary</div>
+                    <div class="hex">#F97316</div>
+                    <div class="uso">Botón principal, badges, acentos cálidos</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #FB923C; color: #fff;">Secundario Claro</div>
+                <div class="color-info">
+                    <div class="token">--secondary-light</div>
+                    <div class="hex">#FB923C</div>
+                    <div class="uso">Hover de botones naranjas</div>
+                </div>
+            </div>
+        </div>
+
+        <h3 style="font-family: Outfit; color: var(--primary-light); margin: 24px 0 16px; font-size: 1.1em;">Colores Semánticos</h3>
+        <div class="color-grid">
+            <div class="color-card">
+                <div class="color-swatch" style="background: #10B981; color: #fff;">✓ Éxito</div>
+                <div class="color-info">
+                    <div class="token">--success</div>
+                    <div class="hex">#10B981</div>
+                    <div class="uso">Confirmaciones, "OK", aprobaciones</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #EF4444; color: #fff;">✕ Peligro</div>
+                <div class="color-info">
+                    <div class="token">--danger</div>
+                    <div class="hex">#EF4444</div>
+                    <div class="uso">Errores, alertas críticas, eliminar</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #F59E0B; color: #fff;">⚠ Advertencia</div>
+                <div class="color-info">
+                    <div class="token">--warning</div>
+                    <div class="hex">#F59E0B</div>
+                    <div class="uso">Pendientes, en revisión</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #3B82F6; color: #fff;">ℹ Información</div>
+                <div class="color-info">
+                    <div class="token">--info</div>
+                    <div class="hex">#3B82F6</div>
+                    <div class="uso">Tooltips, ayuda, notificaciones</div>
+                </div>
+            </div>
+        </div>
+
+        <h3 style="font-family: Outfit; color: var(--primary-light); margin: 24px 0 16px; font-size: 1.1em;">Fondos y Neutros</h3>
+        <div class="color-grid">
+            <div class="color-card">
+                <div class="color-swatch" style="background: #0F172A; color: #F8FAFC; border: 1px solid var(--border);">Fondo Principal</div>
+                <div class="color-info">
+                    <div class="token">--bg-dark</div>
+                    <div class="hex">#0F172A</div>
+                    <div class="uso">Fondo general de la app (modo oscuro)</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #1E293B; color: #F8FAFC;">Fondo Inputs</div>
+                <div class="color-info">
+                    <div class="token">--bg-input</div>
+                    <div class="hex">#1E293B</div>
+                    <div class="uso">Campos de texto, selects, fondos de tabla</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #F8FAFC; color: #0F172A;">Texto Principal</div>
+                <div class="color-info">
+                    <div class="token">--text-primary</div>
+                    <div class="hex">#F8FAFC</div>
+                    <div class="uso">Todo texto sobre fondo oscuro</div>
+                </div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: #1E293B; color: #94A3B8;">Texto Secundario</div>
+                <div class="color-info">
+                    <div class="token">--text-secondary</div>
+                    <div class="hex">#94A3B8</div>
+                    <div class="uso">Descripciones, placeholders, subtítulos</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SECCIÓN 2: TIPOGRAFÍA ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">2</span> Tipografía</div>
+        <div class="section-desc">Dos fuentes: Outfit para títulos (impacto), Inter para cuerpo (legibilidad).</div>
+
+        <div class="typo-row">
+            <div class="typo-example">
+                <div class="typo-label">Título Principal (H1)</div>
+                <div style="font-family: Outfit; font-weight: 900; font-size: 2.2em; background: linear-gradient(135deg, var(--primary-light), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Resumen Gerencial de O.T.</div>
+            </div>
+            <div class="typo-meta">
+                <div class="font-name">Outfit Extra Bold</div>
+                <div class="font-details">Weight: 900 · 2.2em · Gradiente cyan→naranja</div>
+            </div>
+        </div>
+
+        <div class="typo-row">
+            <div class="typo-example">
+                <div class="typo-label">Subtítulo (H2)</div>
+                <div style="font-family: Outfit; font-weight: 800; font-size: 1.6em; color: var(--primary-light);">Carga Múltiple de Horas</div>
+            </div>
+            <div class="typo-meta">
+                <div class="font-name">Outfit Bold</div>
+                <div class="font-details">Weight: 800 · 1.6em · Color: --primary-light</div>
+            </div>
+        </div>
+
+        <div class="typo-row">
+            <div class="typo-example">
+                <div class="typo-label">Encabezado de Sección (H3)</div>
+                <div style="font-family: Outfit; font-weight: 700; font-size: 1.2em; color: var(--primary-light);">Datos del Operario</div>
+            </div>
+            <div class="typo-meta">
+                <div class="font-name">Outfit Bold</div>
+                <div class="font-details">Weight: 700 · 1.2em · Color: --primary-light</div>
+            </div>
+        </div>
+
+        <div class="typo-row">
+            <div class="typo-example">
+                <div class="typo-label">Cuerpo de Texto</div>
+                <div style="font-family: Inter; font-weight: 400; font-size: 0.95em; color: var(--text-primary);">El supervisor debe verificar que todas las horas cargadas correspondan a un trabajo vigente antes de cerrar la quincena.</div>
+            </div>
+            <div class="typo-meta">
+                <div class="font-name">Inter Regular</div>
+                <div class="font-details">Weight: 400 · 14px · Color: --text-primary</div>
+            </div>
+        </div>
+
+        <div class="typo-row">
+            <div class="typo-example">
+                <div class="typo-label">Etiqueta de Formulario</div>
+                <div style="font-family: Inter; font-weight: 600; font-size: 0.75em; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">ORDEN DE TRABAJO</div>
+            </div>
+            <div class="typo-meta">
+                <div class="font-name">Inter Semi Bold</div>
+                <div class="font-details">Weight: 600 · 12px · Uppercase · Color: --text-secondary</div>
+            </div>
+        </div>
+
+        <div class="typo-row">
+            <div class="typo-example">
+                <div class="typo-label">Texto de Tabla</div>
+                <div style="font-family: Inter; font-weight: 400; font-size: 0.85em; color: var(--text-primary);">Planchuela 2" x 1/4" x Metro — Distribuidora del Sud — $12.450,00</div>
+            </div>
+            <div class="typo-meta">
+                <div class="font-name">Inter Regular</div>
+                <div class="font-details">Weight: 400 · 13px · Color: --text-primary</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SECCIÓN 3: BOTONES ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">3</span> Botones</div>
+        <div class="section-desc">Todos con border-radius: 8px. Hover sube 2px y brilla 10%.</div>
+
+        <div class="btn-grid">
+            <div class="btn-showcase">
+                <button class="btn btn-primary">Cargar Horas</button>
+                <div class="btn-label">Primario (Naranja)<br><code style="font-size: 0.85em; color: var(--text-secondary);">--secondary #F97316</code></div>
+            </div>
+            <div class="btn-showcase">
+                <button class="btn btn-secondary">Cancelar</button>
+                <div class="btn-label">Secundario (Outline)<br><code style="font-size: 0.85em; color: var(--text-secondary);">borde --secondary</code></div>
+            </div>
+            <div class="btn-showcase">
+                <button class="btn btn-success">Cerrar Quincena</button>
+                <div class="btn-label">Éxito (Verde)<br><code style="font-size: 0.85em; color: var(--text-secondary);">--success #10B981</code></div>
+            </div>
+            <div class="btn-showcase">
+                <button class="btn btn-danger">Cerrar OT Definitivo</button>
+                <div class="btn-label">Peligro (Rojo)<br><code style="font-size: 0.85em; color: var(--text-secondary);">--danger #EF4444</code></div>
+            </div>
+            <div class="btn-showcase">
+                <button class="btn btn-ghost">Ver más detalles</button>
+                <div class="btn-label">Ghost (Link)<br><code style="font-size: 0.85em; color: var(--text-secondary);">transparente</code></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SECCIÓN 4: ALERTAS ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">4</span> Alertas y Notificaciones</div>
+        <div class="section-desc">Mensajes del sistema visibles al usuario según su gravedad.</div>
+
+        <div class="alert alert-success">✅ Quincena cerrada correctamente. Tipo de cambio congelado: USD 1 = ARS 1.285,00</div>
+        <div class="alert alert-danger">🚨 Material sin carga de horas detectado: Electrodos 3.25mm — OT: PROA MODIFICACIÓN — Contratista: RAMÓN ARANDA</div>
+        <div class="alert alert-warning">⚠️ Stock crítico: Pintura Epóxi Rojo (3 unidades restantes). Vitalidad estimada: 4 días.</div>
+        <div class="alert alert-info">ℹ️ Cotización adjuntada: cables varios-Distribuidora del Sud.pdf — Vinculada a Pedido #0234</div>
+    </div>
+
+    <!-- ==================== SECCIÓN 5: TARJETAS ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">5</span> Tarjetas (Glassmorphism vs Modo Claro)</div>
+        <div class="section-desc">Comparación directa de cómo se ve la misma tarjeta en modo oscuro y modo claro.</div>
+
+        <div class="card-demo-grid">
+            <div class="card-demo">
+                <h4 style="color: var(--primary-light);">🌙 Modo Oscuro</h4>
+                <p>OT: CUBIERTA (MADERA) — Duque Almirante Brown</p>
+                <p style="margin-top: 8px; color: var(--text-primary);"><strong>Costo Total:</strong> USD 23.450,00</p>
+                <p><strong style="color: var(--success);">Estado:</strong> En Ejecución</p>
+            </div>
+            <div class="card-demo-light">
+                <h4>☀️ Modo Claro</h4>
+                <p>OT: CUBIERTA (MADERA) — Duque Almirante Brown</p>
+                <p style="margin-top: 8px; color: #0F172A;"><strong>Costo Total:</strong> USD 23.450,00</p>
+                <p><strong style="color: #10B981;">Estado:</strong> En Ejecución</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SECCIÓN 6: FORMULARIO ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">6</span> Formulario de Ejemplo</div>
+        <div class="section-desc">Así se ve un formulario real en la app (modo oscuro).</div>
+
+        <div class="form-demo">
+            <h4 style="font-family: Outfit; color: var(--primary-light); margin-bottom: 16px;">📋 Carga de Horas</h4>
+            <div class="form-group">
+                <label class="form-label">Barco / Cliente</label>
+                <input class="form-input" value="DON VICENTE VUOSO" readonly>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Orden de Trabajo</label>
+                <input class="form-input" value="PROA MODIFICACIÓN" readonly>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Operario</label>
+                <input class="form-input" placeholder="Buscar operario..." >
+            </div>
+            <div class="form-group">
+                <label class="form-label">Horas Trabajadas</label>
+                <input class="form-input" type="number" value="8">
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button class="btn btn-primary" style="flex: 1;">Guardar</button>
+                <button class="btn btn-secondary" style="flex: 1;">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SECCIÓN 7: TABLA ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">7</span> Tabla de Datos</div>
+        <div class="section-desc">Estilo de grilla para listados (compras, materiales, horas).</div>
+
+        <div style="background: var(--bg-card); border-radius: 16px; padding: 20px; border: 1px solid var(--border);">
+            <table class="table-demo">
+                <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th>Proveedor</th>
+                        <th>Cantidad</th>
+                        <th>Precio Unit.</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Planchuela 2" x 1/4" x Metro</td>
+                        <td>Distribuidora del Sud</td>
+                        <td>50 mts</td>
+                        <td>$4.320</td>
+                        <td><span class="badge-sm badge-ok">Recibido</span></td>
+                    </tr>
+                    <tr>
+                        <td>Electrodos 3.25mm x Kilo</td>
+                        <td>Cerremaq</td>
+                        <td>25 kg</td>
+                        <td>$8.750</td>
+                        <td><span class="badge-sm badge-pending">Pedido</span></td>
+                    </tr>
+                    <tr>
+                        <td>Válvula esclusa 3" bronce</td>
+                        <td>Hidráulica Sur</td>
+                        <td>4 u.</td>
+                        <td>$45.200</td>
+                        <td><span class="badge-sm badge-error">Sin stock</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==================== SECCIÓN 8: ROLES ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">8</span> Colores por Rol de Usuario</div>
+        <div class="section-desc">El acento del sidebar cambia según quién inicia sesión. Así cada persona sabe "en qué modo está".</div>
+
+        <div class="role-grid">
+            <div class="role-card">
+                <div class="role-accent" style="background: var(--role-operario);"></div>
+                <div class="role-content">
+                    <div class="role-emoji">🔧</div>
+                    <div class="role-name" style="color: var(--role-operario);">Operario / Pañolero</div>
+                    <div class="role-desc">Carga diaria de datos. Formularios optimizados. Sin datos contables.</div>
+                </div>
+            </div>
+            <div class="role-card">
+                <div class="role-accent" style="background: var(--role-supervisor);"></div>
+                <div class="role-content">
+                    <div class="role-emoji">👷</div>
+                    <div class="role-name" style="color: var(--role-supervisor);">Supervisor</div>
+                    <div class="role-desc">Aprobación, reconciliación, control de alertas y revisión de cargas.</div>
+                </div>
+            </div>
+            <div class="role-card">
+                <div class="role-accent" style="background: var(--role-gerencia);"></div>
+                <div class="role-content">
+                    <div class="role-emoji">📊</div>
+                    <div class="role-name" style="color: var(--role-gerencia);">Gerencia</div>
+                    <div class="role-desc">Análisis de costos, resumen gerencial, comparativas, facturación.</div>
+                </div>
+            </div>
+            <div class="role-card">
+                <div class="role-accent" style="background: var(--role-admin);"></div>
+                <div class="role-content">
+                    <div class="role-emoji">⚙️</div>
+                    <div class="role-name" style="color: var(--role-admin);">Administrador</div>
+                    <div class="role-desc">Configuración de tarifarios, permisos, rubros y parámetros del sistema.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-demo-container">
+            <div class="sidebar-demo">
+                <div class="sidebar-title">Vista Operario</div>
+                <div class="sidebar-item active" style="border-left-color: var(--role-operario); color: var(--role-operario);">📋 Cargar Horas</div>
+                <div class="sidebar-item">📦 Pañol</div>
+                <div class="sidebar-item">🔔 Alertas</div>
+            </div>
+            <div class="sidebar-demo">
+                <div class="sidebar-title">Vista Supervisor</div>
+                <div class="sidebar-item active" style="border-left-color: var(--role-supervisor); color: var(--role-supervisor);">✅ Reconciliación</div>
+                <div class="sidebar-item">📋 Trabajos</div>
+                <div class="sidebar-item">👥 Personal</div>
+                <div class="sidebar-item">🔔 Alertas</div>
+            </div>
+            <div class="sidebar-demo">
+                <div class="sidebar-title">Vista Gerencia</div>
+                <div class="sidebar-item active" style="border-left-color: var(--role-gerencia); color: var(--role-gerencia);">📊 Resumen</div>
+                <div class="sidebar-item">🔄 Comparativa</div>
+                <div class="sidebar-item">💰 Facturación</div>
+                <div class="sidebar-item">🤖 Asistente IA</div>
+                <div class="sidebar-item">⚙️ Configuración</div>
+            </div>
+            <div class="sidebar-demo">
+                <div class="sidebar-title">Vista Admin</div>
+                <div class="sidebar-item active" style="border-left-color: var(--role-admin); color: var(--role-admin);">⚙️ Tarifarios</div>
+                <div class="sidebar-item">👥 Usuarios</div>
+                <div class="sidebar-item">📂 Rubros</div>
+                <div class="sidebar-item">🔒 Permisos</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SECCIÓN 9: MODO CLARO ==================== -->
+    <div class="section">
+        <div class="section-title"><span class="section-number">9</span> Modo Claro (Comparación)</div>
+        <div class="section-desc">Mismo formulario que arriba, pero en modo claro para el pañolero que trabaja al sol.</div>
+
+        <div class="light-mode-demo">
+            <h4 style="margin-bottom: 16px;">📋 Carga de Horas (Modo Claro)</h4>
+            <label style="display: block; font-size: 0.75em; font-weight: 600; color: #64748B; margin-bottom: 6px; text-transform: uppercase;">Barco / Cliente</label>
+            <input class="form-input-light" value="DON VICENTE VUOSO" readonly>
+            <label style="display: block; font-size: 0.75em; font-weight: 600; color: #64748B; margin-bottom: 6px; text-transform: uppercase;">Orden de Trabajo</label>
+            <input class="form-input-light" value="PROA MODIFICACIÓN" readonly>
+            <div style="display: flex; gap: 12px; margin-top: 12px;">
+                <button class="btn btn-primary" style="flex: 1;">Guardar</button>
+                <button style="flex: 1; padding: 12px 28px; border-radius: 8px; font-family: Inter; font-weight: 600; font-size: 0.9em; background: transparent; color: #64748B; border: 2px solid #E2E8F0; cursor: pointer;">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
