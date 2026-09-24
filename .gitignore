@@ -1,4 +1,5 @@
 .env
+.env.*
 service-account.json
 node_modules/
 dist/
