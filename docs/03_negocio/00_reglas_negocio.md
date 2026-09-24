@@ -71,3 +71,17 @@ El formulario de Pañol permite seleccionar la OT una sola vez y agregar una gri
 Toda la interfaz de usuario (UI), notificaciones, alertas, mensajes del asistente de IA y exportaciones (PDF, Excel) deben estar estricta y obligatoriamente en **ESPAÑOL**. 
 - **Cero tolerancia al Spanglish:** Términos como "Dashboard", "Work Order", "Submit", "Loading" deben traducirse a sus equivalentes precisos en español (ej. Panel de Control, Orden de Trabajo, Enviar, Cargando). 
 - El personal del astillero, desde pañol hasta gerencia, requiere una herramienta nativa en su idioma que no genere fricción cognitiva.
+
+---
+
+## 6. Gestor Documental de Compras (M4c)
+
+### 6.1. Adjunto Inteligente (1 Clic)
+El operario de compras no necesita organizar carpetas externas ni copiar links. Debe disponer de un botón "Adjuntar Cotización" en cada línea de compra que permita subir un archivo (PDF, DOC, etc.) completando únicamente una descripción breve.
+
+### 6.2. Nomenclatura y Almacenamiento Automático
+- **Renombrado Automático:** El sistema renombra el archivo subido sin intervención humana utilizando la fórmula: `{descripcion}-{proveedor}.{extension}`.
+- **Estructura de Carpetas:** El archivo se almacena en el sistema (Supabase Storage) simulando la estructura del Drive legacy: `cotizaciones/{año}/{rubro}/{archivo_normalizado}`. El año se toma automáticamente y el rubro hereda del módulo de materiales.
+
+### 6.3. Buscador Histórico Indexado
+Las cotizaciones no quedan huérfanas; se indexan en una base de datos relacional (`purchase_documents`), permitiendo búsquedas cruzadas por rubro, proveedor, año y descripción. Esto es fundamental para alimentar el Comparador de Precios (M4b).
