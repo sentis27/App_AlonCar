@@ -155,6 +155,9 @@ Reglas: Operarios externos → Taller externo obligatorio
 Entidades: Worker, Workshop, Supplier, RateCard
 Prioridad: Alta
 
+Subtareas Módulo 2:
+- [ ] **Relevamiento de personal y tareas:** Carga de lista de personal, procesamiento de actividades, construcción de Matriz RACI y perfiles laborales de puesto ([proyecto_perfil_puesto_y_matriz_responsabilidades.md](docs/03_negocio/proyecto_perfil_puesto_y_matriz_responsabilidades.md)).
+
 
  Módulo 3: Operaciones y Control de Costos
 

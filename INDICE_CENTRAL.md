@@ -28,7 +28,11 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)
 Diseño de los 6 módulos del ERP.
-ArchivoContenidoEstadoREADME.mdÍndice de la lógica de negocio🔜 Próximamentemodulos/Especificaciones de cada módulo🔜 Próximamente
+| Archivo | Contenido | Estado |
+| :--- | :--- | :--- |
+| `docs/03_negocio/README.md` | Índice de la lógica de negocio | 🔜 Próximamente |
+| `docs/03_negocio/proyecto_perfil_puesto_y_matriz_responsabilidades.md` | Metodología de relevamiento, perfiles laborales y Matriz RACI (Módulo 2 Recursos) | ✅ Activo |
+| `modulos/` | Especificaciones de cada módulo | 🔜 Próximamente |
 
 📖 Sección 4: Skills de Antigravity (Estructura Modular)
 
