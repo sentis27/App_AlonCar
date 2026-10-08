@@ -1,7 +1,7 @@
 ---
-version: 1.0
+version: 1.1
 last_updated_by: antigravity
-last_updated: 2026-09-30
+last_updated: 2026-10-08
 modulo: M2-recursos
 ---
 
@@ -63,8 +63,40 @@ El relevamiento inicial recopila la información bajo la siguiente plantilla de 
 
 ---
 
+## 👥 3. Relevamiento de Personal y Perfiles de Puesto
+
+### Puesto 01: Proyectista Técnico y Gestor de Subcontratos
+
+| Atributo | Detalle |
+| :--- | :--- |
+| **Persona** | Omar |
+| **Área / Depto** | Operaciones / Oficina Técnica |
+| **Cargo Propuesto** | Proyectista Técnico y Gestor de Subcontratos |
+| **Frecuencia** | Diaria |
+| **Tipo de Tarea** | Core (Diseño/Ingeniería) + Gestión (Talleres) + Control (Facturación de Terceros) |
+| **Entradas (Insumos)** | Petición verbal de trabajo nuevo (diseño de piezas/sistemas, ej. cintas lavadoras de pescado) |
+| **Salidas (Entregables)** | 1. Especificación de materiales y diseño técnico.<br>2. Remito firmado (original para taller, duplicado para archivo).<br>3. Factura de taller auditada y firmada para pago. |
+| **Interacción** | Pañol (depósito), Supervisión (Jorge), Administración (María José), Talleres / Contratistas externos. |
+
+#### Flujo Operativo: Ciclo de Trabajo con Talleres Externos (RPF/RMO ──> FCR)
+
+1. **Definición & Cotización:** Omar analiza la necesidad de materiales y diseño del trabajo, busca talleres externos y negocia los precios.
+2. **Emisión de Remito:** Emite remito en papel con duplicado (taller / archivo).
+3. **Retiro de Pañol:** Si requiere materiales, el remito pasa por depósito para vincular Materiales ↔ Remito ↔ OT ↔ Barco.
+4. **Revisión de Supervisión:** Jorge (Supervisión) revisa el remito y corrige inconsistencias habituales (ej. errores de número de OT).
+5. **Carga Inicial (Administración):** María José ingresa el remito en la Planilla de Terceros como **RPF** (Remito Pdte. Factura) o **RMO** (Remito Mano de Obra).
+6. **Auditoría de Factura (Omar):** Al recibir la factura del taller, Omar realiza el control manual comparando los montos facturados contra lo acordado/remitado y firma la conformidad.
+7. **Cierre de Costo (Administración):** María José carga el N° de factura, actualiza el estado a **FCR** (Factura Remitada) y cierra el ciclo de costo.
+
+#### Oportunidades de Mejora / Requerimientos ERP
+- **Validación Estricta de OT:** En el alta digital de remitos, el sistema filtrará las OTs activas por Barco para evitar errores de imputación antes de la revisión de supervisión.
+- **Asistencia Visual en Auditoría de Factura:** El ERP mantendrá la supervisión y firma manual de Omar como punto de decisión humano, facilitándole la lista ordenada de remitos RPF/RMO pendientes para su fácil cotejo con la factura recibida.
+
+---
+
 ## 🔗 Vinculación con el Proyecto App_AlonCar
 
 - **Módulo ERP Afectado:** `M2-recursos` (Operarios internos, externos, talleres contratistas).
 - **Hoja de Ruta:** [ROADMAP_NEGOCIO.md](../../ROADMAP_NEGOCIO.md)
 - **Seguimiento de Tareas:** [TAREAS_PENDIENTES.md](../../TAREAS_PENDIENTES.md)
+

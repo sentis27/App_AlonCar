@@ -92,4 +92,4 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | .agents/skills/SKILLS_REGISTRY.md | indice | consultar-siempre | completo | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |
 | mcp-server/package.json | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | mcp-server/index.js |
-| docs/03_negocio/proyecto_perfil_puesto_y_matriz_responsabilidades.md | documentacion-negocio | auditar-reglas | completo | fase-2 | activo | 2026-09-30 | INDICE_CENTRAL.md |
+| docs/03_negocio/proyecto_perfil_puesto_y_matriz_responsabilidades.md | documentacion-negocio | auditar-reglas | completo | fase-2 | activo | 2026-10-08 | INDICE_CENTRAL.md |
