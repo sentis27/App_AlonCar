@@ -127,10 +127,56 @@ El relevamiento inicial recopila la información bajo la siguiente plantilla de 
 
 ---
 
+### Puesto 03: Responsable de Administración, RRHH y Facturación
+
+| Atributo | Detalle |
+| :--- | :--- |
+| **Persona** | María José |
+| **Área / Depto** | Administración, RRHH, Facturación y Cuentas Corrientes |
+| **Cargo Propuesto** | Responsable de Administración, RRHH y Facturación |
+| **Frecuencia** | Diaria (RRHH, estadías, Cuentas Corrientes); 2-3 veces/semana (remitos terceros, facturación, cobranzas); Quincenal (sueldos astillero/contratistas). |
+| **Tipo de Tarea** | Gestión/Coordinación (Facturación, Cobranzas, Sueldos) + Control (Cuentas Corrientes, Estadías, Remitos) + Administración (RRHH, Nómina) |
+| **Entradas (Insumos)** | 1. **Sueldos:** Planilla de Horas (`HORAS_PLANILLAS_DE_REGISTRO`, coordinando con Sabrina) + Planilla de Terceros + Escalas sindicales.<br>2. **Remitos Terceros:** Remitos ordenados por Jorge + Presupuestos de Hugo u Omar.<br>3. **Facturación & Anexo:** Resumen Gerencial (alimentado por Jorge en costos y Hugo Obregozo en precio venta) + Datos de estadías de **Roberto Zubiat** + Costos de electricidad de **Alberto Gonzáles**.<br>4. **Cobranzas:** Indicación verbal de Hugo Obregozo.<br>5. **RRHH:** Solicitudes verbales/mensajes de empleados. |
+| **Salidas (Entregables)** | 1. **Sueldos & Adelantos:** Detalle de liquidación a pagar a Graciela (Tesorería).<br>2. **Remitos Terceros:** Factura anexada al remito, costo registrado en Planilla de Terceros (RPF/RMO ──► FCR) y archivo.<br>3. **Facturación & Anexo:** Carga de movimientos en `CALENDARIO DE ESTADIA BARCOS` y envío por email al cliente de Factura + Anexo.<br>4. **Cobranzas:** Aviso a Graciela sobre cobros de clientes.<br>5. **RRHH:** Seguimiento de vacaciones, licencias, ART y coordinación legal/impositiva con **Ayelén (Contadora)**. |
+| **Interacción** | Sabrina (Horas), Jorge (Supervisión/Remitos), Hugo Obregozo (Gerencia), Omar (Proyectista), Graciela (Tesorería), Roberto Zubiat (Estadías), Alberto Gonzáles (Electricidad), Ayelén (Contadora), Clientes y Contratistas. |
+
+---
+
+## 🚢 4. Especificación del Submódulo: Estadías y Movimientos de Barcos (ERP App_AlonCar)
+
+Este submódulo reemplaza la planilla legacy `CALENDARIO DE ESTADIA BARCOS` (URL `1_OYBfhoIHUV5YYwmBTmPAZiDMH-K1Sz_Wf80Cb2u9FU`) y conecta el **Módulo 1 (Activos)** con el **Módulo 5 (Facturación)**.
+
+### Estructura de Registro del Submódulo
+
+```
+[ Barco (Desplegable) ] + [ Ubicación (Desplegable: Muelle / Varadero / Puerto) ] 
+       │
+       ▼
+[ Fechas (Carga Manual: Comienzo / Fin) ] ──► [ Cálculo Automático de Días: (Fin - Comienzo + 1) ]
+       │
+       ├─► (+) Consumo Electricidad (Cargado por Alberto Gonzáles)
+       │
+       ▼
+[ Inyección Automática al Borrador de Anexo de Factura ] (Operado por María José)
+```
+
+| Campo ERP | Tipo de Entrada | Fuente / Regla de Negocio |
+| :--- | :--- | :--- |
+| **Barco** | Desplegable Dinámico | Lista de Barcos activos del Módulo 1. |
+| **Ubicación de Permanencia** | Desplegable | Opciones fijas: `Muelle`, `Varadero`, `Puerto`. |
+| **Fecha Comienzo** | Fecha (Manual) | Fecha de inicio de estadía (provista por Roberto Zubiat / Operaciones). |
+| **Fecha Fin** | Fecha (Manual) | Fecha de finalización de estadía. |
+| **Días de Estadía** | Cálculo Automático | Fórmula: `Fin - Comienzo + 1` (Días corridos inclusivos). |
+| **Electricidad ($)** | Importe / Consumo | Cuidado/cargado por Alberto Gonzáles. |
+| **Anexo de Factura** | Integración ERP | María José genera el Anexo consolidando días de muelle + electricidad + OTs listas para facturar. |
+
+---
+
 ## 🔗 Vinculación con el Proyecto App_AlonCar
 
-- **Módulo ERP Afectado:** `M2-recursos` (Operarios internos, externos, talleres contratistas) y `M4c-control-inventario`.
+- **Módulos ERP Afectados:** `M1-activos` (Barcos/Estadías), `M2-recursos` (Personal/Contratistas), `M4c-control-inventario` y `M5-comercial` (Facturación).
 - **Hoja de Ruta:** [ROADMAP_NEGOCIO.md](../../ROADMAP_NEGOCIO.md)
 - **Seguimiento de Tareas:** [TAREAS_PENDIENTES.md](../../TAREAS_PENDIENTES.md)
+
 
 
