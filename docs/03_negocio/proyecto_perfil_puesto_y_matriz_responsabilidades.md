@@ -1,5 +1,5 @@
 ---
-version: 1.2
+version: 1.3
 last_updated_by: antigravity
 last_updated: 2026-10-09
 modulo: M2-recursos
@@ -142,6 +142,25 @@ El relevamiento inicial recopila la información bajo la siguiente plantilla de 
 
 ---
 
+### Puesto 04: Coordinador de Operaciones y Control de Costos de Obra
+
+| Atributo | Detalle |
+| :--- | :--- |
+| **Persona** | Jorge |
+| **Área / Depto** | Operaciones / Coordinación de Obras, Control de Costos y Pañol |
+| **Cargo Propuesto** | Coordinador de Operaciones y Control de Costos de Obra |
+| **Frecuencia** | Diaria (operaciones); Quincenal (control de consistencia y descuentos a contratistas con Graciela). |
+| **Tipo de Tarea** | Control & Auditoría (Consistencia Horas ↔ Materiales en Contratistas, Precios Maestros) + Coordinación Operativa + Asistencia a Gerencia |
+| **Entradas (Insumos)** | 1. **Consultas de Gerencia:** Observaciones o dudas de **Hugo Obregozo** sobre datos de costos u obras que "no cierran".<br>2. **Activación de Trabajos:** Alcances de tareas definidos por los **Jefes de Obra (Martín, Alejandro y Pablo)**.<br>3. **Cruzamiento Horas vs. Materiales en Contratistas:** Reporte quincenal de materiales despachados a contratistas vs. horas cargadas por OT.<br>4. **Facturas de Materiales Especiales:** Insumos no habituales.<br>5. **Remitos & Mermas:** Remitos de Omar/talleres y faltantes de Pañol.<br>6. **Logística & Compras:** Requerimientos a Norma y mandados a Jorge Giorgetti. |
+| **Salidas (Entregables)** | 1. **Auditoría & Regla de Consistencia en Contratistas:** Verificación quincenal con **Graciela** para garantizar que ningún contratista tenga materiales imputados en una OT donde no registre horas cargadas, autorizando el descuento y la liquidación neta.<br>2. **Aclaración y Respuesta a Gerencia:** Aclaración de inconsistencias de datos en obras a solicitud de Hugo Obregozo.<br>3. **Estructuración de OTs:** Creación y mantenimiento ordenado de OTs según alcances.<br>4. **Precios Maestros & Materiales Especiales:** Carga de ítems especiales y actualización del catálogo `B.D MATERIALES`.<br>5. **Remitos & Costos:** Remitos ordenados a María José e inputs en Resumen Gerencial. |
+| **Interacción** | **Gerencia:** Hugo Obregozo (aclaración de datos).<br>**Tesorería:** Graciela (control quincenal de horas vs. materiales en contratistas y pagos).<br>**Jefes de Obra:** Martín, Alejandro y Pablo (alcances/OTs).<br>**Supervisión Directa:** Mariano y Rodrigo (Pañoleros).<br>**Compras & Logística:** Norma (compras) y Jorge Giorgetti (fletero/mandados).<br>**Oficina Técnica / Adm:** Omar (proyectista), María José (Adm), Sabrina (Horas). |
+
+#### Regla de Consistencia Dura ERP (Contratistas ↔ OTs)
+- **Regla:** El sistema no permitirá la imputación de materiales a un contratista en una Orden de Trabajo (OT) si el contratista no registra previamente horas imputadas en esa misma OT.
+- **Auditoría:** En el cierre quincenal, el ERP emitirá una alerta visual de *"Material sin Horas"* ante cualquier desviación.
+
+---
+
 ## 🚢 4. Especificación del Submódulo: Estadías y Movimientos de Barcos (ERP App_AlonCar)
 
 Este submódulo reemplaza la planilla legacy `CALENDARIO DE ESTADIA BARCOS` (URL `1_OYBfhoIHUV5YYwmBTmPAZiDMH-K1Sz_Wf80Cb2u9FU`) y conecta el **Módulo 1 (Activos)** con el **Módulo 5 (Facturación)**.
@@ -177,6 +196,7 @@ Este submódulo reemplaza la planilla legacy `CALENDARIO DE ESTADIA BARCOS` (URL
 - **Módulos ERP Afectados:** `M1-activos` (Barcos/Estadías), `M2-recursos` (Personal/Contratistas), `M4c-control-inventario` y `M5-comercial` (Facturación).
 - **Hoja de Ruta:** [ROADMAP_NEGOCIO.md](../../ROADMAP_NEGOCIO.md)
 - **Seguimiento de Tareas:** [TAREAS_PENDIENTES.md](../../TAREAS_PENDIENTES.md)
+
 
 
 
