@@ -5,10 +5,10 @@ Para Agentes IA (Antigravity): Consultá este índice para navegación general. 
 
 
 📍 Estado Actual del Proyecto
-Fase: 1 - Infraestructura y Conexiones
-Objetivo: Establecer una base técnica sólida antes de implementar lógica de negocio
-Documentación: En construcción gradual
-Tareas pendientes: Ver TAREAS_PENDIENTES.md
+Fase: 3 - Implementación Frontend Web & Conexión Supabase (Sprint 1 Activo)
+Objetivo: Desarrollo de la aplicación web ERP naval (React + Supabase), reemplazando planillas legacy con interfaz ágil de control.
+Módulo Activo: M3 - Mano de Obra (Carga de Cuadrilla, Control Diario de Nómina y Sábana Quincenal).
+Tareas pendientes y backlog: Ver TAREAS_PENDIENTES.md
 
 📚 Índice por Sección
 🔧 Sección 1: Infraestructura (FASE 1 - ACTUAL)

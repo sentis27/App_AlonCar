@@ -21,8 +21,52 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
     Fuente: agency-agents/engineering/engineering-minimal-change-engineer.md
 
 
-🔴 FASE 1: Infraestructura y Conexiones (ACTUAL)
-1.1 Documentación Técnica Base
+🔴 FASE 1: Infraestructura y Conexiones (COMPLETADA BASE)
+
+🚀 FASE 3 / SPRINT 1: Frontend Web & Supabase (ACTIVO)
+
+### ✓ HECHO — 3.1 Setup Base Frontend y Conexión Supabase
+- **Stack:** Vite v8 + React 19 + TailwindCSS v3 + React Router v7 + Lucide Icons.
+- **Conexión Supabase:** Inicialización de cliente en `app/src/lib/supabase.js` con variables de entorno (`.env.local`).
+- **Autenticación y Perfil:** `AuthContext.jsx` con persistencia de sesión y sincronización automática de perfil de supervisor para `app.aloncar2712@gmail.com`.
+- **Layout y Navegación:** `Layout.jsx` y `Sidebar.jsx` con diseño Glassmorphism naval y enlaces a todos los módulos.
+- **Base de Datos:** Migración `supabase/migrations/0002_enhance_labor_logs_and_rls.sql` aplicada con RLS, soporte de horas extras y tipos de operario.
+
+### ✓ HECHO — 3.2 Módulo M3: Mano de Obra y Registro de Horas (`LaborLogs.jsx`)
+- **Carga de Cuadrilla Masiva:**
+  - Carga ágil por Barco y Orden de Trabajo (OT).
+  - Desglose por operario de **Horas Normales**, **Horas Extras 50%** y **Horas Extras 100%**.
+  - Centro de Costo **preestablecido fijo en `CLIENTE`** (sin selector UI para evitar errores operativos).
+  - Sugerencia automática de rubros navales (Calderería, Soldadura, Pintura, etc.).
+- **Control Diario de Nómina (Auditoría del Día):**
+  - **Personal Propio del Astillero:** Regla estricta de **8 hs obligatorias** con semáforo visual:
+    - 🟢 Completo (8 hs)
+    - 🔵 Con Horas Extra (> 8 hs con desglose)
+    - 🟡 Incompleto (< 8 hs)
+    - 🔴 Sin horas cargadas (con botón de **Carga Rápida** in-situ)
+  - **Contratistas y Talleres:** Sección informativa separada **sin regla de 8 hs**.
+- **Sábana Quincenal (Matriz tipo Google Sheets):**
+  - Vista de cuadrícula de operarios × días del mes (quincena 1-15 y 16-31).
+  - Subtotales automáticos y totales por operario y por jornada.
+- **Edición y Carga Rápida In-Situ:**
+  - Modal de edición rápida (✏️) para modificar registros sin salir de la interfaz.
+
+---
+
+### 🧭 Próximos Pasos Sugeridos (Backlog Priorizado)
+- [ ] **1. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
+- [ ] **2. Módulo M1 & M2: Barcos y Órdenes de Trabajo:**
+  - Ficha técnica naval de buques, historial de varadas y estados de puesta en seco.
+  - Creación, edición, cierre y presupuestos de OTs vinculadas a buques y clientes.
+- [ ] **3. Módulo M4: Pañol y Materiales:**
+  - Catálogo de consumibles y aceros/chapas navales.
+  - Vales de retiro de pañol vinculados a OTs.
+  - Control de stock y alertas automáticas de reposición mínima.
+- [ ] **4. Módulo M5: Tarifarios y Liquidaciones:**
+  - Matriz de tarifas por hora de personal propio vs. contratistas/talleres.
+  - Anexos de facturación y resumen de costos por obra.
+
+---
 
  01_stack_tecnico.md — Descripción del stack
  02_configuracion_env.md — Guía de .env paso a paso
@@ -288,5 +332,5 @@ Cuando cambies una prioridad:
 markdown- [ ] **AHORA CRÍTICA** — Descripción (era Media)
 Responsable: Tú + Antigravity (colaborativo)
 
-Última actualización: 2026-06-10
-Siguiente revisión: Cuando se complete Fase 1
+Última actualización: 2026-10-14
+Siguiente revisión: Al iniciar Módulos M1/M2 o M4
