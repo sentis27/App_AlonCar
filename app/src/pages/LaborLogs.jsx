@@ -27,7 +27,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
-// Nómina base de Personal Propio del Astillero (Regla: 8 hs diarias obligatorias)
+// Nómina base de Personal Propio del Astillero (Regla: 9 hs diarias obligatorias, salvo Feriado que son 8 hs)
 const NOMINA_ASTILLERO_BASE = [
   { name: 'Carlos Peralta', defaultRubro: 'Soldadura' },
   { name: 'Lucas Benítez', defaultRubro: 'Pintura' },
@@ -38,13 +38,20 @@ const NOMINA_ASTILLERO_BASE = [
   { name: 'Hugo Obregozo', defaultRubro: 'Supervisión' }
 ]
 
-// Contratistas / Talleres frecuentes (Sin regla de horas diarias)
+// Talleres frecuentes
+const TALLERES_FRECUENTES = [
+  'Electromecánica Sur',
+  'Calderería Naval Don Luis',
+  'Tornería Martínez',
+  'Refrigeración Puerto'
+]
+
+// Contratistas frecuentes
 const CONTRATISTAS_FRECUENTES = [
   'Aldo',
   'Ateneo',
-  'Electromecánica Sur',
-  'Calderería Naval Don Luis',
-  'Jorge Giorgetti'
+  'Jorge Giorgetti',
+  'Servicios Navales Gómez'
 ]
 
 // Opciones de rubros comunes según matriz Alon Car
@@ -57,7 +64,8 @@ const RUBROS_SUGERIDOS = [
   'Electricidad',
   'Carpintería naval',
   'Maniobras y varada',
-  'Fletes / Logística'
+  'Fletes / Logística',
+  'Feriado' // Regla Alon Car: si se indica Feriado, la jornada estándar es de 8 horas
 ]
 
 // Datos semilla de respaldo si la conexión no responde
@@ -97,14 +105,14 @@ export default function LaborLogs() {
   // Centro de costo: Regla Alon Car -> SIEMPRE CLIENTE (Fijo, no configurable para evitar errores)
   const costCenter = 'CLIENTE'
 
-  // Filas de Operarios en la Cuadrilla
+  // Filas de Operarios en la Cuadrilla (Astillero regla: 9 hs normales por defecto)
   const [operariosRows, setOperariosRows] = useState([
     { 
       id: 1, 
       worker_name: '', 
       worker_type: 'Astillero', 
       rubro: '', 
-      hours_normal: 8, 
+      hours_normal: 9, 
       hours_extra_50: 0, 
       hours_extra_100: 0, 
       notes: '' 
@@ -118,11 +126,14 @@ export default function LaborLogs() {
 
   // Control Diario
   const [auditDate, setAuditDate] = useState(new Date().toISOString().split('T')[0])
+  const [dailySearch, setDailySearch] = useState('')
+  const [dailyFilterType, setDailyFilterType] = useState('todos') // 'todos' | 'Astillero' | 'Taller' | 'Contratista' | 'sin_carga' | 'incompleta' | 'completa'
 
   // Sábana Quincenal
   const [selectedQuincena, setSelectedQuincena] = useState('1') // '1' = 1 al 15, '2' = 16 al fin
   const [selectedMonth, setSelectedMonth] = useState('10') // Octubre
   const [selectedYear, setSelectedYear] = useState('2026')
+  const [selectedQuincenaWorker, setSelectedQuincenaWorker] = useState(null) // Para inspección y ajuste 1-clic
 
   // Estado para Edición / Carga Rápida In-situ
   const [editingLog, setEditingLog] = useState(null)
@@ -185,6 +196,10 @@ export default function LaborLogs() {
 
   // Manejo de Filas de Carga
   const addOperarioRow = (preset = {}) => {
+    const isAstillero = (preset.worker_type || 'Astillero') === 'Astillero'
+    const isFeriado = (preset.rubro || '').toLowerCase().includes('feriado')
+    const defaultNorm = isAstillero ? (isFeriado ? 8 : 9) : 8
+
     setOperariosRows(prev => [
       ...prev,
       { 
@@ -192,7 +207,7 @@ export default function LaborLogs() {
         worker_name: preset.worker_name || '', 
         worker_type: preset.worker_type || 'Astillero', 
         rubro: preset.rubro || '', 
-        hours_normal: preset.hours_normal ?? 8, 
+        hours_normal: preset.hours_normal ?? defaultNorm, 
         hours_extra_50: preset.hours_extra_50 ?? 0, 
         hours_extra_100: preset.hours_extra_100 ?? 0, 
         notes: preset.notes || '' 
@@ -208,7 +223,26 @@ export default function LaborLogs() {
   const updateOperarioRow = (rowId, field, value) => {
     setOperariosRows(prev => prev.map(r => {
       if (r.id === rowId) {
-        return { ...r, [field]: value }
+        const updated = { ...r, [field]: value }
+        
+        // Regla Alon Car: Si es Astillero y el rubro es Feriado -> 8 hs normales
+        // Si no es feriado -> 9 hs normales
+        if (field === 'rubro' && updated.worker_type === 'Astillero') {
+          if (value.toLowerCase().includes('feriado')) {
+            updated.hours_normal = 8
+          } else if (r.rubro.toLowerCase().includes('feriado') && updated.hours_normal === 8) {
+            updated.hours_normal = 9
+          }
+        }
+
+        // Si cambia el tipo a Astillero
+        if (field === 'worker_type') {
+          if (value === 'Astillero') {
+            updated.hours_normal = updated.rubro.toLowerCase().includes('feriado') ? 8 : 9
+          }
+        }
+
+        return updated
       }
       return r
     }))
@@ -295,7 +329,7 @@ export default function LaborLogs() {
       })
 
       setOperariosRows([
-        { id: Date.now(), worker_name: '', worker_type: 'Astillero', rubro: '', hours_normal: 8, hours_extra_50: 0, hours_extra_100: 0, notes: '' }
+        { id: Date.now(), worker_name: '', worker_type: 'Astillero', rubro: '', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: '' }
       ])
 
       loadInitialData()
@@ -362,10 +396,58 @@ export default function LaborLogs() {
     }
   }
 
-  // Carga rápida in-situ desde Control Diario
+  // Helper para abrir modal de edición de cualquier log
+  const handleEditFromDaily = (log) => {
+    setEditingLog(log)
+    setEditingForm({
+      id: log.id,
+      worker_name: log.worker_name,
+      worker_type: log.worker_type || 'Astillero',
+      rubro: log.rubro,
+      hours_normal: log.hours_normal || log.hours_worked || 9,
+      hours_extra_50: log.hours_extra_50 || 0,
+      hours_extra_100: log.hours_extra_100 || 0,
+      date_logged: log.date_logged,
+      work_type: log.work_type || 'HORA',
+      notes: log.notes || '',
+      approval_status: log.approval_status || 'Aprobado',
+      shipName: log.work_orders?.ships?.name || 'Barco',
+      woTitle: log.work_orders?.title || 'OT'
+    })
+  }
+
+  // Helper para clic en celda con horas en la Sábana Quincenal
+  const handleEditDayCell = (workerName, dateStr, dayLogs) => {
+    if (!dayLogs || dayLogs.length === 0) return
+    if (dayLogs.length === 1) {
+      handleEditFromDaily(dayLogs[0])
+    } else {
+      setSelectedQuincenaWorker(workerName)
+      setFilterDate(dateStr)
+    }
+  }
+
+  // Helper para clic en celda vacía en la Sábana Quincenal
+  const handleQuickAddFromSabana = (workerName, workerType, dateStr) => {
+    const isAstillero = workerType === 'Astillero'
+    setQuickLogWorker({
+      name: workerName,
+      rubro: isAstillero ? 'General' : 'Servicio',
+      type: workerType || 'Astillero',
+      work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
+      hours_normal: isAstillero ? 9 : 0,
+      hours_extra_50: 0,
+      hours_extra_100: 0,
+      notes: '',
+      date: dateStr
+    })
+  }
+
+  // Carga rápida in-situ desde Control Diario o Sábana
   const handleQuickLogSubmit = async (e) => {
     e.preventDefault()
     setSavingEdit(true)
+    const targetDate = quickLogWorker.date || auditDate
     try {
       const hNorm = parseFloat(quickLogWorker.hours_normal) || 0
       const h50 = parseFloat(quickLogWorker.hours_extra_50) || 0
@@ -378,7 +460,7 @@ export default function LaborLogs() {
         hours_normal: hNorm,
         hours_extra_50: h50,
         hours_extra_100: h100,
-        date_logged: auditDate,
+        date_logged: targetDate,
         worker_name: quickLogWorker.name,
         worker_type: quickLogWorker.type || 'Astillero',
         rubro: quickLogWorker.rubro,
@@ -390,7 +472,7 @@ export default function LaborLogs() {
 
       if (error) throw error
 
-      setStatusMessage({ type: 'success', text: `Horas registradas para ${quickLogWorker.name} el día ${auditDate}.` })
+      setStatusMessage({ type: 'success', text: `Horas registradas para ${quickLogWorker.name} el día ${targetDate}.` })
       setQuickLogWorker(null)
       loadInitialData()
     } catch (err) {
@@ -404,38 +486,78 @@ export default function LaborLogs() {
   // ==========================================
   // LÓGICA DE AUDITORÍA Y CONTROL DIARIO
   // ==========================================
-  // Todos los operarios conocidos (combinación de nómina fija + los registrados en la DB)
+  // Lista maestra de personal conocido según tipo
   const allKnownWorkers = (() => {
-    const names = new Set(NOMINA_ASTILLERO_BASE.map(w => w.name))
+    const list = []
+    
+    // 1. Astillero
+    const astilleroNames = new Set(NOMINA_ASTILLERO_BASE.map(w => w.name))
     recentLogs.forEach(l => {
-      if (l.worker_name && l.worker_type === 'Astillero') names.add(l.worker_name)
+      if (l.worker_name && l.worker_type === 'Astillero') astilleroNames.add(l.worker_name)
     })
-    return Array.from(names).map(name => {
+    astilleroNames.forEach(name => {
       const base = NOMINA_ASTILLERO_BASE.find(b => b.name === name)
-      return { name, defaultRubro: base?.defaultRubro || 'General', type: 'Astillero' }
+      list.push({ name, defaultRubro: base?.defaultRubro || 'General', type: 'Astillero' })
     })
+
+    // 2. Talleres
+    const tallerNames = new Set(TALLERES_FRECUENTES)
+    recentLogs.forEach(l => {
+      if (l.worker_name && l.worker_type === 'Taller') tallerNames.add(l.worker_name)
+    })
+    tallerNames.forEach(name => {
+      list.push({ name, defaultRubro: 'Taller Externo', type: 'Taller' })
+    })
+
+    // 3. Contratistas
+    const contratistaNames = new Set(CONTRATISTAS_FRECUENTES)
+    recentLogs.forEach(l => {
+      if (l.worker_name && l.worker_type === 'Contratista') contratistaNames.add(l.worker_name)
+    })
+    contratistaNames.forEach(name => {
+      list.push({ name, defaultRubro: 'Servicio Contratista', type: 'Contratista' })
+    })
+
+    return list
   })()
 
   // Logs del día auditado
   const logsForAuditDate = recentLogs.filter(l => l.date_logged === auditDate)
 
-  // Estado diario de la Nómina Propia del Astillero
-  const astilleroDailyStatus = allKnownWorkers.map(w => {
+  // Lista unificada para la grilla de Control Diario (Modo Lista)
+  const unifiedDailyList = allKnownWorkers.map(w => {
     const logs = logsForAuditDate.filter(l => l.worker_name === w.name)
     const totalNormal = logs.reduce((a, b) => a + (parseFloat(b.hours_normal) || (parseFloat(b.hours_worked) || 0)), 0)
     const total50 = logs.reduce((a, b) => a + (parseFloat(b.hours_extra_50) || 0), 0)
     const total100 = logs.reduce((a, b) => a + (parseFloat(b.hours_extra_100) || 0), 0)
     const totalDay = totalNormal + total50 + total100
 
-    let status = 'sin_carga' // 'completa' | 'incompleta' | 'extras' | 'sin_carga'
-    if (totalNormal >= 8) {
-      status = (total50 > 0 || total100 > 0 || totalDay > 8) ? 'extras' : 'completa'
-    } else if (totalDay > 0) {
-      status = 'incompleta'
+    // Regla Alon Car para Astillero:
+    // Si el rubro de cualquier registro del día dice "Feriado", la jornada requerida es de 8 horas.
+    // De lo contrario, la regla obligatoria es de 9 horas diarias.
+    const isFeriado = logs.some(l => (l.rubro || '').toLowerCase().includes('feriado'))
+    const targetHours = w.type === 'Astillero' ? (isFeriado ? 8 : 9) : null
+
+    let status = 'sin_carga' // 'completa' | 'incompleta' | 'extras' | 'sin_carga' | 'registrado'
+    if (w.type === 'Astillero') {
+      if (totalDay === 0) {
+        status = 'sin_carga'
+      } else if (totalNormal < targetHours) {
+        status = 'incompleta'
+      } else if (totalNormal >= targetHours) {
+        status = (total50 > 0 || total100 > 0 || totalDay > targetHours) ? 'extras' : 'completa'
+      }
+    } else {
+      // Talleres y Contratistas no tienen regla de horas diarias
+      status = totalDay > 0 ? 'registrado' : 'sin_carga'
     }
 
     return {
       worker: w,
+      type: w.type,
+      defaultRubro: w.defaultRubro,
+      isFeriado,
+      targetHours,
       totalNormal,
       total50,
       total100,
@@ -445,22 +567,36 @@ export default function LaborLogs() {
     }
   })
 
-  // Contratistas cargados ese día (sin regla de 8 hs)
-  const contratistasDailyStatus = (() => {
-    const logs = logsForAuditDate.filter(l => l.worker_type === 'Contratista')
-    const map = {}
-    logs.forEach(l => {
-      const name = l.worker_name || 'Contratista'
-      if (!map[name]) {
-        map[name] = { name, totalHours: 0, total50: 0, total100: 0, logs: [] }
-      }
-      map[name].totalHours += parseFloat(l.hours_worked) || 0
-      map[name].total50 += parseFloat(l.hours_extra_50) || 0
-      map[name].total100 += parseFloat(l.hours_extra_100) || 0
-      map[name].logs.push(l)
-    })
-    return Object.values(map)
-  })()
+  // Operarios filtrados para el Control Diario
+  const filteredDailyList = unifiedDailyList.filter(item => {
+    // Filtro por búsqueda
+    const term = dailySearch.toLowerCase()
+    const matchSearch = !term || 
+      item.worker.name.toLowerCase().includes(term) || 
+      item.defaultRubro.toLowerCase().includes(term) ||
+      item.logs.some(l => l.rubro?.toLowerCase().includes(term) || l.work_orders?.ships?.name?.toLowerCase().includes(term))
+
+    // Filtro por tipo o estado
+    if (!matchSearch) return false
+    if (dailyFilterType === 'todos') return true
+    if (dailyFilterType === 'Astillero') return item.type === 'Astillero'
+    if (dailyFilterType === 'Taller') return item.type === 'Taller'
+    if (dailyFilterType === 'Contratista') return item.type === 'Contratista'
+    if (dailyFilterType === 'sin_carga') return item.status === 'sin_carga'
+    if (dailyFilterType === 'incompleta') return item.status === 'incompleta'
+    if (dailyFilterType === 'completa') return item.status === 'completa' || item.status === 'extras'
+    return true
+  })
+
+  // Estadísticas de la Jornada
+  const astilleroWorkersList = unifiedDailyList.filter(i => i.type === 'Astillero')
+  const totalAstillero = astilleroWorkersList.length
+  const completasAstillero = astilleroWorkersList.filter(i => i.status === 'completa' || i.status === 'extras').length
+  const incompletasAstillero = astilleroWorkersList.filter(i => i.status === 'incompleta').length
+  const sinCargaAstillero = astilleroWorkersList.filter(i => i.status === 'sin_carga').length
+
+  const totalTalleresActivos = unifiedDailyList.filter(i => i.type === 'Taller' && i.totalDay > 0).length
+  const totalContratistasActivos = unifiedDailyList.filter(i => i.type === 'Contratista' && i.totalDay > 0).length
 
   // ==========================================
   // LÓGICA DE LA SÁBANA QUINCENAL (TIPO EXCEL)
@@ -477,15 +613,23 @@ export default function LaborLogs() {
     daysInQuincena.push({ dayNumber: d, dateStr, isWeekend, dayName })
   }
 
-  // Lista de operarios que aparecen en la quincena o nómina
+  // Lista de operarios que aparecen en la quincena o nómina (Astillero, Taller, Contratista)
   const allQuincenaWorkers = (() => {
-    const list = [...NOMINA_ASTILLERO_BASE.map(w => ({ name: w.name, type: 'Astillero' }))]
+    const map = new Map()
+    
+    // Primero los fijos de Astillero
+    NOMINA_ASTILLERO_BASE.forEach(w => {
+      map.set(w.name, { name: w.name, type: 'Astillero' })
+    })
+
+    // Luego todos los que tienen registros en la base
     recentLogs.forEach(l => {
-      if (l.worker_name && !list.some(x => x.name === l.worker_name)) {
-        list.push({ name: l.worker_name, type: l.worker_type || 'Contratista' })
+      if (l.worker_name && !map.has(l.worker_name)) {
+        map.set(l.worker_name, { name: l.worker_name, type: l.worker_type || 'Astillero' })
       }
     })
-    return list
+
+    return Array.from(map.values())
   })()
 
   // Registros filtrados reactivos en la pestaña de detalle
@@ -713,7 +857,15 @@ export default function LaborLogs() {
                     className="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>+ Operario Astillero</span>
+                    <span>+ Astillero (9h)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addOperarioRow({ worker_type: 'Taller', hours_normal: 0 })}
+                    className="px-3 py-1.5 bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>+ Taller</span>
                   </button>
                   <button
                     type="button"
@@ -721,7 +873,7 @@ export default function LaborLogs() {
                     className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Briefcase className="w-3.5 h-3.5" />
-                    <span>+ Contratista / Taller</span>
+                    <span>+ Contratista</span>
                   </button>
                 </div>
               </div>
@@ -750,11 +902,14 @@ export default function LaborLogs() {
                           className={`text-[10px] font-bold px-1.5 py-1 rounded border ${
                             row.worker_type === 'Astillero'
                               ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                              : row.worker_type === 'Taller'
+                              ? 'bg-purple-950 text-purple-300 border-purple-800'
                               : 'bg-amber-950 text-amber-300 border-amber-800'
                           }`}
                         >
-                          <option value="Astillero">Propio</option>
-                          <option value="Contratista">Tercero</option>
+                          <option value="Astillero">Astillero</option>
+                          <option value="Taller">Taller</option>
+                          <option value="Contratista">Contratista</option>
                         </select>
                       </div>
 
@@ -981,10 +1136,14 @@ export default function LaborLogs() {
                         <td className="py-2 px-3">
                           <div className="flex items-center gap-1.5">
                             <span className="font-medium text-slate-200">{log.worker_name}</span>
-                            <span className={`text-[9px] px-1 rounded font-bold ${
-                              log.worker_type === 'Astillero' ? 'bg-cyan-950 text-cyan-400' : 'bg-amber-950 text-amber-400'
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                              log.worker_type === 'Astillero' 
+                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60' 
+                                : log.worker_type === 'Taller'
+                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
                             }`}>
-                              {log.worker_type === 'Astillero' ? 'Propio' : 'Tercero'}
+                              {log.worker_type || 'Astillero'}
                             </span>
                           </div>
                         </td>
@@ -1045,216 +1204,430 @@ export default function LaborLogs() {
       )}
 
       {/* ========================================================= */}
-      {/* PESTAÑA 2: CONTROL DIARIO DE JORNADA (NÓMINA)           */}
+      {/* PESTAÑA 2: CONTROL DIARIO DE JORNADA (MODO LISTA)         */}
       {/* ========================================================= */}
       {activeTab === 'control_diario' && (
         <div className="space-y-6">
-          {/* BARRA DE FECHA Y RESUMEN DE JORNADA */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 backdrop-blur-xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Calendar className="w-5 h-5 text-primary" />
-              <div>
-                <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">
-                  Fecha de Auditoría Diaria
-                </span>
-                <input
-                  type="date"
-                  value={auditDate}
-                  onChange={(e) => setAuditDate(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-primary mt-1"
-                />
+          {/* BARRA DE FECHA Y RESUMEN KPI */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 backdrop-blur-xl shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-3">
+                <Calendar className="w-5 h-5 text-primary" />
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">
+                    Fecha de Auditoría
+                  </span>
+                  <input
+                    type="date"
+                    value={auditDate}
+                    onChange={(e) => setAuditDate(e.target.value)}
+                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-primary mt-1"
+                  />
+                </div>
               </div>
+
+              {/* Botón rápido Hoy */}
+              <button
+                type="button"
+                onClick={() => setAuditDate(new Date().toISOString().split('T')[0])}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 rounded-lg border border-slate-700 mt-4 sm:mt-0 cursor-pointer"
+              >
+                Ir a Hoy
+              </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 text-xs">
+            {/* KPIs Rápidos */}
+            <div className="flex flex-wrap items-center gap-2.5 text-xs">
               <div className="bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800">
-                <span className="text-slate-400">Personal Astillero Activo: </span>
-                <strong className="text-white font-mono">
-                  {astilleroDailyStatus.filter(w => w.status !== 'sin_carga').length} / {astilleroDailyStatus.length}
-                </strong>
+                <span className="text-slate-400">Nómina Astillero: </span>
+                <strong className="text-white font-mono">{totalAstillero}</strong>
               </div>
               <div className="bg-emerald-950/60 border border-emerald-800/40 px-3.5 py-2 rounded-xl text-emerald-300">
-                <span>Jornadas Completas (8h+): </span>
-                <strong className="font-mono">
-                  {astilleroDailyStatus.filter(w => w.status === 'completa' || w.status === 'extras').length}
-                </strong>
+                <span>Completas (9h / 8h Feriado): </span>
+                <strong className="font-mono">{completasAstillero}</strong>
+              </div>
+              <div className="bg-amber-950/60 border border-amber-800/40 px-3.5 py-2 rounded-xl text-amber-300">
+                <span>Incompletas: </span>
+                <strong className="font-mono">{incompletasAstillero}</strong>
               </div>
               <div className="bg-rose-950/60 border border-rose-800/40 px-3.5 py-2 rounded-xl text-rose-300">
-                <span>Sin Carga Hoy: </span>
-                <strong className="font-mono">
-                  {astilleroDailyStatus.filter(w => w.status === 'sin_carga').length}
-                </strong>
+                <span>Sin Carga: </span>
+                <strong className="font-mono">{sinCargaAstillero}</strong>
+              </div>
+              <div className="bg-purple-950/60 border border-purple-800/40 px-3.5 py-2 rounded-xl text-purple-300">
+                <span>Talleres / Terceros: </span>
+                <strong className="font-mono">{totalTalleresActivos + totalContratistasActivos}</strong>
               </div>
             </div>
           </div>
 
-          {/* SECCIÓN 1: NÓMINA PROPIA DEL ASTILLERO (REGLA DE 8 HORAS) */}
+          {/* TABLA PRINCIPAL DE CONTROL DIARIO EN MODO LISTA */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            {/* BARRA DE FILTROS & BÚSQUEDA */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div>
-                <h2 className="text-xs uppercase tracking-wider font-bold text-white flex items-center gap-2">
-                  <Users className="w-4 h-4 text-cyan-400" />
-                  Personal Propio del Astillero (Regla de Jornada Obligatoria: 8 hs)
+                <h2 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-cyan-400" />
+                  Nómina Diaria en Modo Lista
                 </h2>
-                <p className="text-[11px] text-slate-400">
-                  Control de cumplimiento de jornada completa y detección automática de personal sin imputar.
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Regla Astillero: <strong>9 hs obligatorias</strong> (salvo Feriado = <strong>8 hs</strong>). Talleres y Contratistas no tienen regla de cuota diaria.
                 </p>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {astilleroDailyStatus.map(item => {
-                const isSinCarga = item.status === 'sin_carga'
-                const isIncompleta = item.status === 'incompleta'
-                const isCompleta = item.status === 'completa'
-                const isExtras = item.status === 'extras'
-
-                return (
-                  <div 
-                    key={item.worker.name}
-                    className={`p-4 rounded-xl border transition-all flex flex-col justify-between ${
-                      isSinCarga 
-                        ? 'bg-rose-950/20 border-rose-900/40 hover:border-rose-700/60'
-                        : isIncompleta
-                        ? 'bg-amber-950/20 border-amber-900/40 hover:border-amber-700/60'
-                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
-                    }`}
+              {/* Input de Búsqueda */}
+              <div className="relative min-w-[260px]">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Buscar operario, taller, rubro..."
+                  value={dailySearch}
+                  onChange={(e) => setDailySearch(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                />
+                {dailySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setDailySearch('')}
+                    className="absolute right-2.5 top-2.5 text-slate-500 hover:text-white cursor-pointer"
                   >
-                    <div>
-                      {/* Cabecera Tarjeta */}
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div>
-                          <h4 className="font-bold text-white text-sm">{item.worker.name}</h4>
-                          <span className="text-[10px] text-slate-400">Rubro habitual: {item.worker.defaultRubro}</span>
-                        </div>
-
-                        {/* Semáforo */}
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border shrink-0 ${
-                          isSinCarga
-                            ? 'bg-rose-950 text-rose-400 border-rose-800'
-                            : isIncompleta
-                            ? 'bg-amber-950 text-amber-400 border-amber-800'
-                            : isExtras
-                            ? 'bg-cyan-950 text-cyan-300 border-cyan-700'
-                            : 'bg-emerald-950 text-emerald-400 border-emerald-800'
-                        }`}>
-                          {isSinCarga && '0 hs (Sin Carga)'}
-                          {isIncompleta && `${item.totalDay} hs (Faltan ${8 - item.totalDay}h)`}
-                          {isCompleta && '8 hs (Jornada Completa)'}
-                          {isExtras && `${item.totalDay} hs (Completa + Extras)`}
-                        </span>
-                      </div>
-
-                      {/* Desglose de horas */}
-                      {!isSinCarga && (
-                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-800 text-[11px] font-mono">
-                          <span className="text-slate-400">Norm: <strong className="text-white">{item.totalNormal}h</strong></span>
-                          {item.total50 > 0 && <span className="text-cyan-400">+50%: <strong>{item.total50}h</strong></span>}
-                          {item.total100 > 0 && <span className="text-amber-400">+100%: <strong>{item.total100}h</strong></span>}
-                        </div>
-                      )}
-
-                      {/* Tareas donde trabajó */}
-                      <div className="space-y-1 mt-2.5 text-[11px]">
-                        {item.logs.map(l => (
-                          <div key={l.id} className="text-slate-400 flex items-center justify-between">
-                            <span className="truncate max-w-[180px]">{l.work_orders?.ships?.name} &bull; {l.rubro}</span>
-                            <span className="font-mono text-white">{l.hours_worked} hs</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Botón de Acción In-situ */}
-                    <div className="mt-4 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
-                      {isSinCarga ? (
-                        <button
-                          type="button"
-                          onClick={() => setQuickLogWorker({
-                            name: item.worker.name,
-                            rubro: item.worker.defaultRubro,
-                            type: 'Astillero',
-                            work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
-                            hours_normal: 8,
-                            hours_extra_50: 0,
-                            hours_extra_100: 0,
-                            notes: ''
-                          })}
-                          className="w-full py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>+ Cargar Jornada de 8 hs</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setQuickLogWorker({
-                            name: item.worker.name,
-                            rubro: item.worker.defaultRubro,
-                            type: 'Astillero',
-                            work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
-                            hours_normal: isIncompleta ? (8 - item.totalDay) : 0,
-                            hours_extra_50: 0,
-                            hours_extra_100: 0,
-                            notes: ''
-                          })}
-                          className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Sumar más horas / OT</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* SECCIÓN 2: CONTRATISTAS Y TALLERES (SIN REGLA DE 8 HORAS) */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <h2 className="text-xs uppercase tracking-wider font-bold text-amber-300 flex items-center gap-2">
-                  <Briefcase className="w-4 h-4" />
-                  Contratistas y Talleres Tercerizados
-                </h2>
-                <p className="text-[11px] text-slate-400">
-                  Sin regla de horas diarias fijas. Registran horas según avance o tarea acordada.
-                </p>
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-              <span className="text-xs font-mono text-slate-400">
-                {contratistasDailyStatus.length} contratistas activos hoy
-              </span>
             </div>
 
-            {contratistasDailyStatus.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
-                No hay horas imputadas a contratistas o talleres en esta fecha.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {contratistasDailyStatus.map(item => (
-                  <div key={item.name} className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                    <div className="flex items-start justify-between mb-2">
-                      <h4 className="font-bold text-white text-sm">{item.name}</h4>
-                      <span className="text-xs font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/40">
-                        {item.totalHours} hs imputadas
-                      </span>
-                    </div>
+            {/* BOTONES / PESTAÑAS DE FILTRO RÁPIDO */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setDailyFilterType('todos')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  dailyFilterType === 'todos'
+                    ? 'bg-primary text-slate-950 font-bold'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                Todos ({unifiedDailyList.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyFilterType('Astillero')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  dailyFilterType === 'Astillero'
+                    ? 'bg-cyan-500 text-slate-950 font-bold'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                Astillero ({totalAstillero})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyFilterType('Taller')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  dailyFilterType === 'Taller'
+                    ? 'bg-purple-500 text-slate-950 font-bold'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                Talleres ({unifiedDailyList.filter(i => i.type === 'Taller').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyFilterType('Contratista')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  dailyFilterType === 'Contratista'
+                    ? 'bg-amber-500 text-slate-950 font-bold'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                Contratistas ({unifiedDailyList.filter(i => i.type === 'Contratista').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyFilterType('sin_carga')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  dailyFilterType === 'sin_carga'
+                    ? 'bg-rose-500 text-white font-bold'
+                    : 'bg-slate-950 text-rose-400 hover:text-rose-300 border border-rose-900/40'
+                }`}
+              >
+                Sin Carga 🔴 ({sinCargaAstillero})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyFilterType('incompleta')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  dailyFilterType === 'incompleta'
+                    ? 'bg-amber-500 text-slate-950 font-bold'
+                    : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-amber-900/40'
+                }`}
+              >
+                Incompletas 🟡 ({incompletasAstillero})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyFilterType('completa')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  dailyFilterType === 'completa'
+                    ? 'bg-emerald-500 text-slate-950 font-bold'
+                    : 'bg-slate-950 text-emerald-400 hover:text-emerald-300 border border-emerald-900/40'
+                }`}
+              >
+                Completas 🟢 ({completasAstillero})
+              </button>
+            </div>
 
-                    <div className="space-y-1.5 mt-3 pt-2 border-t border-slate-800 text-xs text-slate-400">
-                      {item.logs.map(l => (
-                        <div key={l.id} className="flex justify-between items-center text-[11px]">
-                          <span>{l.work_orders?.ships?.name} &bull; {l.rubro}</span>
-                          <span className="text-white font-mono font-bold">{l.hours_worked} hs</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* TABLA DE AUDITORÍA */}
+            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">Estado / Semáforo</th>
+                    <th className="py-2.5 px-3">Operario / Taller</th>
+                    <th className="py-2.5 px-2">Tipo</th>
+                    <th className="py-2.5 px-3">Imputación (Barco & OT)</th>
+                    <th className="py-2.5 px-3">Rubro(s)</th>
+                    <th className="py-2.5 px-2 text-center">Norm</th>
+                    <th className="py-2.5 px-2 text-center text-cyan-400">50%</th>
+                    <th className="py-2.5 px-2 text-center text-amber-400">100%</th>
+                    <th className="py-2.5 px-3 text-center text-primary font-bold">Total Día</th>
+                    <th className="py-2.5 px-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filteredDailyList.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-8 text-center text-slate-500">
+                        No se encontraron registros para los filtros seleccionados.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDailyList.map(item => {
+                      const isAstillero = item.type === 'Astillero'
+                      const isSinCarga = item.status === 'sin_carga'
+                      const isIncompleta = item.status === 'incompleta'
+                      const isCompleta = item.status === 'completa'
+                      const isExtras = item.status === 'extras'
+
+                      return (
+                        <tr 
+                          key={item.worker.name} 
+                          className={`hover:bg-slate-800/30 transition-colors ${
+                            isSinCarga ? 'bg-rose-950/10' : isIncompleta ? 'bg-amber-950/10' : ''
+                          }`}
+                        >
+                          {/* Semáforo */}
+                          <td className="py-2.5 px-3">
+                            {isAstillero ? (
+                              <span className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                                isSinCarga
+                                  ? 'bg-rose-950 text-rose-300 border-rose-800/80'
+                                  : isIncompleta
+                                  ? 'bg-amber-950 text-amber-300 border-amber-800/80'
+                                  : isExtras
+                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-800/80'
+                                  : 'bg-emerald-950 text-emerald-300 border-emerald-800/80'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                  isSinCarga ? 'bg-rose-400 animate-pulse' : isIncompleta ? 'bg-amber-400' : isExtras ? 'bg-cyan-400' : 'bg-emerald-400'
+                                }`}></span>
+                                {isSinCarga && '0 hs (Sin Carga)'}
+                                {isIncompleta && `${item.totalDay}h (Faltan ${item.targetHours - item.totalDay}h de ${item.targetHours}h)`}
+                                {isCompleta && `${item.targetHours}h (Jornada Completa)`}
+                                {isExtras && `${item.totalDay}h (Completa + Extras)`}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-900 text-slate-300 border border-slate-800">
+                                {item.totalDay > 0 ? `${item.totalDay} hs imputadas` : 'Sin actividad hoy'}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Operario */}
+                          <td className="py-2.5 px-3">
+                            <span className="font-bold text-white block">{item.worker.name}</span>
+                            <span className="text-[10px] text-slate-400">Habitual: {item.defaultRubro}</span>
+                          </td>
+
+                          {/* Tipo */}
+                          <td className="py-2.5 px-2">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                              item.type === 'Astillero'
+                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
+                                : item.type === 'Taller'
+                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                            }`}>
+                              {item.type}
+                            </span>
+                          </td>
+
+                          {/* Imputación OT */}
+                          <td className="py-2.5 px-3">
+                            {item.logs.length === 0 ? (
+                              <span className="text-slate-500 italic text-[11px]">Sin imputación</span>
+                            ) : (
+                              <div className="space-y-0.5">
+                                {item.logs.map(l => (
+                                  <div key={l.id} className="text-[11px] truncate max-w-[200px]">
+                                    <strong className="text-white">{l.work_orders?.ships?.name}</strong>: {l.work_orders?.title}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Rubro(s) */}
+                          <td className="py-2.5 px-3">
+                            {item.logs.length === 0 ? (
+                              <span className="text-slate-600 text-[11px]">-</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {item.logs.map(l => {
+                                  const isLogFeriado = (l.rubro || '').toLowerCase().includes('feriado')
+                                  return (
+                                    <span 
+                                      key={l.id} 
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                        isLogFeriado 
+                                          ? 'bg-amber-950 text-amber-300 border border-amber-700/80 font-bold' 
+                                          : 'bg-slate-800 text-slate-300'
+                                      }`}
+                                    >
+                                      {l.rubro || 'General'}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Horas Normales */}
+                          <td className="py-2.5 px-2 text-center font-mono">
+                            {item.totalNormal > 0 ? (
+                              <span>
+                                {item.totalNormal}
+                                {item.targetHours && <span className="text-slate-500 text-[10px]">/{item.targetHours}h</span>}
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">-</span>
+                            )}
+                          </td>
+
+                          {/* 50% */}
+                          <td className="py-2.5 px-2 text-center font-mono text-cyan-400">
+                            {item.total50 > 0 ? item.total50 : <span className="text-slate-600">-</span>}
+                          </td>
+
+                          {/* 100% */}
+                          <td className="py-2.5 px-2 text-center font-mono text-amber-400">
+                            {item.total100 > 0 ? item.total100 : <span className="text-slate-600">-</span>}
+                          </td>
+
+                          {/* Total Día */}
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-primary">
+                            {item.totalDay > 0 ? `${item.totalDay} hs` : <span className="text-slate-600">0 hs</span>}
+                          </td>
+
+                          {/* Acciones */}
+                          <td className="py-2.5 px-3 text-right">
+                            {isSinCarga ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setQuickLogWorker({
+                                    name: item.worker.name,
+                                    rubro: item.defaultRubro,
+                                    type: item.type,
+                                    work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
+                                    hours_normal: isAstillero ? 9 : 0,
+                                    hours_extra_50: 0,
+                                    hours_extra_100: 0,
+                                    notes: '',
+                                    date: auditDate
+                                  })}
+                                  className="px-2.5 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                  title="Cargar jornada habitual (9h)"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>+ Cargar {isAstillero ? '9h' : 'Horas'}</span>
+                                </button>
+
+                                {isAstillero && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setQuickLogWorker({
+                                      name: item.worker.name,
+                                      rubro: 'Feriado',
+                                      type: 'Astillero',
+                                      work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
+                                      hours_normal: 8,
+                                      hours_extra_50: 0,
+                                      hours_extra_100: 0,
+                                      notes: 'Jornada de Feriado',
+                                      date: auditDate
+                                    })}
+                                    className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                    title="Cargar como Feriado (8h)"
+                                  >
+                                    <span>Feriado 8h</span>
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1">
+                                {item.logs.map(log => (
+                                  <button
+                                    key={log.id}
+                                    type="button"
+                                    onClick={() => handleEditFromDaily(log)}
+                                    className="p-1 text-slate-400 hover:text-primary rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                                    title={`Editar imputación en ${log.work_orders?.ships?.name}`}
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                ))}
+
+                                <button
+                                  type="button"
+                                  onClick={() => setQuickLogWorker({
+                                    name: item.worker.name,
+                                    rubro: item.defaultRubro,
+                                    type: item.type,
+                                    work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
+                                    hours_normal: isIncompleta ? (item.targetHours - item.totalDay) : 0,
+                                    hours_extra_50: 0,
+                                    hours_extra_100: 0,
+                                    notes: '',
+                                    date: auditDate
+                                  })}
+                                  className="p-1 text-slate-400 hover:text-cyan-300 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                                  title="Sumar más horas u otra OT"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+
+                                {item.logs.length === 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLog(item.logs[0].id, item.worker.name)}
+                                    className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                    title="Eliminar registro"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -1345,49 +1718,81 @@ export default function LaborLogs() {
 
                   return (
                     <tr key={w.name} className="hover:bg-slate-800/30 transition-colors">
-                      {/* Nombre Operario Fijo */}
-                      <td className="py-2.5 px-4 text-left font-medium text-white border-r border-slate-800 sticky left-0 bg-slate-900 z-10 flex items-center justify-between">
-                        <span className="truncate">{w.name}</span>
-                        <span className={`text-[9px] px-1 rounded font-bold ml-2 shrink-0 ${
-                          w.type === 'Astillero' ? 'bg-cyan-950 text-cyan-400' : 'bg-amber-950 text-amber-400'
-                        }`}>
-                          {w.type === 'Astillero' ? 'Propio' : 'Tercero'}
-                        </span>
+                      {/* Nombre Operario Fijo con acción de filtrado/inspección */}
+                      <td className="py-2.5 px-3 text-left font-medium border-r border-slate-800 sticky left-0 bg-slate-900 z-10">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedQuincenaWorker(w.name === selectedQuincenaWorker ? null : w.name)
+                            const el = document.getElementById('quincena-inspector-section')
+                            if (el) el.scrollIntoView({ behavior: 'smooth' })
+                          }}
+                          className={`text-left font-bold flex items-center justify-between w-full group transition-colors cursor-pointer ${
+                            selectedQuincenaWorker === w.name ? 'text-primary' : 'text-slate-200 hover:text-cyan-300'
+                          }`}
+                          title="Clic para ver y editar todas las horas de este operario"
+                        >
+                          <span className="truncate max-w-[120px]">{w.name}</span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                              w.type === 'Astillero'
+                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
+                                : w.type === 'Taller'
+                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                            }`}>
+                              {w.type}
+                            </span>
+                            <Pencil className="w-3 h-3 opacity-40 group-hover:opacity-100 text-cyan-400 transition-opacity" />
+                          </span>
+                        </button>
                       </td>
 
-                      {/* Días del 1 al 15 (o 16 al fin) */}
+                      {/* Días del 1 al 15 (o 16 al fin) con clic interactivo para editar celda */}
                       {daysInQuincena.map(day => {
                         const dayLogs = recentLogs.filter(l => l.worker_name === w.name && l.date_logged === day.dateStr)
                         const dayHours = dayLogs.reduce((acc, l) => acc + (parseFloat(l.hours_worked) || 0), 0)
                         const dayNorm = dayLogs.reduce((acc, l) => acc + (parseFloat(l.hours_normal) || parseFloat(l.hours_worked) || 0), 0)
                         const day50 = dayLogs.reduce((acc, l) => acc + (parseFloat(l.hours_extra_50) || 0), 0)
                         const day100 = dayLogs.reduce((acc, l) => acc + (parseFloat(l.hours_extra_100) || 0), 0)
+                        const hasFeriado = dayLogs.some(l => (l.rubro || '').toLowerCase().includes('feriado'))
+                        const target = hasFeriado ? 8 : 9
 
                         sumNorm += dayNorm
                         sum50 += day50
                         sum100 += day100
-
-                        const isZeroOnWeekday = dayHours === 0 && !day.isWeekend && w.type === 'Astillero'
 
                         return (
                           <td 
                             key={day.dayNumber}
                             className={`py-2 px-1 border-r border-slate-800/60 font-mono text-xs ${
                               day.isWeekend ? 'bg-slate-950/40 text-slate-600' : ''
-                            } ${isZeroOnWeekday ? 'text-slate-600' : 'text-slate-200'}`}
+                            }`}
                           >
                             {dayHours > 0 ? (
-                              <span className={`inline-block px-1 rounded font-bold ${
-                                day50 > 0 || day100 > 0 
-                                  ? 'text-cyan-300 font-extrabold' 
-                                  : dayHours >= 8 
-                                  ? 'text-emerald-400' 
-                                  : 'text-amber-400'
-                              }`}>
+                              <button
+                                type="button"
+                                onClick={() => handleEditDayCell(w.name, day.dateStr, dayLogs)}
+                                className={`inline-block px-1.5 py-0.5 rounded font-bold transition-all hover:scale-110 cursor-pointer ${
+                                  day50 > 0 || day100 > 0 
+                                    ? 'text-cyan-300 font-extrabold bg-cyan-950/80 border border-cyan-800/60' 
+                                    : dayHours >= target 
+                                    ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-800/40' 
+                                    : 'text-amber-400 bg-amber-950/60 border border-amber-800/40'
+                                }`}
+                                title={`Clic para editar registro del día ${day.dateStr} (${dayHours} hs)`}
+                              >
                                 {dayHours}
-                              </span>
+                              </button>
                             ) : (
-                              <span className="text-slate-700">-</span>
+                              <button
+                                type="button"
+                                onClick={() => handleQuickAddFromSabana(w.name, w.type, day.dateStr)}
+                                className="text-slate-700 hover:text-cyan-400 px-1 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer text-xs"
+                                title={`Clic para cargar horas el ${day.dateStr}`}
+                              >
+                                -
+                              </button>
                             )}
                           </td>
                         )
@@ -1413,12 +1818,12 @@ export default function LaborLogs() {
             </table>
           </div>
 
-          {/* Pie de la Sábana con Acción de Cierre Quincenal */}
+          {/* Pie de la Sábana con leyenda y botón de cierre */}
           <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3 text-xs text-slate-400">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
-                Jornada normal (8h)
+                Jornada normal (9h / 8h Feriado)
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block"></span>
@@ -1426,7 +1831,10 @@ export default function LaborLogs() {
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
-                Jornada Parcial
+                Jornada Incompleta
+              </span>
+              <span className="text-slate-500 italic ml-2">
+                &bull; Hacé clic en cualquier celda o nombre de operario para corregir horas in-situ.
               </span>
             </div>
 
@@ -1440,6 +1848,154 @@ export default function LaborLogs() {
               <CheckCircle className="w-4 h-4 text-emerald-400" />
               <span>Aprobar Cierre Quincenal (R)</span>
             </button>
+          </div>
+
+          {/* SECCIÓN INTERACTIVA: DETALLE Y CORRECCIÓN POR OPERARIO */}
+          <div id="quincena-inspector-section" className="pt-6 border-t border-slate-800 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/80 p-4 rounded-xl border border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Pencil className="w-4 h-4 text-primary" />
+                    {selectedQuincenaWorker 
+                      ? `Auditoría y Corrección de Imputaciones: ${selectedQuincenaWorker}` 
+                      : 'Todas las Imputaciones de la Quincena (Hacé clic en un operario para aislarlo)'}
+                  </h3>
+                  {selectedQuincenaWorker && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold">
+                      Filtrado
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Podés modificar rubro, horas normales, extras o eliminar cualquier registro directamente desde acá.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {selectedQuincenaWorker && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const workerObj = allQuincenaWorkers.find(x => x.name === selectedQuincenaWorker)
+                        handleQuickAddFromSabana(selectedQuincenaWorker, workerObj?.type || 'Astillero', daysInQuincena[0]?.dateStr)
+                      }}
+                      className="px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Imputar Horas</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedQuincenaWorker(null)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 cursor-pointer"
+                    >
+                      Ver Todos
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Grilla Detallada de la Quincena */}
+            {(() => {
+              const quincenaLogs = recentLogs.filter(log => {
+                if (!log.date_logged) return false
+                const [year, month, day] = log.date_logged.split('-').map(Number)
+                const matchYear = year === parseInt(selectedYear)
+                const matchMonth = month === parseInt(selectedMonth)
+                const matchQuincena = selectedQuincena === '1' ? (day >= 1 && day <= 15) : (day >= 16)
+                const matchWorker = !selectedQuincenaWorker || log.worker_name === selectedQuincenaWorker
+                return matchYear && matchMonth && matchQuincena && matchWorker
+              })
+
+              if (quincenaLogs.length === 0) {
+                return (
+                  <div className="py-8 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
+                    No se encontraron registros de horas para {selectedQuincenaWorker || 'este período'}.
+                  </div>
+                )
+              }
+
+              return (
+                <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th className="py-2.5 px-3">Fecha</th>
+                        <th className="py-2.5 px-3">Operario</th>
+                        <th className="py-2.5 px-2">Tipo</th>
+                        <th className="py-2.5 px-3">Barco & OT</th>
+                        <th className="py-2.5 px-3">Rubro</th>
+                        <th className="py-2.5 px-2 text-center">Norm</th>
+                        <th className="py-2.5 px-2 text-center text-cyan-400">50%</th>
+                        <th className="py-2.5 px-2 text-center text-amber-400">100%</th>
+                        <th className="py-2.5 px-3 text-center text-primary font-bold">Total</th>
+                        <th className="py-2.5 px-3 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {quincenaLogs.map(log => (
+                        <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-2 px-3 font-mono text-slate-400">{log.date_logged}</td>
+                          <td className="py-2 px-3 font-bold text-white">{log.worker_name}</td>
+                          <td className="py-2 px-2">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                              log.worker_type === 'Astillero' 
+                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60' 
+                                : log.worker_type === 'Taller'
+                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                            }`}>
+                              {log.worker_type || 'Astillero'}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className="font-semibold text-white block">{log.work_orders?.ships?.name}</span>
+                            <span className="text-[11px] text-slate-400">{log.work_orders?.title}</span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`px-2 py-0.5 rounded text-[11px] ${
+                              (log.rubro || '').toLowerCase().includes('feriado')
+                                ? 'bg-amber-950 text-amber-300 border border-amber-700/80 font-bold'
+                                : 'bg-slate-800 text-slate-300'
+                            }`}>
+                              {log.rubro || 'General'}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2 text-center font-mono">{log.hours_normal || log.hours_worked}</td>
+                          <td className="py-2 px-2 text-center font-mono text-cyan-400">{log.hours_extra_50 || 0}</td>
+                          <td className="py-2 px-2 text-center font-mono text-amber-400">{log.hours_extra_100 || 0}</td>
+                          <td className="py-2 px-3 text-center font-mono font-bold text-primary">{log.hours_worked} hs</td>
+                          <td className="py-2 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleEditFromDaily(log)}
+                                className="p-1 text-slate-400 hover:text-primary rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="Editar registro"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLog(log.id, log.worker_name)}
+                                className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                title="Eliminar registro"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}
@@ -1570,8 +2126,9 @@ export default function LaborLogs() {
                     onChange={(e) => setEditingForm({ ...editingForm, worker_type: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
                   >
-                    <option value="Astillero">Personal Propio (Astillero)</option>
-                    <option value="Contratista">Contratista / Taller Tercero</option>
+                    <option value="Astillero">Astillero</option>
+                    <option value="Taller">Taller</option>
+                    <option value="Contratista">Contratista</option>
                   </select>
                 </div>
               </div>
@@ -1760,6 +2317,9 @@ export default function LaborLogs() {
       <datalist id="all-workers-datalist">
         {NOMINA_ASTILLERO_BASE.map(w => (
           <option key={w.name} value={w.name} />
+        ))}
+        {TALLERES_FRECUENTES.map(t => (
+          <option key={t} value={t} />
         ))}
         {CONTRATISTAS_FRECUENTES.map(c => (
           <option key={c} value={c} />

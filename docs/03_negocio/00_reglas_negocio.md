@@ -85,3 +85,30 @@ El operario de compras no necesita organizar carpetas externas ni copiar links. 
 
 ### 6.3. Buscador Histórico Indexado
 Las cotizaciones no quedan huérfanas; se indexan en una base de datos relacional (`purchase_documents`), permitiendo búsquedas cruzadas por rubro, proveedor, año y descripción. Esto es fundamental para alimentar el Comparador de Precios (M4b).
+
+---
+
+## 7. Mano de Obra y Registro de Horas (M3 Operaciones)
+
+### 7.1. Jornada Laboral del Personal Propio (Astillero)
+- **Jornada Estándar Diaria:** La jornada regular y obligatoria para el personal propio del astillero es de **9 horas diarias** (lunes a viernes).
+- **Excepción de Feriados (8 horas):** Durante jornadas feriadas, la jornada estándar es de **8 horas**. Esta condición se explicita anotando `"Feriado"` en el campo de **Rubro** del registro diario. El sistema interpreta automáticamente esta indicación y ajusta la cuota de cumplimiento de la jornada a 8 horas para ese operario y día.
+- **Semáforo de Cumplimiento en Auditoría Diaria:**
+  - 🟢 **Completa:** Horas normales igualan la cuota requerida (9 hs en días regulares o 8 hs en feriados).
+  - 🔵 **Completa con Extras:** Horas normales completas sumadas a Horas Extras (al 50% y/o al 100%).
+  - 🟡 **Incompleta:** Horas normales registradas mayores a 0 pero inferiores a la cuota obligatoria (alerta visual con horas faltantes).
+  - 🔴 **Sin Carga:** 0 horas imputadas en el día laborable, con atajo de carga rápida de jornada en un clic.
+
+### 7.2. Clasificación Estricta del Personal en Tres Tipos
+El personal y prestadores se clasifican formalmente en tres categorías operativas:
+1. **`Astillero`:** Personal en nómina propia. Sujeto a regla obligatoria de jornada diaria (9h / 8h feriado).
+2. **`Taller`:** Talleres externos y empresas proveedoras de servicios industriales. No están sujetos a cuota fija diaria; registran horas a destajo o según avance de tarea.
+3. **`Contratista`:** Personal tercerizado o contratistas independientes. No están sujetos a cuota fija diaria.
+
+### 7.3. Centro de Costo de Mano de Obra (100% "CLIENTE")
+- Para todas las horas operativas de producción registradas en buques y OTs, el Centro de Costo es invariablemente **`CLIENTE`**.
+- Con el propósito de blindar el proceso frente a errores humanos, este valor se encuentra preestablecido de manera fija en el sistema y no se expone como campo editable en las interfaces de carga.
+
+### 7.4. Corrección e Intervención In-Situ Transversal
+- Toda vista operativa (Carga de Cuadrilla, Control Diario de Nómina y Sábana Quincenal) debe permitir la edición directa (✏️), adición in-situ y corrección de horas sin obligar a cambiar de contexto ni navegar a pantallas complejas.
+- En la Sábana Quincenal, el clic sobre un operario o sobre una celda numérica de jornada abre de forma inmediata la edición y auditoría detallada de la imputación correspondiente.

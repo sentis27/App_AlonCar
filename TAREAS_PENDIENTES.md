@@ -35,21 +35,28 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 ### ✓ HECHO — 3.2 Módulo M3: Mano de Obra y Registro de Horas (`LaborLogs.jsx`)
 - **Carga de Cuadrilla Masiva:**
   - Carga ágil por Barco y Orden de Trabajo (OT).
-  - Desglose por operario de **Horas Normales**, **Horas Extras 50%** y **Horas Extras 100%**.
-  - Centro de Costo **preestablecido fijo en `CLIENTE`** (sin selector UI para evitar errores operativos).
-  - Sugerencia automática de rubros navales (Calderería, Soldadura, Pintura, etc.).
-- **Control Diario de Nómina (Auditoría del Día):**
-  - **Personal Propio del Astillero:** Regla estricta de **8 hs obligatorias** con semáforo visual:
-    - 🟢 Completo (8 hs)
-    - 🔵 Con Horas Extra (> 8 hs con desglose)
-    - 🟡 Incompleto (< 8 hs)
-    - 🔴 Sin horas cargadas (con botón de **Carga Rápida** in-situ)
-  - **Contratistas y Talleres:** Sección informativa separada **sin regla de 8 hs**.
-- **Sábana Quincenal (Matriz tipo Google Sheets):**
-  - Vista de cuadrícula de operarios × días del mes (quincena 1-15 y 16-31).
-  - Subtotales automáticos y totales por operario y por jornada.
-- **Edición y Carga Rápida In-Situ:**
-  - Modal de edición rápida (✏️) para modificar registros sin salir de la interfaz.
+  - Desglose por operario de **Horas Normales** (por defecto 9h para Astillero, o 8h si el rubro indica Feriado), **Horas Extras 50%** y **Horas Extras 100%**.
+  - Centro de Costo **preestablecido fijo en `CLIENTE`** (sin selector UI para blindar ante errores).
+  - Clasificación de personal en 3 tipos: **`Astillero`**, **`Taller`** y **`Contratista`**.
+  - Sugerencia automática de rubros navales (Calderería, Soldadura, Pintura, Feriado, etc.).
+- **Control Diario de Nómina (Rediseñado en Modo Lista de Alta Densidad):**
+  - Vista tabular compacta optimizada para 50+ operarios y contratistas simultáneos.
+  - Buscador reactivo por operario, taller, OT o rubro, con filtros por estado y tipo.
+  - **Personal Propio del Astillero:** Regla de **9 hs diarias obligatorias** (o **8 hs si se anota "Feriado" en el rubro**) con semáforo visual:
+    - 🟢 Completo (9 hs o 8 hs feriado)
+    - 🔵 Con Horas Extra (> cuota obligatoria con desglose al 50% / 100%)
+    - 🟡 Incompleto (< cuota obligatoria, con indicador de horas faltantes)
+    - 🔴 Sin horas cargadas (con botón de **Carga Rápida** de jornada o feriado en 1 clic)
+  - **Talleres y Contratistas:** Integrados en la lista sin cuota fija de horas diarias.
+- **Sábana Quincenal Interactiva (Matriz Google Sheets + Inspector 1-Clic):**
+  - Vista de cuadrícula de operarios × días del mes (quincena 1-15 y 16-31) con subtotales automáticos.
+  - **Clic en Operario:** Filtra y despliega inmediatamente la grilla de auditoría y ajuste de todas las horas de ese operario en la quincena.
+  - **Clic en Celda Numérica:** Abre directamente el modal de edición (✏️) del registro de esa fecha.
+  - **Clic en Celda Vacía:** Atajo de imputación rápida para esa jornada y operario.
+- **Edición y Corrección Transversal In-Situ:**
+  - Capacidad de modificar cualquier registro directamente desde las 3 vistas (Carga, Control Diario y Sábana) sin abandonar la pantalla.
+- **Documentación de Reglas de Negocio:**
+  - Registrada la Sección 7 en `docs/03_negocio/00_reglas_negocio.md`.
 
 ---
 
