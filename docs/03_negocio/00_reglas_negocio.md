@@ -112,3 +112,8 @@ El personal y prestadores se clasifican formalmente en tres categorías operativ
 ### 7.4. Corrección e Intervención In-Situ Transversal
 - Toda vista operativa (Carga de Cuadrilla, Control Diario de Nómina y Sábana Quincenal) debe permitir la edición directa (✏️), adición in-situ y corrección de horas sin obligar a cambiar de contexto ni navegar a pantallas complejas.
 - En la Sábana Quincenal, el clic sobre un operario o sobre una celda numérica de jornada abre de forma inmediata la edición y auditoría detallada de la imputación correspondiente.
+
+### 7.5. Selección Desacoplada de Barco y OT con Descripción Asistida Obligatoria
+- **Selectores Desacoplados y en Cascada:** En todas las interfaces y ventanas modales donde se asignen o modifiquen horas (Carga de Cuadrilla, Modal de Imputación Rápida en Control Diario, Modal de Edición Completa desde Control Diario o Sábana Quincenal), el **Barco / Embarcación** y la **Orden de Trabajo (OT)** se seleccionan en dos campos independientes. Al elegir un barco, el selector de OTs filtra automáticamente solo las tareas activas de dicha embarcación.
+- **Asistencia Visual con Alcance de la OT:** Siempre que se seleccione una OT, el sistema debe exhibir de forma destacada la descripción y el alcance del trabajo (`work_orders.description`), brindando asistencia inmediata al operador para verificar que la imputación corresponda con la labor real ejecutada a bordo.
+

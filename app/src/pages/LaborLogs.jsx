@@ -354,6 +354,7 @@ export default function LaborLogs() {
       const { error } = await supabase
         .from('labor_logs')
         .update({
+          work_order_id: editingForm.work_order_id,
           worker_name: editingForm.worker_name,
           worker_type: editingForm.worker_type,
           rubro: editingForm.rubro,
@@ -398,6 +399,9 @@ export default function LaborLogs() {
 
   // Helper para abrir modal de edición de cualquier log
   const handleEditFromDaily = (log) => {
+    const currentWo = workOrders.find(wo => wo.id === log.work_order_id)
+    const currentShipId = currentWo?.ship_id || log.work_orders?.ship_id || ships[0]?.id || ''
+
     setEditingLog(log)
     setEditingForm({
       id: log.id,
@@ -411,8 +415,37 @@ export default function LaborLogs() {
       work_type: log.work_type || 'HORA',
       notes: log.notes || '',
       approval_status: log.approval_status || 'Aprobado',
-      shipName: log.work_orders?.ships?.name || 'Barco',
-      woTitle: log.work_orders?.title || 'OT'
+      ship_id: currentShipId,
+      work_order_id: log.work_order_id,
+      shipName: log.work_orders?.ships?.name || ships.find(s => s.id === currentShipId)?.name || 'Barco',
+      woTitle: log.work_orders?.title || currentWo?.title || 'OT'
+    })
+  }
+
+  // Helper unificado para abrir modal de carga rápida con barco y OT separados
+  const openQuickLogModal = ({ name, rubro, type, hours_normal, notes, date, ship_id, work_order_id }) => {
+    let initialShipId = ship_id
+    if (!initialShipId && work_order_id) {
+      const matchedWo = workOrders.find(w => w.id === work_order_id)
+      if (matchedWo?.ship_id) initialShipId = matchedWo.ship_id
+    }
+    if (!initialShipId) {
+      initialShipId = selectedShipId || ships[0]?.id || ''
+    }
+    const shipWos = workOrders.filter(w => w.ship_id === initialShipId)
+    const initialWoId = work_order_id || (shipWos.length > 0 ? shipWos[0].id : (workOrders[0]?.id || ''))
+
+    setQuickLogWorker({
+      name,
+      rubro: rubro || (type === 'Astillero' ? 'General' : 'Servicio'),
+      type: type || 'Astillero',
+      ship_id: initialShipId,
+      work_order_id: initialWoId,
+      hours_normal: hours_normal ?? (type === 'Astillero' ? 9 : 0),
+      hours_extra_50: 0,
+      hours_extra_100: 0,
+      notes: notes || '',
+      date: date || auditDate
     })
   }
 
@@ -429,16 +462,9 @@ export default function LaborLogs() {
 
   // Helper para clic en celda vacía en la Sábana Quincenal
   const handleQuickAddFromSabana = (workerName, workerType, dateStr) => {
-    const isAstillero = workerType === 'Astillero'
-    setQuickLogWorker({
+    openQuickLogModal({
       name: workerName,
-      rubro: isAstillero ? 'General' : 'Servicio',
-      type: workerType || 'Astillero',
-      work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
-      hours_normal: isAstillero ? 9 : 0,
-      hours_extra_50: 0,
-      hours_extra_100: 0,
-      notes: '',
+      type: workerType,
       date: dateStr
     })
   }
@@ -1536,15 +1562,11 @@ export default function LaborLogs() {
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => setQuickLogWorker({
+                                  onClick={() => openQuickLogModal({
                                     name: item.worker.name,
                                     rubro: item.defaultRubro,
                                     type: item.type,
-                                    work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
                                     hours_normal: isAstillero ? 9 : 0,
-                                    hours_extra_50: 0,
-                                    hours_extra_100: 0,
-                                    notes: '',
                                     date: auditDate
                                   })}
                                   className="px-2.5 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
@@ -1557,14 +1579,11 @@ export default function LaborLogs() {
                                 {isAstillero && (
                                   <button
                                     type="button"
-                                    onClick={() => setQuickLogWorker({
+                                    onClick={() => openQuickLogModal({
                                       name: item.worker.name,
                                       rubro: 'Feriado',
                                       type: 'Astillero',
-                                      work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
                                       hours_normal: 8,
-                                      hours_extra_50: 0,
-                                      hours_extra_100: 0,
                                       notes: 'Jornada de Feriado',
                                       date: auditDate
                                     })}
@@ -1591,15 +1610,11 @@ export default function LaborLogs() {
 
                                 <button
                                   type="button"
-                                  onClick={() => setQuickLogWorker({
+                                  onClick={() => openQuickLogModal({
                                     name: item.worker.name,
                                     rubro: item.defaultRubro,
                                     type: item.type,
-                                    work_order_id: availableWorkOrders[0]?.id || workOrders[0]?.id,
                                     hours_normal: isIncompleta ? (item.targetHours - item.totalDay) : 0,
-                                    hours_extra_50: 0,
-                                    hours_extra_100: 0,
-                                    notes: '',
                                     date: auditDate
                                   })}
                                   className="p-1 text-slate-400 hover:text-cyan-300 rounded hover:bg-slate-800 transition-colors cursor-pointer"
@@ -2013,7 +2028,7 @@ export default function LaborLogs() {
                   Editar Registro de Horas
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {editingForm.shipName} &bull; {editingForm.woTitle}
+                  Operario: <strong className="text-white">{editingForm.worker_name}</strong> &bull; Centro Costo: <strong className="text-cyan-400">CLIENTE</strong>
                 </p>
               </div>
               <button
@@ -2026,6 +2041,77 @@ export default function LaborLogs() {
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
+              {/* Selección de Barco y OT separados */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                    <Ship className="w-3.5 h-3.5 text-cyan-400" />
+                    Barco / Embarcación
+                  </label>
+                  <select
+                    value={editingForm.ship_id || ''}
+                    onChange={(e) => {
+                      const newShipId = e.target.value
+                      const filteredWos = workOrders.filter(w => w.ship_id === newShipId)
+                      setEditingForm({
+                        ...editingForm,
+                        ship_id: newShipId,
+                        work_order_id: filteredWos[0]?.id || '',
+                        shipName: ships.find(s => s.id === newShipId)?.name || 'Barco'
+                      })
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+                  >
+                    {ships.map(ship => (
+                      <option key={ship.id} value={ship.id} className="bg-slate-900">
+                        {ship.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                    <ClipboardList className="w-3.5 h-3.5 text-cyan-400" />
+                    Orden de Trabajo (OT)
+                  </label>
+                  <select
+                    required
+                    value={editingForm.work_order_id}
+                    onChange={(e) => setEditingForm({ ...editingForm, work_order_id: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+                  >
+                    {(() => {
+                      const currentShipId = editingForm.ship_id || ships[0]?.id
+                      const filteredWos = workOrders.filter(w => w.ship_id === currentShipId)
+                      if (filteredWos.length === 0) {
+                        return <option value="">Sin OTs abiertas para este barco</option>
+                      }
+                      return filteredWos.map(wo => (
+                        <option key={wo.id} value={wo.id} className="bg-slate-900">
+                          {wo.title}
+                        </option>
+                      ))
+                    })()}
+                  </select>
+                </div>
+              </div>
+
+              {/* Ayuda obligatoria: Descripción y alcance de la OT */}
+              {(() => {
+                const selectedWo = workOrders.find(w => w.id === editingForm.work_order_id)
+                if (!selectedWo) return null
+                return (
+                  <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-start gap-2 text-xs">
+                    <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="text-slate-200">Alcance de {selectedWo.title}: </strong>
+                      <span className="text-slate-400">{selectedWo.description || 'Sin descripción detallada registrada.'}</span>
+                    </div>
+                  </div>
+                )
+              })()}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">
@@ -2173,7 +2259,7 @@ export default function LaborLogs() {
       {/* ========================================================= */}
       {quickLogWorker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative">
             <div className="flex items-start justify-between border-b border-slate-800 pb-3 mb-4">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -2181,7 +2267,7 @@ export default function LaborLogs() {
                   Imputar Horas a {quickLogWorker.name}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Fecha: <strong className="text-white font-mono">{auditDate}</strong> &bull; Centro Costo: <strong className="text-cyan-400">CLIENTE</strong>
+                  Fecha: <strong className="text-white font-mono">{quickLogWorker.date || auditDate}</strong> &bull; Centro Costo: <strong className="text-cyan-400">CLIENTE</strong>
                 </p>
               </div>
               <button
@@ -2194,26 +2280,75 @@ export default function LaborLogs() {
             </div>
 
             <form onSubmit={handleQuickLogSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Orden de Trabajo (Barco / Tarea)
-                </label>
-                <select
-                  required
-                  value={quickLogWorker.work_order_id}
-                  onChange={(e) => setQuickLogWorker({ ...quickLogWorker, work_order_id: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-                >
-                  {workOrders.map(wo => {
-                    const shipName = ships.find(s => s.id === wo.ship_id)?.name || 'Barco'
-                    return (
-                      <option key={wo.id} value={wo.id} className="bg-slate-900">
-                        {shipName} - {wo.title}
+              {/* Selección de Barco y OT separados */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                    <Ship className="w-3.5 h-3.5 text-cyan-400" />
+                    Barco / Embarcación
+                  </label>
+                  <select
+                    value={quickLogWorker.ship_id || ''}
+                    onChange={(e) => {
+                      const newShipId = e.target.value
+                      const filteredWos = workOrders.filter(w => w.ship_id === newShipId)
+                      setQuickLogWorker({
+                        ...quickLogWorker,
+                        ship_id: newShipId,
+                        work_order_id: filteredWos[0]?.id || ''
+                      })
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+                  >
+                    {ships.map(ship => (
+                      <option key={ship.id} value={ship.id} className="bg-slate-900">
+                        {ship.name}
                       </option>
-                    )
-                  })}
-                </select>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                    <ClipboardList className="w-3.5 h-3.5 text-cyan-400" />
+                    Orden de Trabajo (OT)
+                  </label>
+                  <select
+                    required
+                    value={quickLogWorker.work_order_id}
+                    onChange={(e) => setQuickLogWorker({ ...quickLogWorker, work_order_id: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+                  >
+                    {(() => {
+                      const currentShipId = quickLogWorker.ship_id || ships[0]?.id
+                      const filteredWos = workOrders.filter(w => w.ship_id === currentShipId)
+                      if (filteredWos.length === 0) {
+                        return <option value="">Sin OTs abiertas para este barco</option>
+                      }
+                      return filteredWos.map(wo => (
+                        <option key={wo.id} value={wo.id} className="bg-slate-900">
+                          {wo.title}
+                        </option>
+                      ))
+                    })()}
+                  </select>
+                </div>
               </div>
+
+              {/* Ayuda obligatoria: Descripción y alcance de la OT */}
+              {(() => {
+                const selectedWo = workOrders.find(w => w.id === quickLogWorker.work_order_id)
+                if (!selectedWo) return null
+                return (
+                  <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-start gap-2 text-xs">
+                    <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="text-slate-200">Alcance de {selectedWo.title}: </strong>
+                      <span className="text-slate-400">{selectedWo.description || 'Sin descripción detallada registrada.'}</span>
+                    </div>
+                  </div>
+                )
+              })()}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
