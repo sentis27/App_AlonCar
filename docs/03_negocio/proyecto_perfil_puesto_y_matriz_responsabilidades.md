@@ -134,11 +134,12 @@ El relevamiento inicial recopila la información bajo la siguiente plantilla de 
 | **Persona** | María José |
 | **Área / Depto** | Administración, RRHH, Facturación y Cuentas Corrientes |
 | **Cargo Propuesto** | Responsable de Administración, RRHH y Facturación |
-| **Frecuencia** | Diaria (RRHH, estadías, Cuentas Corrientes); 2-3 veces/semana (remitos terceros, facturación, cobranzas); Quincenal (sueldos astillero/contratistas). |
-| **Tipo de Tarea** | Gestión/Coordinación (Facturación, Cobranzas, Sueldos) + Control (Cuentas Corrientes, Estadías, Remitos) + Administración (RRHH, Nómina) |
-| **Entradas (Insumos)** | 1. **Sueldos:** Planilla de Horas (`HORAS_PLANILLAS_DE_REGISTRO`, coordinando con Sabrina) + Planilla de Terceros + Escalas sindicales.<br>2. **Remitos Terceros:** Remitos ordenados por Jorge + Presupuestos de Hugo u Omar.<br>3. **Facturación & Anexo:** Resumen Gerencial (alimentado por Jorge en costos y Hugo Obregozo en precio venta) + Datos de estadías de **Roberto Zubiat** + Costos de electricidad de **Alberto Gonzáles**.<br>4. **Cobranzas:** Indicación verbal de Hugo Obregozo.<br>5. **RRHH:** Solicitudes verbales/mensajes de empleados. |
-| **Salidas (Entregables)** | 1. **Sueldos & Adelantos:** Detalle de liquidación a pagar a Graciela (Tesorería).<br>2. **Remitos Terceros:** Factura anexada al remito, costo registrado en Planilla de Terceros (RPF/RMO ──► FCR) y archivo.<br>3. **Facturación & Anexo:** Carga de movimientos en `CALENDARIO DE ESTADIA BARCOS` y envío por email al cliente de Factura + Anexo.<br>4. **Cobranzas:** Aviso a Graciela sobre cobros de clientes.<br>5. **RRHH:** Seguimiento de vacaciones, licencias, ART y coordinación legal/impositiva con **Ayelén (Contadora)**. |
-| **Interacción** | Sabrina (Horas), Jorge (Supervisión/Remitos), Hugo Obregozo (Gerencia), Omar (Proyectista), Graciela (Tesorería), Roberto Zubiat (Estadías), Alberto Gonzáles (Electricidad), Ayelén (Contadora), Clientes y Contratistas. |
+| **Frecuencia** | Diaria (RRHH, estadías, Cuentas Corrientes); 2-3 veces/semana (remitos terceros, facturación, cobranzas); Quincenal (sueldos astillero/contratistas y actualización de tarifas). |
+| **Tipo de Tarea** | Gestión/Coordinación (Facturación, Cobranzas, Sueldos) + Control (Cuentas Corrientes, Estadías, Remitos) + Administración (RRHH, Nómina, Tarifario Quincenal) |
+| **Entradas (Insumos)** | 1. **Tarifario & Sueldos:** Escalas sindicales vigentes para personal propio (Astillero: Ayudante, Oficial, 1/2 Oficial, Aprendiz, Oficial Black; *nota: los mandados son un rubro operativo, no una categoría*) + Nuevos valores de hora para contratistas definidos y entregados por **Dirección Operativa (Hugo)** + Planilla de Horas (`HORAS_PLANILLAS_DE_REGISTRO`, coordinando con Sabrina) + Planilla de Terceros.<br>2. **Remitos Terceros:** Remitos ordenados por Supervisión + Presupuestos de Dirección u Oficina Técnica.<br>3. **Facturación & Anexo:** Resumen Gerencial (alimentado por Supervisión en costos y Dirección en precio venta) + Datos de estadías de **Roberto Zubiat** + Costos de electricidad de **Alberto Gonzáles**.<br>4. **Cobranzas:** Indicación de Dirección.<br>5. **RRHH:** Solicitudes verbales/mensajes de empleados. |
+| **Salidas (Entregables)** | 1. **Carga Operativa del Tarifario Quincenal:** Carga y actualización en el ERP de los valores de hora por quincena para Astillero y Contratistas (preservando el histórico inmutable). Sincronización automática de valores en el padrón de operarios sin margen de error. *Nota:* Los Talleres quedan excluidos de este tarifario horario fijo ya que liquidan por cotización/RMO.<br>2. **Sueldos & Adelantos:** Detalle de liquidación a pagar a Tesorería (Graciela).<br>3. **Remitos Terceros:** Factura anexada al remito, costo registrado en Planilla de Terceros (RPF/RMO ──► FCR) y archivo.<br>4. **Facturación & Anexo:** Carga de movimientos en `CALENDARIO DE ESTADIA BARCOS` y envío por email al cliente de Factura + Anexo.<br>5. **Cobranzas:** Aviso a Tesorería sobre cobros de clientes.<br>6. **RRHH:** Seguimiento de vacaciones, licencias, ART y coordinación legal/impositiva con **Contaduría (Ayelén)**. |
+| **Interacción** | Dirección Operativa (valores de contratistas y gerencia), Sabrina (Horas), Supervisión de Obra (Remitos), Oficina Técnica & Subcontratos, Tesorería, Roberto Zubiat (Estadías), Alberto Gonzáles (Electricidad), Contaduría, Clientes y Contratistas. |
+| **Desvinculación Técnica (ERP)** | Este puesto está vinculado al rol técnico `LIQUIDACION_SUELDOS` en la tabla `public.organization_roles`. Cualquier cambio en el titular se actualiza en dicha tabla y repercute dinámicamente en todo el ERP sin alterar el código ni generar deuda técnica. |
 
 ---
 
@@ -158,6 +159,21 @@ El relevamiento inicial recopila la información bajo la siguiente plantilla de 
 #### Regla de Consistencia Dura ERP (Contratistas ↔ OTs)
 - **Regla:** El sistema no permitirá la imputación de materiales a un contratista en una Orden de Trabajo (OT) si el contratista no registra previamente horas imputadas en esa misma OT.
 - **Auditoría:** En el cierre quincenal, el ERP emitirá una alerta visual de *"Material sin Horas"* ante cualquier desviación.
+
+---
+
+### Puesto 05: Dirección Operativa y Fijación de Tarifas de Contratistas
+
+| Atributo | Detalle |
+| :--- | :--- |
+| **Persona** | Hugo Obregozo |
+| **Área / Depto** | Dirección General / Operaciones y Contrataciones |
+| **Cargo Propuesto** | Director de Operaciones y Negociación de Servicios |
+| **Frecuencia** | Quincenal / Mensual (fijación de tarifas y revisión de obras); Diaria (decisiones gerenciales). |
+| **Tipo de Tarea** | Estratégica + Negociación de Costos + Supervisión General |
+| **Entradas (Insumos)** | Propuestas económicas de contratistas, condiciones del mercado y avances de obra. |
+| **Salidas (Entregables)** | 1. **Determinación de Tarifas de Contratistas:** Fija y aprueba el valor hora AR$/US$ de cada contratista (discriminando Oficial y Ayudante si el servicio lo amerita, o tarifa única plana si no tiene ayudantes).<br>2. **Entrega a Administración:** Pasa los nuevos valores a **María José** para su carga operativa en el ERP antes del inicio del cómputo quincenal.<br>3. **Resolución de Discrepancias:** Visto bueno final en controversias de horas o costos de terceros. |
+| **Interacción** | María José (suministro de tarifas para carga), Jorge (control operativo y desvíos), Graciela (Tesorería), Contratistas y Clientes. |
 
 ---
 

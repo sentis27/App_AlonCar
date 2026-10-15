@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { 
   Clock, 
@@ -27,31 +27,95 @@ import {
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
-// Nómina base de Personal Propio del Astillero (Regla: 9 hs diarias obligatorias, salvo Feriado que son 8 hs)
+// Nómina oficial de Personal Propio del Astillero (Regla: 9 hs diarias obligatorias, salvo Feriado que son 8 hs)
 const NOMINA_ASTILLERO_BASE = [
-  { name: 'Carlos Peralta', defaultRubro: 'Soldadura' },
-  { name: 'Lucas Benítez', defaultRubro: 'Pintura' },
-  { name: 'Martín Gómez', defaultRubro: 'Calderería' },
-  { name: 'Juan Pérez', defaultRubro: 'Mecánica' },
-  { name: 'Marcelo Ramos', defaultRubro: 'Varadero' },
-  { name: 'Jorge', defaultRubro: 'Coordinación' },
-  { name: 'Hugo Obregozo', defaultRubro: 'Supervisión' }
+  { name: 'Rodriguez, Enzo', defaultRubro: 'Raschinear' },
+  { name: 'Colonga, Franco', defaultRubro: 'Raschinear' },
+  { name: 'Gari, Mario Andres', defaultRubro: 'Calderería' },
+  { name: 'Georgetti, Jorge', defaultRubro: 'Mandados' },
+  { name: 'Hernández, Santiago', defaultRubro: 'Maquinaria' },
+  { name: 'Lescano, Alexander', defaultRubro: 'Raschinear' },
+  { name: 'López, Ricardo Héctor', defaultRubro: 'Raschinear' },
+  { name: 'Lorenzi, Martin', defaultRubro: 'Supervisión' },
+  { name: 'Merlos, Cristian', defaultRubro: 'Mecánica' },
+  { name: 'Putallaz, Leonel', defaultRubro: 'Mecánica' },
+  { name: 'Maciel, Rodrigo', defaultRubro: 'Raschinear' },
+  { name: 'Palotta Jara, Valentin', defaultRubro: 'Mecánica' },
+  { name: 'Peralta Pablo', defaultRubro: 'Carpintería' },
+  { name: 'Navarro, Matias', defaultRubro: 'Carpintería' },
+  { name: 'Rancatti, Gonzalo', defaultRubro: 'Carpintería' },
+  { name: 'Rodriguez, Diego', defaultRubro: 'Calderería' },
+  { name: 'Rodriguez, Mariano R O', defaultRubro: 'Pañolero' },
+  { name: 'Sosa, José Mauricio', defaultRubro: 'Raschinear' },
+  { name: 'Sostoa Gonzalez, Higinio', defaultRubro: 'Raschinear' },
+  { name: 'Caballero, Daniel Emanuel', defaultRubro: 'Calderería' },
+  { name: 'Toledo, Luciano', defaultRubro: 'Calderería' },
+  { name: 'Alanis, Carlos', defaultRubro: 'Raschinear' },
+  { name: 'Hernandez, Jorge', defaultRubro: 'Carpintería' },
+  { name: 'Gonzalez, Luciano', defaultRubro: 'Supervisión' },
+  { name: 'Rancatti, Franco', defaultRubro: 'Raschinear' },
+  { name: 'Caballero, Cristian', defaultRubro: 'Calderería' },
+  { name: 'Salvador Alan', defaultRubro: 'Carpintería' },
+  { name: 'Salvador Oscar', defaultRubro: 'Carpintería' },
+  { name: 'Incorvaia, Emanuel', defaultRubro: 'Raschinear' }
 ]
 
-// Talleres frecuentes
+// Talleres externos frecuentes (Grupos de Trabajo - RMO)
 const TALLERES_FRECUENTES = [
-  'Electromecánica Sur',
-  'Calderería Naval Don Luis',
-  'Tornería Martínez',
-  'Refrigeración Puerto'
+  'BRUNO HRNOS',
+  'CORMETAL',
+  'DIVISION CORTE',
+  'GARCIA TORNERIA.',
+  'GPA',
+  'GRILLO TORNERIA',
+  'GUILLERMO GARCIA',
+  'INA PANTOGRAFO',
+  'INTECO',
+  'JL ABREU',
+  'JOAO',
+  'KRANJAC',
+  'LEO ZOLOA',
+  'LESIN S.A',
+  'MCM MECANICA',
+  'NECOLOGICA',
+  'PRFV DELTA',
+  'RAFA',
+  'RAMON ARANDA TALLER',
+  'RODRIGO TORRES',
+  'STI INGENIERIA',
+  'TECO TALLER',
+  'ULSTRUP'
 ]
 
-// Contratistas frecuentes
+// Contratistas frecuentes (Grupos de Trabajo en Planta - PRC)
 const CONTRATISTAS_FRECUENTES = [
-  'Aldo',
-  'Ateneo',
-  'Jorge Giorgetti',
-  'Servicios Navales Gómez'
+  '4RG SERV. INDUSTRIALES',
+  'ALDO (CARPINTERO)',
+  'ARENADO PUERTO',
+  'ATENEO',
+  'AVALOS',
+  'AVALOS AYUDANTE',
+  'BOLTRI',
+  'CAMILO MARTINEZ',
+  'CARLOS VIDONDO',
+  'CHACANO',
+  'DAMIAN',
+  'DE ANGELIS',
+  'EDUARDO FERNANDEZ',
+  'ELECTRICIDAD NAVAL SA',
+  'JHONNY',
+  'JUAREZ JUAN',
+  'LUAYZA',
+  'LUAYZA MARCOS',
+  'NAVAL TRONIC',
+  'PINTOR JUAREZ',
+  'RAMON ARANDA',
+  'RAMON ARANDA AYUDANTE',
+  'SEN SRL',
+  'TANO',
+  'TOBARES',
+  'TOBARES AYUDANTE',
+  'VALENCIA ARENADOR'
 ]
 
 // Opciones de rubros comunes según matriz Alon Car
@@ -151,8 +215,9 @@ export default function LaborLogs() {
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [reviewModalFilter, setReviewModalFilter] = useState('todos') // 'todos' | 'R' | 'RR'
   const [reviewModalSearch, setReviewModalSearch] = useState('')
+  const [dbWorkers, setDbWorkers] = useState([])
 
-  // Cargar Barcos, OTs y Horas desde Supabase
+  // Cargar Barcos, OTs, Horas y Nómina Oficial desde Supabase
   useEffect(() => {
     loadInitialData()
   }, [])
@@ -160,10 +225,11 @@ export default function LaborLogs() {
   async function loadInitialData() {
     try {
       setLoading(true)
-      const [shipsRes, wosRes, logsRes] = await Promise.all([
+      const [shipsRes, wosRes, logsRes, workersRes] = await Promise.all([
         supabase.from('ships').select('*').order('name'),
         supabase.from('work_orders').select('*').order('title'),
-        supabase.from('labor_logs').select('*, work_orders(title, ship_id, ships(name))').order('date_logged', { ascending: false }).limit(200)
+        supabase.from('labor_logs').select('*, work_orders(title, ship_id, ships(name))').order('date_logged', { ascending: false }).limit(200),
+        supabase.from('workers').select('*').order('name')
       ])
 
       const loadedShips = (shipsRes.data && shipsRes.data.length > 0) ? shipsRes.data : FALLBACK_SHIPS
@@ -171,6 +237,10 @@ export default function LaborLogs() {
 
       setShips(loadedShips)
       setWorkOrders(loadedWos)
+
+      if (workersRes.data && workersRes.data.length > 0) {
+        setDbWorkers(workersRes.data)
+      }
 
       if (loadedShips.length > 0 && !selectedShipId) {
         setSelectedShipId(loadedShips[0].id)
@@ -579,22 +649,47 @@ export default function LaborLogs() {
   // ==========================================
   // LÓGICA DE AUDITORÍA Y CONTROL DIARIO
   // ==========================================
+  // Fuentes reactivas desde Supabase (workers) o nómina oficial de respaldo
+  const astilleroSource = useMemo(() => {
+    if (dbWorkers.length > 0) {
+      const filtered = dbWorkers.filter(w => w.admin_center === 'ASTILLERO' && w.status === 'ACTIVO')
+      if (filtered.length > 0) return filtered.map(w => ({ name: w.name, defaultRubro: w.trade || 'General' }))
+    }
+    return NOMINA_ASTILLERO_BASE
+  }, [dbWorkers])
+
+  const tallerSource = useMemo(() => {
+    if (dbWorkers.length > 0) {
+      const set = new Set(dbWorkers.filter(w => w.admin_center === 'TALLER').map(w => w.work_group))
+      if (set.size > 0) return Array.from(set).sort()
+    }
+    return TALLERES_FRECUENTES
+  }, [dbWorkers])
+
+  const contratistaSource = useMemo(() => {
+    if (dbWorkers.length > 0) {
+      const set = new Set(dbWorkers.filter(w => w.admin_center === 'CONTRATISTA').map(w => w.work_group))
+      if (set.size > 0) return Array.from(set).sort()
+    }
+    return CONTRATISTAS_FRECUENTES
+  }, [dbWorkers])
+
   // Lista maestra de personal conocido según tipo
-  const allKnownWorkers = (() => {
+  const allKnownWorkers = useMemo(() => {
     const list = []
     
     // 1. Astillero
-    const astilleroNames = new Set(NOMINA_ASTILLERO_BASE.map(w => w.name))
+    const astilleroNames = new Set(astilleroSource.map(w => w.name))
     recentLogs.forEach(l => {
       if (l.worker_name && l.worker_type === 'Astillero') astilleroNames.add(l.worker_name)
     })
     astilleroNames.forEach(name => {
-      const base = NOMINA_ASTILLERO_BASE.find(b => b.name === name)
+      const base = astilleroSource.find(b => b.name === name)
       list.push({ name, defaultRubro: base?.defaultRubro || 'General', type: 'Astillero' })
     })
 
     // 2. Talleres
-    const tallerNames = new Set(TALLERES_FRECUENTES)
+    const tallerNames = new Set(tallerSource)
     recentLogs.forEach(l => {
       if (l.worker_name && l.worker_type === 'Taller') tallerNames.add(l.worker_name)
     })
@@ -603,7 +698,7 @@ export default function LaborLogs() {
     })
 
     // 3. Contratistas
-    const contratistaNames = new Set(CONTRATISTAS_FRECUENTES)
+    const contratistaNames = new Set(contratistaSource)
     recentLogs.forEach(l => {
       if (l.worker_name && l.worker_type === 'Contratista') contratistaNames.add(l.worker_name)
     })
@@ -612,7 +707,7 @@ export default function LaborLogs() {
     })
 
     return list
-  })()
+  }, [astilleroSource, tallerSource, contratistaSource, recentLogs])
 
   // Logs del día auditado
   const logsForAuditDate = recentLogs.filter(l => l.date_logged === auditDate)
@@ -737,11 +832,11 @@ export default function LaborLogs() {
   }
 
   // Lista de operarios que aparecen en la quincena o nómina (Astillero, Taller, Contratista)
-  const allQuincenaWorkers = (() => {
+  const allQuincenaWorkers = useMemo(() => {
     const map = new Map()
     
     // Primero los fijos de Astillero
-    NOMINA_ASTILLERO_BASE.forEach(w => {
+    astilleroSource.forEach(w => {
       map.set(w.name, { name: w.name, type: 'Astillero' })
     })
 
@@ -753,7 +848,7 @@ export default function LaborLogs() {
     })
 
     return Array.from(map.values())
-  })()
+  }, [astilleroSource, recentLogs])
 
   // Registros filtrados reactivos en la pestaña de detalle
   const filteredLogs = recentLogs.filter(log => {
@@ -3132,13 +3227,13 @@ export default function LaborLogs() {
 
       {/* DATALISTS COMPARTIDOS */}
       <datalist id="all-workers-datalist">
-        {NOMINA_ASTILLERO_BASE.map(w => (
+        {astilleroSource.map(w => (
           <option key={w.name} value={w.name} />
         ))}
-        {TALLERES_FRECUENTES.map(t => (
+        {tallerSource.map(t => (
           <option key={t} value={t} />
         ))}
-        {CONTRATISTAS_FRECUENTES.map(c => (
+        {contratistaSource.map(c => (
           <option key={c} value={c} />
         ))}
       </datalist>

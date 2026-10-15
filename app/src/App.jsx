@@ -4,6 +4,7 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import LaborLogs from './pages/LaborLogs'
+import Personal from './pages/Personal'
 import ModulePlaceholder from './pages/ModulePlaceholder'
 import { Loader2 } from 'lucide-react'
 
@@ -70,7 +71,7 @@ export default function App() {
             <Route path="horas" element={<LaborLogs />} />
             <Route path="panol" element={<ModulePlaceholder />} />
             <Route path="compras" element={<ModulePlaceholder />} />
-            <Route path="personal" element={<ModulePlaceholder />} />
+            <Route path="personal" element={<Personal />} />
             <Route path="comparador" element={<ModulePlaceholder />} />
           </Route>
 

@@ -128,3 +128,82 @@ El personal y prestadores se clasifican formalmente en tres categorías operativ
 - **Separación Estricta de Métricas:** Los contadores y bandejas de `R` y `RR` operan de forma segregada. La transición de `R` a `RR` descuenta de la bandeja roja y suma a la amarilla, garantizando una asignación de responsabilidades inequívoca.
 - **Acciones Masivas en Lote y Señalización Visual:** Soporte para selección múltiple (checkboxes individuales y selector maestro diario) con barra flotante de cambio de estado en 1 clic. Señalización en Sábana Quincenal mediante aros y puntos de color (`🔴` para R, `🟡` para RR).
 
+### 7.7. Tarifario Quincenal, Categorías Oficiales y Análisis de Costos de Mano de Obra
+- **Periodicidad e Histórico Inmutable por Quincena:**
+  - El sistema mantiene un registro histórico estricto de tarifas por quincena (`YYYY-MM-1Q` y `YYYY-MM-2Q`), ordenadas cronológicamente por calendario (año, mes y primera quincena `1Q` antes de segunda quincena `2Q`).
+  - La actualización de nuevos valores sindicales o tarifas de contratistas correspondientes a períodos vigentes o futuros **nunca altera de forma retroactiva** las quincenas ya cerradas, órdenes de trabajo históricas o reportes analíticos pasados.
+- **Cotización US$ Quincenal Congelada (Solo Lectura en Planillas):**
+  - El tipo de cambio oficial del período se exhibe de forma fija/congelada en las planillas como valor de referencia para conversiones.
+  - Su edición queda estrictamente restringida al Administrador Central desde el Panel Maestro, evitando modificaciones accidentales durante la carga de jornales.
+- **Las 5 Categorías Sindicales Oficiales de Astillero y Código de Colores:**
+  - Las 5 categorías oficiales base para el personal propio son:
+    1. `AYUDANTE`: Fondo Celeste / Cyan flúor (`#00E5FF`), texto oscuro.
+    2. `OFICIAL`: Fondo Verde flúor (`#00E676`), texto oscuro.
+    3. `1/2 OFICIAL`: Fondo Magenta / Fucsia (`#FF00D4`), texto blanco.
+    4. `APRENDIZ`: Fondo Amarillo flúor (`#FFEA00`), texto oscuro.
+    5. `OFICIAL BLACK`: Fondo Negro (`#000000`), texto blanco.
+  - *Regla de Depuración:* **MANDADOS** no constituye una categoría salarial; es un rubro operativo. Su valor se imputa bajo la categoría contractual correspondiente del operario.
+  - *Consistencia Visual:* Esta paleta de colores se replica uniformemente en la columna *Categoría* del Padrón de Personal, facilitando la identificación visual inmediata.
+- **Sincronización Automática al Padrón de Personal:**
+  - La actualización de valores en el Tarifario Quincenal sincroniza inmediatamente y sin consulta adicional las tarifas de los operarios vinculados en la tabla de nómina, eliminando margen de error u omisión humana.
+- **Interfaz de Carga Unificada por Centro Administrativo:**
+  - Si se selecciona **`ASTILLERO`**: Se despliegan las 5 categorías oficiales para la carga del valor hora AR$ y cálculo automático en US$.
+  - Si se selecciona **`CONTRATISTA`**: Se despliega la nómina de contratistas.
+    - Si el contratista ofrece ayudante (ej. *RAMON ARANDA*, *AVALOS*, *TOBARES*), se habilita la carga dual de Oficial y Ayudante.
+    - Si el contratista factura con tarifa única plana (ej. *DAMIAN*, *PINTOR JUAREZ*, *TANO*, *CARLOS VIDONDO*, *CHACANO*), el campo de `Ayudante` se bloquea con candado 🔒 y advertencia explicativa, permitiendo únicamente editar `Oficial`.
+  - **Exclusión de `TALLERES`:** No utilizan tarifa horaria fija; operan por cotización y remito (circuito `RPF/RMO ──► FCR`) gestionados técnicamente con la *Oficina Técnica & Subcontratos*.
+- **Desvinculación de Nombres Hardcodeados (Roles Organizacionales Dinámicos):**
+  - Todas las referencias a puestos y responsables (ej. *Responsable de Liquidación de Sueldos*, *Dirección Operativa*, *Oficina Técnica & Subcontratos*) se resuelven dinámicamente mediante la tabla `public.organization_roles`. Esto elimina la deuda técnica ante futuros recambios de personal sin alterar el código ni la base de datos.
+- **Dashboard de Análisis de Variación Quincenal & FX:**
+  - Módulo analítico para Gerencia, Contaduría y Liquidación que permite contrastar la evolución salarial y cambiaria en ventanas de tiempo gerenciales.
+  - Calcula automáticamente:
+    1. Variación en porcentaje (%) y pesos ($) de la mano de obra.
+    2. Variación en porcentaje (%) y dólares (US$) de la mano de obra.
+    3. Brecha paritaria vs ritmo de devaluación del tipo de cambio oficial.
+
+### 7.8. Módulo Gerencial de Análisis de Variación: Reglas de Cálculo, Semáforo de Negociación y Ficha por Contratista
+Para evitar la sobrecarga cognitiva de tablas masivas y suministrar argumentos objetivos de negociación a la Dirección Operativa y Gerencia General, el sistema implementa cuatro pilares analíticos automatizados:
+
+1. **Pilar A: Ventanas Temporales Ejecutivas (Presets Dinámicos):**
+   - El sistema calcula los períodos de apertura (base) y cierre (actual) sin requerir selección manual punto a punto:
+     - `1 Mes (2 Quincenas)`: Penúltima quincena registrada vs. última quincena vigente.
+     - `Trimestre (6 Quincenas)`: 3 meses calendario retrospectivos.
+     - `Semestre (12 Quincenas)`: 6 meses calendario retrospectivos.
+     - `Año Completo / YTD`: Desde la primera quincena del año en curso hasta la fecha.
+     - `Rango Libre`: Auditoría libre punto a punto entre cualquier par de quincenas históricas.
+
+2. **Pilar B: Fórmulas Matemáticas de Comparación y Brecha:**
+   - **Variación Nominal en Pesos (AR$):**
+     $$\Delta \text{AR\%} = \frac{\text{Tarifa Actual AR\$} - \text{Tarifa Base AR\$}}{\text{Tarifa Base AR\$}} \times 100$$
+   - **Variación Real en Moneda Fuerte (US$ - Impacto en Presupuesto de Obra):**
+     $$\Delta \text{US\%} = \frac{\text{Tarifa Actual US\$} - \text{Tarifa Base US\$}}{\text{Tarifa Base US\$}} \times 100$$
+     *(Donde $\text{Tarifa US\$} = \text{Tarifa AR\$} / \text{Cotización Dólar Oficial de la Quincena}$)*.
+   - **Brecha Paritaria contra el Ancla Testigo (Astillero Oficial):**
+     $$\text{Brecha vs Astillero} = \Delta \text{AR\%}_{\text{Contratista}} - \Delta \text{AR\%}_{\text{Oficial Astillero}}$$
+     Representa cuántos puntos porcentuales subió el contratista por encima (o por debajo) del personal en nómina propia.
+   - **Dispersión Inter-Pares por Rubro:**
+     $$\text{Media Rubro} = \frac{\sum \text{Tarifa Contratistas del mismo Rubro}}{N_{\text{Contratistas del Rubro}}}$$
+     Permite comparar si un contratista específico está desfasado respecto a sus pares de oficio (ej. Calderería, Pintura, Tornería).
+
+3. **Pilar C: Criterios y Matriz de Decisión del Semáforo de Negociación:**
+   Cada prestador se clasifica automáticamente según el siguiente árbol de decisión:
+   - 🔴 **ALERTA ROJA (Disparo de Costo / Desvío Excesivo):**
+     - Si $\text{Brecha vs Astillero} > +5.0\%$ (el contratista subió más de 5 puntos por encima del gremio oficial).
+     - O si $\Delta \text{US\%} > +10.0\%$ (su hora en dólares aumentó más de un 10%, encareciendo los presupuestos navales en moneda dura).
+     - *Acción sugerida:* Llamado de atención a Dirección Operativa para renegociar o topear la tarifa horaria.
+   - 🟡 **AMARILLO (En Parámetro / Acompaña Paritarias):**
+     - Si $-2.0\% \le \text{Brecha vs Astillero} \le +5.0\%$.
+     - Y $-5.0\% \le \Delta \text{US\%} \le +10.0\%$.
+     - *Acción sugerida:* Tarifa en equilibrio razonable con la inflación y los acuerdos sindicales.
+   - 🟢 **VERDE (Favorable / Licuado):**
+     - Si $\text{Brecha vs Astillero} < -2.0\%$ (aumentó significativamente menos que el sindicato de Astillero).
+     - O si $\Delta \text{US\%} < 0.0\%$ (el valor en dólares bajó producto de la devaluación cambiaria).
+     - *Acción sugerida:* Costo favorable y holgura de margen para el astillero.
+
+4. **Pilar D: Ficha Individual / Zoom por Contratista y Gráfica de Tendencia:**
+   - Permite aislar a un prestador individual para reuniones de negociación presenciales, exponiendo su histórico quincenal, salto promedio por aumento, posición frente a la media de su rubro y comparación visual en 3 curvas superpuestas:
+     1. Curva Paritaria Astillero Oficial (Línea Azul/Cyan - Testigo).
+     2. Curva Cotización Dólar FX (Línea Verde).
+     3. Curva Tarifa del Contratista (Línea Naranja/Ámbar).
+
+
