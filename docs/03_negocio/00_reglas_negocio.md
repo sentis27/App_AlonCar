@@ -117,3 +117,14 @@ El personal y prestadores se clasifican formalmente en tres categorías operativ
 - **Selectores Desacoplados y en Cascada:** En todas las interfaces y ventanas modales donde se asignen o modifiquen horas (Carga de Cuadrilla, Modal de Imputación Rápida en Control Diario, Modal de Edición Completa desde Control Diario o Sábana Quincenal), el **Barco / Embarcación** y la **Orden de Trabajo (OT)** se seleccionan en dos campos independientes. Al elegir un barco, el selector de OTs filtra automáticamente solo las tareas activas de dicha embarcación.
 - **Asistencia Visual con Alcance de la OT:** Siempre que se seleccione una OT, el sistema debe exhibir de forma destacada la descripción y el alcance del trabajo (`work_orders.description`), brindando asistencia inmediata al operador para verificar que la imputación corresponda con la labor real ejecutada a bordo.
 
+### 7.6. Sistema de Revisión, Auditoría y Aprobación de Imputaciones (S, R, RR, RRR)
+- **Ciclo de Estados de Aprobación:**
+  - `''` *(Vacío / Sin revisar)*: Estado inicial tras la imputación de horas.
+  - `'S'` *(Aprobado)*: Imputación regular validada directamente por supervisión.
+  - `'R'` *(🔴 Requiere Revisión - Alerta Operario)*: Imputación observada por el supervisor con inconsistencias (ej. horas excesivas, rubro erróneo o discrepancia de OT). Dispara la alerta roja para que el operario intervenga y subsane el error.
+  - `'RR'` *(🟡 Horas Corregidas - Alerta Supervisor)*: Imputación corregida por el operario. Dispara la alerta amarilla para que el supervisor verifique la corrección y dé el visto bueno final.
+  - `'RRR'` *(🔵 Aprobación Definitiva)*: Visto bueno final del supervisor tras auditar la corrección `RR`, cerrando el ciclo de revisión.
+- **Auditoría Independiente por Imputación (OT):** Cuando una jornada diaria agrupa múltiples OTs para un mismo operario, cada línea es auditable y calificable de manera individual. El supervisor puede observar una OT (`R`) mientras aprueba otra (`S`).
+- **Separación Estricta de Métricas:** Los contadores y bandejas de `R` y `RR` operan de forma segregada. La transición de `R` a `RR` descuenta de la bandeja roja y suma a la amarilla, garantizando una asignación de responsabilidades inequívoca.
+- **Acciones Masivas en Lote y Señalización Visual:** Soporte para selección múltiple (checkboxes individuales y selector maestro diario) con barra flotante de cambio de estado en 1 clic. Señalización en Sábana Quincenal mediante aros y puntos de color (`🔴` para R, `🟡` para RR).
+
