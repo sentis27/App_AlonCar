@@ -61,6 +61,9 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 ---
 
 ### 🧭 Próximos Pasos Sugeridos (Backlog Priorizado)
+- [ ] **0. Rediseño Visual y Experiencia de Usuario (UX) del Dashboard del Administrador (`/admin`):**
+  - **Estado:** Pendiente de revisión por Dirección / Usuario.
+  - **Detalle:** Revisar la presentación visual del Circuito Operativo Inter-Departamental y la Ficha de Puestos/Vinculaciones. La interfaz actual requiere un rediseño para mejorar la ergonomía visual, reducir la sensación de sobrecarga o dispersión de datos y presentar las funciones, tareas y vinculaciones de forma más limpia, ejecutiva e intuitiva.
 - [ ] **1. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1 & M2: Barcos y Órdenes de Trabajo:**
   - Ficha técnica naval de buques, historial de varadas y estados de puesta en seco.

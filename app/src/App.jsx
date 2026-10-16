@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import LaborLogs from './pages/LaborLogs'
 import Personal from './pages/Personal'
+import AdminDashboard from './pages/AdminDashboard'
 import ModulePlaceholder from './pages/ModulePlaceholder'
 import { Loader2 } from 'lucide-react'
 
@@ -73,6 +74,7 @@ export default function App() {
             <Route path="compras" element={<ModulePlaceholder />} />
             <Route path="personal" element={<Personal />} />
             <Route path="comparador" element={<ModulePlaceholder />} />
+            <Route path="admin" element={<AdminDashboard />} />
           </Route>
 
           {/* Redirección por defecto */}

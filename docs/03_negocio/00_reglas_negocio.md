@@ -213,3 +213,68 @@ Para evitar la sobrecarga cognitiva de tablas masivas y suministrar argumentos o
      Genera la conclusión gerencial resumiendo si el contratista se encuentra en zona de desvío presupuestario ($\text{Brecha} > +5\%$), en parámetro operativo o en zona de conveniencia/licuación cambiaria.
 
 
+
+
+---
+
+### 7.9 Dashboard del Administrador & Matriz Dinámica de Puestos y Seguridad (Gobierno de Accesos)
+
+El **Dashboard del Administrador** (`/admin`) centraliza la gobernanza operativa, los parámetros macroeconómicos y el control de accesos de la organización Alon Car:
+
+1. **Matriz Interactiva de Puestos y Permisos Modulares (Opción A):**
+   - **Mapeo Puesto - Responsable:** Cada rol organizativo (`organization_roles`) define el cargo, el responsable titular designado, su departamento (`Dirección`, `Operaciones`, `Administración`, `Taller`, `Finanzas`), y su nivel de seguridad (`ADMINISTRADOR`, `DIRECCION`, `SUPERVISOR`, `AUDITOR`, `OPERATIVO`).
+   - **Matriz de Seguridad Modular (1 Clic):** La grilla visual presenta columnas para cada sección del sistema:
+     - 🚢 **Barcos y Obras** (`barcos`)
+     - 📋 **Órdenes de Trabajo** (`ots`)
+     - ⏱️ **Carga de Horas** (`horas`)
+     - 📦 **Pañol y Materiales** (`panol`)
+     - 👥 **Padrón de Personal** (`personal`)
+     - 💵 **Tarifario Quincenal** (`tarifario`)
+     - 📈 **Análisis FX & Desvíos** (`analisis`)
+     - 🛡️ **Panel Administrador** (`admin`)
+   - Cada celda funciona como un conmutador inmediato:
+     - `[✓ Activo]` (Badge destacado en color del módulo): Módulo habilitado para el puesto.
+     - `[-- Bloqueado]` (Badge tenue): Módulo restringido.
+     - Un clic actualiza directamente el array `allowed_sections` en Supabase con feedback visual.
+   - **Presets de Asignación Rápida:** Al crear o editar puestos, el administrador dispone de plantillas preconfiguradas:
+     - *Director / Admin:* Acceso total a todos los módulos.
+     - *Dirección Operativa:* Barcos, OTs, Horas, Personal, Tarifario y Análisis.
+     - *Liquidación & RRHH:* Horas, Personal, Tarifario y Análisis.
+     - *Supervisión de Obra & Pañol:* Barcos, OTs, Horas y Pañol.
+     - *Auditoría / Tesorería:* Horas, Tarifario y Análisis FX.
+
+2. **Parámetros Macroeconómicos Quincenales e Inmutabilidad de Cierres:**
+   - **Fijación de Variables Macro (`macro_variables`):**
+     - **Inflación Mensual Oficial (%):** La inflación es de frecuencia estrictamente mensual y rige para ambas quincenas (1Q y 2Q) del respectivo mes.
+     - **Ajuste Manual de Dólar por Quincena ($ / USD):** El tipo de cambio oficial de referencia admite ajuste manual e independiente para cada quincena (`dollar_rate_1q` y `dollar_rate_2q`), reflejando la cotización pactada o de cierre de cada período.
+     - **Métricas de Variación respecto al Mes Anterior:**
+       - $\Delta\% \text{ Dólar} = \frac{\text{Dólar Quincena Actual} - \text{Dólar Mes Anterior}}{\text{Dólar Mes Anterior}} \times 100$
+       - $\Delta \text{ Inflación (p.p.)} = \text{Inflación Mes Actual} - \text{Inflación Mes Anterior}$
+   - **Candado de Inmutabilidad de Quincena (`is_locked_1q`, `is_locked_2q`, `rate_cards.is_locked`):**
+     - Al completar la liquidación y conciliación quincenal, el Administrador puede accionar el candado **"Cerrar / Bloquear Quincena"**.
+     - Una quincena bloqueada (`is_locked = TRUE`) queda inmutable contra modificaciones retroactivas de horas, retiros de materiales o tarifas pactadas.
+     - Solo un rol con jerarquía `ADMINISTRADOR` puede desbloquearla para ajustes excepcionales debidamente auditados.
+
+3. **Radar Operativo de Consistencia y Desvíos:**
+   - Monitoreo en tiempo real de 3 disparadores clave:
+     1. **Prestadores en Semáforo Rojo:** Contratistas cuya tarifa horaria superó en >5% la pauta de Astillero o cuya tarifa en US$ subió >10%.
+     2. **Retiros de Pañol sin Horas Imputadas:** Personal o contratistas que retiraron insumos/consumibles de pañol en el período pero no registraron horas de trabajo.
+     3. **Partes de Horas Observados:** Horas quincenales en estado pendiente de auditoría o rectificación por supervisión.
+
+4. **Perfiles de Puesto, Misiones y Vinculaciones Inter-Departamentales:**
+   - La tabla `organization_roles` documenta para cada función directiva y administrativa:
+     - `job_mission`: Misión y propósito fundamental en el astillero.
+     - `key_responsibilities`: Array de tareas y responsabilidades operativas.
+     - `departmental_links`: Flujos de insumos, entregables (handoffs), coordinaciones y controles con otras áreas.
+     - `reports_to`: Línea jerárquica directa.
+   - **Circuito Operativo en 5 Etapas Determinísticas:**
+     - Etapa 1: Negociación y Fijación de Tarifas (Dirección Operativa - Hugo Obregozo).
+     - Etapa 2: Carga en ERP & Apertura de OTs (Administración - María José + Jefes de Obra).
+     - Etapa 3: Ejecución, Registro Diario & Pañol (Supervisión - Jorge + Pañol Rodrigo/Mariano + Sabrina). **Regla Dura:** Prohibido retirar materiales sin horas asignadas en la OT.
+     - Etapa 4: Auditoría Técnica y Cotejo de Facturación (Oficina Técnica - Omar + María José).
+     - Etapa 5: Auditoría Financiera, Retenciones & Pago (Tesorería - Graciela).
+
+5. **⚠️ Tarea Pendiente - Revisión Visual y Rediseño de Experiencia (UX):**
+   - **Observación del Usuario:** La presentación visual actual del Circuito Operativo y la Ficha de Puestos genera sobrecarga visual o no convence en su disposición estética actual.
+   - **Acción Pendiente:** Realizar una sesión de rediseño visual para sintetizar la información, mejorar la jerarquía gráfica de las tarjetas, y presentar las funciones y vinculaciones inter-departamentales de manera más limpia, elegante y ejecutiva.
+

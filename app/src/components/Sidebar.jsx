@@ -9,7 +9,8 @@ import {
   Users, 
   BarChart3, 
   LogOut, 
-  Anchor
+  Anchor,
+  ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -22,6 +23,7 @@ const navItems = [
   { name: 'Compras', path: '/compras', icon: ShoppingCart },
   { name: 'Personal & Tarifas', path: '/personal', icon: Users },
   { name: 'Comparador de Obras', path: '/comparador', icon: BarChart3 },
+  { name: 'Panel Administrador', path: '/admin', icon: ShieldCheck },
 ]
 
 export default function Sidebar() {
