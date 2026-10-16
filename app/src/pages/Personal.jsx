@@ -200,18 +200,18 @@ export default function Personal() {
   const [comparePeriodTarget, setComparePeriodTarget] = useState('2026-10-1Q')
   const [comparisonCards, setComparisonCards] = useState([])
   const [loadingComparison, setLoadingComparison] = useState(false)
+  const [macroVariables, setMacroVariables] = useState([])
+  const [chartMode, setChartMode] = useState('pct') // 'pct' | 'nominal'
+  const [hoveredPointIndex, setHoveredPointIndex] = useState(null)
   
   // Pilar A: Presets de Ventanas Temporales
   const [timeWindowPreset, setTimeWindowPreset] = useState('month') // 'month' | 'quarter' | 'semester' | 'year' | 'custom'
 
-  // Pilar B: Ficha / Zoom por Contratista
-  const [selectedZoomContractor, setSelectedZoomContractor] = useState('TODOS')
+  // Sujeto a Evaluar en Gráfico (default a 'ALDO (CARPINTERO)')
+  const [selectedZoomContractor, setSelectedZoomContractor] = useState('ALDO (CARPINTERO)')
 
-  // Pilar C: Filtro por Semáforo
-  const [filterTrafficLight, setFilterTrafficLight] = useState('TODOS') // 'TODOS' | 'ROJO' | 'AMARILLO' | 'VERDE'
-
-  // Filtro de búsqueda en matriz
-  const [comparisonSearch, setComparisonSearch] = useState('')
+  // Filtro de Semáforo
+  const [filterTrafficLight, setFilterTrafficLight] = useState('TODOS')
 
   // Período activo formateado (ej: 2026-10-1Q)
   const currentPeriodKey = useMemo(() => {
@@ -373,19 +373,17 @@ export default function Personal() {
     }
   }
 
-  // Cargar datos para el comparador de variación quincenal (historial completo para tendencias)
+  // Cargar datos para el comparador de variación quincenal (historial completo y macro variables)
   async function loadComparisonData() {
     try {
       setLoadingComparison(true)
-      const { data, error } = await supabase
-        .from('rate_cards')
-        .select('*')
-        .order('year', { ascending: true })
-        .order('month', { ascending: true })
-        .order('quincena', { ascending: true })
+      const [cardsRes, macroRes] = await Promise.all([
+        supabase.from('rate_cards').select('*').order('year', { ascending: true }).order('month', { ascending: true }).order('quincena', { ascending: true }),
+        supabase.from('macro_variables').select('*').order('year', { ascending: true }).order('month', { ascending: true })
+      ])
 
-      if (error) throw error
-      setComparisonCards(data || [])
+      if (cardsRes.data) setComparisonCards(cardsRes.data)
+      if (macroRes.data) setMacroVariables(macroRes.data)
     } catch (err) {
       console.warn('Error cargando comparativa:', err)
       setComparisonCards([])
@@ -867,33 +865,166 @@ export default function Personal() {
     }
   }, [comparisonCards, comparePeriodBase, comparePeriodTarget, workers])
 
-  // Historial cronológico para la Ficha / Zoom del Contratista seleccionado
-  const zoomContractorHistory = useMemo(() => {
-    if (selectedZoomContractor === 'TODOS') return []
-    const list = comparisonCards.filter(c => c.entity_name === selectedZoomContractor)
-    list.sort((a, b) => {
-      if (a.year !== b.year) return a.year - b.year
-      if (a.month !== b.month) return a.month - b.month
-      return a.quincena - b.quincena
-    })
-    return list
-  }, [comparisonCards, selectedZoomContractor])
+  // -------------------------------------------------------------
+  // MOTOR DE CÁLCULO PARA EL GRÁFICO DE FLUCTUACIÓN MULTIVARIABLE
+  // 3 ANCLAS: DÓLAR FX, PARITARIA SINDICAL ASTILLERO E INFLACIÓN MENSUAL
+  // -------------------------------------------------------------
+  const fluctuationChartData = useMemo(() => {
+    if (sortedRecordedPeriods.length === 0) {
+      return { points: [], minPct: -5, maxPct: 15, minNom: 0, maxNom: 20000, summary: null }
+    }
 
-  // Filas filtradas de la matriz de variación
-  const filteredComparisonRows = useMemo(() => {
-    return comparisonResults.rows.filter(row => {
-      if (filterTrafficLight !== 'TODOS' && row.trafficLight !== filterTrafficLight) return false
-      if (selectedZoomContractor !== 'TODOS' && row.entity_name !== selectedZoomContractor) return false
-      if (comparisonSearch) {
-        const term = comparisonSearch.toLowerCase()
-        const match = (row.entity_name || '').toLowerCase().includes(term) ||
-                      (row.trade || '').toLowerCase().includes(term) ||
-                      (row.admin_center || '').toLowerCase().includes(term)
-        if (!match) return false
+    // 1. Filtrar los períodos dentro de la ventana de tiempo seleccionada
+    const baseIdx = sortedRecordedPeriods.findIndex(p => p.period === comparePeriodBase)
+    const targetIdx = sortedRecordedPeriods.findIndex(p => p.period === comparePeriodTarget)
+
+    const startIdx = baseIdx !== -1 && targetIdx !== -1 ? Math.min(baseIdx, targetIdx) : 0
+    const endIdx = baseIdx !== -1 && targetIdx !== -1 ? Math.max(baseIdx, targetIdx) : sortedRecordedPeriods.length - 1
+    const windowPeriods = sortedRecordedPeriods.slice(startIdx, endIdx + 1)
+
+    if (windowPeriods.length === 0) {
+      return { points: [], minPct: -5, maxPct: 15, minNom: 0, maxNom: 20000, summary: null }
+    }
+
+    // 2. Extraer puntos cronológicos para las 4 variables
+    let compoundInflationFactor = 1.0
+
+    const rawPoints = windowPeriods.map((wp, idx) => {
+      const periodCards = comparisonCards.filter(c => c.period === wp.period)
+      const macroRecord = macroVariables.find(m => m.year === wp.year && m.month === wp.month)
+
+      // a) Dólar FX
+      const dollar = periodCards.length > 0 && periodCards[0].dollar_rate
+        ? parseFloat(periodCards[0].dollar_rate)
+        : (macroRecord ? parseFloat(macroRecord.dollar_rate) : 1500)
+
+      // b) Inflación mensual (%) que aplica para ambas quincenas (1Q y 2Q)
+      const monthlyInf = periodCards.length > 0 && periodCards[0].monthly_inflation_pct !== undefined && periodCards[0].monthly_inflation_pct !== null
+        ? parseFloat(periodCards[0].monthly_inflation_pct)
+        : (macroRecord ? parseFloat(macroRecord.monthly_inflation_pct) : 3.5)
+
+      // Compounding aproximado por quincena (la mitad del mes por quincena)
+      if (idx > 0) {
+        compoundInflationFactor = compoundInflationFactor * (1 + (monthlyInf / 200))
       }
-      return true
+      const cumInflationPct = Number(((compoundInflationFactor - 1) * 100).toFixed(2))
+
+      // c) Paritaria Oficial Astillero (Ancla Testigo Sindical)
+      const astilleroCard = periodCards.find(c => c.admin_center === 'ASTILLERO' && (c.entity_name === 'OFICIAL' || c.entity_name === 'OFICIAL BLACK'))
+      const astilleroRate = astilleroCard ? parseFloat(astilleroCard.rate_oficial_ars) : 16365.76
+
+      // d) Contratista seleccionado (o promedio si es TODOS)
+      let contractorRate = 0
+      let contractorUsd = 0
+      if (selectedZoomContractor !== 'TODOS') {
+        const contCard = periodCards.find(c => c.entity_name === selectedZoomContractor)
+        if (contCard) {
+          contractorRate = parseFloat(contCard.rate_oficial_ars) || 0
+          contractorUsd = parseFloat(contCard.rate_oficial_usd) || 0
+        }
+      } else {
+        const allContCards = periodCards.filter(c => c.admin_center === 'CONTRATISTA' && parseFloat(c.rate_oficial_ars) > 0)
+        if (allContCards.length > 0) {
+          contractorRate = allContCards.reduce((acc, c) => acc + parseFloat(c.rate_oficial_ars), 0) / allContCards.length
+          contractorUsd = allContCards.reduce((acc, c) => acc + parseFloat(c.rate_oficial_usd), 0) / allContCards.length
+        }
+      }
+
+      return {
+        period: wp.period,
+        year: wp.year,
+        month: wp.month,
+        quincena: wp.quincena,
+        shortLabel: `${MONTH_NAMES[wp.month - 1].slice(0, 3)} ${wp.quincena}Q`,
+        dollar,
+        monthlyInf,
+        cumInflationPct,
+        astilleroRate,
+        contractorRate: Number(contractorRate.toFixed(2)),
+        contractorUsd: Number(contractorUsd.toFixed(2))
+      }
     })
-  }, [comparisonResults.rows, filterTrafficLight, selectedZoomContractor, comparisonSearch])
+
+    // 3. Normalización y cálculo de variaciones relativas al punto base (idx 0)
+    const basePoint = rawPoints[0]
+    const baseCont = basePoint.contractorRate > 0 ? basePoint.contractorRate : 1
+    const baseAst = basePoint.astilleroRate > 0 ? basePoint.astilleroRate : 1
+    const baseDol = basePoint.dollar > 0 ? basePoint.dollar : 1
+
+    let minPct = 0
+    let maxPct = 0
+    let minNom = Infinity
+    let maxNom = -Infinity
+
+    const points = rawPoints.map((pt, idx) => {
+      const contPct = idx === 0 || basePoint.contractorRate === 0
+        ? 0
+        : Number((((pt.contractorRate - baseCont) / baseCont) * 100).toFixed(2))
+      const astPct = idx === 0
+        ? 0
+        : Number((((pt.astilleroRate - baseAst) / baseAst) * 100).toFixed(2))
+      const dolPct = idx === 0
+        ? 0
+        : Number((((pt.dollar - baseDol) / baseDol) * 100).toFixed(2))
+      const infPct = pt.cumInflationPct
+
+      minPct = Math.min(minPct, contPct, astPct, dolPct, infPct)
+      maxPct = Math.max(maxPct, contPct, astPct, dolPct, infPct)
+
+      if (pt.contractorRate > 0) {
+        minNom = Math.min(minNom, pt.contractorRate, pt.astilleroRate)
+        maxNom = Math.max(maxNom, pt.contractorRate, pt.astilleroRate)
+      } else {
+        minNom = Math.min(minNom, pt.astilleroRate)
+        maxNom = Math.max(maxNom, pt.astilleroRate)
+      }
+
+      return {
+        ...pt,
+        contPct,
+        astPct,
+        dolPct,
+        infPct
+      }
+    })
+
+    if (minNom === Infinity) minNom = 0
+    if (maxNom === -Infinity) maxNom = 20000
+
+    minPct = Math.floor(minPct - 2)
+    maxPct = Math.ceil(maxPct + 3)
+    if (maxPct - minPct < 10) maxPct = minPct + 10
+
+    const lastPoint = points[points.length - 1] || points[0]
+    const netContPct = lastPoint ? lastPoint.contPct : 0
+    const netAstPct = lastPoint ? lastPoint.astPct : 0
+    const netDolPct = lastPoint ? lastPoint.dolPct : 0
+    const netInfPct = lastPoint ? lastPoint.infPct : 0
+
+    const brechaVsAst = Number((netContPct - netAstPct).toFixed(2))
+    const brechaVsInf = Number((netContPct - netInfPct).toFixed(2))
+    const brechaVsDol = Number((netContPct - netDolPct).toFixed(2))
+
+    return {
+      points,
+      minPct,
+      maxPct,
+      minNom: Math.floor(minNom * 0.95),
+      maxNom: Math.ceil(maxNom * 1.05),
+      summary: {
+        basePoint,
+        lastPoint,
+        netContPct,
+        netAstPct,
+        netDolPct,
+        netInfPct,
+        brechaVsAst,
+        brechaVsInf,
+        brechaVsDol,
+        targetName: selectedZoomContractor === 'TODOS' ? 'Promedio General de Contratistas' : selectedZoomContractor
+      }
+    }
+  }, [sortedRecordedPeriods, comparePeriodBase, comparePeriodTarget, comparisonCards, macroVariables, selectedZoomContractor])
 
   // -------------------------------------------------------------
   // LÓGICA DE NÓMINA GENERAL
@@ -1204,12 +1335,35 @@ export default function Personal() {
     try {
       setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, status: newStatus } : w))
       
-      const { error } = await supabase
-        .from('workers')
-        .update({ status: newStatus })
-        .eq('id', worker.id)
+      if (!String(worker.id).startsWith('worker-local-')) {
+        const { error } = await supabase
+          .from('workers')
+          .update({ status: newStatus })
+          .eq('id', worker.id)
 
-      if (error) throw error
+        if (error) throw error
+      }
+    } catch (err) {
+      console.error(err)
+      loadWorkers()
+    }
+  }
+
+  const toggleWorkerPermission = async (worker, permType) => {
+    const field = permType === 'P' ? 'can_withdraw_materials' : 'can_impute_hours'
+    const currentVal = Boolean(worker[field] ?? true)
+    const newVal = !currentVal
+    try {
+      setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, [field]: newVal } : w))
+      
+      if (!String(worker.id).startsWith('worker-local-')) {
+        const { error } = await supabase
+          .from('workers')
+          .update({ [field]: newVal })
+          .eq('id', worker.id)
+
+        if (error) throw error
+      }
     } catch (err) {
       console.error(err)
       loadWorkers()
@@ -1332,31 +1486,51 @@ export default function Personal() {
       {/* ========================================================================= */}
       {activeTab === 'analisis' && (
         <div className="space-y-6 animate-in fade-in duration-150">
-          {/* BARRA SUPERIOR: PILAR A - VENTANAS TEMPORALES INTELIGENTES */}
+          {/* BARRA SUPERIOR: CONTROLES DE ANÁLISIS & PRESTADOR SELECCIONADO */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
               <div>
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-purple-400" />
                   <h2 className="text-base font-bold text-white">
-                    Tablero Gerencial de Variación de Costos & Negociación de Tarifas
+                    Fluctuación de Costos vs. 3 Anclas Determinísticas
                   </h2>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Análisis estratégico de costos de mano de obra frente a la paritaria sindical de Astillero y el ritmo de devaluación cambiaria.
+                  Comparativa dinámica frente al <strong>Dólar Oficial FX</strong>, la <strong>Paritaria Sindical de Astillero</strong> y la <strong>Inflación Mensual</strong> fijada por Administrador.
                 </p>
               </div>
 
-              {/* Botón de recarga de datos */}
-              <button
-                type="button"
-                onClick={loadComparisonData}
-                className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer self-start lg:self-auto flex items-center gap-1.5 text-xs font-bold"
-                title="Actualizar datos históricos"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingComparison ? 'animate-spin' : ''}`} />
-                <span>Actualizar</span>
-              </button>
+              {/* Selector de Contratista a Evaluar & Botón Actualizar */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700">
+                  <HardHat className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-bold text-slate-400">Prestador / Sujeto:</span>
+                  <select
+                    value={selectedZoomContractor}
+                    onChange={(e) => {
+                      setSelectedZoomContractor(e.target.value)
+                      setHoveredPointIndex(null)
+                    }}
+                    className="bg-slate-900 border border-slate-700 text-xs font-extrabold text-amber-300 rounded-lg px-2.5 py-1 focus:outline-none focus:border-amber-400 font-mono cursor-pointer"
+                  >
+                    <option value="TODOS">👥 Promedio General de Contratistas</option>
+                    {uniqueContractorList.map(c => (
+                      <option key={`eval-${c}`} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadComparisonData}
+                  className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                  title="Actualizar datos históricos"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingComparison ? 'animate-spin' : ''}`} />
+                  <span>Actualizar</span>
+                </button>
+              </div>
             </div>
 
             {/* SELECTOR DE VENTANA TEMPORAL (PILAR A) */}
@@ -1428,12 +1602,51 @@ export default function Personal() {
               )}
             </div>
 
-            {/* TARJETAS KPI DE IMPACTO MACRO */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-              {/* Variación del Dólar Oficial */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+            {/* 5 TARJETAS KPI FIJAS: SEMÁFORO INDIVIDUAL Y LAS 3 ANCLAS DETERMINÍSTICAS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 pt-2">
+              {/* KPI 1: Semáforo Ejecutivo del Sujeto Evaluado */}
+              {(() => {
+                const s = fluctuationChartData.summary
+                const netCont = s ? s.netContPct : 0
+                const brechaAst = s ? s.brechaVsAst : 0
+                const isRed = brechaAst > 5.0
+                const isGreen = brechaAst < -2.0 || netCont < 0
+                const statusColor = isRed ? 'rose' : isGreen ? 'emerald' : 'amber'
+                const statusLabel = isRed ? 'ALERTA ROJA' : isGreen ? 'FAVORABLE' : 'EN PARÁMETRO'
+
+                return (
+                  <div className={`p-3.5 rounded-xl bg-slate-950 border border-${statusColor}-800/80 space-y-1.5`}>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400 truncate max-w-[120px]" title={s?.targetName}>
+                        {s?.targetName}
+                      </span>
+                      <span className={`text-[9px] px-1.5 py-0.2 rounded font-black border ${
+                        isRed ? 'bg-rose-950 text-rose-300 border-rose-700' : isGreen ? 'bg-emerald-950 text-emerald-300 border-emerald-700' : 'bg-amber-950 text-amber-300 border-amber-700'
+                      }`}>
+                        {statusLabel}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className={`text-2xl font-black font-mono ${
+                        netCont > 0 ? (isRed ? 'text-rose-400' : 'text-amber-300') : 'text-slate-200'
+                      }`}>
+                        {netCont > 0 ? `+${netCont}%` : `${netCont}%`}
+                      </span>
+                      <span className="text-xs text-slate-500 font-mono">AR$/h</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 block truncate">
+                      Brecha vs Sindicato: <strong className={brechaAst > 0 ? 'text-rose-400 font-mono' : 'text-emerald-400 font-mono'}>
+                        {brechaAst > 0 ? `+${brechaAst}%` : `${brechaAst}%`}
+                      </strong>
+                    </span>
+                  </div>
+                )
+              })()}
+
+              {/* KPI 2: Ancla 1 - Dólar Oficial FX */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
                 <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="font-bold uppercase tracking-wider text-[10px]">Dólar Oficial FX</span>
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-emerald-400">Ancla 1: Dólar FX</span>
                   <span className="font-mono text-emerald-400 font-bold">${comparisonResults.targetDollar}</span>
                 </div>
                 <div className="flex items-baseline gap-2">
@@ -1445,15 +1658,15 @@ export default function Personal() {
                   </span>
                 </div>
                 <span className="text-[10px] text-slate-400 block">
-                  Ritmo de devaluación en el período
+                  Ritmo cambiario en el período
                 </span>
               </div>
 
-              {/* Ancla Testigo: Aumento Paritario Astillero */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-cyan-900/40 space-y-1.5">
+              {/* KPI 3: Ancla 2 - Paritaria Oficial Astillero */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-900/40 space-y-1.5">
                 <div className="flex items-center justify-between text-xs text-cyan-400">
-                  <span className="font-bold uppercase tracking-wider text-[10px]">Ancla Testigo: Astillero</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-800 font-bold">Oficial Planta</span>
+                  <span className="font-bold uppercase tracking-wider text-[10px]">Ancla 2: Sindicato</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-800 font-bold">Astillero</span>
                 </div>
                 <div className="flex items-baseline gap-2">
                   <span className={`text-2xl font-black font-mono ${
@@ -1461,563 +1674,465 @@ export default function Personal() {
                   }`}>
                     {comparisonResults.oficialAstilleroPct > 0 ? `+${comparisonResults.oficialAstilleroPct}%` : `${comparisonResults.oficialAstilleroPct}%`}
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">en AR$</span>
+                  <span className="text-xs text-slate-400 font-mono">convenio</span>
                 </div>
-                <span className="text-[10px] text-slate-400 block">
-                  Costo neto en US$: <strong className={comparisonResults.avgAstilleroUsdPct >= 0 ? 'text-amber-400' : 'text-emerald-400'}>
-                    {comparisonResults.avgAstilleroUsdPct > 0 ? `+${comparisonResults.avgAstilleroUsdPct}%` : `${comparisonResults.avgAstilleroUsdPct}%`}
-                  </strong>
+                <span className="text-[10px] text-slate-400 block truncate">
+                  Pauta salarial oficial de planta
                 </span>
               </div>
 
-              {/* Aumento Promedio Contratistas */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-amber-900/40 space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-amber-400">
-                  <span className="font-bold uppercase tracking-wider text-[10px]">Promedio Contratistas</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 border border-amber-800 font-bold">Acuerdos Hugo</span>
+              {/* KPI 4: Ancla 3 - Inflación Oficial Mensual / Acumulada */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-orange-900/40 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-orange-400">
+                  <span className="font-bold uppercase tracking-wider text-[10px]">Ancla 3: Inflación</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-orange-950 border border-orange-800 font-bold">Admin Central</span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className={`text-2xl font-black font-mono ${
-                    comparisonResults.avgContractorPct > 0 ? 'text-amber-400' : 'text-slate-300'
-                  }`}>
-                    {comparisonResults.avgContractorPct > 0 ? `+${comparisonResults.avgContractorPct}%` : `${comparisonResults.avgContractorPct}%`}
+                  <span className="text-2xl font-black font-mono text-orange-400">
+                    +{fluctuationChartData.summary?.netInfPct || 0}%
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">en AR$</span>
+                  <span className="text-xs text-slate-400 font-mono">acumulada</span>
                 </div>
                 <span className="text-[10px] text-slate-400 block">
-                  Costo neto en US$: <strong className={comparisonResults.avgContractorUsdPct >= 0 ? 'text-amber-400' : 'text-emerald-400'}>
-                    {comparisonResults.avgContractorUsdPct > 0 ? `+${comparisonResults.avgContractorUsdPct}%` : `${comparisonResults.avgContractorUsdPct}%`}
-                  </strong>
+                  Aplica a ambas quincenas del mes
                 </span>
               </div>
 
-              {/* Semáforo Ejecutivo de Desvíos (Pilar C) */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-purple-900/40 space-y-1.5">
+              {/* KPI 5: Semáforo Ejecutivo Global de la Nómina (Fijo pedido por usuario) */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-purple-900/40 space-y-1.5">
                 <div className="flex items-center justify-between text-xs text-purple-400">
-                  <span className="font-bold uppercase tracking-wider text-[10px]">Semáforo de Desvíos</span>
+                  <span className="font-bold uppercase tracking-wider text-[10px]">Semáforo Global</span>
                   <span className="font-mono text-xs font-bold text-slate-400">{comparisonResults.rows.filter(r => r.admin_center === 'CONTRATISTA').length} Cuadrillas</span>
                 </div>
                 <div className="flex items-center gap-3 pt-0.5">
-                  <div className="flex items-center gap-1" title="Contratistas con aumento > +5% sobre Astillero o > +10% en USD">
+                  <div className="flex items-center gap-1" title="Contratistas con aumento > +5% sobre Astillero">
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
                     <span className="font-mono font-black text-rose-400 text-lg">{comparisonResults.redCount}</span>
                   </div>
-                  <div className="flex items-center gap-1" title="Contratistas que acompañan la pauta paritaria">
+                  <div className="flex items-center gap-1" title="Contratistas alineados a la paritaria">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
                     <span className="font-mono font-black text-amber-300 text-lg">{comparisonResults.yellowCount}</span>
                   </div>
-                  <div className="flex items-center gap-1" title="Contratistas con aumento inferior al gremio o licuados en USD">
+                  <div className="flex items-center gap-1" title="Contratistas favorables">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
                     <span className="font-mono font-black text-emerald-300 text-lg">{comparisonResults.greenCount}</span>
                   </div>
                 </div>
                 <span className="text-[10px] text-slate-400 block">
-                  Brecha promedio vs Astillero: <strong className={comparisonResults.avgContractorPct > comparisonResults.oficialAstilleroPct ? 'text-rose-400 font-mono' : 'text-emerald-400 font-mono'}>
-                    {(comparisonResults.avgContractorPct - comparisonResults.oficialAstilleroPct).toFixed(2)}%
-                  </strong>
+                  Pauta general de contratistas
                 </span>
               </div>
             </div>
           </div>
 
-          {/* PILAR D: CURVAS DE TENDENCIA & COMPARATIVA VISUAL DE BARRAS */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3.5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-xs uppercase tracking-wider font-extrabold text-white">
-                  Comparativa de Tendencias Acumuladas ({comparePeriodBase} ──► {comparePeriodTarget})
-                </h3>
-              </div>
-              <span className="text-[10px] text-slate-400">
-                Pilar D: Comparación directa de ritmo salarial vs cambiario
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              {/* Barra 1: Astillero Oficial (Ancla) */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-bold text-cyan-400 flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-                    Paritaria Oficial Astillero (Ancla Testigo)
-                  </span>
-                  <span className="font-mono font-bold text-cyan-300">
-                    {comparisonResults.oficialAstilleroPct > 0 ? `+${comparisonResults.oficialAstilleroPct}%` : `${comparisonResults.oficialAstilleroPct}%`} AR$
-                  </span>
-                </div>
-                <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
-                  <div 
-                    className="bg-cyan-400 h-full rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, Math.max(5, comparisonResults.oficialAstilleroPct * 2))}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Barra 2: Dólar FX */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-bold text-emerald-400 flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                    Devaluación Dólar Oficial
-                  </span>
-                  <span className="font-mono font-bold text-emerald-300">
-                    {comparisonResults.dollarDiffPct > 0 ? `+${comparisonResults.dollarDiffPct}%` : `${comparisonResults.dollarDiffPct}%`} FX
-                  </span>
-                </div>
-                <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
-                  <div 
-                    className="bg-emerald-400 h-full rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, Math.max(5, comparisonResults.dollarDiffPct * 2))}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Barra 3: Contratistas */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-bold text-amber-400 flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                    {selectedZoomContractor !== 'TODOS' ? `Tarifa de ${selectedZoomContractor}` : 'Promedio Cuadrillas Contratistas'}
-                  </span>
-                  <span className="font-mono font-bold text-amber-300">
-                    {selectedZoomContractor !== 'TODOS' 
-                      ? `${(comparisonResults.rows.find(r => r.entity_name === selectedZoomContractor)?.diffOficialPct || 0) > 0 ? '+' : ''}${(comparisonResults.rows.find(r => r.entity_name === selectedZoomContractor)?.diffOficialPct || 0)}% AR$` 
-                      : `+${comparisonResults.avgContractorPct}% AR$`}
-                  </span>
-                </div>
-                <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
-                  <div 
-                    className="bg-amber-400 h-full rounded-full transition-all duration-500"
-                    style={{ 
-                      width: `${Math.min(100, Math.max(5, (selectedZoomContractor !== 'TODOS' 
-                        ? (comparisonResults.rows.find(r => r.entity_name === selectedZoomContractor)?.diffOficialPct || 0) 
-                        : comparisonResults.avgContractorPct) * 2))}%` 
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Diagnóstico ejecutivo */}
-            <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
-              comparisonResults.avgContractorPct > comparisonResults.oficialAstilleroPct
-                ? 'bg-rose-950/30 border-rose-800/50 text-rose-300'
-                : 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300'
-            }`}>
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>
-                {comparisonResults.avgContractorPct > comparisonResults.oficialAstilleroPct
-                  ? `Presión de costo detectada: Los contratistas crecieron en promedio +${(comparisonResults.avgContractorPct - comparisonResults.oficialAstilleroPct).toFixed(2)}% por encima de la paritaria de Astillero.`
-                  : 'Costo bajo control: Los contratistas acompañan el ritmo de paritarias de planta sin sobrecostos desmedidos.'}
-              </span>
-            </div>
-          </div>
-
-          {/* PILAR B: ZOOM / FICHA DE NEGOCIACIÓN POR CONTRATISTA */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          {/* EL NUEVO CENTRO VISUAL: GRÁFICO DINÁMICO DE FLUCTUACIÓN TEMPORAL MULTIVARIABLE */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
               <div>
-                <h3 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
-                  <HardHat className="w-4 h-4 text-amber-400" />
-                  Ficha de Negociación por Prestador (Zoom Individual)
+                <h3 className="text-sm uppercase tracking-wider font-extrabold text-white flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-cyan-400" />
+                  Evolución Temporal: {fluctuationChartData.summary?.targetName} vs. 3 Anclas
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Aislá a un contratista específico para obtener el argumentario numérico para reuniones de tarifas.
+                  Visualizá punto por punto la fluctuación quincenal y la brecha relativa contra el Dólar, el Sindicato y la Inflación.
                 </p>
               </div>
 
-              {/* Selector de Contratista para Zoom */}
+              {/* Controles del Gráfico: Alternar % Acumulado vs AR$/Hora */}
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400">Prestador:</span>
-                <select
-                  value={selectedZoomContractor}
-                  onChange={(e) => setSelectedZoomContractor(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 text-xs font-bold text-white rounded-xl px-3 py-1.5 focus:outline-none focus:border-amber-400 font-mono cursor-pointer"
-                >
-                  <option value="TODOS">-- Ver Todas las Cuadrillas --</option>
-                  {uniqueContractorList.map(c => (
-                    <option key={`zoom-${c}`} value={c}>{c}</option>
-                  ))}
-                </select>
-
-                {selectedZoomContractor !== 'TODOS' && (
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Ver:</span>
+                <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
                   <button
                     type="button"
-                    onClick={() => setSelectedZoomContractor('TODOS')}
-                    className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                    onClick={() => setChartMode('pct')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      chartMode === 'pct' ? 'bg-primary text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                    }`}
                   >
-                    Quitar filtro
+                    📈 Variación Acumulada (%)
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setChartMode('nominal')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      chartMode === 'nominal' ? 'bg-primary text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    💵 Valores AR$/Hora
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* CUADRO EXPANDIDO DE LA FICHA INDIVIDUAL (SI HAY UN CONTRATISTA SELECCIONADO) */}
-            {selectedZoomContractor !== 'TODOS' && (() => {
-              const target = comparisonResults.rows.find(r => r.entity_name === selectedZoomContractor)
-              if (!target) return (
-                <div className="p-4 rounded-xl bg-slate-950 text-center text-slate-500 text-xs">
-                  No se encontraron datos registrados para {selectedZoomContractor} en este período.
+            {/* LEYENDA VISUAL DE LAS 4 CURVAS */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/80 p-3 rounded-xl border border-slate-800 text-xs">
+              <div className="flex flex-wrap items-center gap-4">
+                {/* Curva Contratista */}
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <span className="w-3.5 h-3.5 rounded-full bg-amber-400 border border-amber-300 shadow-sm shadow-amber-500/50"></span>
+                  <span>{fluctuationChartData.summary?.targetName}</span>
                 </div>
-              )
+                {/* Curva Astillero */}
+                <div className="flex items-center gap-2 font-bold text-cyan-400">
+                  <span className="w-3.5 h-3.5 rounded-full bg-cyan-400 border border-cyan-300 shadow-sm shadow-cyan-500/50"></span>
+                  <span>Paritaria Astillero (Sindicato)</span>
+                </div>
+                {/* Curva Inflación */}
+                <div className="flex items-center gap-2 font-bold text-orange-400">
+                  <span className="w-3.5 h-3.5 rounded-full bg-orange-500 border border-orange-400 shadow-sm shadow-orange-500/50"></span>
+                  <span>Inflación Oficial (Mensual)</span>
+                </div>
+                {/* Curva Dólar */}
+                <div className="flex items-center gap-2 font-bold text-emerald-400">
+                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-400 border border-emerald-300 shadow-sm shadow-emerald-500/50"></span>
+                  <span>Dólar Oficial (FX)</span>
+                </div>
+              </div>
+
+              {/* Indicador de punto enfocado */}
+              {hoveredPointIndex !== null && fluctuationChartData.points[hoveredPointIndex] && (
+                <div className="font-mono text-xs font-bold text-cyan-300 bg-cyan-950/60 px-2.5 py-0.5 rounded border border-cyan-800">
+                  Inspeccionando: {fluctuationChartData.points[hoveredPointIndex].period}
+                </div>
+              )}
+            </div>
+
+            {/* LIENZO SVG INTERACTIVO */}
+            {fluctuationChartData.points.length === 0 ? (
+              <div className="h-64 flex items-center justify-center text-slate-500 text-xs">
+                No hay datos suficientes para trazar la curva en el período seleccionado.
+              </div>
+            ) : (() => {
+              const pts = fluctuationChartData.points
+              const N = pts.length
+              const W = 840
+              const H = 340
+              const padLeft = 60
+              const padRight = 50
+              const padTop = 30
+              const padBottom = 50
+              const plotW = W - padLeft - padRight
+              const plotH = H - padTop - padBottom
+
+              const getX = (idx) => N === 1 ? padLeft + plotW / 2 : padLeft + (idx / (N - 1)) * plotW
+
+              // Escala Y según modo
+              const isPct = chartMode === 'pct'
+              const yMin = isPct ? fluctuationChartData.minPct : fluctuationChartData.minNom
+              const yMax = isPct ? fluctuationChartData.maxPct : fluctuationChartData.maxNom
+              const yRange = Math.max(1, yMax - yMin)
+
+              const getY = (val) => padTop + plotH - ((val - yMin) / yRange) * plotH
+
+              // Generar paths
+              const getPath = (key) => {
+                return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(p[key])}`).join(' ')
+              }
+
+              // Claves según modo
+              const contKey = isPct ? 'contPct' : 'contractorRate'
+              const astKey = isPct ? 'astPct' : 'astilleroRate'
+              const dolKey = isPct ? 'dolPct' : 'dollar'
+
+              // Líneas guía horizontales
+              const gridSteps = 5
+              const gridLines = Array.from({ length: gridSteps + 1 }, (_, i) => {
+                const val = yMin + (i / gridSteps) * yRange
+                return {
+                  val: isPct ? `${val > 0 ? '+' : ''}${val.toFixed(1)}%` : `$${Math.round(val).toLocaleString('es-AR')}`,
+                  y: getY(val),
+                  isZero: Math.abs(val) < 0.1
+                }
+              })
+
+              const activePt = hoveredPointIndex !== null && pts[hoveredPointIndex] ? pts[hoveredPointIndex] : pts[pts.length - 1]
 
               return (
-                <div className="space-y-4 animate-in fade-in duration-150">
-                  {/* Cabecera del Contratista con Semáforo */}
-                  <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                    target.trafficLight === 'ROJO'
-                      ? 'bg-rose-950/40 border-rose-700 text-rose-300'
-                      : target.trafficLight === 'VERDE'
-                      ? 'bg-emerald-950/40 border-emerald-700 text-emerald-300'
-                      : 'bg-amber-950/40 border-amber-700 text-amber-300'
-                  }`}>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-black font-mono text-white">{target.entity_name}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${getRubroBadgeColor(target.trade)}`}>
-                          {target.trade}
-                        </span>
-                      </div>
-                      <div className="text-xs font-medium opacity-90">
-                        Diagnóstico: <strong>{target.trafficReason}</strong>
-                      </div>
-                    </div>
+                <div className="relative">
+                  <div className="w-full overflow-x-auto">
+                    <svg 
+                      viewBox={`0 0 ${W} ${H}`} 
+                      className="w-full h-auto min-w-[640px] select-none"
+                    >
+                      <defs>
+                        <linearGradient id="contGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.25" />
+                          <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider border shadow-md ${
-                        target.trafficLight === 'ROJO'
-                          ? 'bg-rose-600 text-white border-rose-400 shadow-rose-950'
-                          : target.trafficLight === 'VERDE'
-                          ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-950'
-                          : 'bg-amber-500 text-slate-950 border-amber-300 shadow-amber-950'
-                      }`}>
-                        {target.trafficLight === 'ROJO' ? '🔴 ALERTA DE NEGOCIACIÓN' : target.trafficLight === 'VERDE' ? '🟢 TARIFA FAVORABLE' : '🟡 EN PARÁMETRO'}
-                      </span>
-                    </div>
+                      {/* Líneas de cuadrícula horizontal */}
+                      {gridLines.map((gl, i) => (
+                        <g key={`grid-${i}`}>
+                          <line
+                            x1={padLeft}
+                            y1={gl.y}
+                            x2={padLeft + plotW}
+                            y2={gl.y}
+                            stroke={gl.isZero ? '#475569' : '#1E293B'}
+                            strokeDasharray={gl.isZero ? '0' : '4 4'}
+                            strokeWidth={gl.isZero ? 1.5 : 1}
+                          />
+                          <text
+                            x={padLeft - 8}
+                            y={gl.y + 3.5}
+                            textAnchor="end"
+                            fill={gl.isZero ? '#94A3B8' : '#64748B'}
+                            fontSize="10"
+                            fontFamily="monospace"
+                            fontWeight="bold"
+                          >
+                            {gl.val}
+                          </text>
+                        </g>
+                      ))}
+
+                      {/* Ejes X (Quincenas) */}
+                      {pts.map((p, i) => (
+                        <g key={`x-axis-${i}`}>
+                          <line
+                            x1={getX(i)}
+                            y1={padTop + plotH}
+                            x2={getX(i)}
+                            y2={padTop + plotH + 6}
+                            stroke="#475569"
+                            strokeWidth="1.5"
+                          />
+                          <text
+                            x={getX(i)}
+                            y={padTop + plotH + 20}
+                            textAnchor="middle"
+                            fill={hoveredPointIndex === i ? '#38BDF8' : '#94A3B8'}
+                            fontSize="11"
+                            fontFamily="monospace"
+                            fontWeight={hoveredPointIndex === i ? 'bold' : 'medium'}
+                          >
+                            {p.shortLabel}
+                          </text>
+                        </g>
+                      ))}
+
+                      {/* Línea vertical de foco interactivo */}
+                      {hoveredPointIndex !== null && (
+                        <line
+                          x1={getX(hoveredPointIndex)}
+                          y1={padTop}
+                          x2={getX(hoveredPointIndex)}
+                          y2={padTop + plotH}
+                          stroke="#38BDF8"
+                          strokeDasharray="3 3"
+                          strokeWidth="1.5"
+                        />
+                      )}
+
+                      {/* Área bajo la curva del contratista */}
+                      {isPct && (
+                        <path
+                          d={`${getPath('contPct')} L ${getX(N - 1)} ${padTop + plotH} L ${getX(0)} ${padTop + plotH} Z`}
+                          fill="url(#contGrad)"
+                        />
+                      )}
+
+                      {/* 1. Curva Dólar FX */}
+                      {isPct && (
+                        <path
+                          d={getPath('dolPct')}
+                          fill="none"
+                          stroke="#10B981"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      )}
+
+                      {/* 2. Curva Inflación */}
+                      {isPct && (
+                        <path
+                          d={getPath('infPct')}
+                          fill="none"
+                          stroke="#F97316"
+                          strokeWidth="2.5"
+                          strokeDasharray="4 4"
+                          strokeLinecap="round"
+                        />
+                      )}
+
+                      {/* 3. Curva Astillero Oficial */}
+                      <path
+                        d={getPath(astKey)}
+                        fill="none"
+                        stroke="#00E5FF"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+
+                      {/* 4. Curva Contratista / Personal Evaluado */}
+                      <path
+                        d={getPath(contKey)}
+                        fill="none"
+                        stroke="#F59E0B"
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                      />
+
+                      {/* Puntos interactivos con hover */}
+                      {pts.map((p, i) => {
+                        const x = getX(i)
+                        const isHovered = hoveredPointIndex === i
+
+                        return (
+                          <g key={`pts-${i}`} className="cursor-pointer" onMouseEnter={() => setHoveredPointIndex(i)}>
+                            {/* Hitbox transparente para facilitar clic/hover */}
+                            <rect
+                              x={x - (plotW / (Math.max(1, N) * 2))}
+                              y={padTop}
+                              width={plotW / Math.max(1, N)}
+                              height={plotH}
+                              fill="transparent"
+                            />
+
+                            {/* Punto Dólar */}
+                            {isPct && (
+                              <circle
+                                cx={x}
+                                cy={getY(p.dolPct)}
+                                r={isHovered ? 5 : 3.5}
+                                fill="#10B981"
+                                stroke="#022c22"
+                                strokeWidth="1.5"
+                              />
+                            )}
+
+                            {/* Punto Inflación */}
+                            {isPct && (
+                              <circle
+                                cx={x}
+                                cy={getY(p.infPct)}
+                                r={isHovered ? 5 : 3.5}
+                                fill="#F97316"
+                                stroke="#431407"
+                                strokeWidth="1.5"
+                              />
+                            )}
+
+                            {/* Punto Astillero */}
+                            <circle
+                              cx={x}
+                              cy={getY(p[astKey])}
+                              r={isHovered ? 5.5 : 3.5}
+                              fill="#00E5FF"
+                              stroke="#083344"
+                              strokeWidth="1.5"
+                            />
+
+                            {/* Punto Contratista */}
+                            <circle
+                              cx={x}
+                              cy={getY(p[contKey])}
+                              r={isHovered ? 7 : 5}
+                              fill="#F59E0B"
+                              stroke="#451a03"
+                              strokeWidth="2"
+                              className="transition-all"
+                            />
+                          </g>
+                        )
+                      })}
+                    </svg>
                   </div>
 
-                  {/* 4 Métricas de la Ficha */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Tarifa AR$/Hora</span>
-                      <div className="text-sm font-mono font-bold text-white">
-                        ${target.baseOficialArs.toLocaleString('es-AR')} &rarr; ${target.targetOficialArs.toLocaleString('es-AR')}
-                      </div>
-                      <span className={`text-xs font-mono font-black ${target.diffOficialPct > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-                        {target.diffOficialPct > 0 ? `+${target.diffOficialPct}%` : `${target.diffOficialPct}%`} AR$
+                  {/* INSPECTOR DE DATOS DEL PUNTO ENFOCADO */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800 mt-2">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-amber-400 font-bold uppercase block truncate">
+                        Tarifa {fluctuationChartData.summary?.targetName}
                       </span>
+                      <div className="font-mono text-sm font-extrabold text-white">
+                        ${activePt.contractorRate.toLocaleString('es-AR')} <span className="text-[10px] font-normal text-slate-400 font-sans">/h</span>
+                      </div>
+                      <div className="text-[10px] font-mono font-bold text-amber-300">
+                        {activePt.contPct > 0 ? `+${activePt.contPct}%` : `${activePt.contPct}%`} vs base
+                      </div>
                     </div>
 
-                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Tarifa US$/Hora</span>
-                      <div className="text-sm font-mono font-bold text-emerald-400">
-                        ${target.baseOficialUsd.toFixed(2)} &rarr; ${target.targetOficialUsd.toFixed(2)}
-                      </div>
-                      <span className={`text-xs font-mono font-black ${target.diffOficialUsdPct > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                        {target.diffOficialUsdPct > 0 ? `+${target.diffOficialUsdPct}% USD` : `${target.diffOficialUsdPct}% USD`}
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-cyan-400 font-bold uppercase block">
+                        Paritaria Astillero (Sindicato)
                       </span>
+                      <div className="font-mono text-sm font-extrabold text-white">
+                        ${activePt.astilleroRate.toLocaleString('es-AR')} <span className="text-[10px] font-normal text-slate-400 font-sans">/h</span>
+                      </div>
+                      <div className="text-[10px] font-mono font-bold text-cyan-300">
+                        {activePt.astPct > 0 ? `+${activePt.astPct}%` : `${activePt.astPct}%`} vs base
+                      </div>
                     </div>
 
-                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Brecha vs Astillero</span>
-                      <div className={`text-lg font-mono font-black ${target.brechaAstillero > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                        {target.brechaAstillero > 0 ? `+${target.brechaAstillero}%` : `${target.brechaAstillero}%`}
-                      </div>
-                      <span className="text-[10px] text-slate-500">
-                        {target.brechaAstillero > 0 ? 'Puntos por encima del sindicato' : 'Puntos por debajo del sindicato'}
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-orange-400 font-bold uppercase block">
+                        Inflación Oficial Acumulada
                       </span>
+                      <div className="font-mono text-sm font-extrabold text-white">
+                        +{activePt.infPct}% <span className="text-[10px] font-normal text-slate-400 font-sans">acum.</span>
+                      </div>
+                      <div className="text-[10px] font-mono font-bold text-orange-300">
+                        {activePt.monthlyInf}% mensual
+                      </div>
                     </div>
 
-                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Posición en {target.trade}</span>
-                      <div className={`text-lg font-mono font-black ${target.diffVsRubroPct > 0 ? 'text-amber-400' : 'text-cyan-400'}`}>
-                        {target.diffVsRubroPct > 0 ? `+${target.diffVsRubroPct}%` : `${target.diffVsRubroPct}%`}
-                      </div>
-                      <span className="text-[10px] text-slate-500">
-                        Media rubro: ${target.avgRubroRate.toLocaleString('es-AR')}
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-emerald-400 font-bold uppercase block">
+                        Dólar Oficial (FX)
                       </span>
+                      <div className="font-mono text-sm font-extrabold text-white">
+                        ${activePt.dollar.toLocaleString('es-AR')}
+                      </div>
+                      <div className="text-[10px] font-mono font-bold text-emerald-300">
+                        {activePt.dolPct > 0 ? `+${activePt.dolPct}%` : `${activePt.dolPct}%`} vs base
+                      </div>
                     </div>
                   </div>
-
-                  {/* Argumentario Ejecutivo para Hugo Obregozo */}
-                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5 text-xs text-slate-300">
-                    <span className="text-amber-400 font-bold flex items-center gap-1.5">
-                      💡 Argumento para Negociación (Dirección Operativa):
-                    </span>
-                    <p className="leading-relaxed">
-                      El prestador <strong>{target.entity_name}</strong> solicita <strong>${target.targetOficialArs.toLocaleString('es-AR')} /h</strong> (+{target.diffOficialPct}%). La paritaria sindical de Astillero para el mismo período aumentó <strong>+{comparisonResults.oficialAstilleroPct}%</strong> (desvío de <strong>{target.brechaAstillero > 0 ? `+${target.brechaAstillero}%` : `${target.brechaAstillero}%`}</strong>). 
-                      {target.diffOficialUsdPct > 0
-                        ? ` Su hora en dólares se encareció un +${target.diffOficialUsdPct}% USD, afectando el margen de las obras presupuestadas.`
-                        : ` Su hora en dólares se redujo un ${Math.abs(target.diffOficialUsdPct)}% USD por efecto cambiario, manteniéndose en zona de conveniencia para el astillero.`}
-                    </p>
-                  </div>
-
-                  {/* Historial Quincenal Cronológico del Contratista */}
-                  {zoomContractorHistory.length > 0 && (
-                    <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <History className="w-3.5 h-3.5 text-cyan-400" />
-                        Línea de Tiempo Histórica de {target.entity_name} ({zoomContractorHistory.length} quincenas registradas)
-                      </span>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-left">
-                          <thead className="bg-slate-900 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
-                            <tr>
-                              <th className="py-1.5 px-2.5">Quincena</th>
-                              <th className="py-1.5 px-2.5 text-right">Oficial AR$</th>
-                              <th className="py-1.5 px-2.5 text-center text-emerald-400">Oficial US$</th>
-                              <th className="py-1.5 px-2.5 text-right">Ayudante AR$</th>
-                              <th className="py-1.5 px-2.5 text-center">Dólar FX</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-800/60 font-medium">
-                            {zoomContractorHistory.map(h => (
-                              <tr key={h.id || h.period} className="hover:bg-slate-900/40">
-                                <td className="py-1.5 px-2.5 font-mono text-cyan-300 font-bold">{h.period}</td>
-                                <td className="py-1.5 px-2.5 text-right font-mono text-white font-bold">
-                                  ${parseFloat(h.rate_oficial_ars || 0).toLocaleString('es-AR')}
-                                </td>
-                                <td className="py-1.5 px-2.5 text-center font-mono text-emerald-400 font-bold">
-                                  ${parseFloat(h.rate_oficial_usd || 0).toFixed(2)}
-                                </td>
-                                <td className="py-1.5 px-2.5 text-right font-mono text-slate-400">
-                                  {h.rate_ayudante_ars ? `$${parseFloat(h.rate_ayudante_ars).toLocaleString('es-AR')}` : '-'}
-                                </td>
-                                <td className="py-1.5 px-2.5 text-center font-mono text-slate-400">${h.dollar_rate}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )
             })()}
-          </div>
 
-          {/* PILAR C: MATRIZ MAESTRA & SEMÁFORO DE DESVÍOS DE TODA LA NÓMINA */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-              <div>
-                <h3 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-purple-400" />
-                  Matriz de Variación & Semáforo de Tarifas ({filteredComparisonRows.length})
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Comparativa de costos quincenales, brechas contra el personal propio y semáforo ejecutivo.
-                </p>
-              </div>
+            {/* DIAGNÓSTICO EJECUTIVO DE CONCLUSIÓN GERENCIAL */}
+            {(() => {
+              const s = fluctuationChartData.summary
+              if (!s) return null
 
-              {/* Filtros de Semáforo y Búsqueda */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setFilterTrafficLight('TODOS')}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
-                      filterTrafficLight === 'TODOS' ? 'bg-primary text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800'
-                    }`}
-                  >
-                    Todos ({comparisonResults.rows.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterTrafficLight('ROJO')}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
-                      filterTrafficLight === 'ROJO' ? 'bg-rose-600 text-white' : 'bg-slate-950 text-rose-400 border border-slate-800'
-                    }`}
-                  >
-                    🔴 Rojas ({comparisonResults.redCount})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterTrafficLight('AMARILLO')}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
-                      filterTrafficLight === 'AMARILLO' ? 'bg-amber-500 text-slate-950' : 'bg-slate-950 text-amber-400 border border-slate-800'
-                    }`}
-                  >
-                    🟡 Parámetro ({comparisonResults.yellowCount})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterTrafficLight('VERDE')}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
-                      filterTrafficLight === 'VERDE' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-emerald-400 border border-slate-800'
-                    }`}
-                  >
-                    🟢 Favorables ({comparisonResults.greenCount})
-                  </button>
+              const brechaAst = s.brechaVsAst
+              const brechaInf = s.brechaVsInf
+              const isAlert = brechaAst > 5.0 || brechaInf > 5.0
+
+              return (
+                <div className={`p-4 rounded-xl border text-xs flex items-start gap-3 ${
+                  isAlert 
+                    ? 'bg-rose-950/40 border-rose-800 text-rose-200' 
+                    : brechaAst < -2.0 
+                    ? 'bg-emerald-950/40 border-emerald-800 text-emerald-200' 
+                    : 'bg-amber-950/40 border-amber-800 text-amber-200'
+                }`}>
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <strong className="block font-bold">
+                      {isAlert 
+                        ? '🔴 Alerta de Desvío Presupuestario:' 
+                        : brechaAst < -2.0 
+                        ? '🟢 Situación de Tarifa Favorable:' 
+                        : '🟡 En Parámetro Operativo:'}
+                    </strong>
+                    <p className="leading-relaxed opacity-90">
+                      Durante el período evaluado ({comparePeriodBase} &rarr; {comparePeriodTarget}), la tarifa de <strong>{s.targetName}</strong> creció un <strong>{s.netContPct > 0 ? `+${s.netContPct}%` : `${s.netContPct}%`}</strong>.
+                      {brechaAst > 0 
+                        ? ` Supera a la paritaria oficial del sindicato (+${s.netAstPct}%) en ${brechaAst} puntos porcentuales.` 
+                        : ` Se encuentra ${Math.abs(brechaAst)} puntos por debajo del incremento paritario de Astillero (+${s.netAstPct}%).`}
+                      {brechaInf > 0
+                        ? ` También aumentó por encima de la inflación acumulada del período (+${s.netInfPct}%) en ${brechaInf} puntos.`
+                        : ` Absorbió parte de la inflación acumulada (+${s.netInfPct}%), resultando económica en términos reales.`}
+                    </p>
+                  </div>
                 </div>
-
-                <div className="relative min-w-[200px]">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
-                  <input
-                    type="text"
-                    placeholder="Buscar cuadrilla o rubro..."
-                    value={comparisonSearch}
-                    onChange={(e) => setComparisonSearch(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  />
-                  {comparisonSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setComparisonSearch('')}
-                      className="absolute right-2 top-2 text-slate-500 hover:text-white"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto border border-slate-800 rounded-xl">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
-                  <tr>
-                    <th className="py-2.5 px-3">Centro</th>
-                    <th className="py-2.5 px-3">Cuadrilla / Categoría</th>
-                    <th className="py-2.5 px-3">Rubro</th>
-                    <th className="py-2.5 px-2.5 text-right">Base ({comparePeriodBase})</th>
-                    <th className="py-2.5 px-2.5 text-right">Actual ({comparePeriodTarget})</th>
-                    <th className="py-2.5 px-2.5 text-center">Var. AR$ (%)</th>
-                    <th className="py-2.5 px-2.5 text-center">Var. US$ (%)</th>
-                    <th className="py-2.5 px-2.5 text-center">Brecha vs Astillero</th>
-                    <th className="py-2.5 px-3 text-center">Semáforo</th>
-                    <th className="py-2.5 px-3 text-right">Acción</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 font-medium">
-                  {filteredComparisonRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={10} className="py-10 text-center text-slate-500">
-                        {loadingComparison 
-                          ? 'Calculando variaciones de tarifas...' 
-                          : 'No se encontraron registros para los filtros seleccionados.'}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredComparisonRows.map(item => {
-                      const isAstillero = item.admin_center === 'ASTILLERO'
-                      const isUpArs = item.diffOficialPct > 0
-                      const isUpUsd = item.diffOficialUsdPct > 0
-
-                      return (
-                        <tr 
-                          key={`${item.admin_center}-${item.entity_name}`} 
-                          className={`hover:bg-slate-800/30 transition-colors ${selectedZoomContractor === item.entity_name ? 'bg-amber-950/20' : ''}`}
-                        >
-                          <td className="py-2 px-3">
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-                              isAstillero 
-                                ? 'bg-cyan-950 text-cyan-300 border-cyan-800' 
-                                : 'bg-amber-950 text-amber-300 border-amber-800'
-                            }`}>
-                              {item.admin_center}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3">
-                            {isAstillero ? (
-                              <span className={`px-2 py-0.5 rounded text-[10px] border ${getCategoryBadgeStyle(item.entity_name)}`}>
-                                {item.entity_name}
-                              </span>
-                            ) : (
-                              <span className="font-extrabold text-white font-mono">{item.entity_name}</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRubroBadgeColor(item.trade)}`}>
-                              {item.trade}
-                            </span>
-                          </td>
-                          <td className="py-2 px-2.5 text-right font-mono text-slate-400">
-                            <div>${item.baseOficialArs.toLocaleString('es-AR')}</div>
-                            <div className="text-[10px] text-slate-500 font-normal">US$ {item.baseOficialUsd.toFixed(2)}</div>
-                          </td>
-                          <td className="py-2 px-2.5 text-right font-mono font-bold text-white">
-                            <div>${item.targetOficialArs.toLocaleString('es-AR')}</div>
-                            <div className="text-[10px] text-emerald-400 font-normal">US$ {item.targetOficialUsd.toFixed(2)}</div>
-                          </td>
-                          <td className="py-2 px-2.5 text-center">
-                            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-black border ${
-                              isUpArs 
-                                ? 'bg-rose-950/80 text-rose-300 border-rose-800' 
-                                : 'bg-slate-900 text-slate-400 border-slate-800'
-                            }`}>
-                              {isUpArs ? <ArrowUpRight className="w-3 h-3 text-rose-400" /> : <Minus className="w-3 h-3 text-slate-500" />}
-                              <span>{isUpArs ? `+${item.diffOficialPct}%` : `${item.diffOficialPct}%`}</span>
-                            </span>
-                          </td>
-                          <td className="py-2 px-2.5 text-center">
-                            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-black border ${
-                              isUpUsd 
-                                ? 'bg-amber-950/80 text-amber-300 border-amber-800' 
-                                : 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
-                            }`}>
-                              {isUpUsd ? <ArrowUpRight className="w-3 h-3 text-amber-400" /> : <ArrowDownRight className="w-3 h-3 text-emerald-400" />}
-                              <span>{isUpUsd ? `+${item.diffOficialUsdPct}%` : `${item.diffOficialUsdPct}%`}</span>
-                            </span>
-                          </td>
-                          <td className="py-2 px-2.5 text-center">
-                            {!isAstillero ? (
-                              <span className={`font-mono text-xs font-black px-1.5 py-0.5 rounded border ${
-                                item.brechaAstillero > 5.0
-                                  ? 'bg-rose-950 text-rose-300 border-rose-800'
-                                  : item.brechaAstillero < -2.0
-                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
-                                  : 'bg-slate-900 text-slate-300 border-slate-800'
-                              }`} title={`Aumento Contratista (${item.diffOficialPct}%) - Sindicato Astillero (${comparisonResults.oficialAstilleroPct}%)`}>
-                                {item.brechaAstillero > 0 ? `+${item.brechaAstillero}%` : `${item.brechaAstillero}%`}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-cyan-400 font-bold">Ancla Testigo</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-center">
-                            {!isAstillero ? (
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border inline-flex items-center gap-1 ${
-                                item.trafficLight === 'ROJO'
-                                  ? 'bg-rose-950 text-rose-300 border-rose-700'
-                                  : item.trafficLight === 'VERDE'
-                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
-                                  : 'bg-amber-950 text-amber-300 border-amber-700'
-                              }`} title={item.trafficReason}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${
-                                  item.trafficLight === 'ROJO' ? 'bg-rose-500' : item.trafficLight === 'VERDE' ? 'bg-emerald-500' : 'bg-amber-400'
-                                }`}></span>
-                                <span>{item.trafficLight === 'ROJO' ? 'Alerta' : item.trafficLight === 'VERDE' ? 'Favorable' : 'En Norma'}</span>
-                              </span>
-                            ) : (
-                              <span className="text-slate-600 font-mono text-[10px]">-</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-right">
-                            {!isAstillero ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedZoomContractor(item.entity_name)
-                                  window.scrollTo({ top: 380, behavior: 'smooth' })
-                                }}
-                                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white text-[11px] font-bold transition-all cursor-pointer"
-                                title="Ver Ficha Ejecutiva de este contratista"
-                              >
-                                Ficha &rarr;
-                              </button>
-                            ) : (
-                              <span className="text-slate-600">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+              )
+            })()}
           </div>
         </div>
       )}
@@ -2986,15 +3101,15 @@ export default function Personal() {
                 <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
                   <tr>
                     <th className="py-2.5 px-3">Nombre y Apellido</th>
-                    <th className="py-2.5 px-3">Grupo de Trabajo</th>
-                    <th className="py-2.5 px-2 text-center text-emerald-400">U$/Hora</th>
+                    <th className="py-2.5 px-3 text-center">Categoría</th>
                     <th className="py-2.5 px-3">Rubro</th>
+                    <th className="py-2.5 px-3 text-right">AR$/Hora</th>
+                    <th className="py-2.5 px-2 text-center text-emerald-400">U$/Hora</th>
+                    <th className="py-2.5 px-3">Grupo de Trabajo</th>
                     <th className="py-2.5 px-2.5">Centro Admin</th>
+                    <th className="py-2.5 px-2 text-center">Estado</th>
                     <th className="py-2.5 px-2.5">Consumibles</th>
                     <th className="py-2.5 px-2.5">Elem. Seg.</th>
-                    <th className="py-2.5 px-2 text-center">Estado</th>
-                    <th className="py-2.5 px-3 text-right">AR$/Hora</th>
-                    <th className="py-2.5 px-3 text-center">Categoría</th>
                     <th className="py-2.5 px-2 text-center">Permisos</th>
                     <th className="py-2.5 px-3 text-right">Acciones</th>
                   </tr>
@@ -3016,22 +3131,51 @@ export default function Personal() {
                           key={w.id} 
                           className={`hover:bg-slate-800/30 transition-colors ${!isActivo ? 'opacity-60 bg-rose-950/5' : ''}`}
                         >
+                          {/* 1. Nombre y Apellido */}
                           <td className="py-2 px-3">
                             <span className="font-bold text-white block">{w.name}</span>
                           </td>
-                          <td className="py-2 px-3">
-                            <span className="font-mono text-cyan-300 font-bold px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
-                              {w.work_group}
-                            </span>
+
+                          {/* 2. Categoría */}
+                          <td className="py-2 px-3 text-center">
+                            {w.category ? (
+                              <span className={`px-2 py-0.5 rounded text-[10px] uppercase border inline-block ${getCategoryBadgeStyle(w.category)}`}>
+                                {w.category}
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">-</span>
+                            )}
                           </td>
-                          <td className="py-2 px-2 text-center font-mono font-extrabold text-emerald-400">
-                            ${usdCalc}
-                          </td>
+
+                          {/* 3. Rubro */}
                           <td className="py-2 px-3">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRubroBadgeColor(w.trade)}`}>
                               {w.trade || 'General'}
                             </span>
                           </td>
+
+                          {/* 4. AR$/Hora */}
+                          <td className="py-2 px-3 text-right font-mono font-bold text-white">
+                            {w.hourly_rate_ars > 0 ? (
+                              `$${parseFloat(w.hourly_rate_ars).toLocaleString('es-AR')}`
+                            ) : (
+                              <span className="text-slate-600">-</span>
+                            )}
+                          </td>
+
+                          {/* 5. U$/Hora */}
+                          <td className="py-2 px-2 text-center font-mono font-extrabold text-emerald-400">
+                            ${usdCalc}
+                          </td>
+
+                          {/* 6. Grupo de Trabajo */}
+                          <td className="py-2 px-3">
+                            <span className="font-mono text-cyan-300 font-bold px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
+                              {w.work_group}
+                            </span>
+                          </td>
+
+                          {/* 7. Centro Admin */}
                           <td className="py-2 px-2.5">
                             <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
                               w.admin_center === 'ASTILLERO'
@@ -3043,6 +3187,24 @@ export default function Personal() {
                               {w.admin_center}
                             </span>
                           </td>
+
+                          {/* 8. Estado */}
+                          <td className="py-2 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleWorkerStatus(w)}
+                              className={`text-[9px] px-2 py-0.5 rounded font-bold border transition-all cursor-pointer ${
+                                isActivo
+                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-600 hover:bg-emerald-900'
+                                  : 'bg-rose-950 text-rose-300 border-rose-600 hover:bg-rose-900'
+                              }`}
+                              title="Hacé clic para alternar estado Activo/Inactivo"
+                            >
+                              {isActivo ? 'ACTIVO' : 'INACTIVO'}
+                            </button>
+                          </td>
+
+                          {/* 9. Consumibles */}
                           <td className="py-2 px-2.5">
                             {w.consumables_discount_pct !== undefined && w.consumables_discount_pct !== null ? (
                               <span 
@@ -3071,62 +3233,45 @@ export default function Personal() {
                               </span>
                             )}
                           </td>
+
+                          {/* 10. Elem. Seg. */}
                           <td className="py-2 px-2.5">
                             <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-950 text-amber-300 border border-amber-800">
                               {w.safety_items || 'CONTRATISTA'}
                             </span>
                           </td>
+
+                          {/* 11. Permisos (P = Pañol, H = Horas interactivos) */}
                           <td className="py-2 px-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => toggleWorkerStatus(w)}
-                              className={`text-[9px] px-2 py-0.5 rounded font-bold border transition-all cursor-pointer ${
-                                isActivo
-                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-600 hover:bg-emerald-900'
-                                  : 'bg-rose-950 text-rose-300 border-rose-600 hover:bg-rose-900'
-                              }`}
-                              title="Hacé clic para alternar estado Activo/Inactivo"
-                            >
-                              {isActivo ? 'ACTIVO' : 'INACTIVO'}
-                            </button>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-white">
-                            {w.hourly_rate_ars > 0 ? (
-                              `$${parseFloat(w.hourly_rate_ars).toLocaleString('es-AR')}`
-                            ) : (
-                              <span className="text-slate-600">-</span>
-                            )}
-                          </td>
-                          {/* Categoría con el color oficial exacto de la imagen */}
-                          <td className="py-2 px-3 text-center">
-                            {w.category ? (
-                              <span className={`px-2 py-0.5 rounded text-[10px] uppercase border inline-block ${getCategoryBadgeStyle(w.category)}`}>
-                                {w.category}
-                              </span>
-                            ) : (
-                              <span className="text-slate-600">-</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-2 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <span 
-                                title={w.can_withdraw_materials ? 'Autorizado a retirar de Pañol' : 'Sin permiso de Pañol'} 
-                                className={`w-4 h-4 rounded flex items-center justify-center text-[9px] font-bold ${
-                                  w.can_withdraw_materials ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-900 text-slate-600 border border-slate-800'
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleWorkerPermission(w, 'P')}
+                                className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-black transition-all cursor-pointer ${
+                                  w.can_withdraw_materials
+                                    ? 'bg-emerald-950 text-emerald-400 border border-emerald-600 hover:bg-emerald-900 shadow-sm'
+                                    : 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through'
                                 }`}
+                                title={w.can_withdraw_materials ? 'Habilitado para retirar de Pañol (P). Clic para deshabilitar.' : 'Deshabilitado para Pañol (P). Clic para habilitar.'}
                               >
                                 P
-                              </span>
-                              <span 
-                                title={w.can_impute_hours ? 'Requiere imputar Horas de trabajo' : 'Sin imputación de Horas'} 
-                                className={`w-4 h-4 rounded flex items-center justify-center text-[9px] font-bold ${
-                                  w.can_impute_hours ? 'bg-cyan-950 text-cyan-400 border border-cyan-800' : 'bg-slate-900 text-slate-600 border border-slate-800'
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleWorkerPermission(w, 'H')}
+                                className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-black transition-all cursor-pointer ${
+                                  w.can_impute_hours
+                                    ? 'bg-cyan-950 text-cyan-400 border border-cyan-600 hover:bg-cyan-900 shadow-sm'
+                                    : 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through'
                                 }`}
+                                title={w.can_impute_hours ? 'Habilitado para imputar Horas (H). Clic para deshabilitar.' : 'Deshabilitado para Horas (H). Clic para habilitar.'}
                               >
                                 H
-                              </span>
+                              </button>
                             </div>
                           </td>
+
+                          {/* 12. Acciones */}
                           <td className="py-2 px-3 text-right">
                             <div className="flex items-center justify-end gap-1">
                               <button

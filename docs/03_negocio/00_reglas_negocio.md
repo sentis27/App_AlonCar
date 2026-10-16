@@ -200,10 +200,16 @@ Para evitar la sobrecarga cognitiva de tablas masivas y suministrar argumentos o
      - O si $\Delta \text{US\%} < 0.0\%$ (el valor en dólares bajó producto de la devaluación cambiaria).
      - *Acción sugerida:* Costo favorable y holgura de margen para el astillero.
 
-4. **Pilar D: Ficha Individual / Zoom por Contratista y Gráfica de Tendencia:**
-   - Permite aislar a un prestador individual para reuniones de negociación presenciales, exponiendo su histórico quincenal, salto promedio por aumento, posición frente a la media de su rubro y comparación visual en 3 curvas superpuestas:
-     1. Curva Paritaria Astillero Oficial (Línea Azul/Cyan - Testigo).
-     2. Curva Cotización Dólar FX (Línea Verde).
-     3. Curva Tarifa del Contratista (Línea Naranja/Ámbar).
+4. **Pilar D: Gráfico Dinámico de Fluctuación Temporal vs. 3 Anclas Determinísticas:**
+   - **Las 3 Anclas Determinísticas de Costo de Alon Car:**
+     1. 💵 **Dólar Oficial FX:** Tipo de cambio de referencia fijado para el período.
+     2. ⚓ **Paritaria Sindical Astillero:** Pauta de aumento salarial del personal propio (categoría Oficial de planta como ancla testigo).
+     3. 📊 **Inflación Mensual Oficial (%):** Reportada mensualmente por el Administrador en el Dashboard central. **Regla dura:** El porcentaje de inflación reportado para el mes rige y se hereda automáticamente para la 1ª y 2ª quincena (1Q y 2Q) de dicho mes en todas las liquidaciones y curvas del sistema.
+   - **Lienzo Gráfico Multivariable:**
+     Superpone la curva del **Contratista / Personal evaluado** (o promedio general) frente a las 3 anclas a lo largo del tiempo (Eje X: Quincenas), permitiendo conmutar entre:
+     - **Variación Acumulada (%):** Normalizado desde la quincena base (0%) para identificar de un vistazo si la tarifa le ganó o perdió a la inflación, al gremio o al dólar.
+     - **Valores Nominales (AR$/h):** Comparativa directa de tarifas horarias en moneda corriente.
+   - **Diagnóstico Ejecutivo Automatizado:**
+     Genera la conclusión gerencial resumiendo si el contratista se encuentra en zona de desvío presupuestario ($\text{Brecha} > +5\%$), en parámetro operativo o en zona de conveniencia/licuación cambiaria.
 
 
