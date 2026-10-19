@@ -278,3 +278,9 @@ El **Dashboard del Administrador** (`/admin`) centraliza la gobernanza operativa
    - **Observación del Usuario:** La presentación visual actual del Circuito Operativo y la Ficha de Puestos genera sobrecarga visual o no convence en su disposición estética actual.
    - **Acción Pendiente:** Realizar una sesión de rediseño visual para sintetizar la información, mejorar la jerarquía gráfica de las tarjetas, y presentar las funciones y vinculaciones inter-departamentales de manera más limpia, elegante y ejecutiva.
 
+6. **⚠️ Tareas Pendientes Inmediatas (Ajustes Operativos y de UI):**
+   - **Personal y Tarifas (Tarifario Quincenal):** En la tabla *"Tarifas Guardadas en el Sistema"*, reubicar la columna **Centro de Costo** (`admin_center`) para que quede situada inmediatamente después de la columna **Dólar** y antes de la columna **Acción**.
+   - **Carga de Horas (Cuadrilla de Trabajo):** Corregir la desalineación visual y solapamiento en la fila de carga individual de operario, donde el campo `Nombre operario...` se monta encima del selector `Astillero` desfasando el resto de los campos.
+   - **Carga de Horas (Auditoría Estado R):** Habilitar una casilla de texto libre que se abra dinámicamente cuando se selecciona el estado **`R`** (Observado), con el propósito de que el supervisor/auditor exprese con claridad la duda o discrepancia detectada en el parte de horas, y el operario o responsable pueda corregir y comentar la observación (flujo `S -> R -> RR -> RRR`).
+
+
