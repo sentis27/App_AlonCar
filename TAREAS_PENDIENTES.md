@@ -74,13 +74,13 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [x] **3. Carga de Horas — Casilla de Texto Libre para Estado R de Auditoría (`LaborLogs.jsx`):**
   - **Circuito de Auditoría S -> R -> RR -> RRR:** Implementada la migración `0012_add_review_reason_to_labor_logs.sql` agregando `review_reason` y `worker_response`. Al seleccionar `R` en cualquier tabla o en el modal de edición, se abre dinámicamente la casilla de texto libre ("Motivo de Revisión / Duda Técnica") para registrar la observación. Incorporado badge interactivo de alerta en tablas, descargo en `RR` y bandeja de revisión enriquecida.
 
-- [x] **2. Módulo M3: Órdenes de Trabajo (`WorkOrders.jsx`):**
-  - **Gestión Integral de OTs:** Catálogo de obras navales por buque y cliente, con ciclo de vida completo (`En Progreso`, `Pendiente`, `Pausada`, `Completada`, `Facturada`, `Desestimada`).
-  - **Catálogo de Tareas Estándar (OT.ABC - DEC-016):** Integración de las plantillas tabuladas de varadero (válvulas de casco, calderería obra viva, carenado y pintura, línea de eje y timón, protección galvánica, sondajes ultrasónicos, doble fondos, etc.) con autocompletado asistido de alcance técnico.
-  - **Cierre Comercial & Data Locking (DEC-011):** Bloqueo de costos para OTs facturadas o cerradas con opción flexible de arrastre post-cierre y separación de archivo histórico sin alterar nombres de barcos.
-  - **Comunicación Interna & Botón "Ampliar" (Regla de Negocio 2):** Bitácora interactiva de consultas técnicas entre supervisores y Jefes de Obra.
-  - **Sub-trabajos y Tareas Específicas (`work_items`):** Desglose y seguimiento de tareas individuales dentro de cada OT.
-  - **Métricas e Integración en Vivo con Mano de Obra:** Cruce en tiempo real con `labor_logs` para totalizar horas trabajadas (normales, 50% y 100%) y personal afectado.
+- [x] **2. Módulo M3: Órdenes de Trabajo (`WorkOrders.jsx`) y Permisos Operativos (`Personal.jsx`):**
+  - **Planilla Unificada de Trabajos (`work_items` — GS-003):** El estado del ciclo de vida operativo (*Pendiente de inicio*, *En ejecución*, *Finalizado*, *Pendiente remito*, *Remito realizado/Pdte firma*, *Finalizado costo final de obra*, *Facturado*, *Desestimado*) reside en cada Trabajo, mientras que el estado de la OT contenedora (`work_orders`) se calcula automáticamente (bloqueando el cierre si hay trabajos `"En ejecución"`).
+  - **Creación en Cascada (OT Tabulada vs. OT Libre):** Selección de Barco $\rightarrow$ OT existente o Nueva OT (pudiendo elegir **OT Tabulada** desde el *Catálogo de Trabajos OT.ABC* editable agrupado por *Renovación* / *Intermediaria*, o **OT Libre** con nombre manual) $\rightarrow$ Detalle de Trabajo.
+  - **Jefes de Obra Dinámicos (`JO`):** Selector alimentado en vivo desde el Padrón (`public.workers` con `is_foreman = true`: Martín, Alejandro, Pablo y Hugo).
+  - **Permiso `"3ros"` y Autocarga Condicional de `PRC $0` en Terceros (`DEC-014`):** Botón de permiso **`3ros`** (`can_charge_third_party`) en `Personal.jsx`. La autocarga de `PRC $0` en `public.third_party_services` solo se habilita cuando el trabajo tiene **exactamente 1 contratista** y este posee el permiso **`3ros`** activo.
+  - **Doble Observación Vinculada en Terceros:** `direct_observations` (sincronizada automáticamente desde la Descripción del trabajo en la OT) y `specific_observations` (editable de forma independiente desde Terceros).
+  - **Cierre Comercial & Data Locking (`DEC-011`) y Bitácora Técnica ("Ampliar"):** Bloqueo de costos para OTs cerradas/facturadas y registro de consultas técnicas.
 
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
@@ -367,5 +367,5 @@ Cuando cambies una prioridad:
 markdown- [ ] **AHORA CRÍTICA** — Descripción (era Media)
 Responsable: Tú + Antigravity (colaborativo)
 
-Última actualización: 2026-10-14
+Última actualización: 2026-10-20
 Siguiente revisión: Al iniciar Módulos M1/M2 o M4
