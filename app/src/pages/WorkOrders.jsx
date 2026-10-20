@@ -34,74 +34,8 @@ import {
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
-// =========================================================================
-// PLANTILLAS ESTÁNDAR TABULADAS DE VARADERO (OT.ABC - GS-003 / DEC-016)
-// =========================================================================
-const PLANTILLAS_OT_ABC = [
-  {
-    id: 'tpl-varadero',
-    title: 'Varadero: Puesta en Seco y Maniobra',
-    trade: 'Maniobras y varada',
-    work_type: 'HORA',
-    description: 'Maniobra de izado y puesta en seco en varadero sobre calzos y cunas normalizadas. Limpieza inicial de fondos con agua dulce a alta presión. Estadía, apuntalamiento, botada y prueba de estanqueidad post-trabajos.'
-  },
-  {
-    id: 'tpl-valvulas',
-    title: 'Válvulas de Fondo y Tomas de Mar',
-    trade: 'Mecánica',
-    work_type: 'HORA',
-    description: 'Desmontaje de válvulas de casco, aspiración y descarga de fondo y tomas de mar. Limpieza química, rectificado de asientos y cono/obturador, prueba hidráulica a 1.5 veces la presión de trabajo con emisión de protocolo técnico.'
-  },
-  {
-    id: 'tpl-caldereria',
-    title: 'Calderería de Obra Viva y Fondos',
-    trade: 'Calderería',
-    work_type: 'HORA',
-    description: 'Corte por oxicorte/plasma de tramos de chapa naval de fondo y piques de proa/popa según plano e informe de espesores PNA. Ajuste, biselado y soldadura de planchas grado naval bajo procedimiento homologado.'
-  },
-  {
-    id: 'tpl-carenado',
-    title: 'Carenado, Hidrolavado y Pintura',
-    trade: 'Pintura',
-    work_type: 'HORA',
-    description: 'Lavado a ultra alta presión para desincrustar fouling y algas. Arenado comercial Sa 2.5 en sectores oxidados. Aplicación de esquema de pintura especificado: dos manos de anticorrosivo epoxídico y dos manos de antiincrustante autolimpiante.'
-  },
-  {
-    id: 'tpl-linea-eje',
-    title: 'Línea de Eje y Aparato de Gobierno (Timón)',
-    trade: 'Mecánica',
-    work_type: 'HORA',
-    description: 'Desmonte de hélice y pala de timón. Extracción de eje portahélice hacia interior/exterior, verificación de alineación radial y axial en torno. Renovación de bujes de guayacán/tufnol y sellos de bocina.'
-  },
-  {
-    id: 'tpl-galvanica',
-    title: 'Protección Galvánica (Ánodos de Sacrificio)',
-    trade: 'Soldadura',
-    work_type: 'HORA',
-    description: 'Cálculo de masa catódica requerida por superficie de carena. Desbaste de soportes preexistentes y soldadura de ánodos de sacrificio de aleación de zinc/aluminio naval de alta pureza en casco, timón y toberas.'
-  },
-  {
-    id: 'tpl-sondajes',
-    title: 'Sondajes Ultrasónicos de Casco',
-    trade: 'Control',
-    work_type: 'CONTROL',
-    description: 'Trazado de retícula y medición ultrasónica de espesores de chapa en tramos de obra viva, obra muerta y mamparos estancos. Elaboración de croquis y planilla de cálculo de desgaste para Prefectura Naval Argentina (PNA).'
-  },
-  {
-    id: 'tpl-tanques',
-    title: 'Sentinas, Pocetes y Tanques de Doble Fondo',
-    trade: 'Raschinear',
-    work_type: 'HORA',
-    description: 'Apertura de tapas de inspección de doble fondos y pocetes de achique. Desgasificación, extracción de lodos de sentina con camión atmosférico, desengrase químico, lavado caliente y pintado con bituminoso.'
-  },
-  {
-    id: 'tpl-mantenimiento-predio',
-    title: 'Mantenimiento de Predio e Infraestructura',
-    trade: 'Calderería',
-    work_type: 'HORA',
-    description: 'Labores internas de mantenimiento edilicio, reparación de guinches de varadero, tendido de cables de potencia, reparación de vías de calzo y ordenamiento general de talleres y muelles.'
-  }
-]
+// Grupos del Catálogo de Trabajos (OT.ABC)
+const GRUPOS_CATALOGO = ['Renovación', 'Intermediaria']
 
 // Jefes de obra frecuentes (Reglas Alon Car)
 const JEFES_DE_OBRA = [
@@ -153,6 +87,11 @@ export default function WorkOrders() {
   const [editingWoId, setEditingWoId] = useState(null)
   const [selectedWoDetail, setSelectedWoDetail] = useState(null)
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+  const [templatePickerFromForm, setTemplatePickerFromForm] = useState(false)
+  const [templates, setTemplates] = useState([])
+  const [templateEdit, setTemplateEdit] = useState(null) // { id?, name, description, category }
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [savingTemplate, setSavingTemplate] = useState(false)
   const [isAmpliarModalOpen, setIsAmpliarModalOpen] = useState(false)
   const [savingWo, setSavingWo] = useState(false)
 
@@ -191,11 +130,13 @@ export default function WorkOrders() {
   async function loadData() {
     try {
       setLoading(true)
-      const [shipsRes, wosRes, logsRes] = await Promise.all([
+      const [shipsRes, wosRes, logsRes, tplRes] = await Promise.all([
         supabase.from('ships').select('*').order('name'),
         supabase.from('work_orders').select('*, ships(name, client_name)').order('created_at', { ascending: false }),
-        supabase.from('labor_logs').select('id, work_order_id, hours_worked, hours_normal, hours_extra_50, hours_extra_100, worker_name, date_logged')
+        supabase.from('labor_logs').select('id, work_order_id, hours_worked, hours_normal, hours_extra_50, hours_extra_100, worker_name, date_logged'),
+        supabase.from('ot_templates').select('*').order('sort_order').order('name')
       ])
+      if (tplRes.data) setTemplates(tplRes.data)
 
       if (shipsRes.data) setShips(shipsRes.data)
       if (wosRes.data) setWorkOrders(wosRes.data)
@@ -279,17 +220,58 @@ export default function WorkOrders() {
     setIsFormModalOpen(true)
   }
 
-  // Aplicar plantilla estándar a formulario
-  const handleApplyTemplate = (tpl) => {
-    setFormData(prev => ({
-      ...prev,
-      title: prev.title || tpl.title,
-      description: tpl.description,
-      work_type: tpl.work_type
-    }))
+  // Abrir el catálogo (desde el formulario o desde la barra superior)
+  const handleOpenCatalog = (fromForm) => {
+    setTemplatePickerFromForm(fromForm)
+    setTemplateEdit(null)
+    setTemplateSearch('')
+    setIsTemplateModalOpen(true)
+  }
+
+  // Usar un trabajo del catálogo: vuelca nombre y descripción en el formulario de OT
+  const handleUseTemplate = (tpl) => {
+    if (templatePickerFromForm) {
+      setFormData(prev => ({ ...prev, title: tpl.name, description: tpl.description || '' }))
+    } else {
+      handleOpenCreateModal()
+      setFormData(prev => ({ ...prev, title: tpl.name, description: tpl.description || '' }))
+    }
     setIsTemplateModalOpen(false)
-    setStatusMessage({ type: 'info', text: `Plantilla "${tpl.title}" aplicada al formulario.` })
-    setTimeout(() => setStatusMessage(null), 3000)
+  }
+
+  const handleSaveTemplate = async (e) => {
+    e.preventDefault()
+    if (!templateEdit?.name?.trim()) return
+    setSavingTemplate(true)
+    try {
+      const payload = {
+        name: templateEdit.name.trim(),
+        description: templateEdit.description?.trim() || null,
+        category: templateEdit.category || null
+      }
+      const { error } = templateEdit.id
+        ? await supabase.from('ot_templates').update(payload).eq('id', templateEdit.id)
+        : await supabase.from('ot_templates').insert([{ ...payload, sort_order: templates.length + 1 }])
+      if (error) throw error
+      setTemplateEdit(null)
+      const { data } = await supabase.from('ot_templates').select('*').order('sort_order').order('name')
+      if (data) setTemplates(data)
+    } catch (err) {
+      console.error(err)
+      setStatusMessage({ type: 'error', text: 'Error al guardar en el catálogo: ' + err.message })
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
+  const handleDeleteTemplate = async (tpl) => {
+    if (!window.confirm('¿Eliminar "' + tpl.name + '" del Catálogo de Trabajos?')) return
+    const { error } = await supabase.from('ot_templates').delete().eq('id', tpl.id)
+    if (error) {
+      setStatusMessage({ type: 'error', text: 'Error al eliminar: ' + error.message })
+      return
+    }
+    setTemplates(prev => prev.filter(t => t.id !== tpl.id))
   }
 
   // Guardar Creación o Edición
@@ -605,12 +587,12 @@ export default function WorkOrders() {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={() => setIsTemplateModalOpen(true)}
+            onClick={() => handleOpenCatalog(false)}
             className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:border-slate-600"
-            title="Ver catálogo de tareas estándar de varadero (OT.ABC)"
+            title="Ver y editar el Catálogo de Trabajos (OT.ABC)"
           >
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>Plantillas Estándar</span>
+            <span>Catálogo de Trabajos (OT.ABC)</span>
           </button>
 
           <button
@@ -1194,11 +1176,11 @@ export default function WorkOrders() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setIsTemplateModalOpen(true)}
+                    onClick={() => handleOpenCatalog(true)}
                     className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
                   >
                     <Sparkles className="w-3 h-3" />
-                    <span>Usar plantilla estándar (OT.ABC)</span>
+                    <span>Elegir del Catálogo de Trabajos (OT.ABC)</span>
                   </button>
                 </div>
                 <input
@@ -1625,10 +1607,10 @@ export default function WorkOrders() {
       )}
 
       {/* ========================================================= */}
-      {/* 7. MODAL: CATÁLOGO DE PLANTILLAS ESTÁNDAR (OT.ABC)        */}
+      {/* 7. MODAL: CATÁLOGO DE TRABAJOS (OT.ABC) - EDITABLE         */}
       {/* ========================================================= */}
       {isTemplateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto">
           <div className="w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 relative my-8">
             <div className="flex items-start justify-between border-b border-slate-800 pb-3 mb-4">
               <div className="flex items-center gap-2.5">
@@ -1636,59 +1618,112 @@ export default function WorkOrders() {
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">
-                    Catálogo de Tareas Tabuladas de Varadero (OT.ABC)
-                  </h3>
+                  <h3 className="text-base font-black text-white">Catálogo de Trabajos (OT.ABC)</h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Seleccione un trabajo estándar para autocompletar el título, rubro y la descripción técnica de la Orden de Trabajo.
+                    Guía de texto: nombre de la OT y descripción. Tipo de trabajo, jefe de obra y demás datos se definen en la OT.
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsTemplateModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-              >
+              <button type="button" onClick={() => { setIsTemplateModalOpen(false); setTemplateEdit(null) }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
-              {PLANTILLAS_OT_ABC.map(tpl => (
-                <div 
-                  key={tpl.id}
-                  className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-900/50 transition-all flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 font-bold border border-amber-500/20">
-                        {tpl.trade}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-400">
-                        {tpl.work_type}
-                      </span>
-                    </div>
-                    <h4 className="text-xs font-black text-white mt-1">
-                      {tpl.title}
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                      {tpl.description}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 pt-2 border-t border-slate-800/60 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => handleApplyTemplate(tpl)}
-                      className="px-3 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Aplicar a esta OT</span>
-                    </button>
-                  </div>
+            {templateEdit ? (
+              <form onSubmit={handleSaveTemplate} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Nombre de la OT *</label>
+                  <input type="text" required value={templateEdit.name}
+                    onChange={(e) => setTemplateEdit({ ...templateEdit, name: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary" autoFocus />
                 </div>
-              ))}
-            </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Grupo</label>
+                  <select value={templateEdit.category || ''}
+                    onChange={(e) => setTemplateEdit({ ...templateEdit, category: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary">
+                    <option value="">Sin clasificar</option>
+                    {GRUPOS_CATALOGO.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Descripción</label>
+                  <textarea rows={6} value={templateEdit.description || ''}
+                    onChange={(e) => setTemplateEdit({ ...templateEdit, description: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-primary" />
+                </div>
+                <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
+                  <button type="button" onClick={() => setTemplateEdit(null)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl cursor-pointer">Cancelar</button>
+                  <button type="submit" disabled={savingTemplate}
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+                    <Check className="w-3.5 h-3.5" /><span>{savingTemplate ? 'Guardando...' : 'Guardar'}</span>
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+                    <input type="text" placeholder="Buscar en el catálogo..." value={templateSearch}
+                      onChange={(e) => setTemplateSearch(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary" />
+                  </div>
+                  <button type="button" onClick={() => setTemplateEdit({ name: '', description: '', category: '' })}
+                    className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+                    <Plus className="w-3.5 h-3.5" /><span>Nuevo trabajo</span>
+                  </button>
+                </div>
+
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                  {[...GRUPOS_CATALOGO, ''].map(grupo => {
+                    const q = templateSearch.toLowerCase()
+                    const items = templates.filter(t =>
+                      (t.category || '') === grupo &&
+                      (!q || t.name.toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q))
+                    )
+                    if (items.length === 0) return null
+                    return (
+                      <div key={grupo || 'sin'}>
+                        <h4 className="text-[11px] font-black uppercase tracking-wider text-amber-400 mb-1.5">
+                          {grupo || 'Sin clasificar'} ({items.length})
+                        </h4>
+                        <div className="space-y-1.5">
+                          {items.map(tpl => (
+                            <div key={tpl.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500/40 transition-colors">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs font-black text-white">{tpl.name}</div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 whitespace-pre-wrap">
+                                    {tpl.description || 'Sin descripción. Editá para cargar el texto.'}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button type="button" onClick={() => handleUseTemplate(tpl)}
+                                    className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary border border-primary/30 rounded-lg text-[11px] font-bold cursor-pointer">
+                                    {templatePickerFromForm ? 'Usar en esta OT' : 'Crear OT con este texto'}
+                                  </button>
+                                  <button type="button" onClick={() => setTemplateEdit({ ...tpl })}
+                                    className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer" title="Editar">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button type="button" onClick={() => handleDeleteTemplate(tpl)}
+                                    className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 cursor-pointer" title="Eliminar">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

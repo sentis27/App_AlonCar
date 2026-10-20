@@ -48,12 +48,12 @@ import { useAuth } from '../context/AuthContext'
 
 // Módulos del sistema controlables en la matriz de seguridad
 const SYSTEM_MODULES = [
-  { key: 'barcos', label: 'Barcos', icon: Ship, color: 'text-blue-400' },
-  { key: 'ots', label: 'OTs', icon: ClipboardList, color: 'text-indigo-400' },
-  { key: 'horas', label: 'Horas', icon: Clock, color: 'text-cyan-400' },
-  { key: 'panol', label: 'Pañol', icon: Package, color: 'text-emerald-400' },
-  { key: 'personal', label: 'Nómina', icon: Users, color: 'text-teal-400' },
-  { key: 'tarifario', label: 'Tarifario', icon: DollarSign, color: 'text-amber-400' },
+  { key: 'barcos', label: 'Barcos y Obras', icon: Ship, color: 'text-blue-400' },
+  { key: 'ots', label: 'Órdenes de Trabajo', icon: ClipboardList, color: 'text-indigo-400' },
+  { key: 'horas', label: 'Carga de Horas', icon: Clock, color: 'text-cyan-400' },
+  { key: 'panol', label: 'Pañol / Materiales', icon: Package, color: 'text-emerald-400' },
+  { key: 'personal', label: 'Personal (Nómina)', icon: Users, color: 'text-teal-400' },
+  { key: 'tarifario', label: 'Tarifario Quincenal', icon: DollarSign, color: 'text-amber-400' },
   { key: 'analisis', label: 'Análisis FX', icon: TrendingUp, color: 'text-purple-400' },
   { key: 'admin', label: 'Admin', icon: ShieldCheck, color: 'text-rose-400' }
 ]
