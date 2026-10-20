@@ -93,6 +93,13 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [ ] **4. Módulo M5: Tarifarios y Liquidaciones:**
   - Matriz de tarifas por hora de personal propio vs. contratistas/talleres.
   - Anexos de facturación y resumen de costos por obra.
+- [ ] **5. Sistema Multi-Tema (Theme Switcher — Última Prioridad / Post-Lanzamiento):**
+  - Selector de temas visuales dinámicos con persistencia en preferencias de usuario (`localStorage` / Supabase profile).
+  - Modos previstos:
+    - **AlonCar Dark (Predeterminado):** Diseño corporativo naval actual (cian `#00F2FE` + azul abisal `#1E3A5F` + acentos naranja `#F97316`).
+    - **Linux Desktop (Ubuntu / GNOME):** Barra de estado superior (Top Bar con reloj/notificaciones), dock lateral flotante con indicadores de punto y paleta grafito/naranja Yaru.
+    - **Linux Terminal / TUI ("Modo Consola / Hacker"):** Modo de alta ingeniería con tipografía monoespaciada (*JetBrains Mono* / *Fira Code*), marcos de recuadro geométricos ASCII, badges `[OK]` y barras de progreso en texto sobre fondo negro puro (`#0A0E14`).
+    - **Puente Naval (Radar / ECDIS):** Modo de alto contraste nocturno con azul marino ultra profundo y acentos verde sonar/ámbar.
 
 ---
 
