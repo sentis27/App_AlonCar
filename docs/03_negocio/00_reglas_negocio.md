@@ -278,9 +278,43 @@ El **Dashboard del Administrador** (`/admin`) centraliza la gobernanza operativa
    - **Observación del Usuario:** La presentación visual actual del Circuito Operativo y la Ficha de Puestos genera sobrecarga visual o no convence en su disposición estética actual.
    - **Acción Pendiente:** Realizar una sesión de rediseño visual para sintetizar la información, mejorar la jerarquía gráfica de las tarjetas, y presentar las funciones y vinculaciones inter-departamentales de manera más limpia, elegante y ejecutiva.
 
-6. **⚠️ Tareas Pendientes Inmediatas (Ajustes Operativos y de UI):**
-   - **Personal y Tarifas (Tarifario Quincenal):** En la tabla *"Tarifas Guardadas en el Sistema"*, reubicar la columna **Centro de Costo** (`admin_center`) para que quede situada inmediatamente después de la columna **Dólar** y antes de la columna **Acción**.
-   - **Carga de Horas (Cuadrilla de Trabajo):** Corregir la desalineación visual y solapamiento en la fila de carga individual de operario, donde el campo `Nombre operario...` se monta encima del selector `Astillero` desfasando el resto de los campos.
-   - **Carga de Horas (Auditoría Estado R):** Habilitar una casilla de texto libre que se abra dinámicamente cuando se selecciona el estado **`R`** (Observado), con el propósito de que el supervisor/auditor exprese con claridad la duda o discrepancia detectada en el parte de horas, y el operario o responsable pueda corregir y comentar la observación (flujo `S -> R -> RR -> RRR`).
+6. **✅ Ajustes Operativos y de UI Implementados:**
+   - **Personal y Tarifas (Tarifario Quincenal):** En la tabla *"Tarifas Guardadas en el Sistema"*, columna **Centro de Costo** (`admin_center`) ubicada después de **Dólar** y antes de **Acción**.
+   - **Carga de Horas (Cuadrilla de Trabajo):** Alineación corregida en la fila de carga individual de operario.
+   - **Carga de Horas (Auditoría Estado R):** Casilla de texto libre dinámica al seleccionar estado **`R`** (`review_reason` / `worker_response`).
+
+---
+
+## 8. Módulo de Órdenes de Trabajo (OT), Permiso "3ros" y Vinculación con Terceros (GS-003)
+
+### 8.1. Arquitectura Contenedor OT (`work_orders`) vs. Trabajo (`work_items`)
+- **La Orden de Trabajo (OT) como Contenedor:** Se abre para un barco con un número consecutivo propio de esa embarcación (`ot_number`, ej. `OT-1`, `OT-2` por barco) y un nombre general (Tabulada desde `OT.ABC` o Libre).
+- **Nivel del Estado Operativo:** El estado del ciclo de vida reside en cada **Trabajo individual (`work_items`)**:
+  - `Pendiente de inicio`
+  - `En ejecución` *(único estado habilitado para imputar horas, materiales y costos)*
+  - `Finalizado`
+  - `Pendiente remito`
+  - `Remito realizado/Pdte firma`
+  - `Finalizado costo final de obra`
+  - `Facturado`
+  - `Desestimado`
+- **Estado Calculado de la OT:** El estado general de la OT se calcula automáticamente a partir de los estados de sus trabajos. Una OT **no puede cerrarse** mientras tenga algún trabajo en estado `"En ejecución"`.
+
+### 8.2. OT Tabulada (`OT.ABC`) vs. OT Libre
+- **OT Tabulada:** El usuario elige una plantilla del **Catálogo de Trabajos (`OT.ABC`)** (clasificado en grupos *Renovación* e *Intermediaria*), lo cual precarga el nombre de la OT y la guía de descripción técnica.
+- **OT Libre:** El usuario escribe manualmente el nombre de la OT y la descripción del trabajo.
+
+### 8.3. Lista de Jefes de Obra desde el Padrón de Personal
+- La lista de Jefes de Obra (incluyendo a **Hugo**, **Martín**, **Alejandro** y **Pablo**) proviene dinámicamente del *Padrón Operativo de Personas y Talleres* (`public.workers` donde `is_foreman = true`), permitiendo marcar o desmarcar quiénes son Jefes de Obra directamente desde el módulo de Personal y Tarifas.
+
+### 8.4. Permiso `"3ros"` (Terceros) y Autocarga Condicional de PRC `$0` en Terceros
+- **Diminutivo `"3ros"` en el Padrón (`/personal`):** En la tabla *"Padrón Operativo de Personas y Talleres"*, columna **PERMISOS**, se incorpora el botón interactivo **`3ros`** (junto a `P` de Pañol y `H` de Horas) para habilitar o deshabilitar a un contratista/taller en la carga de presupuestos de Terceros (`can_charge_third_party`).
+- **Condición Estricta para Cargar PRC `$0` a Terceros desde un Trabajo de OT:**
+  - Si en un trabajo se selecciona **más de un contratista** (ej. `PINTOR JUAREZ` y `Raschinaje`), el sistema **no habilita** la opción de cargar PRC a Terceros.
+  - Si se selecciona **un único contratista** (ej. solo `PINTOR JUAREZ`), el sistema verifica en el Padrón si tiene activo el permiso **`3ros`**. Solo si cumple ambas condiciones (1 único contratista + permiso `3ros` activo) habilita la creación automática del registro en Terceros en estado `PRC` con importe `$0`.
+- **Doble Observación en Terceros (`third_party_services`):**
+  1. **Observaciones Directas (`direct_observations`):** Reciben automáticamente lo escrito en el campo `Descripción` del trabajo al crearse desde la OT y quedan vinculadas a dicho trabajo.
+  2. **Observaciones Específicas (`specific_observations`):** Campo independiente para anotaciones cargadas directamente desde el módulo propio de Terceros.
+
 
 

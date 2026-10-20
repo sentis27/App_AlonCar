@@ -2,29 +2,32 @@
 id: DEC-014
 tipo: decision
 fase: fase-2
-estado: borrador
-fecha: 2026-07-24
+estado: aprobado
+fecha: 2026-10-20
 ---
 
-# Generación Automática de PRC $0 en Terceros desde WorkItem y Regla 1-a-1 de Contratistas
+# Generación Condicional de PRC $0 en Terceros desde Trabajo (OT), Permiso "3ros" y Doble Observación
 
 ## Contexto
-En la operación del astillero, ciertos trabajos registrados en la Lista de Trabajos en Progreso (`WorkItem`) son ejecutados por una sola persona o taller externo (tercero). Actualmente, el usuario debe registrar el trabajo operativamente y luego ir manualmente a la Planilla de Terceros para crear un registro en estado Presupuesto (`PRC`) con costo $0, copiando la descripción y metadatos.
-
-Además, surgía la duda sobre cómo manejar casos donde un trabajo involucra a múltiples contratistas (si se registraban separados por coma en la misma celda).
+En la operación del astillero, los trabajos registrados dentro de una Orden de Trabajo (`work_items`) pueden ser ejecutados por uno o más contratistas/talleres. Cuando un trabajo corresponde a un único proveedor habilitado como Tercero, se requiere evitar la doble carga manual creando automáticamente el registro inicial en el módulo de Terceros en estado Presupuesto (`PRC`) con importe `$0`, vinculando su descripción.
 
 ## La decisión
-1. **Regla de Negocio 1-a-1:** Queda prohibida la carga de múltiples contratistas separados por coma en un mismo `WorkItem`. Se establece que **1 WorkItem = 1 Contratista/Taller específico**. Si un trabajo involucra múltiples contratistas o talleres, cada uno debe registrarse en una línea/registro `WorkItem` independiente con su descripción específica.
-2. **Generación Automática de PRC:** En la nueva aplicación (Supabase / Web App), al crear o marcar un `WorkItem` asignado a un taller o contratista externo con flag de terceros, la base de datos/backend generará automáticamente un registro vinculado en la tabla `ThirdPartyService` con:
-   - Estado: `PRC`
-   - Importe AR$: `0`
-   - Barco y OT: Heredados del `WorkItem`
-   - Proveedor/Contratista: Heredado del `WorkItem` (1-a-1)
-   - Observaciones: Copia fiel de la descripción del `WorkItem`
+1. **Permiso `3ros` (TERCEROS) en el Padrón de Personal (`/personal`):**
+   - En la tabla *"Padrón Operativo de Personas y Talleres"*, dentro de la columna **PERMISOS** (junto a `P` de Pañol y `H` de Horas), se incorpora el permiso con diminutivo **`3ros`** (`can_charge_third_party`), que identifica si el contratista o taller está habilitado para la carga de presupuestos en Terceros.
+2. **Condición Estricta para Habilitar la Carga de PRC `$0` a Terceros en la OT:**
+   - Un trabajo puede tener uno o varios contratistas asignados (ej. `PINTOR JUAREZ` y `Raschinaje`).
+   - El sistema **solo habilita la opción de generar el PRC `$0` en Terceros** cuando se cumplen **ambas condiciones**:
+     1. **Un único contratista seleccionado (`contractors.length === 1`):** Si se seleccionan 2 o más contratistas para el mismo trabajo, la opción queda bloqueada/deshabilitada.
+     2. **Permiso `3ros` activo en el Padrón:** El único contratista seleccionado debe tener habilitado el permiso **`3ros`** (`can_charge_third_party = true`) en el Padrón Operativo de Personas y Talleres.
+3. **Estructura del Registro Generado en Terceros (`third_party_services`) y Doble Observación:**
+   - Al confirmarse la opción en el trabajo de la OT, se genera/sincroniza el registro en `public.third_party_services` con:
+     - **Estado / Comprobante:** `PRC`
+     - **Importe AR$:** `0`
+     - **Barco, OT y Contratista:** Heredados del trabajo (`work_item_id`).
+   - **Dos tipos de Observaciones en Terceros:**
+     1. **Observaciones Directas (`direct_observations`):** Se completan automáticamente con el texto de la `Descripción` del trabajo cargado en la OT y permanecen vinculadas.
+     2. **Observaciones Específicas (`specific_observations`):** Campo independiente para notas y observaciones cargadas directamente desde el propio módulo de Terceros.
 
 ## Por qué
-- **Eliminación de trabajo doble:** Se evita que el administrativo tenga que copiar y pegar manualmente la misma información en dos secciones del sistema.
-- **Normalización de datos:** La regla 1-a-1 elimina la necesidad de parsear textos libres con comas ("ASTILLERO.CALDERERIA, TECO TALLER"), permitiendo reliquidaciones, métricas y filtrados precisos por proveedor en la base de datos relacional.
-
-## Consecuencia
-En la base de datos Supabase, al insertar un `WorkItem` con `is_third_party = true`, un `Database Trigger` o servicio backend creará automáticamente la fila correspondiente en `third_party_services`. En las planillas Legacy no se implementará modificación scripts por decisión de no alterar el entorno previo a la migración.
+- **Control operativo sin fricción:** Permite asignar múltiples contratistas en trabajos mixtos cuando corresponde, pero resguarda la integridad contable de Terceros exigiendo un único proveedor con permiso `3ros` activo para disparar un presupuesto `PRC`.
+- **Trazabilidad de alcance vs. notas administrativas:** Separar las *Observaciones Directas* (provenientes de la descripción técnica de la OT) de las *Observaciones Específicas* (propias de la negociación/gestión en Terceros) evita pisar información entre áreas.

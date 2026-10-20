@@ -56,7 +56,9 @@ const INITIAL_WORKERS_LOCAL = initialPersonnelData.map((p, idx) => ({
   hourly_rate_usd: parseFloat(p['U$/HORA']) || 0,
   category: p['CATEGORIA'] || '',
   can_withdraw_materials: (p['CARGA MATERIALES'] || 'SI').trim().toUpperCase() === 'SI',
-  can_impute_hours: (p['COSTO HORAS'] || 'SI').trim().toUpperCase() === 'SI'
+  can_impute_hours: (p['COSTO HORAS'] || 'SI').trim().toUpperCase() === 'SI',
+  can_charge_third_party: (p['CENTRO ADMINISTRATIVO'] || 'ASTILLERO').trim().toUpperCase() !== 'ASTILLERO',
+  is_foreman: ['ALE CAMADELLI', 'PABLO N.', 'MARTIN OBREGOZO', 'HUGO OBREGOZO'].includes((p['NOMBRE'] || '').trim().toUpperCase())
 }))
 
 // Colores por Rubro idénticos a Google Sheets
@@ -133,6 +135,7 @@ export default function Personal() {
   const [filterCenter, setFilterCenter] = useState('todos')
   const [filterStatus, setFilterStatus] = useState('todos')
   const [filterGroup, setFilterGroup] = useState('todos')
+  const [filterForemanOnly, setFilterForemanOnly] = useState(false)
 
   // Modales de Operario
   const [editingWorker, setEditingWorker] = useState(null)
@@ -156,7 +159,9 @@ export default function Personal() {
     hourly_rate_usd: 10.91,
     category: 'OFICIAL',
     can_withdraw_materials: true,
-    can_impute_hours: true
+    can_impute_hours: true,
+    can_charge_third_party: false,
+    is_foreman: false
   })
 
   // -------------------------------------------------------------
@@ -1098,9 +1103,10 @@ export default function Personal() {
       if (filterCenter !== 'todos' && w.admin_center !== filterCenter) return false
       if (filterStatus !== 'todos' && w.status !== filterStatus) return false
       if (filterGroup !== 'todos' && w.work_group !== filterGroup) return false
+      if (filterForemanOnly && !w.is_foreman) return false
       return true
     })
-  }, [workers, searchTerm, filterCenter, filterStatus, filterGroup])
+  }, [workers, searchTerm, filterCenter, filterStatus, filterGroup, filterForemanOnly])
 
   const groupedSummary = useMemo(() => {
     const map = new Map()
@@ -1116,12 +1122,14 @@ export default function Personal() {
           activeWorkers: 0,
           workers: [],
           avgRateArs: 0,
-          avgRateUsd: 0
+          avgRateUsd: 0,
+          canChargeThirdParty: false
         })
       }
       const entry = map.get(g)
       entry.totalWorkers += 1
       if (w.status === 'ACTIVO') entry.activeWorkers += 1
+      if (w.can_charge_third_party) entry.canChargeThirdParty = true
       entry.workers.push(w)
       entry.avgRateArs += (parseFloat(w.hourly_rate_ars) || 0)
       entry.avgRateUsd += (parseFloat(w.hourly_rate_usd) || 0)
@@ -1138,6 +1146,7 @@ export default function Personal() {
   const astilleroCount = workers.filter(w => w.admin_center === 'ASTILLERO').length
   const contratistasCount = workers.filter(w => w.admin_center === 'CONTRATISTA').length
   const talleresCount = workers.filter(w => w.admin_center === 'TALLER').length
+  const foremenCount = workers.filter(w => w.is_foreman).length
   const activeCount = workers.filter(w => w.status === 'ACTIVO').length
   const inactiveCount = workers.filter(w => w.status === 'INACTIVO').length
 
@@ -1170,7 +1179,8 @@ export default function Personal() {
       consumables: defaultDiscount === 100 ? 'CONTRATISTA' : (defaultDiscount === 0 ? 'CLIENTE' : `DESC. ${defaultDiscount}%`),
       safety_items: defaultSafety,
       hourly_rate_ars: defaultRate,
-      hourly_rate_usd: dollarRate > 0 ? Number((defaultRate / dollarRate).toFixed(2)) : 0
+      hourly_rate_usd: dollarRate > 0 ? Number((defaultRate / dollarRate).toFixed(2)) : 0,
+      can_charge_third_party: newCenter !== 'ASTILLERO'
     }))
   }
 
@@ -1208,7 +1218,9 @@ export default function Personal() {
       hourly_rate_usd: dollarRate > 0 ? Number((defaultRate / dollarRate).toFixed(2)) : 0,
       category: 'OFICIAL',
       can_withdraw_materials: true,
-      can_impute_hours: true
+      can_impute_hours: true,
+      can_charge_third_party: initialCenter !== 'ASTILLERO',
+      is_foreman: false
     })
     setIsNewModalOpen(true)
   }
@@ -1251,7 +1263,9 @@ export default function Personal() {
       hourly_rate_usd: usd,
       category: w.category || 'OFICIAL',
       can_withdraw_materials: w.can_withdraw_materials ?? true,
-      can_impute_hours: w.can_impute_hours ?? true
+      can_impute_hours: w.can_impute_hours ?? true,
+      can_charge_third_party: w.can_charge_third_party ?? (center !== 'ASTILLERO'),
+      is_foreman: Boolean(w.is_foreman)
     })
   }
 
@@ -1292,8 +1306,10 @@ export default function Personal() {
         hourly_rate_ars: ars,
         hourly_rate_usd: usd,
         category: formData.category,
-        can_withdraw_materials: formData.can_withdraw_materials,
-        can_impute_hours: formData.can_impute_hours
+        can_withdraw_materials: Boolean(formData.can_withdraw_materials),
+        can_impute_hours: Boolean(formData.can_impute_hours),
+        can_charge_third_party: Boolean(formData.can_charge_third_party),
+        is_foreman: Boolean(formData.is_foreman)
       }
 
       if (editingWorker) {
@@ -1304,7 +1320,21 @@ export default function Personal() {
 
         if (error) throw error
 
-        setWorkers(prev => prev.map(w => w.id === editingWorker.id ? { ...w, ...payload } : w))
+        // Si es Contratista/Taller, sincronizar permiso 3ros en todo su Grupo de Trabajo
+        if (finalGroup !== 'ASTILLERO') {
+          await supabase
+            .from('workers')
+            .update({ can_charge_third_party: payload.can_charge_third_party })
+            .eq('work_group', finalGroup)
+        }
+
+        setWorkers(prev => prev.map(w => {
+          if (w.id === editingWorker.id) return { ...w, ...payload }
+          if (finalGroup !== 'ASTILLERO' && w.work_group === finalGroup) {
+            return { ...w, can_charge_third_party: payload.can_charge_third_party }
+          }
+          return w
+        }))
         setStatusMessage({ type: 'success', text: `Registro de ${payload.name} (${finalGroup}) actualizado con éxito.` })
         setEditingWorker(null)
       } else {
@@ -1350,19 +1380,40 @@ export default function Personal() {
   }
 
   const toggleWorkerPermission = async (worker, permType) => {
-    const field = permType === 'P' ? 'can_withdraw_materials' : 'can_impute_hours'
-    const currentVal = Boolean(worker[field] ?? true)
+    const fieldMap = {
+      'P': 'can_withdraw_materials',
+      'H': 'can_impute_hours',
+      '3ros': 'can_charge_third_party',
+      'JO': 'is_foreman'
+    }
+    const field = fieldMap[permType]
+    if (!field) return
+    const defaultVal = permType === 'P' || permType === 'H'
+    const currentVal = Boolean(worker[field] ?? defaultVal)
     const newVal = !currentVal
+    const isGroup3ros = permType === '3ros' && worker.work_group && worker.work_group !== 'ASTILLERO'
+
     try {
-      setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, [field]: newVal } : w))
+      setWorkers(prev => prev.map(w => {
+        if (w.id === worker.id) return { ...w, [field]: newVal }
+        if (isGroup3ros && w.work_group === worker.work_group) return { ...w, [field]: newVal }
+        return w
+      }))
       
       if (!String(worker.id).startsWith('worker-local-')) {
-        const { error } = await supabase
-          .from('workers')
-          .update({ [field]: newVal })
-          .eq('id', worker.id)
-
-        if (error) throw error
+        if (isGroup3ros) {
+          const { error } = await supabase
+            .from('workers')
+            .update({ [field]: newVal })
+            .eq('work_group', worker.work_group)
+          if (error) throw error
+        } else {
+          const { error } = await supabase
+            .from('workers')
+            .update({ [field]: newVal })
+            .eq('id', worker.id)
+          if (error) throw error
+        }
       }
     } catch (err) {
       console.error(err)
@@ -3053,6 +3104,19 @@ export default function Personal() {
                 Talleres ({talleresCount})
               </button>
 
+              <button
+                type="button"
+                onClick={() => setFilterForemanOnly(!filterForemanOnly)}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  filterForemanOnly
+                    ? 'bg-amber-500 text-slate-950 font-bold'
+                    : 'bg-slate-950 text-amber-300 hover:text-amber-200 border border-amber-900/50'
+                }`}
+                title="Filtrar solo Jefes de Obra habilitados para Órdenes de Trabajo"
+              >
+                👷 Jefes de Obra ({foremenCount})
+              </button>
+
               <div className="h-4 w-px bg-slate-800 hidden sm:block"></div>
 
               {/* Filtro Estado */}
@@ -3133,7 +3197,14 @@ export default function Personal() {
                         >
                           {/* 1. Nombre y Apellido */}
                           <td className="py-2 px-3">
-                            <span className="font-bold text-white block">{w.name}</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-white">{w.name}</span>
+                              {w.is_foreman && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600 font-extrabold">
+                                  👷 Jefe de Obra
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* 2. Categoría */}
@@ -3241,9 +3312,9 @@ export default function Personal() {
                             </span>
                           </td>
 
-                          {/* 11. Permisos (P = Pañol, H = Horas interactivos) */}
+                          {/* 11. Permisos (P = Pañol, H = Horas, 3ros = Terceros, JO = Jefe de Obra) */}
                           <td className="py-2 px-2 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
+                            <div className="flex items-center justify-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => toggleWorkerPermission(w, 'P')}
@@ -3267,6 +3338,30 @@ export default function Personal() {
                                 title={w.can_impute_hours ? 'Habilitado para imputar Horas (H). Clic para deshabilitar.' : 'Deshabilitado para Horas (H). Clic para habilitar.'}
                               >
                                 H
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleWorkerPermission(w, '3ros')}
+                                className={`px-1.5 h-5 rounded flex items-center justify-center text-[10px] font-black transition-all cursor-pointer ${
+                                  w.can_charge_third_party
+                                    ? 'bg-purple-950 text-purple-300 border border-purple-500 hover:bg-purple-900 shadow-sm'
+                                    : 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through'
+                                }`}
+                                title={w.can_charge_third_party ? 'Habilitado para Terceros / Presupuestos (3ros). Clic para deshabilitar.' : 'Deshabilitado para Terceros (3ros). Clic para habilitar.'}
+                              >
+                                3ros
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleWorkerPermission(w, 'JO')}
+                                className={`px-1 h-5 rounded flex items-center justify-center text-[9px] font-black transition-all cursor-pointer ${
+                                  w.is_foreman
+                                    ? 'bg-amber-950 text-amber-300 border border-amber-500 hover:bg-amber-900 shadow-sm'
+                                    : 'bg-slate-900 text-slate-600 border border-slate-800 hover:bg-slate-800 hover:text-slate-400'
+                                }`}
+                                title={w.is_foreman ? 'Jefe de Obra habilitado en Órdenes de Trabajo (JO). Clic para desmarcar.' : 'Marcar como Jefe de Obra (JO) para Órdenes de Trabajo.'}
+                              >
+                                JO
                               </button>
                             </div>
                           </td>
@@ -3762,7 +3857,7 @@ export default function Personal() {
                       onChange={(e) => setFormData({ ...formData, can_withdraw_materials: e.target.checked })}
                       className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
                     />
-                    <span>Permiso para retirar de Pañol</span>
+                    <span>Permiso para retirar de Pañol (<strong>P</strong>)</span>
                   </label>
 
                   <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
@@ -3772,7 +3867,27 @@ export default function Personal() {
                       onChange={(e) => setFormData({ ...formData, can_impute_hours: e.target.checked })}
                       className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
                     />
-                    <span className="font-semibold text-cyan-300">Requiere imputar Horas</span>
+                    <span className="font-semibold text-cyan-300">Requiere imputar Horas (<strong>H</strong>)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.can_charge_third_party}
+                      onChange={(e) => setFormData({ ...formData, can_charge_third_party: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-purple-400 cursor-pointer accent-purple-500"
+                    />
+                    <span className="font-semibold text-purple-300">Habilitado para Terceros / Presupuestos (<strong>3ros</strong>)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-slate-300 cursor-pointer pt-1 border-t border-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={formData.is_foreman}
+                      onChange={(e) => setFormData({ ...formData, is_foreman: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-400 cursor-pointer accent-amber-500"
+                    />
+                    <span className="font-semibold text-amber-300">👷 Es Jefe de Obra (aparece en Órdenes de Trabajo)</span>
                   </label>
                 </div>
               </div>
