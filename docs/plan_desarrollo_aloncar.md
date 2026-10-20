@@ -64,3 +64,15 @@ Este plan detalla la hoja de ruta para transformar los diseños y reglas de nego
     *   Carga de datos de prueba reales (1 barco, 1 OT, 5 materiales).
 *   **Paso 3: Capacitación y Ajustes:**
     *   Se entrega al usuario final y corregimos fricciones sobre la marcha.
+
+---
+
+## FASE 5: Personalización y Experiencia Visual (Post-Lanzamiento / Última Prioridad)
+*Mejoras estéticas y personalización de interfaz una vez que el sistema core esté 100% operativo y validado en producción.*
+
+*   **Paso 1: Sistema Multi-Tema (Theme Switcher):**
+    *   Implementar selector de temas dinámico (variables CSS / Tailwind) con persistencia en preferencias de usuario (`localStorage` / Supabase profile):
+        *   **AlonCar Dark (Predeterminado):** Estilo actual corporativo naval (cian `#00F2FE` + azul abisal `#1E3A5F` + acentos naranja `#F97316`).
+        *   **Linux Desktop (Ubuntu / GNOME):** Barra superior de estado (Top Bar con reloj/notificaciones), dock lateral flotante con indicadores de punto y paleta grafito/naranja Yaru.
+        *   **Linux Terminal / TUI ("Modo Consola / Hacker"):** Modo de alta ingeniería con tipografía monoespaciada (*JetBrains Mono* / *Fira Code*), marcos de recuadro geométricos ASCII, badges `[OK]` y barras de progreso en texto sobre fondo negro puro (`#0A0E14`).
+        *   **Puente Naval (Radar / ECDIS):** Modo de alto contraste nocturno con azul marino ultra profundo y acentos verde sonar/ámbar.

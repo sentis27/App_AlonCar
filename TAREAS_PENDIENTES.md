@@ -74,10 +74,18 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [x] **3. Carga de Horas — Casilla de Texto Libre para Estado R de Auditoría (`LaborLogs.jsx`):**
   - **Circuito de Auditoría S -> R -> RR -> RRR:** Implementada la migración `0012_add_review_reason_to_labor_logs.sql` agregando `review_reason` y `worker_response`. Al seleccionar `R` en cualquier tabla o en el modal de edición, se abre dinámicamente la casilla de texto libre ("Motivo de Revisión / Duda Técnica") para registrar la observación. Incorporado badge interactivo de alerta en tablas, descargo en `RR` y bandeja de revisión enriquecida.
 
+- [x] **2. Módulo M3: Órdenes de Trabajo (`WorkOrders.jsx`):**
+  - **Gestión Integral de OTs:** Catálogo de obras navales por buque y cliente, con ciclo de vida completo (`En Progreso`, `Pendiente`, `Pausada`, `Completada`, `Facturada`, `Desestimada`).
+  - **Catálogo de Tareas Estándar (OT.ABC - DEC-016):** Integración de las plantillas tabuladas de varadero (válvulas de casco, calderería obra viva, carenado y pintura, línea de eje y timón, protección galvánica, sondajes ultrasónicos, doble fondos, etc.) con autocompletado asistido de alcance técnico.
+  - **Cierre Comercial & Data Locking (DEC-011):** Bloqueo de costos para OTs facturadas o cerradas con opción flexible de arrastre post-cierre y separación de archivo histórico sin alterar nombres de barcos.
+  - **Comunicación Interna & Botón "Ampliar" (Regla de Negocio 2):** Bitácora interactiva de consultas técnicas entre supervisores y Jefes de Obra.
+  - **Sub-trabajos y Tareas Específicas (`work_items`):** Desglose y seguimiento de tareas individuales dentro de cada OT.
+  - **Métricas e Integración en Vivo con Mano de Obra:** Cruce en tiempo real con `labor_logs` para totalizar horas trabajadas (normales, 50% y 100%) y personal afectado.
+
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
-- [ ] **2. Módulo M1 & M2: Barcos y Órdenes de Trabajo:**
+- [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
   - Ficha técnica naval de buques, historial de varadas y estados de puesta en seco.
-  - Creación, edición, cierre y presupuestos de OTs vinculadas a buques y clientes.
+  - Vinculación a propietarios y clientes.
 - [ ] **3. Módulo M4: Pañol y Materiales:**
   - Catálogo de consumibles y aceros/chapas navales.
   - Vales de retiro de pañol vinculados a OTs.
