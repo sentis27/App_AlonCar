@@ -2666,13 +2666,13 @@ export default function Personal() {
                 <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
                   <tr>
                     <th className="py-2.5 px-3">Quincena</th>
-                    <th className="py-2.5 px-3">Centro</th>
                     <th className="py-2.5 px-3">Categoría / Contratista</th>
                     <th className="py-2.5 px-3 text-right">Oficial AR$</th>
                     <th className="py-2.5 px-3 text-center text-emerald-400">Oficial U$</th>
                     <th className="py-2.5 px-3 text-right">Ayudante AR$</th>
                     <th className="py-2.5 px-3 text-center text-amber-400">Ayudante U$</th>
                     <th className="py-2.5 px-3 text-center">Dólar</th>
+                    <th className="py-2.5 px-3 text-center">Centro</th>
                     <th className="py-2.5 px-3 text-right">Acción</th>
                   </tr>
                 </thead>
@@ -2688,15 +2688,6 @@ export default function Personal() {
                       <tr key={rc.id} className="hover:bg-slate-800/30 transition-colors">
                         <td className="py-2 px-3">
                           <span className="font-mono text-xs font-bold text-slate-400">{rc.period}</span>
-                        </td>
-                        <td className="py-2 px-3">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-                            rc.admin_center === 'ASTILLERO'
-                              ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
-                              : 'bg-amber-950 text-amber-300 border-amber-800'
-                          }`}>
-                            {rc.admin_center}
-                          </span>
                         </td>
                         <td className="py-2 px-3">
                           {rc.admin_center === 'ASTILLERO' ? (
@@ -2725,6 +2716,15 @@ export default function Personal() {
                         </td>
                         <td className="py-2 px-3 text-center font-mono text-slate-400">
                           ${rc.dollar_rate}
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                            rc.admin_center === 'ASTILLERO'
+                              ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                              : 'bg-amber-950 text-amber-300 border-amber-800'
+                          }`}>
+                            {rc.admin_center}
+                          </span>
                         </td>
                         <td className="py-2 px-3 text-right">
                           <button

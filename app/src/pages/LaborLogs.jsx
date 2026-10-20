@@ -22,7 +22,9 @@ import {
   Table,
   CheckCircle,
   AlertTriangle,
-  Briefcase
+  Briefcase,
+  Check,
+  FileText
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -216,6 +218,18 @@ export default function LaborLogs() {
   const [reviewModalFilter, setReviewModalFilter] = useState('todos') // 'todos' | 'R' | 'RR'
   const [reviewModalSearch, setReviewModalSearch] = useState('')
   const [dbWorkers, setDbWorkers] = useState([])
+
+  // Modal interactivo para Observación / Duda de Auditoría en Estado R o Descargo RR
+  const [reviewReasonModal, setReviewReasonModal] = useState({
+    isOpen: false,
+    logId: null,
+    workerName: '',
+    dateLogged: '',
+    shipWo: '',
+    targetStatus: 'R',
+    reason: '',
+    response: ''
+  })
 
   // Cargar Barcos, OTs, Horas y Nómina Oficial desde Supabase
   useEffect(() => {
@@ -445,7 +459,9 @@ export default function LaborLogs() {
           work_type: editingForm.work_type,
           cost_center: 'CLIENTE',
           notes: editingForm.notes,
-          approval_status: editingForm.approval_status
+          approval_status: editingForm.approval_status,
+          review_reason: editingForm.review_reason || null,
+          worker_response: editingForm.worker_response || null
         })
         .eq('id', editingForm.id)
 
@@ -494,6 +510,8 @@ export default function LaborLogs() {
       work_type: log.work_type || 'HORA',
       notes: log.notes || '',
       approval_status: log.approval_status || 'Aprobado',
+      review_reason: log.review_reason || '',
+      worker_response: log.worker_response || '',
       ship_id: currentShipId,
       work_order_id: log.work_order_id,
       shipName: log.work_orders?.ships?.name || ships.find(s => s.id === currentShipId)?.name || 'Barco',
@@ -502,18 +520,44 @@ export default function LaborLogs() {
   }
 
   // Helper para actualizar estado de aprobación / revisión (S, R, RR, RRR, '') en lote o individual
-  const handleUpdateApprovalStatus = async (logIds, newStatus) => {
+  const handleUpdateApprovalStatus = async (logIds, newStatus, customReason = null, customResponse = null) => {
     const ids = Array.isArray(logIds) ? logIds : [logIds]
     if (ids.length === 0) return
+
+    // Si es cambio individual a R y no se proveyó customReason, abrimos el modal interactivo de duda técnica
+    if (newStatus === 'R' && customReason === null && ids.length === 1) {
+      const targetLog = recentLogs.find(l => l.id === ids[0])
+      setReviewReasonModal({
+        isOpen: true,
+        logId: ids[0],
+        workerName: targetLog?.worker_name || 'Operario',
+        dateLogged: targetLog?.date_logged || '',
+        shipWo: `${targetLog?.work_orders?.ships?.name || ''} - ${targetLog?.work_orders?.title || ''}`,
+        targetStatus: 'R',
+        reason: targetLog?.review_reason || '',
+        response: targetLog?.worker_response || ''
+      })
+      return
+    }
 
     setBulkUpdating(true)
     try {
       // Actualización optimista local
-      setRecentLogs(prev => prev.map(l => ids.includes(l.id) ? { ...l, approval_status: newStatus } : l))
+      setRecentLogs(prev => prev.map(l => {
+        if (!ids.includes(l.id)) return l
+        const updated = { ...l, approval_status: newStatus }
+        if (customReason !== null) updated.review_reason = customReason
+        if (customResponse !== null) updated.worker_response = customResponse
+        return updated
+      }))
+
+      const updatePayload = { approval_status: newStatus }
+      if (customReason !== null) updatePayload.review_reason = customReason
+      if (customResponse !== null) updatePayload.worker_response = customResponse
 
       const { error } = await supabase
         .from('labor_logs')
-        .update({ approval_status: newStatus })
+        .update(updatePayload)
         .in('id', ids)
 
       if (error) throw error
@@ -530,6 +574,16 @@ export default function LaborLogs() {
     } finally {
       setBulkUpdating(false)
     }
+  }
+
+  // Confirmar motivo / duda desde el modal de Estado R
+  const handleConfirmReviewModal = async (e) => {
+    e.preventDefault()
+    if (!reviewReasonModal.logId) return
+
+    const { logId, targetStatus, reason, response } = reviewReasonModal
+    setReviewReasonModal(prev => ({ ...prev, isOpen: false }))
+    await handleUpdateApprovalStatus(logId, targetStatus, reason, response)
   }
 
   // Toggle selección de un log individual
@@ -1097,159 +1151,151 @@ export default function LaborLogs() {
               </div>
 
               {/* FILAS DE LA CUADRILLA */}
-              <div className="space-y-3">
-                {operariosRows.map((row, index) => {
-                  const hNorm = parseFloat(row.hours_normal) || 0
-                  const h50 = parseFloat(row.hours_extra_50) || 0
-                  const h100 = parseFloat(row.hours_extra_100) || 0
-                  const totalRow = hNorm + h50 + h100
+              <div className="overflow-x-auto pb-1">
+                <div className="min-w-[960px] space-y-2.5">
+                  {/* Encabezado fijo en escritorio */}
+                  <div className="grid grid-cols-[125px_minmax(180px,1.5fr)_minmax(140px,1.2fr)_75px_75px_75px_65px_minmax(130px,1fr)_40px] gap-2.5 px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <div>Tipo</div>
+                    <div>Operario</div>
+                    <div>Rubro (Manual)</div>
+                    <div className="text-center">Normales</div>
+                    <div className="text-center text-cyan-400">Ext. 50%</div>
+                    <div className="text-center text-amber-400">Ext. 100%</div>
+                    <div className="text-center text-primary">Total</div>
+                    <div>Observaciones</div>
+                    <div className="text-center"></div>
+                  </div>
 
-                  return (
-                    <div 
-                      key={row.id}
-                      className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 grid grid-cols-1 md:grid-cols-12 gap-3 items-center hover:border-slate-700 transition-colors"
-                    >
-                      {/* Nº y Tipo */}
-                      <div className="md:col-span-1 flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-md bg-slate-800 text-slate-300 font-mono text-xs font-bold flex items-center justify-center">
-                          {index + 1}
-                        </span>
-                        <select
-                          value={row.worker_type}
-                          onChange={(e) => updateOperarioRow(row.id, 'worker_type', e.target.value)}
-                          className={`text-[10px] font-bold px-1.5 py-1 rounded border ${
-                            row.worker_type === 'Astillero'
-                              ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
-                              : row.worker_type === 'Taller'
-                              ? 'bg-purple-950 text-purple-300 border-purple-800'
-                              : 'bg-amber-950 text-amber-300 border-amber-800'
-                          }`}
-                        >
-                          <option value="Astillero">Astillero</option>
-                          <option value="Taller">Taller</option>
-                          <option value="Contratista">Contratista</option>
-                        </select>
-                      </div>
+                  {operariosRows.map((row, index) => {
+                    const hNorm = parseFloat(row.hours_normal) || 0
+                    const h50 = parseFloat(row.hours_extra_50) || 0
+                    const h100 = parseFloat(row.hours_extra_100) || 0
+                    const totalRow = hNorm + h50 + h100
 
-                      {/* Operario */}
-                      <div className="md:col-span-3">
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 md:hidden">
-                          Operario
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          list="all-workers-datalist"
-                          placeholder={row.worker_type === 'Astillero' ? 'Nombre operario...' : 'Taller / Contratista...'}
-                          value={row.worker_name}
-                          onChange={(e) => updateOperarioRow(row.id, 'worker_name', e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
-                        />
-                      </div>
+                    return (
+                      <div 
+                        key={row.id}
+                        className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 grid grid-cols-[125px_minmax(180px,1.5fr)_minmax(140px,1.2fr)_75px_75px_75px_65px_minmax(130px,1fr)_40px] gap-2.5 items-center hover:border-slate-700 transition-colors"
+                      >
+                        {/* Nº y Tipo */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="w-5 h-5 shrink-0 rounded bg-slate-800 text-slate-300 font-mono text-[11px] font-bold flex items-center justify-center">
+                            {index + 1}
+                          </span>
+                          <select
+                            value={row.worker_type}
+                            onChange={(e) => updateOperarioRow(row.id, 'worker_type', e.target.value)}
+                            className={`w-[96px] text-[10px] font-bold px-1.5 py-1.5 rounded border cursor-pointer ${
+                              row.worker_type === 'Astillero'
+                                ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                                : row.worker_type === 'Taller'
+                                ? 'bg-purple-950 text-purple-300 border-purple-800'
+                                : 'bg-amber-950 text-amber-300 border-amber-800'
+                            }`}
+                          >
+                            <option value="Astillero">Astillero</option>
+                            <option value="Taller">Taller</option>
+                            <option value="Contratista">Contratista</option>
+                          </select>
+                        </div>
 
-                      {/* Rubro */}
-                      <div className="md:col-span-2">
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 md:hidden">
-                          Rubro (Manual)
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          list="rubros-list-carga"
-                          placeholder="Rubro manual..."
-                          value={row.rubro}
-                          onChange={(e) => updateOperarioRow(row.id, 'rubro', e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
-                        />
-                      </div>
+                        {/* Operario */}
+                        <div>
+                          <input
+                            type="text"
+                            required
+                            list="all-workers-datalist"
+                            placeholder={row.worker_type === 'Astillero' ? 'Nombre operario...' : 'Taller / Contratista...'}
+                            value={row.worker_name}
+                            onChange={(e) => updateOperarioRow(row.id, 'worker_name', e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
+                          />
+                        </div>
 
-                      {/* Horas Normales */}
-                      <div className="md:col-span-1">
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 text-center">
-                          Normales
-                        </label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0"
-                          max="24"
-                          value={row.hours_normal}
-                          onChange={(e) => updateOperarioRow(row.id, 'hours_normal', e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-primary"
-                        />
-                      </div>
+                        {/* Rubro */}
+                        <div>
+                          <input
+                            type="text"
+                            required
+                            list="rubros-list-carga"
+                            placeholder="Rubro manual..."
+                            value={row.rubro}
+                            onChange={(e) => updateOperarioRow(row.id, 'rubro', e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
+                          />
+                        </div>
 
-                      {/* Extras 50% */}
-                      <div className="md:col-span-1">
-                        <label className="block text-[10px] uppercase font-bold text-cyan-400 mb-1 text-center">
-                          Ext. 50%
-                        </label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0"
-                          max="24"
-                          value={row.hours_extra_50}
-                          onChange={(e) => updateOperarioRow(row.id, 'hours_extra_50', e.target.value)}
-                          className="w-full bg-slate-900 border border-cyan-800/60 rounded-lg px-1.5 py-1.5 text-xs text-cyan-300 text-center font-bold focus:outline-none focus:border-primary"
-                        />
-                      </div>
+                        {/* Horas Normales */}
+                        <div>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="24"
+                            value={row.hours_normal}
+                            onChange={(e) => updateOperarioRow(row.id, 'hours_normal', e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-primary font-mono"
+                          />
+                        </div>
 
-                      {/* Extras 100% */}
-                      <div className="md:col-span-1">
-                        <label className="block text-[10px] uppercase font-bold text-amber-400 mb-1 text-center">
-                          Ext. 100%
-                        </label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0"
-                          max="24"
-                          value={row.hours_extra_100}
-                          onChange={(e) => updateOperarioRow(row.id, 'hours_extra_100', e.target.value)}
-                          className="w-full bg-slate-900 border border-amber-800/60 rounded-lg px-1.5 py-1.5 text-xs text-amber-300 text-center font-bold focus:outline-none focus:border-primary"
-                        />
-                      </div>
+                        {/* Extras 50% */}
+                        <div>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="24"
+                            value={row.hours_extra_50}
+                            onChange={(e) => updateOperarioRow(row.id, 'hours_extra_50', e.target.value)}
+                            className="w-full bg-slate-900 border border-cyan-800/60 rounded-lg px-1.5 py-1.5 text-xs text-cyan-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
+                          />
+                        </div>
 
-                      {/* Total Hs Calculado */}
-                      <div className="md:col-span-1 text-center">
-                        <span className="block text-[10px] uppercase font-bold text-slate-500 mb-1">
-                          Total
-                        </span>
-                        <span className="text-xs font-mono font-extrabold text-primary">
+                        {/* Extras 100% */}
+                        <div>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="24"
+                            value={row.hours_extra_100}
+                            onChange={(e) => updateOperarioRow(row.id, 'hours_extra_100', e.target.value)}
+                            className="w-full bg-slate-900 border border-amber-800/60 rounded-lg px-1.5 py-1.5 text-xs text-amber-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
+                          />
+                        </div>
+
+                        {/* Total Hs Calculado */}
+                        <div className="text-center font-mono font-extrabold text-primary text-xs bg-slate-900/80 py-1.5 rounded-lg border border-slate-800">
                           {totalRow} hs
-                        </span>
-                      </div>
+                        </div>
 
-                      {/* Observaciones */}
-                      <div className="md:col-span-1">
-                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 md:hidden">
-                          Notas
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Nota..."
-                          value={row.notes}
-                          onChange={(e) => updateOperarioRow(row.id, 'notes', e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-primary"
-                        />
-                      </div>
+                        {/* Observaciones */}
+                        <div>
+                          <input
+                            type="text"
+                            placeholder="Nota opcional..."
+                            value={row.notes}
+                            onChange={(e) => updateOperarioRow(row.id, 'notes', e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-primary"
+                          />
+                        </div>
 
-                      {/* Eliminar Fila */}
-                      <div className="md:col-span-1 flex justify-end">
-                        <button
-                          type="button"
-                          disabled={operariosRows.length === 1}
-                          onClick={() => removeOperarioRow(row.id)}
-                          className="p-1.5 text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title="Eliminar fila"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {/* Eliminar Fila */}
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            disabled={operariosRows.length === 1}
+                            onClick={() => removeOperarioRow(row.id)}
+                            className="p-1.5 text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded hover:bg-rose-500/10 cursor-pointer"
+                            title="Eliminar fila"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
 
               {/* BARRA DE RESUMEN Y GUARDAR */}
@@ -1376,51 +1422,57 @@ export default function LaborLogs() {
                         <td className="py-2 px-2 text-center font-mono text-amber-400">{log.hours_extra_100 || 0}</td>
                         <td className="py-2 px-3 text-center font-mono font-bold text-primary">{log.hours_worked} hs</td>
                         <td className="py-2 px-2 text-center">
-                          <select
-                            value={log.approval_status || ''}
-                            onChange={(e) => handleUpdateApprovalStatus(log.id, e.target.value)}
-                            className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none ${
-                              log.approval_status === 'S' || log.approval_status === 'Aprobado'
-                                ? 'bg-emerald-950 text-emerald-300 border-emerald-600'
-                                : log.approval_status === 'R'
-                                ? 'bg-rose-950 text-rose-300 border-rose-500 shadow-sm shadow-rose-900/50'
-                                : log.approval_status === 'RR'
-                                ? 'bg-amber-950 text-amber-300 border-amber-500'
-                                : log.approval_status === 'RRR'
-                                ? 'bg-cyan-950 text-cyan-300 border-cyan-500'
-                                : 'bg-slate-900 text-slate-400 border-slate-700'
-                            }`}
-                            title={`Estado de revisión de ${log.worker_name}`}
-                          >
-                            <option value="">-</option>
-                            <option value="S">S (Aprobado)</option>
-                            <option value="R">R (Revisión)</option>
-                            <option value="RR">RR (Corregido)</option>
-                            <option value="RRR">RRR (Aprobado Fin)</option>
-                          </select>
+                          <div className="flex items-center justify-center gap-1">
+                            <select
+                              value={log.approval_status || ''}
+                              onChange={(e) => handleUpdateApprovalStatus(log.id, e.target.value)}
+                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none ${
+                                log.approval_status === 'S' || log.approval_status === 'Aprobado'
+                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-600'
+                                  : log.approval_status === 'R'
+                                  ? 'bg-rose-950 text-rose-300 border-rose-500 shadow-sm shadow-rose-900/50'
+                                  : log.approval_status === 'RR'
+                                  ? 'bg-amber-950 text-amber-300 border-amber-500'
+                                  : log.approval_status === 'RRR'
+                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-500'
+                                  : 'bg-slate-900 text-slate-400 border-slate-700'
+                              }`}
+                              title={`Estado de revisión de ${log.worker_name}`}
+                            >
+                              <option value="">-</option>
+                              <option value="S">S (Aprobado)</option>
+                              <option value="R">R (Revisión)</option>
+                              <option value="RR">RR (Corregido)</option>
+                              <option value="RRR">RRR (Aprobado Fin)</option>
+                            </select>
+                            {log.review_reason && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReviewReasonModal({
+                                    isOpen: true,
+                                    logId: log.id,
+                                    workerName: log.worker_name,
+                                    dateLogged: log.date_logged,
+                                    shipWo: `${log.work_orders?.ships?.name || ''} - ${log.work_orders?.title || ''}`,
+                                    targetStatus: log.approval_status || 'R',
+                                    reason: log.review_reason || '',
+                                    response: log.worker_response || ''
+                                  })
+                                }}
+                                className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-900/40 transition-colors"
+                                title={`Motivo de observación (R): ${log.review_reason}`}
+                              >
+                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2 px-3 text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
-                              onClick={() => {
-                                setEditingLog(log)
-                                setEditingForm({
-                                  id: log.id,
-                                  worker_name: log.worker_name,
-                                  worker_type: log.worker_type || 'Astillero',
-                                  rubro: log.rubro,
-                                  hours_normal: log.hours_normal || log.hours_worked || 8,
-                                  hours_extra_50: log.hours_extra_50 || 0,
-                                  hours_extra_100: log.hours_extra_100 || 0,
-                                  date_logged: log.date_logged,
-                                  work_type: log.work_type || 'HORA',
-                                  notes: log.notes || '',
-                                  approval_status: log.approval_status || 'Aprobado',
-                                  shipName: log.work_orders?.ships?.name || 'Barco',
-                                  woTitle: log.work_orders?.title || 'OT'
-                                })
-                              }}
+                              onClick={() => handleEditFromDaily(log)}
                               className="p-1 text-slate-400 hover:text-primary rounded hover:bg-slate-800"
                               title="Editar"
                             >
@@ -2386,28 +2438,51 @@ export default function LaborLogs() {
                           <td className="py-2 px-2 text-center font-mono text-amber-400">{log.hours_extra_100 || 0}</td>
                           <td className="py-2 px-3 text-center font-mono font-bold text-primary">{log.hours_worked} hs</td>
                           <td className="py-2 px-2 text-center">
-                            <select
-                              value={log.approval_status || ''}
-                              onChange={(e) => handleUpdateApprovalStatus(log.id, e.target.value)}
-                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none ${
-                                log.approval_status === 'S' || log.approval_status === 'Aprobado'
-                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-600'
-                                  : log.approval_status === 'R'
-                                  ? 'bg-rose-950 text-rose-300 border-rose-500 shadow-sm shadow-rose-900/50'
-                                  : log.approval_status === 'RR'
-                                  ? 'bg-amber-950 text-amber-300 border-amber-500'
-                                  : log.approval_status === 'RRR'
-                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-500'
-                                  : 'bg-slate-900 text-slate-400 border-slate-700'
-                              }`}
-                              title={`Estado de revisión de ${log.worker_name}`}
-                            >
-                              <option value="">-</option>
-                              <option value="S">S (Aprobado)</option>
-                              <option value="R">R (Revisión)</option>
-                              <option value="RR">RR (Corregido)</option>
-                              <option value="RRR">RRR (Aprobado Fin)</option>
-                            </select>
+                            <div className="flex items-center justify-center gap-1">
+                              <select
+                                value={log.approval_status || ''}
+                                onChange={(e) => handleUpdateApprovalStatus(log.id, e.target.value)}
+                                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none ${
+                                  log.approval_status === 'S' || log.approval_status === 'Aprobado'
+                                    ? 'bg-emerald-950 text-emerald-300 border-emerald-600'
+                                    : log.approval_status === 'R'
+                                    ? 'bg-rose-950 text-rose-300 border-rose-500 shadow-sm shadow-rose-900/50'
+                                    : log.approval_status === 'RR'
+                                    ? 'bg-amber-950 text-amber-300 border-amber-500'
+                                    : log.approval_status === 'RRR'
+                                    ? 'bg-cyan-950 text-cyan-300 border-cyan-500'
+                                    : 'bg-slate-900 text-slate-400 border-slate-700'
+                                }`}
+                                title={`Estado de revisión de ${log.worker_name}`}
+                              >
+                                <option value="">-</option>
+                                <option value="S">S (Aprobado)</option>
+                                <option value="R">R (Revisión)</option>
+                                <option value="RR">RR (Corregido)</option>
+                                <option value="RRR">RRR (Aprobado Fin)</option>
+                              </select>
+                              {log.review_reason && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReviewReasonModal({
+                                      isOpen: true,
+                                      logId: log.id,
+                                      workerName: log.worker_name,
+                                      dateLogged: log.date_logged,
+                                      shipWo: `${log.work_orders?.ships?.name || ''} - ${log.work_orders?.title || ''}`,
+                                      targetStatus: log.approval_status || 'R',
+                                      reason: log.review_reason || '',
+                                      response: log.worker_response || ''
+                                    })
+                                  }}
+                                  className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-900/40 transition-colors"
+                                  title={`Motivo de observación (R): ${log.review_reason}`}
+                                >
+                                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2 px-3 text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -2675,6 +2750,65 @@ export default function LaborLogs() {
                   />
                 </div>
               </div>
+
+              {/* CASILLA DINÁMICA DE TEXTO LIBRE PARA ESTADO R (OBSERVADO) */}
+              {editingForm.approval_status === 'R' && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl space-y-1.5 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-1.5 text-rose-400 text-xs font-bold">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>Motivo de Revisión / Duda Técnica (Auditoría)</span>
+                  </div>
+                  <p className="text-[11px] text-rose-300/80">
+                    Especifique la duda u observación para que el operario o supervisor pueda revisar y corregir:
+                  </p>
+                  <textarea
+                    rows={2}
+                    value={editingForm.review_reason || ''}
+                    onChange={(e) => setEditingForm({ ...editingForm, review_reason: e.target.value })}
+                    placeholder="Ej: Tareas no coinciden con la OT; exceso de horas extras al 100% no autorizadas..."
+                    className="w-full bg-slate-950 border border-rose-500/40 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-400"
+                  />
+                </div>
+              )}
+
+              {/* CASILLA DINÁMICA PARA ESTADO RR (CORREGIDO POR OPERARIO) */}
+              {editingForm.approval_status === 'RR' && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 animate-in fade-in duration-150">
+                  {editingForm.review_reason && (
+                    <div className="text-[11px] text-amber-200/90 bg-amber-950/40 p-2 rounded border border-amber-800/40">
+                      <strong className="text-amber-400 block mb-0.5 font-semibold">Duda planteada previamente (R):</strong>
+                      {editingForm.review_reason}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
+                    <FileText className="w-4 h-4 shrink-0" />
+                    <span>Descargo / Corrección del Operario o Responsable (RR)</span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={editingForm.worker_response || ''}
+                    onChange={(e) => setEditingForm({ ...editingForm, worker_response: e.target.value })}
+                    placeholder="Explique la corrección realizada o aclare el motivo de las horas imputadas..."
+                    className="w-full bg-slate-950 border border-amber-500/40 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              )}
+
+              {/* HISTORIAL PREVIO SI YA ESTÁ APROBADO O RRR */}
+              {(editingForm.approval_status === 'RRR' || editingForm.approval_status === 'S' || editingForm.approval_status === 'Aprobado') && editingForm.review_reason && (
+                <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs space-y-1">
+                  <div className="text-[11px] text-slate-400">
+                    <span className="text-rose-400 font-semibold">Observación previa (R): </span>
+                    {editingForm.review_reason}
+                  </div>
+                  {editingForm.worker_response && (
+                    <div className="text-[11px] text-slate-400">
+                      <span className="text-amber-400 font-semibold">Respuesta previa (RR): </span>
+                      {editingForm.worker_response}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
                 <button
@@ -3103,7 +3237,7 @@ export default function LaborLogs() {
                     <th className="py-2.5 px-3">Barco & OT</th>
                     <th className="py-2.5 px-3">Rubro</th>
                     <th className="py-2.5 px-2 text-center">Horas</th>
-                    <th className="py-2.5 px-3">Observaciones</th>
+                    <th className="py-2.5 px-3">Observaciones / Duda R</th>
                     <th className="py-2.5 px-3 text-right">Editar</th>
                   </tr>
                 </thead>
@@ -3163,8 +3297,25 @@ export default function LaborLogs() {
                         <td className="py-2.5 px-2 text-center font-mono font-bold text-primary">
                           {log.hours_worked || log.hours_normal || 0} hs
                         </td>
-                        <td className="py-2.5 px-3 text-slate-400 italic text-[11px] max-w-[180px] truncate" title={log.notes}>
-                          {log.notes || 'Sin notas'}
+                        <td className="py-2.5 px-3 text-[11px] max-w-[260px]">
+                          {log.review_reason && (
+                            <div className="bg-rose-950/50 border border-rose-800/60 text-rose-300 p-1.5 rounded text-[11px] mb-1">
+                              <strong className="text-rose-400 font-bold block text-[10px]">Duda / Observación (R):</strong>
+                              {log.review_reason}
+                            </div>
+                          )}
+                          {log.worker_response && (
+                            <div className="bg-amber-950/50 border border-amber-800/60 text-amber-300 p-1.5 rounded text-[11px] mb-1">
+                              <strong className="text-amber-400 font-bold block text-[10px]">Descargo (RR):</strong>
+                              {log.worker_response}
+                            </div>
+                          )}
+                          {log.notes && (
+                            <span className="text-slate-400 italic block">{log.notes}</span>
+                          )}
+                          {!log.review_reason && !log.worker_response && !log.notes && (
+                            <span className="text-slate-600">-</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <button
@@ -3221,6 +3372,88 @@ export default function LaborLogs() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: MOTIVO DE REVISIÓN / DUDA TÉCNICA (ESTADO R / RR)   */}
+      {/* ========================================================= */}
+      {reviewReasonModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-slate-900 border border-rose-500/50 rounded-2xl shadow-2xl p-6 relative">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {reviewReasonModal.targetStatus === 'R' ? 'Observar Imputación de Horas (Estado R)' : 'Revisión y Descargo Técnico'}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    <strong className="text-white">{reviewReasonModal.workerName}</strong> &bull; <span className="font-mono">{reviewReasonModal.dateLogged}</span> &bull; {reviewReasonModal.shipWo}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReviewReasonModal({ isOpen: false, logId: null, workerName: '', dateLogged: '', shipWo: '', targetStatus: 'R', reason: '', response: '' })}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReviewModal} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-rose-300 mb-1.5 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Motivo de Revisión / Duda Técnica (Auditoría):
+                </label>
+                <p className="text-[11px] text-slate-400 mb-2">
+                  Detalle el motivo por el cual se observa este parte de horas para que el operario o supervisor de cuadrilla pueda corregir y justificar (circuito S &rarr; R &rarr; RR &rarr; RRR):
+                </p>
+                <textarea
+                  required={reviewReasonModal.targetStatus === 'R'}
+                  rows={3}
+                  value={reviewReasonModal.reason}
+                  onChange={(e) => setReviewReasonModal(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Ej: Revisar cantidad de horas extras al 100%, no coincide con el avance del parte diario; o rubro erróneo..."
+                  className="w-full bg-slate-950 border border-rose-500/40 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-400"
+                  autoFocus
+                />
+              </div>
+
+              {reviewReasonModal.response && (
+                <div>
+                  <label className="block text-xs font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" />
+                    Descargo / Respuesta del Operario:
+                  </label>
+                  <p className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-xs text-slate-300">
+                    {reviewReasonModal.response}
+                  </p>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setReviewReasonModal({ isOpen: false, logId: null, workerName: '', dateLogged: '', shipWo: '', targetStatus: 'R', reason: '', response: '' })}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Guardar Observación (R)</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

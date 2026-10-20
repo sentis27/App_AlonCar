@@ -65,16 +65,14 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - **Estado:** Pendiente de revisión por Dirección / Usuario.
   - **Detalle:** Revisar la presentación visual del Circuito Operativo Inter-Departamental y la Ficha de Puestos/Vinculaciones. La interfaz actual requiere un rediseño para mejorar la ergonomía visual, reducir la sensación de sobrecarga o dispersión de datos y presentar las funciones, tareas y vinculaciones de forma más limpia, ejecutiva e intuitiva.
 
-- [ ] **1. Personal y Tarifas — Reubicación de Columna en Tarifario Quincenal (`Personal.jsx`):**
-  - **Tabla "Tarifas Guardadas en el Sistema":** Trasladar la columna **Centro de Costo** (`admin_center`) para que quede ubicada inmediatamente después de la columna **Dólar** y antes de la columna **Acción**.
+- [x] **1. Personal y Tarifas — Reubicación de Columna en Tarifario Quincenal (`Personal.jsx`):**
+  - **Tabla "Tarifas Guardadas en el Sistema":** Trasladada la columna **Centro de Costo** (`admin_center`) para que quede ubicada inmediatamente después de la columna **Dólar** y antes de la columna **Acción**.
 
-- [ ] **2. Carga de Horas — Corrección de Alineación en Fila de Cuadrilla (`LaborLogs.jsx`):**
-  - **Problema Visual:** En la sección "Cuadrilla de Trabajo", la fila de carga individual de operario se encuentra desalineada: el campo de texto `Nombre operario...` se solapa sobre el menú desplegable del tipo de operario (`Astillero v`) y desajusta las columnas subsiguientes (según captura reportada).
-  - **Acción:** Reestructurar los anchos, alineación y espaciados flexbox/grid para que todos los campos (tipo, operario, rubro, horas normales, ext 50%, ext 100%, total, nota y eliminar) queden perfectamente alineados y sin solapamiento.
+- [x] **2. Carga de Horas — Corrección de Alineación en Fila de Cuadrilla (`LaborLogs.jsx`):**
+  - **Alineación Robusta:** Reestructurada la fila de operarios en Cuadrilla con cabecera fija de columnas en escritorio y rejilla CSS proporcional con scroll horizontal responsivo (`overflow-x-auto min-w-[960px]`). Eliminado el solapamiento visual entre tipo y nombre de operario, y unificadas las alturas y líneas base de todos los campos numéricos y notas.
 
-- [ ] **3. Carga de Horas — Casilla de Texto Libre para Estado R de Auditoría (`LaborLogs.jsx`):**
-  - **Requerimiento:** Al marcar o seleccionar el estado de revisión **`R`** (Observado), debe abrirse automáticamente una casilla de escritura de texto libre.
-  - **Objetivo Operativo:** Permitir al auditor o supervisor asentar qué duda u observación técnica/administrativa existe sobre el parte de horas, facilitando que el operario/responsable pueda revisar la objeción, corregirla y responder con su comentario explicativo (ciclo de auditoría de discrepancias `S -> R -> RR -> RRR`).
+- [x] **3. Carga de Horas — Casilla de Texto Libre para Estado R de Auditoría (`LaborLogs.jsx`):**
+  - **Circuito de Auditoría S -> R -> RR -> RRR:** Implementada la migración `0012_add_review_reason_to_labor_logs.sql` agregando `review_reason` y `worker_response`. Al seleccionar `R` en cualquier tabla o en el modal de edición, se abre dinámicamente la casilla de texto libre ("Motivo de Revisión / Duda Técnica") para registrar la observación. Incorporado badge interactivo de alerta en tablas, descargo en `RR` y bandeja de revisión enriquecida.
 
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1 & M2: Barcos y Órdenes de Trabajo:**
