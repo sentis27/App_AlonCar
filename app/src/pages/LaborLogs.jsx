@@ -158,14 +158,17 @@ export default function LaborLogs() {
   // Listados principales
   const [ships, setShips] = useState([])
   const [workOrders, setWorkOrders] = useState([])
+  const [workItems, setWorkItems] = useState([])
   const [recentLogs, setRecentLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [statusMessage, setStatusMessage] = useState(null)
 
-  // Cabecera de la Carga
+  // Cabecera de la Carga (Filtro en Cascada: 1º Barco -> 2º Contratista Habilitado -> 3º OT Habilitada en Ejecución)
   const [selectedShipId, setSelectedShipId] = useState('')
+  const [selectedContractorGroup, setSelectedContractorGroup] = useState('')
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState('')
+  const [selectedWorkItemId, setSelectedWorkItemId] = useState('')
   const [dateLogged, setDateLogged] = useState(new Date().toISOString().split('T')[0])
   const [workType, setWorkType] = useState('HORA')
   // Centro de costo: Regla Alon Car -> SIEMPRE CLIENTE (Fijo, no configurable para evitar errores)
@@ -231,7 +234,7 @@ export default function LaborLogs() {
     response: ''
   })
 
-  // Cargar Barcos, OTs, Horas y Nómina Oficial desde Supabase
+  // Cargar Barcos, OTs, Trabajos (work_items), Horas y Nómina Oficial desde Supabase
   useEffect(() => {
     loadInitialData()
   }, [])
@@ -239,18 +242,21 @@ export default function LaborLogs() {
   async function loadInitialData() {
     try {
       setLoading(true)
-      const [shipsRes, wosRes, logsRes, workersRes] = await Promise.all([
+      const [shipsRes, wosRes, itemsRes, logsRes, workersRes] = await Promise.all([
         supabase.from('ships').select('*').order('name'),
-        supabase.from('work_orders').select('*').order('title'),
-        supabase.from('labor_logs').select('*, work_orders(title, ship_id, ships(name))').order('date_logged', { ascending: false }).limit(200),
+        supabase.from('work_orders').select('*').order('ot_number'),
+        supabase.from('work_items').select('*').order('row_number', { ascending: true }),
+        supabase.from('labor_logs').select('*, work_orders(title, ot_number, ship_id, ships(name))').order('date_logged', { ascending: false }).limit(200),
         supabase.from('workers').select('*').order('name')
       ])
 
       const loadedShips = (shipsRes.data && shipsRes.data.length > 0) ? shipsRes.data : FALLBACK_SHIPS
       const loadedWos = (wosRes.data && wosRes.data.length > 0) ? wosRes.data : FALLBACK_WOS
+      const loadedItems = itemsRes.data || []
 
       setShips(loadedShips)
       setWorkOrders(loadedWos)
+      setWorkItems(loadedItems)
 
       if (workersRes.data && workersRes.data.length > 0) {
         setDbWorkers(workersRes.data)
@@ -273,18 +279,171 @@ export default function LaborLogs() {
     }
   }
 
-  // Filtrar OTs según barco
-  const availableWorkOrders = workOrders.filter(wo => wo.ship_id === selectedShipId)
+  // Mapa rápido de OTs por ID
+  const woByIdMap = useMemo(() => {
+    const m = {}
+    workOrders.forEach(w => { m[w.id] = w })
+    return m
+  }, [workOrders])
+
+  // Trabajos del barco seleccionado (separados entre "En ejecución" habilitados vs bloqueados)
+  const shipWorkItemsAll = useMemo(() => {
+    if (!selectedShipId) return []
+    return workItems.filter(item => {
+      const wo = woByIdMap[item.work_order_id]
+      return wo && wo.ship_id === selectedShipId
+    })
+  }, [workItems, woByIdMap, selectedShipId])
+
+  const activeWorkItemsForShip = useMemo(() => {
+    return shipWorkItemsAll.filter(item => item.status === 'En ejecución')
+  }, [shipWorkItemsAll])
+
+  const blockedWorkItemsForShip = useMemo(() => {
+    return shipWorkItemsAll.filter(item => item.status !== 'En ejecución')
+  }, [shipWorkItemsAll])
+
+  // PASO 2 DE LA CASCADA: Contratistas / Grupos habilitados en trabajos "En ejecución" del barco seleccionado
+  const enabledContractorsForShip = useMemo(() => {
+    if (!selectedShipId) return []
+    if (workItems.length === 0) {
+      // Modo respaldo sin work_items
+      return ['ASTILLERO.GENERAL']
+    }
+    const set = new Set()
+    activeWorkItemsForShip.forEach(item => {
+      const list = item.contractors || []
+      if (list.length === 0) {
+        set.add('ASTILLERO.GENERAL')
+      } else {
+        list.forEach(c => {
+          if (c) set.add(c)
+        })
+      }
+    })
+    return Array.from(set).sort()
+  }, [selectedShipId, workItems.length, activeWorkItemsForShip])
+
+  // Sincronizar automáticamente el Contratista seleccionado al cambiar de Barco
+  useEffect(() => {
+    if (enabledContractorsForShip.length > 0) {
+      if (!enabledContractorsForShip.includes(selectedContractorGroup)) {
+        setSelectedContractorGroup(enabledContractorsForShip[0])
+      }
+    } else {
+      setSelectedContractorGroup('')
+    }
+  }, [selectedShipId, enabledContractorsForShip])
+
+  // PASO 3 DE LA CASCADA: Filtrar únicamente las OTs del barco donde se habilita al contratista elegido (en estado "En ejecución")
+  const availableWorkOrders = useMemo(() => {
+    if (!selectedShipId) return []
+    if (workItems.length === 0) {
+      return workOrders.filter(wo => wo.ship_id === selectedShipId)
+    }
+    if (!selectedContractorGroup) return []
+
+    const matchingWoIds = new Set()
+    activeWorkItemsForShip.forEach(item => {
+      const list = item.contractors || []
+      const isMatch =
+        list.includes(selectedContractorGroup) ||
+        (selectedContractorGroup === 'ASTILLERO.GENERAL' && list.length === 0)
+      if (isMatch) {
+        matchingWoIds.add(item.work_order_id)
+      }
+    })
+
+    return workOrders.filter(wo => wo.ship_id === selectedShipId && matchingWoIds.has(wo.id))
+  }, [selectedShipId, selectedContractorGroup, workItems.length, activeWorkItemsForShip, workOrders])
 
   useEffect(() => {
     if (availableWorkOrders.length > 0) {
-      setSelectedWorkOrderId(availableWorkOrders[0].id)
+      if (!availableWorkOrders.some(w => w.id === selectedWorkOrderId)) {
+        setSelectedWorkOrderId(availableWorkOrders[0].id)
+      }
     } else {
       setSelectedWorkOrderId('')
     }
-  }, [selectedShipId])
+  }, [selectedShipId, selectedContractorGroup, availableWorkOrders])
+
+  // Trabajos específicos ("En ejecución") dentro de la OT seleccionada para ese contratista (DEC-016 Ayuda Memoria)
+  const activeItemsForSelectedWo = useMemo(() => {
+    if (!selectedWorkOrderId || !selectedContractorGroup) return []
+    return activeWorkItemsForShip.filter(item => {
+      if (item.work_order_id !== selectedWorkOrderId) return false
+      const list = item.contractors || []
+      return (
+        list.includes(selectedContractorGroup) ||
+        (selectedContractorGroup === 'ASTILLERO.GENERAL' && list.length === 0)
+      )
+    })
+  }, [activeWorkItemsForShip, selectedWorkOrderId, selectedContractorGroup])
+
+  useEffect(() => {
+    if (activeItemsForSelectedWo.length > 0) {
+      if (!activeItemsForSelectedWo.some(i => i.id === selectedWorkItemId)) {
+        setSelectedWorkItemId(activeItemsForSelectedWo[0].id)
+      }
+      // Sincronizar modalidad del trabajo (HORA / PRESUPUESTO / CONTROL)
+      const firstItem = activeItemsForSelectedWo[0]
+      if (firstItem?.work_type) {
+        setWorkType(firstItem.work_type)
+      }
+    } else {
+      setSelectedWorkItemId('')
+    }
+  }, [activeItemsForSelectedWo])
+
+  // Sincronizar fila de cuadrilla según el Contratista / Grupo habilitado elegido en el Paso 2
+  const handleContractorGroupChange = (newContractor) => {
+    setSelectedContractorGroup(newContractor)
+    if (!newContractor) return
+
+    const upper = newContractor.toUpperCase()
+    if (upper.startsWith('ASTILLERO')) {
+      let suggestedRubro = ''
+      if (upper.includes('CALDERERIA')) suggestedRubro = 'Calderería'
+      else if (upper.includes('RASCHINAJE')) suggestedRubro = 'Raschinear'
+      else if (upper.includes('MECANICA')) suggestedRubro = 'Mecánica'
+      else if (upper.includes('CARPINTERIA')) suggestedRubro = 'Carpintería naval'
+      else if (upper.includes('ELECTRICIDAD')) suggestedRubro = 'Electricidad'
+      else if (upper.includes('PINTURA')) suggestedRubro = 'Pintura'
+
+      setOperariosRows(prev =>
+        prev.map((row, idx) =>
+          idx === 0
+            ? {
+                ...row,
+                worker_type: 'Astillero',
+                worker_name: row.worker_type === 'Astillero' ? row.worker_name : '',
+                rubro: suggestedRubro || row.rubro,
+                hours_normal: 9
+              }
+            : row
+        )
+      )
+    } else {
+      const isTaller = TALLERES_FRECUENTES.includes(newContractor) ||
+        dbWorkers.some(w => w.work_group === newContractor && w.admin_center === 'TALLER')
+      const targetType = isTaller ? 'Taller' : 'Contratista'
+      setOperariosRows([
+        {
+          id: Date.now(),
+          worker_name: newContractor,
+          worker_type: targetType,
+          rubro: isTaller ? 'Taller Externo' : 'Servicio Contratista',
+          hours_normal: 8,
+          hours_extra_50: 0,
+          hours_extra_100: 0,
+          notes: ''
+        }
+      ])
+    }
+  }
 
   const currentWorkOrder = workOrders.find(wo => wo.id === selectedWorkOrderId)
+  const currentWorkItem = activeItemsForSelectedWo.find(i => i.id === selectedWorkItemId) || activeItemsForSelectedWo[0] || null
   const currentShip = ships.find(s => s.id === selectedShipId)
 
   // Manejo de Filas de Carga
@@ -375,7 +534,7 @@ export default function LaborLogs() {
     setStatusMessage(null)
 
     if (!selectedWorkOrderId) {
-      setStatusMessage({ type: 'error', text: 'Debe seleccionar una Orden de Trabajo válida.' })
+      setStatusMessage({ type: 'error', text: 'Debe seleccionar un Contratista habilitado y una Orden de Trabajo en ejecución.' })
       return
     }
 
@@ -398,6 +557,7 @@ export default function LaborLogs() {
 
         return {
           work_order_id: selectedWorkOrderId,
+          work_item_id: currentWorkItem?.id || null,
           hours_worked: hTotal,
           hours_normal: hNorm,
           hours_extra_50: h50,
@@ -418,7 +578,7 @@ export default function LaborLogs() {
 
       setStatusMessage({ 
         type: 'success', 
-        text: `¡Lote guardado! Se registraron ${operariosRows.length} operarios (${totalHorasGenerales} hs totales: ${totalHorasNormales}h normales, ${totalHoras50}h al 50%, ${totalHoras100}h al 100%) en ${currentWorkOrder?.title || 'la OT'}.` 
+        text: `¡Lote guardado! Se registraron ${operariosRows.length} operarios (${totalHorasGenerales} hs totales: ${totalHorasNormales}h normales, ${totalHoras50}h al 50%, ${totalHoras100}h al 100%) en ${currentWorkOrder?.ot_number ? `${currentWorkOrder.ot_number} - ` : ''}${currentWorkOrder?.title || 'la OT'}.` 
       })
 
       setOperariosRows([
@@ -613,26 +773,49 @@ export default function LaborLogs() {
     })
   }
 
+  // Helper para obtener las OTs habilitadas en ejecución para un operario/contratista en un barco
+  const getEnabledWosForWorkerInShip = (shipId, workerName, workerType) => {
+    if (!shipId) return []
+    const shipWos = workOrders.filter(w => w.ship_id === shipId)
+    if (workItems.length === 0) return shipWos
+
+    const activeItems = workItems.filter(item => {
+      const wo = woByIdMap[item.work_order_id]
+      if (!wo || wo.ship_id !== shipId || item.status !== 'En ejecución') return false
+      const list = item.contractors || []
+      if ((workerType || 'Astillero') === 'Astillero') {
+        return list.length === 0 || list.some(c => String(c).toUpperCase().startsWith('ASTILLERO'))
+      }
+      return list.includes(workerName)
+    })
+
+    const enabledWoIds = new Set(activeItems.map(i => i.work_order_id))
+    return shipWos.filter(w => enabledWoIds.has(w.id))
+  }
+
   // Helper unificado para abrir modal de carga rápida con barco y OT separados
   const openQuickLogModal = ({ name, rubro, type, hours_normal, notes, date, ship_id, work_order_id }) => {
+    const resolvedType = type || 'Astillero'
     let initialShipId = ship_id
     if (!initialShipId && work_order_id) {
       const matchedWo = workOrders.find(w => w.id === work_order_id)
       if (matchedWo?.ship_id) initialShipId = matchedWo.ship_id
     }
     if (!initialShipId) {
-      initialShipId = selectedShipId || ships[0]?.id || ''
+      // Buscar el primer barco donde este operario/contratista tenga al menos 1 OT en ejecución
+      const shipWithEnabledWo = ships.find(s => getEnabledWosForWorkerInShip(s.id, name, resolvedType).length > 0)
+      initialShipId = shipWithEnabledWo?.id || selectedShipId || ships[0]?.id || ''
     }
-    const shipWos = workOrders.filter(w => w.ship_id === initialShipId)
-    const initialWoId = work_order_id || (shipWos.length > 0 ? shipWos[0].id : (workOrders[0]?.id || ''))
+    const enabledWos = getEnabledWosForWorkerInShip(initialShipId, name, resolvedType)
+    const initialWoId = work_order_id || (enabledWos.length > 0 ? enabledWos[0].id : '')
 
     setQuickLogWorker({
       name,
-      rubro: rubro || (type === 'Astillero' ? 'General' : 'Servicio'),
-      type: type || 'Astillero',
+      rubro: rubro || (resolvedType === 'Astillero' ? 'General' : 'Servicio'),
+      type: resolvedType,
       ship_id: initialShipId,
       work_order_id: initialWoId,
-      hours_normal: hours_normal ?? (type === 'Astillero' ? 9 : 0),
+      hours_normal: hours_normal ?? (resolvedType === 'Astillero' ? 9 : 0),
       hours_extra_50: 0,
       hours_extra_100: 0,
       notes: notes || '',
@@ -1011,22 +1194,40 @@ export default function LaborLogs() {
           </div>
 
           <form onSubmit={handleSubmitBatch} className="space-y-6">
-            {/* CABECERA OT */}
+            {/* CABECERA OT CON FILTRO EN CASCADA (1. BARCO -> 2. CONTRATISTA HABILITADO -> 3. OT EN EJECUCIÓN) */}
             <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 backdrop-blur-xl shadow-xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
-                  <ClipboardList className="w-4 h-4" />
-                  Orden de Trabajo & Destino
-                </h2>
-                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-cyan-950/70 text-cyan-400 border border-cyan-800/40 font-semibold font-mono">
-                  Centro de Costo: CLIENTE (Fijo)
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
+                    <ClipboardList className="w-4 h-4" />
+                    Orden de Trabajo & Destino (Filtro de Habilitación en Cascada)
+                  </h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-700/50 font-bold">
+                    Solo OTs &ldquo;En ejecución&rdquo;
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {blockedWorkItemsForShip.length > 0 && (
+                    <span
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/70 text-amber-300 border border-amber-800/50 font-semibold"
+                      title="Trabajos en estado Pendiente de inicio, Detenido, Cancelado o Finalizado están bloqueados para recibir costos."
+                    >
+                      🔒 {blockedWorkItemsForShip.length} trabajo(s) bloqueado(s) en este barco
+                    </span>
+                  )}
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-cyan-950/70 text-cyan-400 border border-cyan-800/40 font-semibold font-mono">
+                    Centro de Costo: CLIENTE (Fijo)
+                  </span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Barco */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* PASO 1: Barco */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-bold flex items-center justify-center">
+                      1
+                    </span>
                     <Ship className="w-3.5 h-3.5 text-cyan-400" />
                     Barco / Embarcación
                   </label>
@@ -1043,23 +1244,52 @@ export default function LaborLogs() {
                   </select>
                 </div>
 
-                {/* OT */}
+                {/* PASO 2: Contratista / Grupo Habilitado en el Barco */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                    <ClipboardList className="w-3.5 h-3.5 text-cyan-400" />
-                    Orden de Trabajo (OT)
+                    <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center justify-center">
+                      2
+                    </span>
+                    <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+                    Contratista / Grupo Habilitado
+                  </label>
+                  <select
+                    value={selectedContractorGroup}
+                    onChange={(e) => handleContractorGroupChange(e.target.value)}
+                    className="w-full bg-slate-950/80 border border-amber-500/40 rounded-lg px-3 py-2 text-xs text-amber-200 font-semibold focus:outline-none focus:border-amber-400"
+                  >
+                    {enabledContractorsForShip.length === 0 ? (
+                      <option value="">🔒 Sin contratistas habilitados (En ejecución)</option>
+                    ) : (
+                      enabledContractorsForShip.map(contractor => (
+                        <option key={contractor} value={contractor} className="bg-slate-900 text-white">
+                          {contractor}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                {/* PASO 3: Orden de Trabajo (OT) donde se habilita a ese contratista */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center justify-center">
+                      3
+                    </span>
+                    <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
+                    OT Habilitada ({availableWorkOrders.length})
                   </label>
                   <select
                     value={selectedWorkOrderId}
                     onChange={(e) => setSelectedWorkOrderId(e.target.value)}
-                    className="w-full bg-slate-950/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+                    className="w-full bg-slate-950/80 border border-emerald-500/40 rounded-lg px-3 py-2 text-xs text-white font-semibold focus:outline-none focus:border-emerald-400"
                   >
                     {availableWorkOrders.length === 0 ? (
-                      <option value="">Sin OTs abiertas para este barco</option>
+                      <option value="">🔒 Sin OTs habilitadas en ejecución</option>
                     ) : (
                       availableWorkOrders.map(wo => (
                         <option key={wo.id} value={wo.id} className="bg-slate-900">
-                          {wo.title}
+                          {wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}
                         </option>
                       ))
                     )}
@@ -1097,14 +1327,76 @@ export default function LaborLogs() {
                 </div>
               </div>
 
-              {/* Alcance de la OT */}
-              {currentWorkOrder && (
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-start gap-2.5 text-xs">
-                  <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-slate-200">Alcance de {currentWorkOrder.title}: </strong>
-                    <span className="text-slate-400">{currentWorkOrder.description || 'Sin descripción registrada.'}</span>
+              {/* Si la OT tiene múltiples trabajos en ejecución para este contratista, permitir elegir cuál */}
+              {activeItemsForSelectedWo.length > 1 && (
+                <div className="pt-1">
+                  <label className="block text-[11px] font-semibold text-cyan-300 mb-1">
+                    Trabajo específico dentro de {currentWorkOrder?.ot_number || currentWorkOrder?.title} ({activeItemsForSelectedWo.length} habilitados para {selectedContractorGroup}):
+                  </label>
+                  <select
+                    value={selectedWorkItemId}
+                    onChange={(e) => setSelectedWorkItemId(e.target.value)}
+                    className="w-full bg-slate-950 border border-cyan-500/40 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400"
+                  >
+                    {activeItemsForSelectedWo.map((item, idx) => (
+                      <option key={item.id} value={item.id} className="bg-slate-900">
+                        Trabajo #{idx + 1}: {item.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Alcance de la OT y Descripción del Trabajo Habilitado (DEC-016 Ayuda Memoria) */}
+              {currentWorkOrder ? (
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <div>
+                        <span className="font-mono font-bold text-emerald-300 mr-1.5">
+                          [{currentWorkOrder.ot_number || 'OT'}]
+                        </span>
+                        <strong className="text-white">{currentWorkOrder.title}: </strong>
+                        <span className="text-slate-200 font-medium">
+                          {currentWorkItem?.description || currentWorkOrder.description || 'Sin descripción detallada registrada.'}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                        <span>
+                          Jefe de Obra: <strong className="text-cyan-300">{currentWorkItem?.foreman_name || currentWorkOrder.foreman_name || 'S/D'}</strong>
+                        </span>
+                        <span>&bull;</span>
+                        <span>
+                          Contratistas habilitados en este trabajo:{' '}
+                          <strong className="text-amber-300">
+                            {(currentWorkItem?.contractors || []).join(' / ') || selectedContractorGroup || 'Astillero'}
+                          </strong>
+                        </span>
+                      </div>
+                    </div>
                   </div>
+                  <Link
+                    to="/ordenes"
+                    className="shrink-0 text-[11px] text-cyan-400 hover:text-cyan-300 underline font-semibold"
+                  >
+                    Ver en Órdenes de Trabajo &rarr;
+                  </Link>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/40 flex items-center justify-between gap-3 text-xs text-amber-200">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      No hay Órdenes de Trabajo en estado <strong>&ldquo;En ejecución&rdquo;</strong> habilitadas para este barco/contratista. Para cargar horas, primero habilitá el contratista o pasá el trabajo a &ldquo;En ejecución&rdquo;.
+                    </span>
+                  </div>
+                  <Link
+                    to="/ordenes"
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold"
+                  >
+                    Ir a OTs
+                  </Link>
                 </div>
               )}
             </div>
@@ -2858,18 +3150,18 @@ export default function LaborLogs() {
             </div>
 
             <form onSubmit={handleQuickLogSubmit} className="space-y-4">
-              {/* Selección de Barco y OT separados */}
+              {/* Selección de Barco y OT habilitada en cascada */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
                     <Ship className="w-3.5 h-3.5 text-cyan-400" />
-                    Barco / Embarcación
+                    1. Barco / Embarcación
                   </label>
                   <select
                     value={quickLogWorker.ship_id || ''}
                     onChange={(e) => {
                       const newShipId = e.target.value
-                      const filteredWos = workOrders.filter(w => w.ship_id === newShipId)
+                      const filteredWos = getEnabledWosForWorkerInShip(newShipId, quickLogWorker.name, quickLogWorker.type)
                       setQuickLogWorker({
                         ...quickLogWorker,
                         ship_id: newShipId,
@@ -2888,24 +3180,24 @@ export default function LaborLogs() {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                    <ClipboardList className="w-3.5 h-3.5 text-cyan-400" />
-                    Orden de Trabajo (OT)
+                    <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
+                    2. OT Habilitada (En Ejecución)
                   </label>
                   <select
                     required
                     value={quickLogWorker.work_order_id}
                     onChange={(e) => setQuickLogWorker({ ...quickLogWorker, work_order_id: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+                    className="w-full bg-slate-950 border border-emerald-500/40 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400"
                   >
                     {(() => {
                       const currentShipId = quickLogWorker.ship_id || ships[0]?.id
-                      const filteredWos = workOrders.filter(w => w.ship_id === currentShipId)
+                      const filteredWos = getEnabledWosForWorkerInShip(currentShipId, quickLogWorker.name, quickLogWorker.type)
                       if (filteredWos.length === 0) {
-                        return <option value="">Sin OTs abiertas para este barco</option>
+                        return <option value="">🔒 Sin OTs en ejecución habilitadas en este barco</option>
                       }
                       return filteredWos.map(wo => (
                         <option key={wo.id} value={wo.id} className="bg-slate-900">
-                          {wo.title}
+                          {wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}
                         </option>
                       ))
                     })()}
@@ -2913,16 +3205,19 @@ export default function LaborLogs() {
                 </div>
               </div>
 
-              {/* Ayuda obligatoria: Descripción y alcance de la OT */}
+              {/* Ayuda obligatoria: Descripción y alcance de la OT (DEC-016) */}
               {(() => {
                 const selectedWo = workOrders.find(w => w.id === quickLogWorker.work_order_id)
                 if (!selectedWo) return null
+                const matchedItem = workItems.find(
+                  i => i.work_order_id === selectedWo.id && i.status === 'En ejecución'
+                )
                 return (
-                  <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-start gap-2 text-xs">
-                    <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                  <div className="p-2.5 rounded-xl bg-slate-950/80 border border-emerald-500/30 flex items-start gap-2 text-xs">
+                    <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="text-slate-200">Alcance de {selectedWo.title}: </strong>
-                      <span className="text-slate-400">{selectedWo.description || 'Sin descripción detallada registrada.'}</span>
+                      <strong className="text-emerald-300">[{selectedWo.ot_number || 'OT'}] {selectedWo.title}: </strong>
+                      <span className="text-slate-300">{matchedItem?.description || selectedWo.description || 'Sin descripción detallada registrada.'}</span>
                     </div>
                   </div>
                 )

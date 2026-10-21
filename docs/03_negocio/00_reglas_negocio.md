@@ -316,5 +316,27 @@ El **Dashboard del Administrador** (`/admin`) centraliza la gobernanza operativa
   1. **Observaciones Directas (`direct_observations`):** Reciben automáticamente lo escrito en el campo `Descripción` del trabajo al crearse desde la OT y quedan vinculadas a dicho trabajo.
   2. **Observaciones Específicas (`specific_observations`):** Campo independiente para anotaciones cargadas directamente desde el módulo propio de Terceros.
 
+### 8.5. Separación / Independización de un Trabajo de su Contenedor OT
+- Cuando un trabajo (`work_items`) inicia dentro de un Contenedor OT compartido y posteriormente requiere individualidad operativa o comercial, el usuario puede accionar **✂️ Separar / Independizar Trabajo** desde la *Planilla Unificada*, *Contenedores OT*, *Ficha 360°* o el modal de edición.
+- **2 Modalidades de Destino:**
+  1. **Crear nueva OT independiente para el mismo barco:** Asigna automáticamente el próximo `OT-N` correlativo del barco, permitiendo elegir nombre **Tabulado** (`OT.ABC`) o **Libre**.
+  2. **Mover a otra OT existente del mismo barco:** Reasigna el trabajo a otro contenedor ya abierto en esa embarcación.
+- **Arrastre Transaccional y Trazabilidad:** El sistema migra el `work_order_id` del trabajo y arrastra automáticamente sus registros vinculados en Terceros (`third_party_services`), Horas (`labor_logs` con `work_item_id`) y Pañol (`inventory_transactions` con `work_item_id`), dejando constancia en la bitácora de auditoría de ambas OTs.
 
+### 8.6. Las 3 Fechas Oficiales de la Orden de Trabajo
+Cada Orden de Trabajo gestiona y exhibe tres hitos temporales diferenciados:
+1. **Fecha de Creación (`created_at`):** Se asigna automáticamente con la fecha `HOY()` al abrir el formulario *"Cargar Trabajo / Nueva OT"*.
+2. **Fecha de Inicio Real (`MIN`):** Se calcula automáticamente tomando la primera fecha registrada en todo el sistema para esa OT, ya sea por **Carga de Horas** (`labor_logs.date_logged`), **Retiro de Materiales / Pañol** (`inventory_transactions.transaction_date`) o **Terceros** (`third_party_services.service_date` / `created_at`). Si aún no registra movimientos, muestra `"Sin iniciar"`.
+3. **Fecha Final / Última Carga (`MAX`):** Se calcula automáticamente tomando la última fecha cargada a esa OT entre Horas, Materiales o Terceros.
+- **Visualización:** En las tarjetas de **Contenedores OT por Barco**, junto al bloque de *Horas Imputadas*, se exhibe la tira de 4 indicadores (`Horas Imp. | F. Creación | F. Inicio | F. Final`), además de la columna dedicada en la *Planilla Unificada* y el desglose en la *Ficha 360°*.
 
+### 8.7. Bloqueo de Carga y Filtrado en Cascada (`1º Barco → 2º Contratista Habilitado → 3º OT en Ejecución`)
+- **Regla de Bloqueo por Estado:** Únicamente los trabajos en estado **`"En ejecución"`** habilitan la carga de datos en Horas, Materiales o Terceros. Los estados *Pendiente de inicio*, *Detenido*, *Cancelado*, *Finalizado* o *Facturado* bloquean la recepción de nuevos costos.
+- **Cascada Estricta de 3 Pasos en Carga de Horas (`LaborLogs.jsx`) y Terceros (`WorkOrders.jsx`):**
+  1. **Paso 1 — Seleccionar Barco:** El usuario elige la embarcación.
+  2. **Paso 2 — Seleccionar Contratista / Grupo Habilitado:** El selector filtra automáticamente mostrando **únicamente** los contratistas/grupos habilitados en trabajos `"En ejecución"` de ese barco.
+  3. **Paso 3 — Seleccionar Orden de Trabajo (OT):** El selector filtra automáticamente mostrando **únicamente** las OTs de ese barco donde el contratista elegido está habilitado en estado `"En ejecución"`, desplegando debajo la descripción detallada del trabajo (`DEC-016` ayuda memoria).
+
+### 8.8. Alta In-Situ de Jefe de Obra y Depuración del Modal de OT
+- **Alta In-Situ de Jefe de Obra (`+ Crear nuevo Jefe de Obra...`):** Al final del selector *"Jefe de Obra (Desde Padrón) \*"*, el usuario dispone de la opción **`+ Crear nuevo Jefe de Obra...`**, que despliega una caja rápida sin salir del modal de OT. Al confirmar, da de alta o actualiza a la persona en `public.workers` (`is_foreman = true`, `admin_center = 'ASTILLERO'`, `status = 'ACTIVO'`) y sincroniza su puesto en `public.organization_roles` (`department = 'Operaciones'`, `security_level = 'SUPERVISOR'`), dejándolo inmediatamente seleccionado en la OT.
+- **Limpieza de Campos en Modal OT:** El campo de comentario se denomina limpiamente **`"Comentario Auxiliar"`** (sin referencias a columnas de Excel) y se elimina el campo redundante de *Nº Comprobante / Remito* de la creación de OT (gestionado exclusivamente en su circuito administrativo correspondiente).

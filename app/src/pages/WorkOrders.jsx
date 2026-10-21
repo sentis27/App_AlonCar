@@ -1,31 +1,28 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
 import {
   ClipboardList,
   Plus,
   Search,
   Ship,
   Clock,
-  CheckCircle2,
-  AlertCircle,
   User,
   Wrench,
-  FileText,
   Check,
   X,
   Pencil,
   Trash2,
-  Lock,
   Layers,
   Sparkles,
   MessageSquare,
-  AlertTriangle,
   Send,
-  Building2,
-  HardHat,
   ShieldCheck,
-  Ban,
-  Eye
+  Eye,
+  GitBranch,
+  Calendar,
+  ArrowRight,
+  UserPlus,
+  Info,
+  Lock
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -91,6 +88,16 @@ const TIPOS_DE_TRABAJO = [
   { value: 'PRESUPUESTO', label: 'Presupuesto (Ajuste Alzado / PRC)' },
   { value: 'CONTROL', label: 'Control (Inspección / Seguimiento)' }
 ]
+
+// Formatear fecha YYYY-MM-DD a DD/MM/AA o DD/MM/AAAA
+function formatShortDate(isoStr, fullYear = false) {
+  if (!isoStr) return '—'
+  const clean = String(isoStr).split('T')[0]
+  const parts = clean.split('-')
+  if (parts.length !== 3) return clean
+  const [y, m, d] = parts
+  return fullYear ? `${d}/${m}/${y}` : `${d}/${m}/${y.slice(-2)}`
+}
 
 // Cálculo automático del estado de la OT (Contenedor) a partir de sus trabajos hijos (work_items)
 function computeOtState(wo, items = []) {
@@ -158,7 +165,7 @@ function computeOtState(wo, items = []) {
   }
 }
 
-// Evaluación de Alertas automáticas por trabajo (Columnas N, O, P, Q de GS-003)
+// Evaluación de Alertas automáticas por trabajo (Columnas N, O, P de GS-003)
 function evaluateWorkItemAlerts(item, wo) {
   const alerts = []
   if (!wo?.title?.trim() && item.description?.trim() && item.status === 'En ejecución') {
@@ -170,12 +177,6 @@ function evaluateWorkItemAlerts(item, wo) {
   const hasContractors = Array.isArray(item.contractors) && item.contractors.length > 0
   if (wo?.title?.trim() && item.status !== 'Desestimado' && item.description?.trim() && !hasContractors) {
     alerts.push({ code: 'S/CONTRATISTA', label: 'Falta asignar contratista', color: 'bg-orange-950 text-orange-300 border-orange-700' })
-  }
-  if (
-    (item.status === 'Remito realizado/Pdte firma' || item.status === 'Facturado') &&
-    !item.voucher_number?.trim()
-  ) {
-    alerts.push({ code: 'S/# COMPR.', label: 'Falta Nº de comprobante', color: 'bg-purple-950 text-purple-300 border-purple-700' })
   }
   return alerts
 }
@@ -191,11 +192,12 @@ export default function WorkOrders() {
   const [templates, setTemplates] = useState([])
   const [thirdPartyServices, setThirdPartyServices] = useState([])
   const [laborLogs, setLaborLogs] = useState([])
+  const [inventoryTx, setInventoryTx] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
 
   // Pestaña activa principal
-  const [activeMainTab, setActiveMainTab] = useState('unificado') // 'unificado' | 'ots' | 'terceros' | 'alertas'
+  const [activeMainTab, setActiveMainTab] = useState('unificado') // 'unificado' | 'ots' | 'terceros'
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState('')
@@ -210,6 +212,14 @@ export default function WorkOrders() {
   const [editingWorkItem, setEditingWorkItem] = useState(null)
   const [savingWork, setSavingWork] = useState(false)
 
+  // Caja in-situ para crear un nuevo Jefe de Obra sin salir del menú de OT
+  const [isCreatingForemanInline, setIsCreatingForemanInline] = useState(false)
+  const [newForemanForm, setNewForemanForm] = useState({
+    name: '',
+    trade: 'SUPERVISION'
+  })
+  const [savingNewForeman, setSavingNewForeman] = useState(false)
+
   // Formulario en cascada (Barco -> OT Existente o Nueva [Tabulada/Libre] -> Trabajo)
   const [workForm, setWorkForm] = useState({
     ship_id: '',
@@ -219,6 +229,7 @@ export default function WorkOrders() {
     selected_template_id: '',
     ot_number: 'OT-1',
     ot_title: '',
+    created_date: new Date().toISOString().split('T')[0],
     description: '',
     status: 'En ejecución',
     foreman_name: '',
@@ -227,14 +238,40 @@ export default function WorkOrders() {
     specific_budget_id: '',
     contractors: [],
     comments: '',
-    voucher_type: '',
-    voucher_number: '',
     send_to_third_party_prc: false,
     specific_observations: ''
   })
 
   // Selector de contratista dentro del formulario
   const [contractorSelectInput, setContractorSelectInput] = useState('')
+
+  // Modal para Separar / Independizar un Trabajo de un Contenedor OT
+  const [separatingRow, setSeparatingRow] = useState(null)
+  const [separateForm, setSeparateForm] = useState({
+    mode: 'new_ot', // 'new_ot' | 'existing_ot'
+    ot_creation_type: 'libre', // 'tabulada' | 'libre'
+    selected_template_id: '',
+    new_ot_number: 'OT-1',
+    new_ot_title: '',
+    target_existing_wo_id: '',
+    migrate_linked_records: true,
+    reason: 'Se independiza el trabajo en una OT propia para seguimiento y facturación individual'
+  })
+  const [savingSeparate, setSavingSeparate] = useState(false)
+
+  // Modal de Carga Guiada en Cascada en Terceros (1. Barco -> 2. Contratista 3ros -> 3. OT en ejecución)
+  const [isThirdPartyCascadeOpen, setIsThirdPartyCascadeOpen] = useState(false)
+  const [tpCascadeForm, setTpCascadeForm] = useState({
+    ship_id: '',
+    contractor_name: '',
+    work_item_id: '',
+    service_date: new Date().toISOString().split('T')[0],
+    status: 'PRC',
+    voucher_number: '',
+    amount_ars: 0,
+    specific_observations: ''
+  })
+  const [savingTpCascade, setSavingTpCascade] = useState(false)
 
   // Modal de Catálogo de Trabajos (OT.ABC)
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
@@ -260,14 +297,15 @@ export default function WorkOrders() {
   async function loadData() {
     try {
       setLoading(true)
-      const [shipsRes, wosRes, itemsRes, workersRes, tplRes, tpRes, logsRes] = await Promise.all([
+      const [shipsRes, wosRes, itemsRes, workersRes, tplRes, tpRes, logsRes, invRes] = await Promise.all([
         supabase.from('ships').select('*').order('name'),
         supabase.from('work_orders').select('*, ships(name, client_name)').order('created_at', { ascending: false }),
         supabase.from('work_items').select('*').order('created_at', { ascending: true }),
         supabase.from('workers').select('*').order('name'),
         supabase.from('ot_templates').select('*').order('sort_order').order('name'),
         supabase.from('third_party_services').select('*').order('created_at', { ascending: false }),
-        supabase.from('labor_logs').select('id, work_order_id, hours_worked, hours_normal, hours_extra_50, hours_extra_100, worker_name, date_logged')
+        supabase.from('labor_logs').select('id, work_order_id, work_item_id, hours_worked, hours_normal, hours_extra_50, hours_extra_100, worker_name, date_logged'),
+        supabase.from('inventory_transactions').select('id, work_order_id, work_item_id, transaction_date, quantity_withdrawn, contractor_name')
       ])
 
       if (shipsRes.data) setShips(shipsRes.data)
@@ -277,6 +315,7 @@ export default function WorkOrders() {
       if (tplRes.data) setTemplates(tplRes.data)
       if (tpRes.data) setThirdPartyServices(tpRes.data)
       if (logsRes.data) setLaborLogs(logsRes.data)
+      if (invRes.data) setInventoryTx(invRes.data)
     } catch (err) {
       console.error('Error cargando datos de OTs:', err)
       setStatusMessage({ type: 'error', text: 'Error al cargar datos del módulo de Órdenes de Trabajo.' })
@@ -307,7 +346,6 @@ export default function WorkOrders() {
     })
     Array.from(astilleroTrades).sort().forEach(trade => {
       const label = `ASTILLERO.${trade}`
-      // Verificar si algún operario de ese rubro en Astillero tiene 3ros activo (por defecto false)
       const has3ros = workers.some(w => w.admin_center === 'ASTILLERO' && (w.trade || '').toUpperCase() === trade && w.can_charge_third_party)
       map.set(label, {
         name: label,
@@ -440,23 +478,89 @@ export default function WorkOrders() {
     return map
   }, [thirdPartyServices])
 
-  // Mapa de Horas trabajadas por OT
-  const otMetricsMap = useMemo(() => {
+  // Mapa de Horas trabajadas y LAS 3 FECHAS DE LA OT:
+  // 1) Fecha de Creación: cuando se creó el reporte de la OT (hoy() automático al cargar)
+  // 2) Fecha de Inicio: primer dato cargado en todo el sistema (Horas, Materiales o Terceros)
+  // 3) Fecha Final: último dato cargado en todo el sistema (Horas, Materiales o Terceros)
+  const otMetricsAndDatesMap = useMemo(() => {
     const map = {}
+
+    workOrders.forEach(wo => {
+      const createdIso = wo.created_at
+        ? String(wo.created_at).split('T')[0]
+        : (wo.start_date || new Date().toISOString().split('T')[0])
+
+      map[wo.id] = {
+        totalHours: 0,
+        normalHours: 0,
+        extra50: 0,
+        extra100: 0,
+        workerSet: new Set(),
+        createdDate: createdIso,
+        events: [] // { date: 'YYYY-MM-DD', source: 'Horas' | 'Materiales' | 'Terceros' }
+      }
+    })
+
+    // 1. Eventos desde Horas (labor_logs)
     laborLogs.forEach(log => {
       const woId = log.work_order_id
-      if (!woId) return
-      if (!map[woId]) {
-        map[woId] = { totalHours: 0, normalHours: 0, extra50: 0, extra100: 0, workerSet: new Set() }
-      }
+      if (!woId || !map[woId]) return
       map[woId].totalHours += parseFloat(log.hours_worked) || 0
       map[woId].normalHours += parseFloat(log.hours_normal) || 0
       map[woId].extra50 += parseFloat(log.hours_extra_50) || 0
       map[woId].extra100 += parseFloat(log.hours_extra_100) || 0
       if (log.worker_name) map[woId].workerSet.add(log.worker_name)
+      if (log.date_logged) {
+        map[woId].events.push({
+          date: String(log.date_logged).split('T')[0],
+          source: 'Horas'
+        })
+      }
     })
+
+    // 2. Eventos desde Materiales / Pañol (inventory_transactions)
+    inventoryTx.forEach(tx => {
+      const woId = tx.work_order_id
+      if (!woId || !map[woId]) return
+      if (tx.transaction_date) {
+        map[woId].events.push({
+          date: String(tx.transaction_date).split('T')[0],
+          source: 'Materiales'
+        })
+      }
+    })
+
+    // 3. Eventos desde Terceros (third_party_services)
+    thirdPartyServices.forEach(tp => {
+      const woId = tp.work_order_id
+      if (!woId || !map[woId]) return
+      const tpDate = tp.service_date || (tp.created_at ? String(tp.created_at).split('T')[0] : null)
+      if (tpDate) {
+        map[woId].events.push({
+          date: tpDate,
+          source: 'Terceros'
+        })
+      }
+    })
+
+    // Calcular Fecha de Inicio (MIN) y Fecha Final (MAX) para cada OT
+    Object.values(map).forEach(entry => {
+      if (entry.events.length === 0) {
+        entry.startDate = null
+        entry.startSource = null
+        entry.endDate = null
+        entry.endSource = null
+      } else {
+        const sorted = [...entry.events].sort((a, b) => a.date.localeCompare(b.date))
+        entry.startDate = sorted[0].date
+        entry.startSource = sorted[0].source
+        entry.endDate = sorted[sorted.length - 1].date
+        entry.endSource = sorted[sorted.length - 1].source
+      }
+    })
+
     return map
-  }, [laborLogs])
+  }, [workOrders, laborLogs, inventoryTx, thirdPartyServices])
 
   // Filas unificadas (Cada fila = 1 Trabajo con su OT y Barco, igual a hoja UNIFICADO de GS-003)
   const unifiedRows = useMemo(() => {
@@ -464,6 +568,12 @@ export default function WorkOrders() {
     workOrders.forEach(wo => {
       const items = itemsByWoMap[wo.id] || []
       const computedOt = computeOtState(wo, items)
+      const otDates = otMetricsAndDatesMap[wo.id] || {
+        totalHours: 0,
+        createdDate: wo.created_at ? String(wo.created_at).split('T')[0] : null,
+        startDate: null,
+        endDate: null
+      }
       if (items.length === 0) {
         rows.push({
           isPlaceholder: true,
@@ -471,6 +581,8 @@ export default function WorkOrders() {
           work_order_id: wo.id,
           wo,
           computedOt,
+          otDates,
+          siblingsCount: 0,
           description: wo.description || '',
           status: 'Pendiente de inicio',
           foreman_name: wo.foreman_name || foremenList[0] || 'ALE CAMADELLI',
@@ -479,8 +591,6 @@ export default function WorkOrders() {
           specific_budget_id: wo.budget_code || '',
           contractors: wo.contractor_name ? [wo.contractor_name] : [],
           comments: '',
-          voucher_type: '',
-          voucher_number: '',
           send_to_third_party_prc: false,
           created_at: wo.created_at
         })
@@ -491,13 +601,15 @@ export default function WorkOrders() {
             isPlaceholder: false,
             wo,
             computedOt,
+            otDates,
+            siblingsCount: items.length,
             thirdPartyRecord: thirdPartyByItemMap[item.id] || null
           })
         })
       }
     })
     return rows
-  }, [workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList])
+  }, [workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList, otMetricsAndDatesMap])
 
   // Filtrado de filas unificadas
   const filteredRows = useMemo(() => {
@@ -537,9 +649,11 @@ export default function WorkOrders() {
     return { enEjecucion, pendientes, pdteRemito, facturados, barcosActivos, prcTercerosCount }
   }, [unifiedRows, thirdPartyServices])
 
-  // Abrir Modal para Crear Nuevo Trabajo / OT
+  // Abrir Modal para Crear Nuevo Trabajo / OT (Fecha de creación sale automática de HOY)
   const handleOpenNewWorkModal = (preselectedWo = null) => {
     setEditingWorkItem(null)
+    setIsCreatingForemanInline(false)
+    const todayIso = new Date().toISOString().split('T')[0]
     const defaultShipId = preselectedWo
       ? preselectedWo.ship_id
       : (selectedShipFilter !== 'todos' ? selectedShipFilter : (ships[0]?.id || ''))
@@ -555,6 +669,7 @@ export default function WorkOrders() {
       selected_template_id: '',
       ot_number: getNextOtNumberForShip(defaultShipId),
       ot_title: '',
+      created_date: todayIso,
       description: '',
       status: 'En ejecución',
       foreman_name: defaultForeman,
@@ -563,8 +678,6 @@ export default function WorkOrders() {
       specific_budget_id: '',
       contractors: [],
       comments: '',
-      voucher_type: '',
-      voucher_number: '',
       send_to_third_party_prc: false,
       specific_observations: ''
     })
@@ -574,7 +687,11 @@ export default function WorkOrders() {
   // Abrir Modal para Editar un Trabajo existente
   const handleOpenEditWorkModal = (row) => {
     setEditingWorkItem(row.isPlaceholder ? null : row)
+    setIsCreatingForemanInline(false)
     const tp = row.thirdPartyRecord
+    const createdIso = row.wo?.created_at
+      ? String(row.wo.created_at).split('T')[0]
+      : new Date().toISOString().split('T')[0]
     setContractorSelectInput('')
     setWorkForm({
       ship_id: row.wo?.ship_id || '',
@@ -584,6 +701,7 @@ export default function WorkOrders() {
       selected_template_id: '',
       ot_number: row.wo?.ot_number || 'OT-1',
       ot_title: row.wo?.title || '',
+      created_date: createdIso,
       description: row.description || '',
       status: row.status || 'En ejecución',
       foreman_name: row.foreman_name || foremenList[0] || 'ALE CAMADELLI',
@@ -592,12 +710,239 @@ export default function WorkOrders() {
       specific_budget_id: row.specific_budget_id || '',
       contractors: Array.isArray(row.contractors) ? [...row.contractors] : [],
       comments: row.comments || '',
-      voucher_type: row.voucher_type || '',
-      voucher_number: row.voucher_number || '',
       send_to_third_party_prc: Boolean(row.send_to_third_party_prc || tp),
       specific_observations: tp?.specific_observations || ''
     })
     setIsWorkModalOpen(true)
+  }
+
+  // Crear nuevo Jefe de Obra In-Situ desde el selector de la OT (Impacta en workers y organization_roles)
+  const handleCreateForemanInline = async () => {
+    const cleanName = newForemanForm.name.trim().toUpperCase()
+    if (!cleanName) {
+      alert('Ingresá el nombre y apellido del nuevo Jefe de Obra.')
+      return
+    }
+    setSavingNewForeman(true)
+    try {
+      const existingWorker = workers.find(w => (w.name || '').trim().toUpperCase() === cleanName)
+      let savedWorker = null
+
+      if (existingWorker) {
+        const { data, error } = await supabase
+          .from('workers')
+          .update({
+            is_foreman: true,
+            status: 'ACTIVO'
+          })
+          .eq('id', existingWorker.id)
+          .select()
+        if (error) throw error
+        savedWorker = data?.[0] || { ...existingWorker, is_foreman: true, status: 'ACTIVO' }
+        setWorkers(prev => prev.map(w => (w.id === existingWorker.id ? savedWorker : w)))
+      } else {
+        const workerPayload = {
+          name: cleanName,
+          work_group: 'ASTILLERO',
+          trade: newForemanForm.trade || 'SUPERVISION',
+          admin_center: 'ASTILLERO',
+          consumables: 'CLIENTE',
+          consumables_discount_pct: 0,
+          safety_items: 'ASTILLERO',
+          status: 'ACTIVO',
+          hourly_rate_ars: 0,
+          hourly_rate_usd: 0,
+          category: 'OFICIAL',
+          can_withdraw_materials: true,
+          can_impute_hours: true,
+          can_charge_third_party: false,
+          is_foreman: true
+        }
+        const { data, error } = await supabase
+          .from('workers')
+          .insert([workerPayload])
+          .select()
+        if (error) throw error
+        savedWorker = data?.[0] || workerPayload
+        setWorkers(prev => [...prev, savedWorker])
+      }
+
+      // Sincronizar también en organization_roles (Gobierno / Operaciones en Dashboard Admin)
+      const roleSlug = `JEFE_OBRA_${cleanName.replace(/[^A-Z0-9]+/g, '_')}`
+      await supabase
+        .from('organization_roles')
+        .upsert(
+          {
+            role_key: roleSlug,
+            role_title: `Jefe de Obra Naval (${newForemanForm.trade || 'SUPERVISION'})`,
+            holder_name: cleanName,
+            department: 'Operaciones',
+            security_level: 'SUPERVISOR',
+            allowed_sections: ['barcos', 'ots', 'horas', 'panol'],
+            status: 'ACTIVO',
+            notes: 'Jefe de Obra dado de alta desde el módulo de Órdenes de Trabajo',
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'role_key' }
+        )
+
+      setWorkForm(prev => ({ ...prev, foreman_name: cleanName }))
+      setNewForemanForm({ name: '', trade: 'SUPERVISION' })
+      setIsCreatingForemanInline(false)
+      setStatusMessage({
+        type: 'success',
+        text: `Jefe de Obra "${cleanName}" creado y sincronizado automáticamente en el Padrón de Personal (JO) y en Roles de Operaciones.`
+      })
+      setTimeout(() => setStatusMessage(null), 4000)
+    } catch (err) {
+      console.error(err)
+      alert('Error al crear Jefe de Obra: ' + err.message)
+    } finally {
+      setSavingNewForeman(false)
+    }
+  }
+
+  // Abrir Modal para Separar / Independizar un Trabajo de su Contenedor OT
+  const handleOpenSeparateModal = (row) => {
+    if (!row || row.isPlaceholder) return
+    const shipId = row.wo?.ship_id
+    const otherWosSameShip = workOrders.filter(w => w.ship_id === shipId && w.id !== row.work_order_id)
+    const nextOtNum = getNextOtNumberForShip(shipId)
+    const suggestedTitle = row.description
+      ? row.description.split('\n')[0].slice(0, 55).toUpperCase()
+      : `${row.wo?.title || 'TRABAJO'} (SEPARADO)`
+
+    setSeparatingRow(row)
+    setSeparateForm({
+      mode: 'new_ot',
+      ot_creation_type: 'libre',
+      selected_template_id: '',
+      new_ot_number: nextOtNum,
+      new_ot_title: suggestedTitle,
+      target_existing_wo_id: otherWosSameShip[0]?.id || '',
+      migrate_linked_records: true,
+      reason: 'Se independiza el trabajo en una OT propia para seguimiento y facturación individual'
+    })
+  }
+
+  // Confirmar Separación / Independización del Trabajo hacia una Nueva OT o hacia otra OT existente
+  const handleConfirmSeparateWorkItem = async (e) => {
+    e.preventDefault()
+    if (!separatingRow) return
+
+    const sourceWo = separatingRow.wo
+    const shipId = sourceWo?.ship_id
+
+    if (separateForm.mode === 'new_ot' && !separateForm.new_ot_title.trim()) {
+      alert('Ingresá el nombre para la nueva Orden de Trabajo independiente.')
+      return
+    }
+    if (separateForm.mode === 'existing_ot' && !separateForm.target_existing_wo_id) {
+      alert('Seleccioná la Orden de Trabajo de destino.')
+      return
+    }
+    if (!separateForm.reason.trim()) {
+      alert('Indicá brevemente el motivo de la separación para el registro de trazabilidad.')
+      return
+    }
+
+    setSavingSeparate(true)
+    try {
+      let targetWoId = separateForm.target_existing_wo_id
+      let targetWoLabel = ''
+      const timestamp = new Date().toLocaleString('es-AR')
+      const author = user?.email?.split('@')[0] || 'Supervisor'
+
+      if (separateForm.mode === 'new_ot') {
+        const newOtNum = separateForm.new_ot_number.trim() || getNextOtNumberForShip(shipId)
+        const newTitle = separateForm.new_ot_title.trim()
+        const originNote = `[${timestamp} - Separación de OT por ${author}]: Trabajo independizado desde ${sourceWo?.ot_number} (${sourceWo?.title}). Motivo: ${separateForm.reason.trim()}`
+
+        const woPayload = {
+          ship_id: shipId,
+          ot_number: newOtNum,
+          title: newTitle,
+          description: separatingRow.description || null,
+          status: separatingRow.status === 'En ejecución' ? 'En Progreso' : 'Pendiente',
+          work_type: separatingRow.work_type || 'HORA',
+          assignment_type: separatingRow.assignment_type || 'Presupuesto General',
+          budget_code: separatingRow.specific_budget_id || null,
+          foreman_name: separatingRow.foreman_name || sourceWo?.foreman_name,
+          contractor_name: (separatingRow.contractors || []).join(', ') || null,
+          is_tabulated: separateForm.ot_creation_type === 'tabulada',
+          start_date: new Date().toISOString().split('T')[0],
+          notes: originNote
+        }
+
+        const { data: createdWo, error: createWoErr } = await supabase
+          .from('work_orders')
+          .insert([woPayload])
+          .select()
+
+        if (createWoErr) throw createWoErr
+        targetWoId = createdWo[0].id
+        targetWoLabel = `${newOtNum} - ${newTitle}`
+      } else {
+        const destWo = workOrders.find(w => w.id === targetWoId)
+        targetWoLabel = destWo ? `${destWo.ot_number} - ${destWo.title}` : 'OT destino'
+        const destNote = `[${timestamp} - Reasignación de Trabajo por ${author}]: Se incorporó trabajo proveniente de ${sourceWo?.ot_number} (${sourceWo?.title}). Motivo: ${separateForm.reason.trim()}`
+        const updatedDestNotes = destWo?.notes ? `${destWo.notes}\n\n${destNote}` : destNote
+        await supabase.from('work_orders').update({ notes: updatedDestNotes }).eq('id', targetWoId)
+      }
+
+      // 1. Dejar constancia en la bitácora de la OT de origen
+      if (sourceWo?.id) {
+        const sourceNote = `[${timestamp} - Trabajo Separado por ${author}]: El trabajo "${(separatingRow.description || '').slice(0, 60)}..." fue separado hacia ${targetWoLabel}. Motivo: ${separateForm.reason.trim()}`
+        const updatedSourceNotes = sourceWo.notes ? `${sourceWo.notes}\n\n${sourceNote}` : sourceNote
+        await supabase.from('work_orders').update({ notes: updatedSourceNotes }).eq('id', sourceWo.id)
+      }
+
+      // 2. Mover el work_item al nuevo contenedor OT
+      const { error: moveItemErr } = await supabase
+        .from('work_items')
+        .update({
+          work_order_id: targetWoId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', separatingRow.id)
+
+      if (moveItemErr) throw moveItemErr
+
+      // 3. Actualizar registros vinculados (Terceros PRC, Horas y Materiales)
+      await supabase
+        .from('third_party_services')
+        .update({
+          work_order_id: targetWoId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('work_item_id', separatingRow.id)
+
+      if (separateForm.migrate_linked_records) {
+        await supabase
+          .from('labor_logs')
+          .update({ work_order_id: targetWoId })
+          .eq('work_item_id', separatingRow.id)
+
+        await supabase
+          .from('inventory_transactions')
+          .update({ work_order_id: targetWoId })
+          .eq('work_item_id', separatingRow.id)
+      }
+
+      setSeparatingRow(null)
+      setIsWorkModalOpen(false)
+      await loadData()
+      setStatusMessage({
+        type: 'success',
+        text: `Trabajo separado correctamente hacia ${targetWoLabel} con trazabilidad registrada en bitácora.`
+      })
+      setTimeout(() => setStatusMessage(null), 4500)
+    } catch (err) {
+      console.error(err)
+      alert('Error al separar trabajo: ' + err.message)
+    } finally {
+      setSavingSeparate(false)
+    }
   }
 
   // Cambiar barco en el formulario en cascada
@@ -633,7 +978,6 @@ export default function WorkOrders() {
     setWorkForm(prev => {
       if (prev.contractors.includes(contractorName)) return prev
       const nextContractors = [...prev.contractors, contractorName]
-      // Si pasa a tener más de 1 contratista o no tiene permiso 3ros, desactivar send_to_third_party_prc
       const canStillSend3ros = nextContractors.length === 1 && hasThirdPartyPermission(nextContractors[0])
       return {
         ...prev,
@@ -686,8 +1030,9 @@ export default function WorkOrders() {
       let targetWoId = workForm.existing_wo_id
       let targetShipId = workForm.ship_id
 
-      // 1. Si es Nueva OT, crear primero el contenedor en work_orders
+      // 1. Si es Nueva OT, crear primero el contenedor en work_orders con fecha de creación = hoy()
       if (workForm.ot_mode === 'new') {
+        const todayIso = new Date().toISOString().split('T')[0]
         const woPayload = {
           ship_id: workForm.ship_id,
           ot_number: workForm.ot_number.trim() || getNextOtNumberForShip(workForm.ship_id),
@@ -700,7 +1045,7 @@ export default function WorkOrders() {
           foreman_name: workForm.foreman_name,
           contractor_name: workForm.contractors.join(', ') || null,
           is_tabulated: workForm.ot_creation_type === 'tabulada',
-          start_date: new Date().toISOString().split('T')[0]
+          start_date: todayIso
         }
 
         const { data: newWoData, error: woErr } = await supabase
@@ -711,7 +1056,6 @@ export default function WorkOrders() {
         if (woErr) throw woErr
         targetWoId = newWoData[0].id
       } else if (editingWorkItem && workForm.ot_title.trim()) {
-        // Actualizar datos de cabecera de la OT si se editó el título
         await supabase
           .from('work_orders')
           .update({
@@ -739,8 +1083,6 @@ export default function WorkOrders() {
         contractors: workForm.contractors,
         contractor_name: workForm.contractors.join(', ') || null,
         comments: workForm.comments.trim() || null,
-        voucher_type: workForm.voucher_type || null,
-        voucher_number: workForm.voucher_number.trim() || null,
         send_to_third_party_prc: validFor3ros,
         updated_at: new Date().toISOString()
       }
@@ -775,6 +1117,7 @@ export default function WorkOrders() {
             status: 'PRC',
             voucher_type: 'PRC',
             amount_ars: 0,
+            service_date: new Date().toISOString().split('T')[0],
             direct_observations: workForm.description.trim() || 'Sin descripción cargada en la OT',
             specific_observations: workForm.specific_observations.trim() || null,
             updated_at: new Date().toISOString()
@@ -786,7 +1129,6 @@ export default function WorkOrders() {
 
           if (tpErr) throw tpErr
         } else if (editingWorkItem && thirdPartyByItemMap[editingWorkItem.id]) {
-          // Si se desmarcó o dejó de cumplir condición de 1 contratista + 3ros, eliminar el PRC $0 vinculado
           await supabase
             .from('third_party_services')
             .delete()
@@ -808,6 +1150,99 @@ export default function WorkOrders() {
       setStatusMessage({ type: 'error', text: `Error al guardar: ${err.message}` })
     } finally {
       setSavingWork(false)
+    }
+  }
+
+  // ============================================================================
+  // LÓGICA DE BLOQUEO Y CASCADA ESTRICTA EN TERCEROS (1. Barco -> 2. Contratista 3ros -> 3. OT en ejecución)
+  // ============================================================================
+  const activeExecutionRows = useMemo(() => {
+    return unifiedRows.filter(r => !r.isPlaceholder && r.status === 'En ejecución')
+  }, [unifiedRows])
+
+  // Paso 2 en Terceros: Contratistas con permiso 3ros habilitados en el barco seleccionado (solo en trabajos "En ejecución")
+  const enabledThirdPartyContractorsForShip = useMemo(() => {
+    if (!tpCascadeForm.ship_id) return []
+    const set = new Set()
+    activeExecutionRows
+      .filter(r => r.wo?.ship_id === tpCascadeForm.ship_id)
+      .forEach(r => {
+        ;(r.contractors || []).forEach(c => {
+          if (hasThirdPartyPermission(c)) set.add(c)
+        })
+      })
+    return Array.from(set).sort()
+  }, [activeExecutionRows, tpCascadeForm.ship_id, contractorPermissionsMap, workers])
+
+  // Paso 3 en Terceros: Trabajos / OTs en ejecución donde está habilitado ese contratista en ese barco
+  const enabledWorkItemsForShipAndContractor = useMemo(() => {
+    if (!tpCascadeForm.ship_id || !tpCascadeForm.contractor_name) return []
+    return activeExecutionRows.filter(
+      r =>
+        r.wo?.ship_id === tpCascadeForm.ship_id &&
+        (r.contractors || []).includes(tpCascadeForm.contractor_name)
+    )
+  }, [activeExecutionRows, tpCascadeForm.ship_id, tpCascadeForm.contractor_name])
+
+  const selectedTpCascadeWorkItem = useMemo(() => {
+    return enabledWorkItemsForShipAndContractor.find(r => r.id === tpCascadeForm.work_item_id) || null
+  }, [enabledWorkItemsForShipAndContractor, tpCascadeForm.work_item_id])
+
+  const handleOpenTpCascadeModal = () => {
+    const firstActiveShipId = ships.find(s => activeExecutionRows.some(r => r.wo?.ship_id === s.id))?.id || ships[0]?.id || ''
+    setTpCascadeForm({
+      ship_id: firstActiveShipId,
+      contractor_name: '',
+      work_item_id: '',
+      service_date: new Date().toISOString().split('T')[0],
+      status: 'PRC',
+      voucher_number: '',
+      amount_ars: 0,
+      specific_observations: ''
+    })
+    setIsThirdPartyCascadeOpen(true)
+  }
+
+  const handleSaveTpCascade = async (e) => {
+    e.preventDefault()
+    if (!selectedTpCascadeWorkItem) {
+      alert('Seleccioná un Barco, un Contratista habilitado y una Orden de Trabajo en ejecución.')
+      return
+    }
+    setSavingTpCascade(true)
+    try {
+      const payload = {
+        work_item_id: selectedTpCascadeWorkItem.id,
+        work_order_id: selectedTpCascadeWorkItem.work_order_id,
+        ship_id: tpCascadeForm.ship_id,
+        contractor_name: tpCascadeForm.contractor_name,
+        status: tpCascadeForm.status || 'PRC',
+        voucher_type: tpCascadeForm.status || 'PRC',
+        voucher_number: tpCascadeForm.voucher_number.trim() || null,
+        amount_ars: parseFloat(tpCascadeForm.amount_ars) || 0,
+        service_date: tpCascadeForm.service_date || new Date().toISOString().split('T')[0],
+        direct_observations: selectedTpCascadeWorkItem.description || 'Sin descripción en la OT',
+        specific_observations: tpCascadeForm.specific_observations.trim() || null,
+        updated_at: new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from('third_party_services')
+        .upsert(payload, { onConflict: 'work_item_id' })
+
+      if (error) throw error
+      setIsThirdPartyCascadeOpen(false)
+      await loadData()
+      setStatusMessage({
+        type: 'success',
+        text: `Comprobante de Terceros (${tpCascadeForm.contractor_name}) guardado en ${selectedTpCascadeWorkItem.wo?.ot_number}.`
+      })
+      setTimeout(() => setStatusMessage(null), 4000)
+    } catch (err) {
+      console.error(err)
+      alert('Error al guardar en Terceros: ' + err.message)
+    } finally {
+      setSavingTpCascade(false)
     }
   }
 
@@ -872,7 +1307,6 @@ export default function WorkOrders() {
     }
 
     try {
-      // Marcar trabajos no desestimados como Facturado
       await supabase
         .from('work_items')
         .update({ status: 'Facturado', updated_at: new Date().toISOString() })
@@ -915,6 +1349,7 @@ export default function WorkOrders() {
           specific_observations: editingThirdParty.specific_observations?.trim() || null,
           amount_ars: parseFloat(editingThirdParty.amount_ars) || 0,
           status: editingThirdParty.status || 'PRC',
+          service_date: editingThirdParty.service_date || new Date().toISOString().split('T')[0],
           voucher_number: editingThirdParty.voucher_number?.trim() || null,
           updated_at: new Date().toISOString()
         })
@@ -961,6 +1396,7 @@ export default function WorkOrders() {
         selected_template_id: tpl.id,
         ot_number: getNextOtNumberForShip(defaultShipId),
         ot_title: tpl.name,
+        created_date: new Date().toISOString().split('T')[0],
         description: tpl.description || '',
         status: 'En ejecución',
         foreman_name: foremenList[0] || 'ALE CAMADELLI',
@@ -969,8 +1405,6 @@ export default function WorkOrders() {
         specific_budget_id: '',
         contractors: [],
         comments: '',
-        voucher_type: '',
-        voucher_number: '',
         send_to_third_party_prc: false,
         specific_observations: ''
       })
@@ -1054,14 +1488,14 @@ export default function WorkOrders() {
               Módulo M3 &bull; GS-003 Lista de Trabajos en Progreso
             </span>
             <span className="text-slate-500 text-xs">&bull;</span>
-            <span className="text-xs text-slate-400 font-mono">Estado en Trabajo / OT Calculada</span>
+            <span className="text-xs text-slate-400 font-mono">3 Fechas Automáticas &bull; Separación de OT &bull; Bloqueo en Cascada</span>
           </div>
           <h1 className="text-2xl font-black text-white tracking-wide flex items-center gap-2.5">
             <ClipboardList className="w-7 h-7 text-primary" />
             Órdenes de Trabajo y Trabajos en Progreso
           </h1>
           <p className="text-xs text-slate-400 mt-1 max-w-3xl">
-            Cada OT agrupa los trabajos de un barco. El estado operativo se gestiona por trabajo individual, calculando automáticamente el estado de la OT y habilitando la autocarga de PRC $0 en Terceros cuando hay un único contratista con permiso <strong>3ros</strong>.
+            Cada OT gestiona automáticamente sus 3 fechas (<strong>Creación</strong>, <strong>Inicio Real</strong> por primer consumo/hora/tercero y <strong>Fin Real</strong> por último dato), permite <strong>separar o independizar</strong> trabajos hacia una OT propia y habilita la carga en cascada solo para contratistas en estado <strong>En ejecución</strong>.
           </p>
         </div>
 
@@ -1343,7 +1777,8 @@ export default function WorkOrders() {
               <tr>
                 <th className="py-3 px-3">Barco</th>
                 <th className="py-3 px-3">Orden de Trabajo (Estado Calculado)</th>
-                <th className="py-3 px-3 min-w-[260px]">Descripción del Trabajo</th>
+                <th className="py-3 px-3 min-w-[155px]">Fechas OT (Creac. / Inicio / Fin)</th>
+                <th className="py-3 px-3 min-w-[240px]">Descripción del Trabajo</th>
                 <th className="py-3 px-3">Contratista(s) / Permiso 3ros</th>
                 <th className="py-3 px-3">Jefe de Obra</th>
                 <th className="py-3 px-2.5">Tipo / Asignación</th>
@@ -1355,7 +1790,7 @@ export default function WorkOrders() {
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500">
+                  <td colSpan={10} className="py-12 text-center text-slate-500">
                     No hay trabajos registrados para los filtros seleccionados. Hacé clic en <strong>&quot;+ Cargar Trabajo / Nueva OT&quot;</strong> para comenzar.
                   </td>
                 </tr>
@@ -1365,6 +1800,7 @@ export default function WorkOrders() {
                   const alerts = evaluateWorkItemAlerts(row, row.wo)
                   const contractors = row.contractors || []
                   const tp = row.thirdPartyRecord
+                  const dates = row.otDates || {}
 
                   return (
                     <tr key={row.id} className="hover:bg-slate-800/30 transition-colors align-top">
@@ -1379,7 +1815,7 @@ export default function WorkOrders() {
                         </span>
                       </td>
 
-                      {/* 2. Orden de Trabajo + Estado Calculado */}
+                      {/* 2. Orden de Trabajo + Estado Calculado + Botón Separar OT */}
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono text-[11px] font-black text-primary px-1.5 py-0.5 rounded bg-primary/10 border border-primary/30">
@@ -1387,7 +1823,7 @@ export default function WorkOrders() {
                           </span>
                           <span className="font-extrabold text-white">{row.wo?.title}</span>
                         </div>
-                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                           <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${row.computedOt.color}`}>
                             OT: {row.computedOt.label}
                           </span>
@@ -1399,10 +1835,55 @@ export default function WorkOrders() {
                           >
                             + Trabajo
                           </button>
+                          {!row.isPlaceholder && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSeparateModal(row)}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold inline-flex items-center gap-1 cursor-pointer"
+                              title="Separar este trabajo en una OT propia o moverlo a otra OT del barco"
+                            >
+                              <GitBranch className="w-2.5 h-2.5" />
+                              <span>Separar OT</span>
+                            </button>
+                          )}
                         </div>
                       </td>
 
-                      {/* 3. Descripción del Trabajo */}
+                      {/* 3. Las 3 Fechas de la OT (Creación, Inicio Real y Fin Real) */}
+                      <td className="py-3 px-3 font-mono text-[10px] space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-slate-300">
+                          <span className="text-slate-500">Creac.:</span>
+                          <span className="font-bold">{formatShortDate(dates.createdDate)}</span>
+                        </div>
+                        <div
+                          className="flex items-center justify-between gap-2 text-emerald-300"
+                          title={
+                            dates.startDate
+                              ? `Primer dato cargado en el sistema (${dates.startSource}): ${formatShortDate(dates.startDate, true)}`
+                              : 'Sin datos cargados aún en Horas, Materiales ni Terceros'
+                          }
+                        >
+                          <span className="text-slate-500">Inicio:</span>
+                          <span className="font-bold">
+                            {dates.startDate ? `${formatShortDate(dates.startDate)} (${dates.startSource?.slice(0, 3)})` : '—'}
+                          </span>
+                        </div>
+                        <div
+                          className="flex items-center justify-between gap-2 text-cyan-300"
+                          title={
+                            dates.endDate
+                              ? `Último dato cargado a esta OT (${dates.endSource}): ${formatShortDate(dates.endDate, true)}`
+                              : 'Sin datos cargados aún'
+                          }
+                        >
+                          <span className="text-slate-500">Final:</span>
+                          <span className="font-bold">
+                            {dates.endDate ? `${formatShortDate(dates.endDate)} (${dates.endSource?.slice(0, 3)})` : '—'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* 4. Descripción del Trabajo */}
                       <td className="py-3 px-3 max-w-md">
                         {row.description ? (
                           <div className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed line-clamp-3 hover:line-clamp-none">
@@ -1413,12 +1894,12 @@ export default function WorkOrders() {
                         )}
                         {row.comments && (
                           <div className="mt-1 text-[10px] text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                            💬 <strong>Nota:</strong> {row.comments}
+                            💬 <strong>Comentario:</strong> {row.comments}
                           </div>
                         )}
                       </td>
 
-                      {/* 4. Contratistas */}
+                      {/* 5. Contratistas */}
                       <td className="py-3 px-3">
                         {contractors.length === 0 ? (
                           <span className="text-slate-500 italic text-[11px]">Sin asignar</span>
@@ -1447,7 +1928,7 @@ export default function WorkOrders() {
                         )}
                       </td>
 
-                      {/* 5. Jefe de Obra */}
+                      {/* 6. Jefe de Obra */}
                       <td className="py-3 px-3">
                         <span className="font-bold text-amber-300 flex items-center gap-1 text-xs">
                           <User className="w-3 h-3 shrink-0" />
@@ -1455,7 +1936,7 @@ export default function WorkOrders() {
                         </span>
                       </td>
 
-                      {/* 6. Tipo y Asignación */}
+                      {/* 7. Tipo y Asignación */}
                       <td className="py-3 px-2.5">
                         <span className="font-mono font-bold text-cyan-300 text-[11px] block">
                           {row.work_type || 'HORA'}
@@ -1467,7 +1948,7 @@ export default function WorkOrders() {
                         </span>
                       </td>
 
-                      {/* 7. Estado del Trabajo (Editable inline) */}
+                      {/* 8. Estado del Trabajo (Editable inline) */}
                       <td className="py-3 px-3 text-center">
                         <select
                           value={row.status}
@@ -1482,7 +1963,7 @@ export default function WorkOrders() {
                         </select>
                       </td>
 
-                      {/* 8. Alertas y Vinculación PRC Terceros */}
+                      {/* 9. Alertas y Vinculación PRC Terceros */}
                       <td className="py-3 px-2.5 text-center">
                         <div className="flex flex-col items-center gap-1">
                           {tp && (
@@ -1510,7 +1991,7 @@ export default function WorkOrders() {
                         </div>
                       </td>
 
-                      {/* 9. Acciones */}
+                      {/* 10. Acciones */}
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
@@ -1521,6 +2002,16 @@ export default function WorkOrders() {
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
+                          {!row.isPlaceholder && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSeparateModal(row)}
+                              className="p-1.5 text-amber-400/80 hover:text-amber-300 rounded-lg hover:bg-amber-500/10 transition-colors cursor-pointer"
+                              title="Separar / Independizar este trabajo en su propia OT o moverlo a otra OT"
+                            >
+                              <GitBranch className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setSelectedWoDetail(row.wo)}
@@ -1550,7 +2041,7 @@ export default function WorkOrders() {
         </div>
       ) : activeMainTab === 'ots' ? (
         /* ========================================================= */
-        /* 4B. VISTA DE CONTENEDORES OT POR BARCO                    */
+        /* 4B. VISTA DE CONTENEDORES OT POR BARCO (CON LAS 3 FECHAS) */
         /* ========================================================= */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {workOrders
@@ -1558,7 +2049,12 @@ export default function WorkOrders() {
             .map(wo => {
               const items = itemsByWoMap[wo.id] || []
               const computed = computeOtState(wo, items)
-              const metrics = otMetricsMap[wo.id] || { totalHours: 0, workerSet: new Set() }
+              const datesAndMetrics = otMetricsAndDatesMap[wo.id] || {
+                totalHours: 0,
+                createdDate: wo.created_at ? String(wo.created_at).split('T')[0] : null,
+                startDate: null,
+                endDate: null
+              }
 
               return (
                 <div
@@ -1583,7 +2079,7 @@ export default function WorkOrders() {
 
                     <h3 className="text-base font-black text-white">{wo.title}</h3>
 
-                    {/* Lista resumida de trabajos hijos dentro de esta OT */}
+                    {/* Lista resumida de trabajos hijos dentro de esta OT con botón Separar */}
                     <div className="mt-3 space-y-1.5 border-t border-slate-800 pt-3">
                       <div className="flex items-center justify-between text-[10px] uppercase font-bold text-slate-400">
                         <span>Trabajos en esta OT ({items.length})</span>
@@ -1601,10 +2097,12 @@ export default function WorkOrders() {
                         return (
                           <div
                             key={item.id}
-                            onClick={() => handleOpenEditWorkModal({ ...item, wo, thirdPartyRecord: thirdPartyByItemMap[item.id] })}
-                            className="p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 cursor-pointer flex items-start justify-between gap-2 text-xs"
+                            className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 flex items-start justify-between gap-2 text-xs"
                           >
-                            <div className="truncate flex-1">
+                            <div
+                              onClick={() => handleOpenEditWorkModal({ ...item, wo, thirdPartyRecord: thirdPartyByItemMap[item.id] })}
+                              className="truncate flex-1 cursor-pointer"
+                            >
                               <span className="text-slate-200 block truncate">
                                 {item.description || 'Sin descripción'}
                               </span>
@@ -1614,39 +2112,89 @@ export default function WorkOrders() {
                                 </span>
                               )}
                             </div>
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 font-bold ${st.color}`}>
-                              {item.status}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${st.color}`}>
+                                {item.status}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSeparateModal({ ...item, wo })}
+                                className="p-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 cursor-pointer"
+                                title="Separar este trabajo en una OT propia o moverlo a otro contenedor"
+                              >
+                                <GitBranch className="w-3 h-3" />
+                              </button>
+                            </div>
                           </div>
                         )
                       })}
                     </div>
                   </div>
 
-                  {/* Pie de tarjeta OT */}
-                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                    <div className="font-mono">
-                      <span className="text-[10px] text-slate-500 block">Horas Imputadas</span>
-                      <strong className="text-primary font-extrabold">{metrics.totalHours} hs</strong>
+                  {/* BANDA DE HORAS IMPUTADAS + LAS 3 FECHAS DE LA OT (Creación, Inicio Real y Fin Real) */}
+                  <div className="pt-3 border-t border-slate-800 space-y-2.5">
+                    <div className="grid grid-cols-4 gap-1.5 p-2 rounded-xl bg-slate-950/90 border border-slate-800/80 font-mono text-center">
+                      <div>
+                        <span className="text-[9px] text-slate-500 uppercase block">Horas Imp.</span>
+                        <strong className="text-xs text-primary font-extrabold">
+                          {datesAndMetrics.totalHours} hs
+                        </strong>
+                      </div>
+                      <div title="Fecha automática de creación del reporte de esta OT">
+                        <span className="text-[9px] text-slate-500 uppercase block">F. Creación</span>
+                        <strong className="text-[11px] text-slate-200 font-bold">
+                          {formatShortDate(datesAndMetrics.createdDate)}
+                        </strong>
+                      </div>
+                      <div
+                        title={
+                          datesAndMetrics.startDate
+                            ? `1º dato cargado en todo el sistema (${datesAndMetrics.startSource}): ${formatShortDate(datesAndMetrics.startDate, true)}`
+                            : 'Aún sin cargas en Horas, Materiales ni Terceros'
+                        }
+                      >
+                        <span className="text-[9px] text-emerald-400/80 uppercase block">F. Inicio</span>
+                        <strong className="text-[11px] text-emerald-300 font-bold">
+                          {formatShortDate(datesAndMetrics.startDate)}
+                        </strong>
+                      </div>
+                      <div
+                        title={
+                          datesAndMetrics.endDate
+                            ? `Último dato cargado a la OT (${datesAndMetrics.endSource}): ${formatShortDate(datesAndMetrics.endDate, true)}`
+                            : 'Aún sin cargas en Horas, Materiales ni Terceros'
+                        }
+                      >
+                        <span className="text-[9px] text-cyan-400/80 uppercase block">F. Final</span>
+                        <strong className="text-[11px] text-cyan-300 font-bold">
+                          {formatShortDate(datesAndMetrics.endDate)}
+                        </strong>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedWoDetail(wo)}
-                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-primary" />
-                        <span>Ficha / Cierre</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteWo(wo)}
-                        className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 cursor-pointer"
-                        title="Eliminar OT"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[10px] text-slate-400">
+                        Jefe Obra: <strong className="text-amber-300">{wo.foreman_name || 'S/A'}</strong>
+                      </span>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWoDetail(wo)}
+                          className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-primary" />
+                          <span>Ficha / Cierre</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteWo(wo)}
+                          className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 cursor-pointer"
+                          title="Eliminar OT"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1655,10 +2203,10 @@ export default function WorkOrders() {
         </div>
       ) : (
         /* ========================================================= */
-        /* 4C. VISTA DE TERCEROS VINCULADOS (DOBLE OBSERVACIÓN)      */
+        /* 4C. VISTA DE TERCEROS VINCULADOS (DOBLE OBSERVACIÓN + CASCADA) */
         /* ========================================================= */
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <h2 className="text-base font-black text-white flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-purple-400" />
@@ -1668,33 +2216,47 @@ export default function WorkOrders() {
                 Cada registro recibe las <strong>Observaciones Directas</strong> desde la Descripción del trabajo en la OT y admite <strong>Observaciones Específicas</strong> propias del módulo de Terceros.
               </p>
             </div>
+
+            <button
+              type="button"
+              onClick={handleOpenTpCascadeModal}
+              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-lg shadow-purple-600/20 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Cargar en Terceros (Cascada Barco &rarr; Contratista &rarr; OT)</span>
+            </button>
           </div>
 
           <div className="overflow-x-auto border border-slate-800 rounded-xl">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
                 <tr>
+                  <th className="py-3 px-3">Fecha</th>
                   <th className="py-3 px-3">Barco & OT</th>
                   <th className="py-3 px-3">Proveedor / Contratista [3ros]</th>
                   <th className="py-3 px-3 text-center">Estado / Comprobante</th>
                   <th className="py-3 px-3 text-right">Importe AR$</th>
-                  <th className="py-3 px-3 min-w-[240px] text-cyan-300">Observaciones Directas (Desde OT)</th>
-                  <th className="py-3 px-3 min-w-[240px] text-purple-300">Observaciones Específicas (Módulo Terceros)</th>
+                  <th className="py-3 px-3 min-w-[220px] text-cyan-300">Observaciones Directas (Desde OT)</th>
+                  <th className="py-3 px-3 min-w-[220px] text-purple-300">Observaciones Específicas (Módulo Terceros)</th>
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-medium">
                 {thirdPartyServices.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-slate-500">
+                    <td colSpan={8} className="py-10 text-center text-slate-500">
                       Aún no hay registros PRC generados en Terceros. Al crear un trabajo con un único contratista que tenga el permiso <strong>3ros</strong> activo, podrás activar la carga automática a Terceros.
                     </td>
                   </tr>
                 ) : (
                   thirdPartyServices.map(tp => {
                     const wo = workOrders.find(w => w.id === tp.work_order_id)
+                    const tpDate = tp.service_date || (tp.created_at ? String(tp.created_at).split('T')[0] : null)
                     return (
                       <tr key={tp.id} className="hover:bg-slate-800/30 transition-colors align-top">
+                        <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
+                          {formatShortDate(tpDate, true)}
+                        </td>
                         <td className="py-3 px-3">
                           <span className="font-bold text-white block">{wo?.ships?.name || 'Barco'}</span>
                           <span className="font-mono text-[11px] text-primary font-bold">
@@ -1754,6 +2316,12 @@ export default function WorkOrders() {
           <div className="w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 relative my-8 max-h-[94vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-800 pb-3 mb-4">
               <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700/60 font-mono text-[10px] font-bold flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    <span>Fecha de Creación (Automática HOY): {formatShortDate(workForm.created_date, true)}</span>
+                  </span>
+                </div>
                 <h3 className="text-lg font-black text-white flex items-center gap-2">
                   <ClipboardList className="w-5 h-5 text-primary" />
                   {editingWorkItem ? 'Editar Trabajo en Orden de Trabajo' : 'Cargar Trabajo / Nueva Orden de Trabajo'}
@@ -1795,14 +2363,23 @@ export default function WorkOrders() {
                     </select>
                   </div>
 
-                  {/* 2. Modo de OT: Existente vs Nueva OT */}
+                  {/* 2. Modo de OT: Existente vs Nueva OT (o botón Separar si está editando) */}
                   <div>
                     <label className="block text-xs font-bold text-cyan-400 uppercase mb-1">
                       2. Orden de Trabajo (Contenedor) *
                     </label>
                     {editingWorkItem ? (
-                      <div className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono font-bold text-primary">
-                        {workForm.ot_number} &bull; {workForm.ot_title}
+                      <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono font-bold text-primary">
+                        <span className="truncate">{workForm.ot_number} &bull; {workForm.ot_title}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSeparateModal(editingWorkItem)}
+                          className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                          title="Separar este trabajo en una OT propia o moverlo a otra OT"
+                        >
+                          <GitBranch className="w-3 h-3" />
+                          <span>Separar de esta OT</span>
+                        </button>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
@@ -1993,7 +2570,7 @@ export default function WorkOrders() {
                   />
                 </div>
 
-                {/* Estado del Trabajo, Jefe de Obra y Tipo de Trabajo */}
+                {/* Estado del Trabajo, Jefe de Obra (con opción de Crear al final de la lista) y Tipo de Trabajo */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
@@ -2011,17 +2588,37 @@ export default function WorkOrders() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-amber-300 mb-1">
-                      Jefe de Obra (Desde Padrón) *
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-amber-300">
+                        Jefe de Obra (Desde Padrón) *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingForemanInline(prev => !prev)}
+                        className="text-[10px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                      >
+                        {isCreatingForemanInline ? 'Cancelar' : '+ Crear'}
+                      </button>
+                    </div>
                     <select
                       value={workForm.foreman_name}
-                      onChange={(e) => setWorkForm(prev => ({ ...prev, foreman_name: e.target.value }))}
+                      onChange={(e) => {
+                        if (e.target.value === '__CREATE_NEW_FOREMAN__') {
+                          setIsCreatingForemanInline(true)
+                        } else {
+                          setWorkForm(prev => ({ ...prev, foreman_name: e.target.value }))
+                        }
+                      }}
                       className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-3 py-2 text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-400"
                     >
                       {foremenList.map(f => (
-                        <option key={f} value={f}>{f}</option>
+                        <option key={f} value={f} className="bg-slate-900 text-amber-300">
+                          {f}
+                        </option>
                       ))}
+                      <option value="__CREATE_NEW_FOREMAN__" className="bg-slate-950 text-emerald-400 font-black">
+                        + Crear nuevo Jefe de Obra...
+                      </option>
                     </select>
                   </div>
 
@@ -2040,6 +2637,71 @@ export default function WorkOrders() {
                     </select>
                   </div>
                 </div>
+
+                {/* CAJA IN-SITU PARA CREAR NUEVO JEFE DE OBRA SIN SALIR DEL MODAL */}
+                {isCreatingForemanInline && (
+                  <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/50 space-y-3 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                        <UserPlus className="w-4 h-4 text-amber-400" />
+                        <span>Alta Rápida de Nuevo Jefe de Obra (Sincroniza Padrón Personal + Operaciones)</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingForemanInline(false)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          Nombre y Apellido del Jefe de Obra *
+                        </label>
+                        <input
+                          type="text"
+                          value={newForemanForm.name}
+                          onChange={(e) => setNewForemanForm(prev => ({ ...prev, name: e.target.value }))}
+                          placeholder="Ej: JORGE GEORGETTI"
+                          className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-3 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
+                          Rubro / Especialidad
+                        </label>
+                        <select
+                          value={newForemanForm.trade}
+                          onChange={(e) => setNewForemanForm(prev => ({ ...prev, trade: e.target.value }))}
+                          className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold"
+                        >
+                          <option value="SUPERVISION">SUPERVISION</option>
+                          <option value="TECNICOS">TECNICOS</option>
+                          <option value="CALDERERIA">CALDERERIA</option>
+                          <option value="MECANICA">MECANICA</option>
+                          <option value="CARPINTERIA">CARPINTERIA</option>
+                          <option value="PINTURA">PINTURA</option>
+                          <option value="ELECTRICIDAD">ELECTRICIDAD</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <span className="text-[10px] text-slate-400">
+                        Se dará de alta en <strong>Personal y Tarifas</strong> con permiso <strong>JO</strong> activo y en <strong>Roles de Operaciones</strong>.
+                      </span>
+                      <button
+                        type="button"
+                        disabled={savingNewForeman}
+                        onClick={handleCreateForemanInline}
+                        className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black cursor-pointer flex items-center gap-1.5 shrink-0"
+                      >
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>{savingNewForeman ? 'Creando...' : 'Crear y Seleccionar'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Tipo de Asignación y Nº Presupuesto Específico */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2075,7 +2737,7 @@ export default function WorkOrders() {
                 {/* Selección de Contratista(s) / Taller(es) desde el Padrón */}
                 <div className="space-y-2 pt-2 border-t border-slate-800/80">
                   <label className="block text-xs font-bold text-slate-200">
-                    Contratista(s) / Grupo(s) de Trabajo Asignados (Desde Padrón de Personal y Talleres)
+                    Contratista(s) / Grupo(s) de Trabajo Habilitados en esta OT (Filtra Carga de Horas, Materiales y Terceros)
                   </label>
                   <div className="flex gap-2">
                     <select
@@ -2085,7 +2747,7 @@ export default function WorkOrders() {
                       }}
                       className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-primary"
                     >
-                      <option value="">+ Seleccionar contratista, taller o rubro para agregar al trabajo...</option>
+                      <option value="">+ Seleccionar contratista, taller o rubro para habilitar en este trabajo...</option>
                       <optgroup label="Sectores Propios (Astillero)">
                         {contractorCatalog
                           .filter(c => c.admin_center === 'ASTILLERO')
@@ -2210,32 +2872,18 @@ export default function WorkOrders() {
                   )}
                 </div>
 
-                {/* Comentario Auxiliar y Comprobante */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Comentario Auxiliar (Columna F)
-                    </label>
-                    <input
-                      type="text"
-                      value={workForm.comments}
-                      onChange={(e) => setWorkForm(prev => ({ ...prev, comments: e.target.value }))}
-                      placeholder="Materiales esperados, notas operativas..."
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Nº Comprobante / Remito
-                    </label>
-                    <input
-                      type="text"
-                      value={workForm.voucher_number}
-                      onChange={(e) => setWorkForm(prev => ({ ...prev, voucher_number: e.target.value }))}
-                      placeholder="Ej: REM-0042"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-primary"
-                    />
-                  </div>
+                {/* Comentario Auxiliar (Sin texto Columna F y sin Nº Comprobante / Remito) */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Comentario Auxiliar
+                  </label>
+                  <input
+                    type="text"
+                    value={workForm.comments}
+                    onChange={(e) => setWorkForm(prev => ({ ...prev, comments: e.target.value }))}
+                    placeholder="Materiales esperados, notas operativas..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+                  />
                 </div>
               </div>
 
@@ -2254,6 +2902,460 @@ export default function WorkOrders() {
                 >
                   <Check className="w-4 h-4 stroke-[3]" />
                   <span>{savingWork ? 'Guardando...' : 'Guardar Trabajo'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 5B. MODAL: SEPARAR / INDEPENDIZAR TRABAJO DE CONTENEDOR OT */}
+      {/* ========================================================= */}
+      {separatingRow && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto">
+          <div className="w-full max-w-xl bg-slate-900 border border-amber-500/50 rounded-3xl shadow-2xl p-6 space-y-4 my-8">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase">
+                  Desglose y Reasignación con Trazabilidad
+                </span>
+                <h3 className="text-base font-black text-white flex items-center gap-2 mt-1">
+                  <GitBranch className="w-5 h-5 text-amber-400" />
+                  Separar / Independizar Trabajo de su Contenedor OT
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Si este trabajo inició dentro de una OT pero ahora necesita tener su propia OT independiente (o pasar a otra OT del mismo barco), elegí el destino abajo.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSeparatingRow(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Resumen del trabajo a separar */}
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>
+                  Barco: <strong className="text-white">{separatingRow.wo?.ships?.name}</strong>
+                </span>
+                <span>
+                  OT Actual: <strong className="text-primary font-mono">{separatingRow.wo?.ot_number} &bull; {separatingRow.wo?.title}</strong>
+                </span>
+              </div>
+              <p className="text-slate-200 font-medium line-clamp-3">
+                {separatingRow.description || 'Sin descripción'}
+              </p>
+              {(separatingRow.contractors || []).length > 0 && (
+                <div className="text-[10px] text-cyan-400 font-mono">
+                  Contratista(s): {separatingRow.contractors.join(', ')}
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleConfirmSeparateWorkItem} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSeparateForm(prev => ({ ...prev, mode: 'new_ot' }))}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    separateForm.mode === 'new_ot'
+                      ? 'bg-amber-500/20 border-amber-400 text-white shadow'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <div className="font-black text-amber-300 flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>1. Darle una Nueva OT Propia</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Crea un nuevo contenedor OT independiente en este barco y traslada el trabajo allí.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const otherWos = workOrders.filter(
+                      w => w.ship_id === separatingRow.wo?.ship_id && w.id !== separatingRow.work_order_id
+                    )
+                    if (otherWos.length === 0) {
+                      alert('Este barco no tiene otras OTs abiertas además de la actual. Usá la opción "Darle una Nueva OT Propia".')
+                      return
+                    }
+                    setSeparateForm(prev => ({
+                      ...prev,
+                      mode: 'existing_ot',
+                      target_existing_wo_id: otherWos[0]?.id || ''
+                    }))
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    separateForm.mode === 'existing_ot'
+                      ? 'bg-cyan-500/20 border-cyan-400 text-white shadow'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <div className="font-black text-cyan-300 flex items-center gap-1.5">
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>2. Mover a otra OT del Barco</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Traslada este trabajo a otro contenedor OT ya existente en la misma embarcación.
+                  </p>
+                </button>
+              </div>
+
+              {separateForm.mode === 'new_ot' ? (
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-300">Tipo de Nueva OT:</span>
+                    <button
+                      type="button"
+                      onClick={() => setSeparateForm(prev => ({ ...prev, ot_creation_type: 'tabulada' }))}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                        separateForm.ot_creation_type === 'tabulada'
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500'
+                          : 'bg-slate-900 text-slate-400 border-slate-800'
+                      }`}
+                    >
+                      📋 OT Tabulada (OT.ABC)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSeparateForm(prev => ({ ...prev, ot_creation_type: 'libre' }))}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                        separateForm.ot_creation_type === 'libre'
+                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500'
+                          : 'bg-slate-900 text-slate-400 border-slate-800'
+                      }`}
+                    >
+                      ✍️ OT Libre
+                    </button>
+                  </div>
+
+                  {separateForm.ot_creation_type === 'tabulada' && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-amber-300 mb-1">
+                        Elegir nombre del Catálogo (OT.ABC):
+                      </label>
+                      <select
+                        value={separateForm.selected_template_id}
+                        onChange={(e) => {
+                          const tpl = templates.find(t => t.id === e.target.value)
+                          setSeparateForm(prev => ({
+                            ...prev,
+                            selected_template_id: e.target.value,
+                            new_ot_title: tpl ? tpl.name : prev.new_ot_title
+                          }))
+                        }}
+                        className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-3 py-1.5 text-xs text-white font-bold"
+                      >
+                        <option value="">-- Seleccionar plantilla OT.ABC --</option>
+                        {templates.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} {t.category ? `(${t.category})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Nº Nueva OT</label>
+                      <input
+                        type="text"
+                        value={separateForm.new_ot_number}
+                        onChange={(e) => setSeparateForm(prev => ({ ...prev, new_ot_number: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-primary font-mono font-bold"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Nombre de la Nueva OT Independiente *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={separateForm.new_ot_title}
+                        onChange={(e) => setSeparateForm(prev => ({ ...prev, new_ot_title: e.target.value }))}
+                        placeholder="Ej: REPARACIÓN DE TIMÓN"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Seleccionar Orden de Trabajo destino en {separatingRow.wo?.ships?.name}:
+                  </label>
+                  <select
+                    value={separateForm.target_existing_wo_id}
+                    onChange={(e) => setSeparateForm(prev => ({ ...prev, target_existing_wo_id: e.target.value }))}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold"
+                  >
+                    {workOrders
+                      .filter(w => w.ship_id === separatingRow.wo?.ship_id && w.id !== separatingRow.work_order_id)
+                      .map(w => (
+                        <option key={w.id} value={w.id}>
+                          {w.ot_number} &bull; {w.title}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={separateForm.migrate_linked_records}
+                  onChange={(e) => setSeparateForm(prev => ({ ...prev, migrate_linked_records: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-amber-500"
+                />
+                <span>
+                  Arrastrar automáticamente los registros vinculados de Terceros (PRC), Horas y Materiales de este trabajo a la OT destino
+                </span>
+              </label>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Motivo de la separación / reasignación (Trazabilidad en bitácora) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={separateForm.reason}
+                  onChange={(e) => setSeparateForm(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSeparatingRow(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSeparate}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl cursor-pointer flex items-center gap-1.5"
+                >
+                  <GitBranch className="w-4 h-4" />
+                  <span>{savingSeparate ? 'Separando...' : 'Confirmar Separación'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 5C. MODAL DE CARGA EN TERCEROS CON CASCADA ESTRICTA       */}
+      {/* (1º Barco -> 2º Contratista Habilitado 3ros -> 3º OT)     */}
+      {/* ========================================================= */}
+      {isThirdPartyCascadeOpen && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto">
+          <div className="w-full max-w-xl bg-slate-900 border border-purple-600/60 rounded-3xl shadow-2xl p-6 space-y-4 my-8">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <span className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700 text-[10px] font-black uppercase">
+                  Principio 3 &bull; Bloqueo por OT y Contratista Habilitado
+                </span>
+                <h3 className="text-base font-black text-white flex items-center gap-2 mt-1">
+                  <ShieldCheck className="w-5 h-5 text-purple-400" />
+                  Cargar en Terceros (Cascada: Barco &rarr; Contratista &rarr; OT)
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Solo aparecen los contratistas con permiso <strong>3ros</strong> asignados a trabajos en estado <strong>&quot;En ejecución&quot;</strong> en el barco elegido.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsThirdPartyCascadeOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTpCascade} className="space-y-3.5 text-xs">
+              {/* 1. Barco */}
+              <div>
+                <label className="block text-[11px] font-bold text-cyan-400 uppercase mb-1">
+                  1. Seleccionar Barco *
+                </label>
+                <select
+                  required
+                  value={tpCascadeForm.ship_id}
+                  onChange={(e) =>
+                    setTpCascadeForm(prev => ({
+                      ...prev,
+                      ship_id: e.target.value,
+                      contractor_name: '',
+                      work_item_id: ''
+                    }))
+                  }
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold"
+                >
+                  <option value="">-- Elegir Barco --</option>
+                  {ships.map(s => {
+                    const countActive = activeExecutionRows.filter(r => r.wo?.ship_id === s.id).length
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({countActive} trabajo{countActive === 1 ? '' : 's'} en ejecución)
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+
+              {/* 2. Contratista habilitado en ese barco */}
+              <div>
+                <label className="block text-[11px] font-bold text-purple-300 uppercase mb-1">
+                  2. Contratista Habilitado en el Barco [Permiso 3ros] *
+                </label>
+                <select
+                  required
+                  disabled={!tpCascadeForm.ship_id || enabledThirdPartyContractorsForShip.length === 0}
+                  value={tpCascadeForm.contractor_name}
+                  onChange={(e) => {
+                    const nextContractor = e.target.value
+                    const matchingItems = activeExecutionRows.filter(
+                      r => r.wo?.ship_id === tpCascadeForm.ship_id && (r.contractors || []).includes(nextContractor)
+                    )
+                    setTpCascadeForm(prev => ({
+                      ...prev,
+                      contractor_name: nextContractor,
+                      work_item_id: matchingItems[0]?.id || ''
+                    }))
+                  }}
+                  className="w-full bg-slate-950 border border-purple-700/60 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold disabled:opacity-50"
+                >
+                  {enabledThirdPartyContractorsForShip.length === 0 ? (
+                    <option value="">
+                      🔒 Sin contratistas [3ros] con trabajos &quot;En ejecución&quot; en este barco
+                    </option>
+                  ) : (
+                    <>
+                      <option value="">-- Elegir Contratista Habilitado ({enabledThirdPartyContractorsForShip.length}) --</option>
+                      {enabledThirdPartyContractorsForShip.map(c => (
+                        <option key={c} value={c}>
+                          {c} [3ros Habilitado]
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* 3. Orden de Trabajo donde está habilitado ese contratista */}
+              <div>
+                <label className="block text-[11px] font-bold text-emerald-400 uppercase mb-1">
+                  3. Orden de Trabajo Habilitada para este Contratista (En Ejecución) *
+                </label>
+                <select
+                  required
+                  disabled={!tpCascadeForm.contractor_name || enabledWorkItemsForShipAndContractor.length === 0}
+                  value={tpCascadeForm.work_item_id}
+                  onChange={(e) => setTpCascadeForm(prev => ({ ...prev, work_item_id: e.target.value }))}
+                  className="w-full bg-slate-950 border border-emerald-600/60 rounded-xl px-3 py-2 text-xs text-white font-bold disabled:opacity-50"
+                >
+                  {enabledWorkItemsForShipAndContractor.length === 0 ? (
+                    <option value="">Seleccione primero un contratista habilitado</option>
+                  ) : (
+                    enabledWorkItemsForShipAndContractor.map(item => (
+                      <option key={item.id} value={item.id}>
+                        {item.wo?.ot_number} &bull; {item.wo?.title}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {/* Ayuda Memoria Flotante (DEC-016) + Observaciones Directas */}
+              {selectedTpCascadeWorkItem && (
+                <div className="p-3 rounded-xl bg-slate-950 border border-cyan-800/60 space-y-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase text-cyan-400">
+                    <span>📋 Descripción del Trabajo / Observaciones Directas (DEC-016):</span>
+                    <span>Jefe Obra: {selectedTpCascadeWorkItem.foreman_name}</span>
+                  </div>
+                  <p className="text-xs text-slate-200 whitespace-pre-wrap">
+                    {selectedTpCascadeWorkItem.description || 'Sin descripción cargada'}
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Fecha</label>
+                  <input
+                    type="date"
+                    value={tpCascadeForm.service_date}
+                    onChange={(e) => setTpCascadeForm(prev => ({ ...prev, service_date: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Comprobante</label>
+                  <select
+                    value={tpCascadeForm.status}
+                    onChange={(e) => setTpCascadeForm(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold"
+                  >
+                    <option value="PRC">PRC (Presupuesto)</option>
+                    <option value="RMO">RMO (Remito M.O.)</option>
+                    <option value="RPF">RPF (Pdte. Factura)</option>
+                    <option value="FCR">FCR (Factura)</option>
+                    <option value="SDT">SDT (Sin Doc.)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Importe AR$</label>
+                  <input
+                    type="number"
+                    step="100"
+                    value={tpCascadeForm.amount_ars}
+                    onChange={(e) => setTpCascadeForm(prev => ({ ...prev, amount_ars: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-purple-300 mb-1">
+                  Observaciones Específicas (Propias de Terceros):
+                </label>
+                <textarea
+                  rows={2}
+                  value={tpCascadeForm.specific_observations}
+                  onChange={(e) => setTpCascadeForm(prev => ({ ...prev, specific_observations: e.target.value }))}
+                  placeholder="Condiciones del presupuesto, entregas parciales, notas específicas de Terceros..."
+                  className="w-full bg-slate-950 border border-purple-700/60 rounded-xl p-2.5 text-xs text-white"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsThirdPartyCascadeOpen(false)}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTpCascade || !selectedTpCascadeWorkItem}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-black rounded-xl cursor-pointer"
+                >
+                  {savingTpCascade ? 'Guardando...' : 'Guardar en Terceros'}
                 </button>
               </div>
             </form>
@@ -2309,16 +3411,26 @@ export default function WorkOrders() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Fecha</label>
+                  <input
+                    type="date"
+                    value={editingThirdParty.service_date || (editingThirdParty.created_at ? String(editingThirdParty.created_at).split('T')[0] : '')}
+                    onChange={(e) => setEditingThirdParty(prev => ({ ...prev, service_date: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white"
+                  />
+                </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">Estado Comprobante</label>
                   <select
                     value={editingThirdParty.status || 'PRC'}
                     onChange={(e) => setEditingThirdParty(prev => ({ ...prev, status: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white font-bold"
                   >
                     <option value="PRC">PRC (Presupuesto)</option>
                     <option value="RMO">RMO (Remito)</option>
+                    <option value="RPF">RPF (Pdte. Factura)</option>
                     <option value="FCR">FCR (Factura)</option>
                   </select>
                 </div>
@@ -2329,7 +3441,7 @@ export default function WorkOrders() {
                     step="100"
                     value={editingThirdParty.amount_ars ?? 0}
                     onChange={(e) => setEditingThirdParty(prev => ({ ...prev, amount_ars: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-emerald-400 font-mono font-bold"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-emerald-400 font-mono font-bold"
                   />
                 </div>
               </div>
@@ -2356,7 +3468,7 @@ export default function WorkOrders() {
       )}
 
       {/* ========================================================= */}
-      {/* 7. FICHA 360° DE LA OT, CIERRE DEC-011 Y BOTÓN AMPLIAR     */}
+      {/* 7. FICHA 360° DE LA OT, 3 FECHAS, CIERRE DEC-011 Y AMPLIAR */}
       {/* ========================================================= */}
       {selectedWoDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto">
@@ -2364,6 +3476,12 @@ export default function WorkOrders() {
             {(() => {
               const items = itemsByWoMap[selectedWoDetail.id] || []
               const computed = computeOtState(selectedWoDetail, items)
+              const datesAndMetrics = otMetricsAndDatesMap[selectedWoDetail.id] || {
+                totalHours: 0,
+                createdDate: selectedWoDetail.created_at ? String(selectedWoDetail.created_at).split('T')[0] : null,
+                startDate: null,
+                endDate: null
+              }
               return (
                 <>
                   <div className="flex items-start justify-between border-b border-slate-800 pb-4 mb-4">
@@ -2388,6 +3506,36 @@ export default function WorkOrders() {
                     >
                       <X className="w-5 h-5" />
                     </button>
+                  </div>
+
+                  {/* Tarjetas con Horas Imputadas y las 3 Fechas de la OT */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4 font-mono">
+                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                      <span className="text-[10px] text-slate-500 uppercase block">Horas Imputadas</span>
+                      <strong className="text-sm text-primary font-black">{datesAndMetrics.totalHours} hs</strong>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                      <span className="text-[10px] text-slate-500 uppercase block">1. Fecha Creación</span>
+                      <strong className="text-sm text-white font-bold">
+                        {formatShortDate(datesAndMetrics.createdDate, true)}
+                      </strong>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950 border border-emerald-900/50">
+                      <span className="text-[10px] text-emerald-400 uppercase block">
+                        2. Fecha Inicio {datesAndMetrics.startSource ? `(${datesAndMetrics.startSource})` : ''}
+                      </span>
+                      <strong className="text-sm text-emerald-300 font-bold">
+                        {formatShortDate(datesAndMetrics.startDate, true)}
+                      </strong>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950 border border-cyan-900/50">
+                      <span className="text-[10px] text-cyan-400 uppercase block">
+                        3. Fecha Final {datesAndMetrics.endSource ? `(${datesAndMetrics.endSource})` : ''}
+                      </span>
+                      <strong className="text-sm text-cyan-300 font-bold">
+                        {formatShortDate(datesAndMetrics.endDate, true)}
+                      </strong>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
@@ -2422,9 +3570,24 @@ export default function WorkOrders() {
                                   <span>Jefe Obra: <strong className="text-amber-300">{it.foreman_name}</strong></span>
                                 </div>
                               </div>
-                              <span className={`text-[10px] px-2 py-0.5 rounded border font-bold shrink-0 ${st.color}`}>
-                                {it.status}
-                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${st.color}`}>
+                                  {it.status}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const wo = selectedWoDetail
+                                    setSelectedWoDetail(null)
+                                    handleOpenSeparateModal({ ...it, wo })
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                  title="Separar este trabajo en una OT propia"
+                                >
+                                  <GitBranch className="w-3 h-3" />
+                                  <span>Separar</span>
+                                </button>
+                              </div>
                             </div>
                           )
                         })}
@@ -2436,7 +3599,7 @@ export default function WorkOrders() {
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1.5">
                           <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Bitácora de Consultas al Jefe de Obra</span>
+                          <span>Bitácora de Consultas y Trazabilidad de la OT</span>
                         </h4>
                         <button
                           type="button"
