@@ -92,10 +92,17 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
   - Ficha técnica naval de buques, historial de varadas y estados de puesta en seco.
   - Vinculación a propietarios y clientes.
-- [ ] **3. Módulo M4: Pañol y Materiales:**
+- [ ] **3. Módulo M4: Pañol y Materiales (y Módulo de Terceros):**
   - Catálogo de consumibles y aceros/chapas navales.
-  - Vales de retiro de pañol vinculados a OTs.
+  - Vales de retiro de pañol vinculados a OTs (`inventory_transactions.work_order_id` y `work_item_id`).
   - Control de stock y alertas automáticas de reposición mínima.
+  - ⚠️ **INSTRUCCIÓN OBLIGATORIA (Replicar Bloqueo y Filtrado en Cascada de Horas en Materiales y Terceros — Ver Sección 8.7 de `docs/03_negocio/00_reglas_negocio.md`):**
+    1. **Cascada de 3 pasos en la cabecera:** `1º Barco` $\rightarrow$ `2º Contratista / Grupo Habilitado en trabajos "En ejecución" de ese barco` $\rightarrow$ `3º OT Habilitada donde actúa ese contratista` (mostrando descripción `DEC-016` y guardando `work_item_id`).
+    2. **Bloqueo del selector inferior de persona/prestador:** Si en el Paso 2 se elige `ASTILLERO.<RUBRO>` (ej. `ASTILLERO.MECANICA`, `ASTILLERO.RASCHINAJE`), el `<select>` de retirante/operario abajo solo muestra a los operarios de `public.workers` de ese oficio (`trade`). Si se elige un contratista/taller externo (ej. `TECO TALLER`), se bloquea exclusivamente en ese contratista/taller (validando además permiso `[P]` `can_withdraw_panol` en Materiales y `[3ros]` `can_charge_third_party` en Terceros).
+    3. **Lecciones Aprendidas en Horas (NO REPETIR):**
+       - **Problema 1 (Columna inexistente en `work_items`):** Nunca ordenar `public.work_items` por `row_number` (no existe y hace que Supabase devuelva `null`); usar siempre `.order('created_at', { ascending: true })` y no poner fallbacks ficticios como `ASTILLERO.GENERAL` que oculten errores.
+       - **Problema 2 (Sincronización de grilla inferior):** Llamar a la función sincronizadora (`syncWithContractor`) tanto en el `onChange` manual del Paso 2 como en el `useEffect` que selecciona automáticamente el primer contratista al cambiar de barco; y usar `<select>` cerrado en vez de `<input list>` libre.
+       - **Problema 3 (Múltiples `work_items` en una misma OT):** Resolver siempre el `work_item` específico dentro de la OT para el contratista elegido (`activeItemsForSelectedWo`) para exhibir la descripción correcta y persistir `work_item_id`.
 - [ ] **4. Módulo M5: Tarifarios y Liquidaciones:**
   - Matriz de tarifas por hora de personal propio vs. contratistas/talleres.
   - Anexos de facturación y resumen de costos por obra.
