@@ -245,7 +245,7 @@ export default function LaborLogs() {
       const [shipsRes, wosRes, itemsRes, logsRes, workersRes] = await Promise.all([
         supabase.from('ships').select('*').order('name'),
         supabase.from('work_orders').select('*').order('ot_number'),
-        supabase.from('work_items').select('*').order('row_number', { ascending: true }),
+        supabase.from('work_items').select('*').order('created_at', { ascending: true }),
         supabase.from('labor_logs').select('*, work_orders(title, ot_number, ship_id, ships(name))').order('date_logged', { ascending: false }).limit(200),
         supabase.from('workers').select('*').order('name')
       ])
@@ -306,10 +306,6 @@ export default function LaborLogs() {
   // PASO 2 DE LA CASCADA: Contratistas / Grupos habilitados en trabajos "En ejecución" del barco seleccionado
   const enabledContractorsForShip = useMemo(() => {
     if (!selectedShipId) return []
-    if (workItems.length === 0) {
-      // Modo respaldo sin work_items
-      return ['ASTILLERO.GENERAL']
-    }
     const set = new Set()
     activeWorkItemsForShip.forEach(item => {
       const list = item.contractors || []
@@ -322,13 +318,71 @@ export default function LaborLogs() {
       }
     })
     return Array.from(set).sort()
-  }, [selectedShipId, workItems.length, activeWorkItemsForShip])
+  }, [selectedShipId, activeWorkItemsForShip])
+
+  // Sincronizar fila de cuadrilla según el Contratista / Grupo habilitado elegido en el Paso 2
+  const syncCrewWithContractor = (newContractor) => {
+    if (!newContractor) return
+
+    const upper = newContractor.toUpperCase()
+    if (upper.startsWith('ASTILLERO')) {
+      let suggestedRubro = ''
+      if (upper.includes('CALDERERIA')) suggestedRubro = 'Calderería'
+      else if (upper.includes('RASCHINAJE')) suggestedRubro = 'Raschinear'
+      else if (upper.includes('MECANICA')) suggestedRubro = 'Mecánica'
+      else if (upper.includes('CARPINTERIA')) suggestedRubro = 'Carpintería naval'
+      else if (upper.includes('ELECTRICIDAD')) suggestedRubro = 'Electricidad'
+      else if (upper.includes('PINTURA')) suggestedRubro = 'Pintura'
+
+      setOperariosRows(prev => {
+        const onlyAstillero = prev.filter(r => r.worker_type === 'Astillero')
+        if (onlyAstillero.length === 0) {
+          return [
+            {
+              id: Date.now(),
+              worker_name: '',
+              worker_type: 'Astillero',
+              rubro: suggestedRubro || 'General',
+              hours_normal: 9,
+              hours_extra_50: 0,
+              hours_extra_100: 0,
+              notes: ''
+            }
+          ]
+        }
+        return onlyAstillero.map(row => ({
+          ...row,
+          worker_type: 'Astillero',
+          rubro: suggestedRubro || row.rubro || 'General'
+        }))
+      })
+    } else {
+      const isTaller =
+        TALLERES_FRECUENTES.includes(newContractor) ||
+        dbWorkers.some(w => w.work_group === newContractor && w.admin_center === 'TALLER')
+      const targetType = isTaller ? 'Taller' : 'Contratista'
+      setOperariosRows([
+        {
+          id: Date.now(),
+          worker_name: newContractor,
+          worker_type: targetType,
+          rubro: isTaller ? 'Taller Externo' : 'Servicio Contratista',
+          hours_normal: 8,
+          hours_extra_50: 0,
+          hours_extra_100: 0,
+          notes: ''
+        }
+      ])
+    }
+  }
 
   // Sincronizar automáticamente el Contratista seleccionado al cambiar de Barco
   useEffect(() => {
     if (enabledContractorsForShip.length > 0) {
       if (!enabledContractorsForShip.includes(selectedContractorGroup)) {
-        setSelectedContractorGroup(enabledContractorsForShip[0])
+        const nextContractor = enabledContractorsForShip[0]
+        setSelectedContractorGroup(nextContractor)
+        syncCrewWithContractor(nextContractor)
       }
     } else {
       setSelectedContractorGroup('')
@@ -337,11 +391,7 @@ export default function LaborLogs() {
 
   // PASO 3 DE LA CASCADA: Filtrar únicamente las OTs del barco donde se habilita al contratista elegido (en estado "En ejecución")
   const availableWorkOrders = useMemo(() => {
-    if (!selectedShipId) return []
-    if (workItems.length === 0) {
-      return workOrders.filter(wo => wo.ship_id === selectedShipId)
-    }
-    if (!selectedContractorGroup) return []
+    if (!selectedShipId || !selectedContractorGroup) return []
 
     const matchingWoIds = new Set()
     activeWorkItemsForShip.forEach(item => {
@@ -355,7 +405,7 @@ export default function LaborLogs() {
     })
 
     return workOrders.filter(wo => wo.ship_id === selectedShipId && matchingWoIds.has(wo.id))
-  }, [selectedShipId, selectedContractorGroup, workItems.length, activeWorkItemsForShip, workOrders])
+  }, [selectedShipId, selectedContractorGroup, activeWorkItemsForShip, workOrders])
 
   useEffect(() => {
     if (availableWorkOrders.length > 0) {
@@ -395,70 +445,47 @@ export default function LaborLogs() {
     }
   }, [activeItemsForSelectedWo])
 
-  // Sincronizar fila de cuadrilla según el Contratista / Grupo habilitado elegido en el Paso 2
   const handleContractorGroupChange = (newContractor) => {
     setSelectedContractorGroup(newContractor)
-    if (!newContractor) return
-
-    const upper = newContractor.toUpperCase()
-    if (upper.startsWith('ASTILLERO')) {
-      let suggestedRubro = ''
-      if (upper.includes('CALDERERIA')) suggestedRubro = 'Calderería'
-      else if (upper.includes('RASCHINAJE')) suggestedRubro = 'Raschinear'
-      else if (upper.includes('MECANICA')) suggestedRubro = 'Mecánica'
-      else if (upper.includes('CARPINTERIA')) suggestedRubro = 'Carpintería naval'
-      else if (upper.includes('ELECTRICIDAD')) suggestedRubro = 'Electricidad'
-      else if (upper.includes('PINTURA')) suggestedRubro = 'Pintura'
-
-      setOperariosRows(prev =>
-        prev.map((row, idx) =>
-          idx === 0
-            ? {
-                ...row,
-                worker_type: 'Astillero',
-                worker_name: row.worker_type === 'Astillero' ? row.worker_name : '',
-                rubro: suggestedRubro || row.rubro,
-                hours_normal: 9
-              }
-            : row
-        )
-      )
-    } else {
-      const isTaller = TALLERES_FRECUENTES.includes(newContractor) ||
-        dbWorkers.some(w => w.work_group === newContractor && w.admin_center === 'TALLER')
-      const targetType = isTaller ? 'Taller' : 'Contratista'
-      setOperariosRows([
-        {
-          id: Date.now(),
-          worker_name: newContractor,
-          worker_type: targetType,
-          rubro: isTaller ? 'Taller Externo' : 'Servicio Contratista',
-          hours_normal: 8,
-          hours_extra_50: 0,
-          hours_extra_100: 0,
-          notes: ''
-        }
-      ])
-    }
+    syncCrewWithContractor(newContractor)
   }
 
   const currentWorkOrder = workOrders.find(wo => wo.id === selectedWorkOrderId)
   const currentWorkItem = activeItemsForSelectedWo.find(i => i.id === selectedWorkItemId) || activeItemsForSelectedWo[0] || null
   const currentShip = ships.find(s => s.id === selectedShipId)
+  const isSelectedGroupAstillero = !selectedContractorGroup || selectedContractorGroup.toUpperCase().startsWith('ASTILLERO')
 
   // Manejo de Filas de Carga
   const addOperarioRow = (preset = {}) => {
-    const isAstillero = (preset.worker_type || 'Astillero') === 'Astillero'
+    const isAstillero = isSelectedGroupAstillero
     const isFeriado = (preset.rubro || '').toLowerCase().includes('feriado')
     const defaultNorm = isAstillero ? (isFeriado ? 8 : 9) : 8
+    const isTaller = !isAstillero && (
+      TALLERES_FRECUENTES.includes(selectedContractorGroup) ||
+      dbWorkers.some(w => w.work_group === selectedContractorGroup && w.admin_center === 'TALLER')
+    )
+    const forcedType = isAstillero ? 'Astillero' : (isTaller ? 'Taller' : 'Contratista')
+
+    let defaultRubro = preset.rubro || ''
+    if (!defaultRubro && isAstillero && selectedContractorGroup) {
+      const upper = selectedContractorGroup.toUpperCase()
+      if (upper.includes('CALDERERIA')) defaultRubro = 'Calderería'
+      else if (upper.includes('RASCHINAJE')) defaultRubro = 'Raschinear'
+      else if (upper.includes('MECANICA')) defaultRubro = 'Mecánica'
+      else if (upper.includes('CARPINTERIA')) defaultRubro = 'Carpintería naval'
+      else if (upper.includes('ELECTRICIDAD')) defaultRubro = 'Electricidad'
+      else if (upper.includes('PINTURA')) defaultRubro = 'Pintura'
+    } else if (!defaultRubro && !isAstillero) {
+      defaultRubro = isTaller ? 'Taller Externo' : 'Servicio Contratista'
+    }
 
     setOperariosRows(prev => [
       ...prev,
       { 
         id: Date.now() + Math.random(), 
-        worker_name: preset.worker_name || '', 
-        worker_type: preset.worker_type || 'Astillero', 
-        rubro: preset.rubro || '', 
+        worker_name: preset.worker_name || (isAstillero ? '' : selectedContractorGroup), 
+        worker_type: forcedType, 
+        rubro: defaultRubro, 
         hours_normal: preset.hours_normal ?? defaultNorm, 
         hours_extra_50: preset.hours_extra_50 ?? 0, 
         hours_extra_100: preset.hours_extra_100 ?? 0, 
@@ -1407,38 +1434,37 @@ export default function LaborLogs() {
                 <div>
                   <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
                     <Users className="w-4 h-4" />
-                    Cuadrilla de Trabajo
+                    Cuadrilla de Trabajo — {selectedContractorGroup || 'Sin contratista habilitado'}
                   </h2>
                   <p className="text-[11px] text-slate-400">
-                    Definí horas normales y extras (50% / 100%) por cada operario.
+                    {isSelectedGroupAstillero
+                      ? 'Seleccioná los operarios del Astillero habilitados y definí horas normales y extras (50% / 100%).'
+                      : `Imputación restringida exclusivamente a ${selectedContractorGroup} según habilitación de la OT.`}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => addOperarioRow({ worker_type: 'Astillero' })}
-                    className="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Astillero (9h)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => addOperarioRow({ worker_type: 'Taller', hours_normal: 0 })}
-                    className="px-3 py-1.5 bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <Briefcase className="w-3.5 h-3.5" />
-                    <span>+ Taller</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => addOperarioRow({ worker_type: 'Contratista', hours_normal: 0 })}
-                    className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <Briefcase className="w-3.5 h-3.5" />
-                    <span>+ Contratista</span>
-                  </button>
+                  {isSelectedGroupAstillero ? (
+                    <button
+                      type="button"
+                      disabled={!selectedWorkOrderId}
+                      onClick={() => addOperarioRow({ worker_type: 'Astillero' })}
+                      className="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Operario Astillero (9h)</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!selectedWorkOrderId}
+                      onClick={() => addOperarioRow({ worker_name: selectedContractorGroup, hours_normal: 8 })}
+                      className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                    >
+                      <Briefcase className="w-3.5 h-3.5" />
+                      <span>+ Fila {selectedContractorGroup}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1448,7 +1474,7 @@ export default function LaborLogs() {
                   {/* Encabezado fijo en escritorio */}
                   <div className="grid grid-cols-[125px_minmax(180px,1.5fr)_minmax(140px,1.2fr)_75px_75px_75px_65px_minmax(130px,1fr)_40px] gap-2.5 px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     <div>Tipo</div>
-                    <div>Operario</div>
+                    <div>Operario / Prestador Habilitado</div>
                     <div>Rubro (Manual)</div>
                     <div className="text-center">Normales</div>
                     <div className="text-center text-cyan-400">Ext. 50%</div>
@@ -1469,39 +1495,88 @@ export default function LaborLogs() {
                         key={row.id}
                         className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 grid grid-cols-[125px_minmax(180px,1.5fr)_minmax(140px,1.2fr)_75px_75px_75px_65px_minmax(130px,1fr)_40px] gap-2.5 items-center hover:border-slate-700 transition-colors"
                       >
-                        {/* Nº y Tipo */}
+                        {/* Nº y Tipo (Bloqueado según el grupo habilitado en Paso 2) */}
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="w-5 h-5 shrink-0 rounded bg-slate-800 text-slate-300 font-mono text-[11px] font-bold flex items-center justify-center">
                             {index + 1}
                           </span>
-                          <select
-                            value={row.worker_type}
-                            onChange={(e) => updateOperarioRow(row.id, 'worker_type', e.target.value)}
-                            className={`w-[96px] text-[10px] font-bold px-1.5 py-1.5 rounded border cursor-pointer ${
+                          <span
+                            className={`w-[96px] text-[10px] font-bold px-2 py-1.5 rounded border text-center truncate ${
                               row.worker_type === 'Astillero'
                                 ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
                                 : row.worker_type === 'Taller'
                                 ? 'bg-purple-950 text-purple-300 border-purple-800'
                                 : 'bg-amber-950 text-amber-300 border-amber-800'
                             }`}
+                            title="Definido por el Contratista / Grupo habilitado elegido en el Paso 2"
                           >
-                            <option value="Astillero">Astillero</option>
-                            <option value="Taller">Taller</option>
-                            <option value="Contratista">Contratista</option>
-                          </select>
+                            {row.worker_type}
+                          </span>
                         </div>
 
-                        {/* Operario */}
+                        {/* Operario (Filtrado estrictamente por el Contratista / Grupo habilitado en Paso 2) */}
                         <div>
-                          <input
-                            type="text"
-                            required
-                            list="all-workers-datalist"
-                            placeholder={row.worker_type === 'Astillero' ? 'Nombre operario...' : 'Taller / Contratista...'}
-                            value={row.worker_name}
-                            onChange={(e) => updateOperarioRow(row.id, 'worker_name', e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
-                          />
+                          {isSelectedGroupAstillero ? (
+                            <select
+                              required
+                              value={row.worker_name}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                updateOperarioRow(row.id, 'worker_name', val)
+                                const found = astilleroSource.find(w => w.name === val)
+                                if (found && !row.rubro) {
+                                  updateOperarioRow(row.id, 'rubro', found.defaultRubro)
+                                }
+                              }}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
+                            >
+                              <option value="">
+                                -- Seleccionar operario de {selectedContractorGroup || 'Astillero'} --
+                              </option>
+                              {(() => {
+                                const upperGroup = (selectedContractorGroup || '').toUpperCase()
+                                const tradeKey = upperGroup.includes('.') ? upperGroup.split('.')[1] : ''
+                                const normalize = (s) =>
+                                  String(s || '')
+                                    .normalize('NFD')
+                                    .replace(/[\u0300-\u036f]/g, '')
+                                    .toUpperCase()
+                                const matchingWorkers = tradeKey
+                                  ? astilleroSource.filter(w => {
+                                      const r = normalize(w.defaultRubro)
+                                      if (tradeKey === 'RASCHINAJE') return r.includes('RASCHIN')
+                                      return r.includes(tradeKey)
+                                    })
+                                  : astilleroSource
+                                const listToRender = matchingWorkers.length > 0 ? matchingWorkers : astilleroSource
+                                return listToRender.map(w => (
+                                  <option key={w.name} value={w.name} className="bg-slate-900">
+                                    {w.name} ({w.defaultRubro})
+                                  </option>
+                                ))
+                              })()}
+                            </select>
+                          ) : (
+                            <select
+                              required
+                              value={row.worker_name}
+                              onChange={(e) => updateOperarioRow(row.id, 'worker_name', e.target.value)}
+                              className="w-full bg-slate-900 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-amber-200 font-bold focus:outline-none focus:border-amber-400"
+                            >
+                              <option value={selectedContractorGroup}>{selectedContractorGroup}</option>
+                              {allKnownWorkers
+                                .filter(
+                                  w =>
+                                    w.name !== selectedContractorGroup &&
+                                    w.name.toUpperCase().startsWith(selectedContractorGroup.toUpperCase() + ' ')
+                                )
+                                .map(w => (
+                                  <option key={w.name} value={w.name} className="bg-slate-900">
+                                    {w.name}
+                                  </option>
+                                ))}
+                            </select>
+                          )}
                         </div>
 
                         {/* Rubro */}
