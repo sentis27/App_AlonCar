@@ -34,7 +34,11 @@ import {
   Gauge,
   Check,
   RotateCcw,
-  MessageSquare
+  MessageSquare,
+  Upload,
+  FileUp,
+  BellOff,
+  UserPlus
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -62,11 +66,10 @@ const PREDEFINED_VESSEL_TYPES = [
   'Yate / Recreo'
 ]
 
-// Lista oficial de locaciones según la planilla 'CALENDARIO DE ESTADIA BARCOS' (DEC-019)
+// Lista oficial de locaciones limpia (sin redundancias de "ALON CAR" ni "ASTILLERO")
 const STANDARD_LOCATIONS = [
-  'VARADERO ALON CAR',
-  'MUELLE ALON CAR',
-  'PUERTO ?? ALDANA',
+  'VARADERO',
+  'MUELLE',
   'PUERTO 1RA ALDANA',
   'PUERTO 2DA ALDANA',
   'PUERTO 3RA ALDANA',
@@ -76,12 +79,23 @@ const STANDARD_LOCATIONS = [
   'PUERTO 7MA ALDANA'
 ]
 
-// Función para limpiar nombres de barco (sin prefijos contaminantes)
+// Función para limpiar nombres de barco
 const cleanShipName = (name = '') =>
   String(name || '')
     .replace(/^\s*astillero\s+alon\s*car\s*[-–:]?\s*/i, '')
     .replace(/^\s*astillero\s*[-–:]?\s*/i, '')
     .trim() || String(name || '')
+
+// Función para limpiar nombres de locación (eliminar ALON CAR, ASTILLERO, etc.)
+const cleanLocation = (loc = '') => {
+  const raw = String(loc || '').trim()
+  if (!raw) return 'VARADERO'
+  const cleaned = raw
+    .replace(/\s*alon\s*car\s*/gi, '')
+    .replace(/\s*astillero\s*/gi, '')
+    .trim()
+  return cleaned || 'VARADERO'
+}
 
 // Cálculo de días corridos: =SI(C="";"";Fin-Comienzo+1), si no tiene fin acumula con HOY()
 const calculateStayDays = (startDateStr, endDateStr) => {
@@ -105,14 +119,17 @@ export default function Ships() {
   const [workItems, setWorkItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
+  const [uploadingDoc, setUploadingDoc] = useState(false)
 
   // Navegación de pestañas principales
   const [activeTab, setActiveTab] = useState('buques') // 'buques' | 'movimientos' | 'armadores'
 
-  // Modo de visualización de Buques: 'tabla' (filas) | 'tarjetas' (fichas)
-  const [viewMode, setViewMode] = useState('tabla')
+  // Modos de visualización por pestaña: 'tabla' (filas) | 'tarjetas' (fichas)
+  const [viewModeShips, setViewModeShips] = useState('tabla')
+  const [viewModeStays, setViewModeStays] = useState('tabla')
+  const [viewModeOwners, setViewModeOwners] = useState('tabla')
 
-  // Perspectiva / Rol de Operación
+  // Perspectiva / Rol de Operación (Terminales de Trabajo)
   // Jorge Sentis (Admin) | María José (Admin/Comercial/Armador) | Jefe de Obra (Técnico/Medidas)
   const [activeRolePerspective, setActiveRolePerspective] = useState('admin')
 
@@ -120,7 +137,7 @@ export default function Ships() {
   const [searchTerm, setSearchTerm] = useState('')
   const [locationFilter, setLocationFilter] = useState('todos')
   const [requestFilter, setRequestFilter] = useState('todos')
-  const [roleQuickFilter, setRoleQuickFilter] = useState('todos') // 'todos' | 'mis_pendientes'
+  const [roleQuickFilter, setRoleQuickFilter] = useState('todos') // 'todos' | 'mis_pendientes' | 'huerfanos'
 
   // Modales
   const [selectedShip360, setSelectedShip360] = useState(null)
@@ -129,6 +146,8 @@ export default function Ships() {
   const [modalOwner, setModalOwner] = useState({ isOpen: false, owner: null })
   const [modalContact, setModalContact] = useState({ isOpen: false, contact: null, defaultOwnerId: '', defaultShipId: '' })
   const [modalRequestInfo, setModalRequestInfo] = useState({ isOpen: false, ship: null, requestType: 'pendiente_jefe_obra', notes: '' })
+  const [modalDeleteOwner, setModalDeleteOwner] = useState({ isOpen: false, owner: null, linkedShips: [] })
+  const [modalAssignOrphan, setModalAssignOrphan] = useState({ isOpen: false, ship: null, selectedOwnerId: '' })
   const [submitting, setSubmitting] = useState(false)
 
   // Subpestaña en modal 360
@@ -166,7 +185,7 @@ export default function Ships() {
   }, [])
 
   // ==========================================================================
-  // CÁLCULO PRECISO DE OTS ACTIVAS POR BARCO (Evaluando items y estados reales)
+  // CÁLCULO PRECISO DE OTS ACTIVAS POR BARCO
   // ==========================================================================
   const getShipOtMetrics = useMemo(() => {
     const itemsByWo = {}
@@ -196,11 +215,16 @@ export default function Ships() {
     return map
   }, [ships, workOrders, workItems])
 
-  // KPI Calculations
+  // Barcos huérfanos con alerta activa
+  const orphanShips = useMemo(() => {
+    return ships.filter(s => s.orphan_owner_alert)
+  }, [ships])
+
+  // KPI Calculations (locaciones limpias)
   const totalShips = ships.length
-  const varaderoCount = ships.filter(s => s.current_location === 'VARADERO ALON CAR' && s.is_active !== false).length
-  const muelleCount = ships.filter(s => s.current_location === 'MUELLE ALON CAR' && s.is_active !== false).length
-  const puertoCount = ships.filter(s => (s.current_location || '').includes('PUERTO') && s.is_active !== false).length
+  const varaderoCount = ships.filter(s => cleanLocation(s.current_location) === 'VARADERO' && s.is_active !== false).length
+  const muelleCount = ships.filter(s => cleanLocation(s.current_location) === 'MUELLE' && s.is_active !== false).length
+  const puertoCount = ships.filter(s => cleanLocation(s.current_location).includes('PUERTO') && s.is_active !== false).length
   const pendingRequestsCount = ships.filter(s => s.info_request_status && s.info_request_status !== 'completo').length
 
   // Manejo de clic interactivo en KPI para filtrar
@@ -209,12 +233,12 @@ export default function Ships() {
       setLocationFilter('todos')
       setRequestFilter('todos')
       setRoleQuickFilter('todos')
-    } else if (type === 'VARADERO ALON CAR') {
+    } else if (type === 'VARADERO') {
       setRequestFilter('todos')
-      setLocationFilter(prev => prev === 'VARADERO ALON CAR' ? 'todos' : 'VARADERO ALON CAR')
-    } else if (type === 'MUELLE ALON CAR') {
+      setLocationFilter(prev => prev === 'VARADERO' ? 'todos' : 'VARADERO')
+    } else if (type === 'MUELLE') {
       setRequestFilter('todos')
-      setLocationFilter(prev => prev === 'MUELLE ALON CAR' ? 'todos' : 'MUELLE ALON CAR')
+      setLocationFilter(prev => prev === 'MUELLE' ? 'todos' : 'MUELLE')
     } else if (type === 'PUERTO') {
       setRequestFilter('todos')
       setLocationFilter(prev => prev === 'PUERTO' ? 'todos' : 'PUERTO')
@@ -228,16 +252,17 @@ export default function Ships() {
   const filteredShips = useMemo(() => {
     return ships.filter(s => {
       const term = searchTerm.toLowerCase()
+      const locClean = cleanLocation(s.current_location)
       const matchSearch = !term ||
         cleanShipName(s.name).toLowerCase().includes(term) ||
         (s.owners?.name || '').toLowerCase().includes(term) ||
         (s.owners?.armador_name || '').toLowerCase().includes(term) ||
-        (s.current_location || '').toLowerCase().includes(term) ||
+        locClean.toLowerCase().includes(term) ||
         (s.matricula || '').toLowerCase().includes(term) ||
         (s.vessel_type || '').toLowerCase().includes(term)
 
       const matchLocation = locationFilter === 'todos' ||
-        (locationFilter === 'PUERTO' ? (s.current_location || '').includes('PUERTO') : s.current_location === locationFilter)
+        (locationFilter === 'PUERTO' ? locClean.includes('PUERTO') : locClean === locationFilter)
 
       const matchRequest = requestFilter === 'todos' ||
         (requestFilter === 'pendientes' ? (s.info_request_status && s.info_request_status !== 'completo') : s.info_request_status === 'completo')
@@ -246,12 +271,14 @@ export default function Ships() {
       let matchRole = true
       if (roleQuickFilter === 'mis_pendientes') {
         if (activeRolePerspective === 'maria_jose') {
-          matchRole = s.info_request_status === 'pendiente_maria_jose' || s.info_request_status === 'pendiente_ambos'
+          matchRole = s.info_request_status === 'pendiente_maria_jose' || s.info_request_status === 'pendiente_ambos' || s.orphan_owner_alert
         } else if (activeRolePerspective === 'jefe_obra') {
           matchRole = s.info_request_status === 'pendiente_jefe_obra' || s.info_request_status === 'pendiente_ambos'
         } else if (activeRolePerspective === 'admin') {
-          matchRole = s.info_request_status && s.info_request_status !== 'completo'
+          matchRole = (s.info_request_status && s.info_request_status !== 'completo') || s.orphan_owner_alert
         }
+      } else if (roleQuickFilter === 'huerfanos') {
+        matchRole = Boolean(s.orphan_owner_alert)
       }
 
       return matchSearch && matchLocation && matchRequest && matchRole
@@ -263,7 +290,8 @@ export default function Ships() {
     return stays.filter(st => {
       const term = searchTerm.toLowerCase()
       const shipName = cleanShipName(st.ships?.name || '')
-      return !term || shipName.toLowerCase().includes(term) || (st.location || '').toLowerCase().includes(term)
+      const locClean = cleanLocation(st.location)
+      return !term || shipName.toLowerCase().includes(term) || locClean.toLowerCase().includes(term)
     })
   }, [stays, searchTerm])
 
@@ -283,7 +311,7 @@ export default function Ships() {
         manga_mts: '',
         puntal_mts: '',
         superficie_casco_m2: '',
-        current_location: 'VARADERO ALON CAR',
+        current_location: 'VARADERO',
         notes: '',
         info_request_status: 'pendiente_ambos',
         info_request_notes: 'Completar medidas reales a bordo y cargar datos de contacto del armador.',
@@ -298,7 +326,7 @@ export default function Ships() {
     const isPredefined = PREDEFINED_VESSEL_TYPES.includes(ship.vessel_type)
     setModalShip({
       isOpen: true,
-      ship: { ...ship },
+      ship: { ...ship, current_location: cleanLocation(ship.current_location) },
       isCustomVesselType: !isPredefined && Boolean(ship.vessel_type),
       customVesselTypeVal: !isPredefined ? (ship.vessel_type || '') : ''
     })
@@ -327,7 +355,7 @@ export default function Ships() {
         manga_mts: modalShip.ship.manga_mts ? parseFloat(modalShip.ship.manga_mts) : null,
         puntal_mts: modalShip.ship.puntal_mts ? parseFloat(modalShip.ship.puntal_mts) : null,
         superficie_casco_m2: modalShip.ship.superficie_casco_m2 ? parseFloat(modalShip.ship.superficie_casco_m2) : null,
-        current_location: modalShip.ship.current_location || 'VARADERO ALON CAR',
+        current_location: cleanLocation(modalShip.ship.current_location),
         notes: modalShip.ship.notes || null,
         technical_specs: modalShip.ship.technical_specs || {},
         info_request_status: modalShip.ship.info_request_status || 'completo',
@@ -426,6 +454,148 @@ export default function Ships() {
   }
 
   // ==========================================================================
+  // HANDLERS: ARCHIVOS TÉCNICOS DEL JEFE DE OBRA (ANGUILERA & PINTADO)
+  // ==========================================================================
+  const handleUploadNavalFile = async (shipId, docType, file) => {
+    if (!file) return
+    setUploadingDoc(true)
+    try {
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const filePath = `${shipId}/${docType}_${Date.now()}_${cleanFileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('ship-documents')
+        .upload(filePath, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage
+        .from('ship-documents')
+        .getPublicUrl(filePath)
+
+      const fileUrl = urlData?.publicUrl
+      const nowIso = new Date().toISOString()
+
+      const updateFields = docType === 'plano_anguilera'
+        ? { plan_anguilera_url: fileUrl, plan_anguilera_name: file.name, plan_anguilera_uploaded_at: nowIso }
+        : { informe_pintado_url: fileUrl, informe_pintado_name: file.name, informe_pintado_uploaded_at: nowIso }
+
+      const { error: dbErr } = await supabase
+        .from('ships')
+        .update(updateFields)
+        .eq('id', shipId)
+
+      if (dbErr) throw dbErr
+
+      // Guardar en tabla de historial ship_documents
+      await supabase.from('ship_documents').insert([{
+        ship_id: shipId,
+        doc_type: docType,
+        title: docType === 'plano_anguilera' ? 'Plano de Diseño de Anguilera' : 'Informe de Pintado de Casco',
+        file_name: file.name,
+        file_url: fileUrl,
+        file_size_bytes: file.size,
+        uploaded_by: user?.email || 'Jefe de Obra'
+      }])
+
+      // Actualizar estado local
+      setShips(prev => prev.map(s => s.id === shipId ? { ...s, ...updateFields } : s))
+      if (selectedShip360?.id === shipId) {
+        setSelectedShip360(prev => ({ ...prev, ...updateFields }))
+      }
+
+      setStatusMessage({
+        type: 'success',
+        text: `Archivo "${file.name}" cargado exitosamente en la Ficha Técnica Naval.`
+      })
+    } catch (err) {
+      console.error('Error subiendo documento naval:', err)
+      setStatusMessage({ type: 'error', text: 'Error al subir archivo: ' + err.message })
+    } finally {
+      setUploadingDoc(false)
+    }
+  }
+
+  const handleDeleteNavalFile = async (shipId, docType) => {
+    if (!window.confirm('¿Confirmás quitar este documento de la Ficha Técnica Naval?')) return
+    try {
+      const updateFields = docType === 'plano_anguilera'
+        ? { plan_anguilera_url: null, plan_anguilera_name: null, plan_anguilera_uploaded_at: null }
+        : { informe_pintado_url: null, informe_pintado_name: null, informe_pintado_uploaded_at: null }
+
+      const { error: dbErr } = await supabase
+        .from('ships')
+        .update(updateFields)
+        .eq('id', shipId)
+
+      if (dbErr) throw dbErr
+
+      setShips(prev => prev.map(s => s.id === shipId ? { ...s, ...updateFields } : s))
+      if (selectedShip360?.id === shipId) {
+        setSelectedShip360(prev => ({ ...prev, ...updateFields }))
+      }
+
+      setStatusMessage({ type: 'info', text: 'Documento técnico removido de la Ficha Técnica.' })
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err.message })
+    }
+  }
+
+  // ==========================================================================
+  // HANDLERS: BARCOS HUÉRFANOS (ASIGNAR / APAGAR ALERTA)
+  // ==========================================================================
+  const handleAssignOrphanOwner = async (e) => {
+    e.preventDefault()
+    if (!modalAssignOrphan.ship || !modalAssignOrphan.selectedOwnerId) return
+    setSubmitting(true)
+    try {
+      const { error } = await supabase
+        .from('ships')
+        .update({
+          owner_id: modalAssignOrphan.selectedOwnerId,
+          orphan_owner_alert: false,
+          orphan_owner_previous_name: null
+        })
+        .eq('id', modalAssignOrphan.ship.id)
+
+      if (error) throw error
+
+      setStatusMessage({
+        type: 'success',
+        text: `Se asignó correctamente el armador al buque "${cleanShipName(modalAssignOrphan.ship.name)}". Alerta desactivada.`
+      })
+      setModalAssignOrphan({ isOpen: false, ship: null, selectedOwnerId: '' })
+      await loadInitialData()
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err.message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDismissOrphanAlert = async (ship) => {
+    if (!window.confirm(`¿Apagar la alerta de buque huérfano para "${cleanShipName(ship.name)}"? El barco permanecerá sin armador pero no generará más avisos.`)) {
+      return
+    }
+    try {
+      const { error } = await supabase
+        .from('ships')
+        .update({ orphan_owner_alert: false })
+        .eq('id', ship.id)
+
+      if (error) throw error
+
+      setStatusMessage({
+        type: 'info',
+        text: `Alerta de barco huérfano apagada para "${cleanShipName(ship.name)}".`
+      })
+      await loadInitialData()
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err.message })
+    }
+  }
+
+  // ==========================================================================
   // HANDLERS: ESTADÍAS & MOVIMIENTOS
   // ==========================================================================
   const handleOpenNewStay = (shipId = '') => {
@@ -434,7 +604,7 @@ export default function Ships() {
       isOpen: true,
       stay: {
         ship_id: shipId || ships[0]?.id || '',
-        location: 'VARADERO ALON CAR',
+        location: 'VARADERO',
         start_date: today,
         end_date: '',
         notes: ''
@@ -450,9 +620,10 @@ export default function Ships() {
       if (!modalStay.stay.ship_id) throw new Error('Seleccioná un barco')
       if (!modalStay.stay.start_date) throw new Error('La fecha de comienzo es obligatoria')
 
+      const cleanLoc = cleanLocation(modalStay.stay.location)
       const payload = {
         ship_id: modalStay.stay.ship_id,
-        location: modalStay.stay.location || 'VARADERO ALON CAR',
+        location: cleanLoc,
         start_date: modalStay.stay.start_date,
         end_date: modalStay.stay.end_date || null,
         notes: modalStay.stay.notes || null
@@ -470,7 +641,7 @@ export default function Ships() {
       if (!modalStay.stay.end_date) {
         await supabase
           .from('ships')
-          .update({ current_location: payload.location })
+          .update({ current_location: cleanLoc })
           .eq('id', payload.ship_id)
       }
 
@@ -501,7 +672,7 @@ export default function Ships() {
   }
 
   // ==========================================================================
-  // HANDLERS: ARMADORES & PROPIETARIOS
+  // HANDLERS: ARMADORES & PROPIETARIOS (ALTA / EDICIÓN / ELIMINACIÓN DEFINITIVA)
   // ==========================================================================
   const handleOpenNewOwner = () => {
     setModalOwner({
@@ -553,8 +724,73 @@ export default function Ships() {
     }
   }
 
+  // Abrir confirmación de eliminación definitiva de armador
+  const handleOpenDeleteOwner = (owner) => {
+    const linkedShips = ships.filter(s => s.owner_id === owner.id)
+    setModalDeleteOwner({
+      isOpen: true,
+      owner,
+      linkedShips
+    })
+  }
+
+  // Ejecutar eliminación definitiva de armador + registrar auditoría + alertar barcos huérfanos
+  const handleConfirmDeleteOwner = async () => {
+    const owner = modalDeleteOwner.owner
+    if (!owner) return
+    setSubmitting(true)
+    try {
+      const linkedShips = modalDeleteOwner.linkedShips || []
+
+      // 1. Asentar en la Hoja de Auditoría permanente
+      await supabase.from('audit_logs').insert([{
+        action: 'DELETE_OWNER',
+        entity_type: 'owners',
+        entity_id: owner.id,
+        entity_name: owner.name,
+        details: {
+          cuit: owner.cuit,
+          armador_name: owner.armador_name,
+          armador_phone: owner.armador_phone,
+          email_principal: owner.email_principal,
+          email_secundario: owner.email_secundario,
+          affected_ships: linkedShips.map(s => ({ id: s.id, name: s.name }))
+        },
+        performed_by: user?.email || 'Administración'
+      }])
+
+      // 2. Si tenía barcos vinculados, marcarlos con alerta de huérfanos
+      if (linkedShips.length > 0) {
+        for (const ship of linkedShips) {
+          await supabase.from('ships').update({
+            owner_id: null,
+            orphan_owner_alert: true,
+            orphan_owner_previous_name: owner.name
+          }).eq('id', ship.id)
+        }
+      }
+
+      // 3. Eliminar definitivamente el armador
+      const { error } = await supabase.from('owners').delete().eq('id', owner.id)
+      if (error) throw error
+
+      setStatusMessage({
+        type: 'info',
+        text: `Empresa "${owner.name}" eliminada definitivamente. Se registró en Auditoría y se activó la alerta de ${linkedShips.length} buque(s) huérfano(s) para María José.`
+      })
+
+      setModalDeleteOwner({ isOpen: false, owner: null, linkedShips: [] })
+      await loadInitialData()
+    } catch (err) {
+      console.error('Error eliminando armador:', err)
+      setStatusMessage({ type: 'error', text: 'Error al eliminar armador: ' + err.message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   // ==========================================================================
-  // HANDLERS: SOLICITUD DE INFORMACIÓN CON CUADRO DE TEXTO (JORGE SENTIS)
+  // HANDLERS: SOLICITUD DE INFORMACIÓN CON NOTAS (JORGE SENTIS)
   // ==========================================================================
   const handleOpenRequestInfoModal = (ship) => {
     setModalRequestInfo({
@@ -604,7 +840,7 @@ export default function Ships() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* CABECERA & CONTROL DE PERSPECTIVA */}
+      {/* CABECERA & CONTROL DE TERMINALES DE TRABAJO */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
@@ -616,15 +852,15 @@ export default function Ships() {
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
             <Ship className="w-8 h-8 text-primary" />
-            <span>Barcos & Obras en Astillero</span>
+            <span>Barcos & Obras en Varadero</span>
           </h1>
         </div>
 
-        {/* SELECTOR DE PERSPECTIVA / ROL DE OPERACIÓN */}
+        {/* SELECTOR DE TERMINALES DE TRABAJO POR PUESTO */}
         <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
           <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1 text-xs shadow-inner">
             <span className="text-[10px] uppercase font-bold text-slate-400 px-2 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Rol Activo:
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Terminal Activa:
             </span>
             <button
               type="button"
@@ -637,9 +873,9 @@ export default function Ships() {
                   ? 'bg-primary text-slate-950 shadow-md ring-1 ring-primary/50'
                   : 'text-slate-400 hover:text-white'
               }`}
-              title="Jorge Sentis: Crea el barco, define tipo de embarcación y solicita con notas que llenen la información"
+              title="Terminal Jorge Sentis: Creación de buques, solicitudes con notas claras y control de auditoría"
             >
-              <span>👑 Admin (Jorge)</span>
+              <span>👑 Terminal Admin</span>
             </button>
             <button
               type="button"
@@ -652,9 +888,9 @@ export default function Ships() {
                   ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/50'
                   : 'text-slate-400 hover:text-white'
               }`}
-              title="María José: Carga contactos, armador y calendario de estadías"
+              title="Terminal María José: Armadores, contactos comerciales, resolución de huérfanos y calendario de estadías"
             >
-              <span>📋 María José</span>
+              <span>📋 Terminal María José</span>
             </button>
             <button
               type="button"
@@ -667,9 +903,9 @@ export default function Ships() {
                   ? 'bg-emerald-400 text-slate-950 shadow-md ring-1 ring-emerald-400/50'
                   : 'text-slate-400 hover:text-white'
               }`}
-              title="Jefes de Obra: Cargan medidas, componentes técnicos navales y revisan OTs en ejecución"
+              title="Terminal Jefe de Obra: Medidas, válvulas, planos de anguilera (.dwg/.pdf), informe de pintado e inspección de OTs"
             >
-              <span>🛠️ Jefe de Obra</span>
+              <span>🛠️ Terminal Jefe de Obra</span>
             </button>
           </div>
 
@@ -687,7 +923,7 @@ export default function Ships() {
         </div>
       </div>
 
-      {/* BANNER EXPLICATIVO DEL ROL ACTIVO (Responde: ¿Qué pasa cuando cambio de rol?) */}
+      {/* BANNER DINÁMICO DE LA TERMINAL DE TRABAJO (NAVAJA SUIZA POR PUESTO) */}
       <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition-all ${
         activeRolePerspective === 'admin'
           ? 'bg-cyan-950/20 border-cyan-500/30 text-cyan-200'
@@ -701,32 +937,48 @@ export default function Ships() {
           {activeRolePerspective === 'jefe_obra' && <Wrench className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />}
           <div>
             <strong className="font-extrabold text-white mr-1.5">
-              {activeRolePerspective === 'admin' && 'Modo Administrador (Jorge Sentis):'}
-              {activeRolePerspective === 'maria_jose' && 'Modo Administración & Comercial (María José):'}
-              {activeRolePerspective === 'jefe_obra' && 'Modo Técnico / Operativo (Jefes de Obra):'}
+              {activeRolePerspective === 'admin' && 'Terminal Administrador (Jorge Sentis):'}
+              {activeRolePerspective === 'maria_jose' && 'Terminal Administración & Comercial (María José):'}
+              {activeRolePerspective === 'jefe_obra' && 'Terminal Técnica & Operativa (Jefes de Obra):'}
             </strong>
             <span>
-              {activeRolePerspective === 'admin' && 'Control total: Creación de buques, gestión de tipos de embarcación, bajas lógicas y envío de solicitudes con notas e instrucciones claras.'}
-              {activeRolePerspective === 'maria_jose' && 'Enfocada en datos de Armadores, teléfonos, emails principales/secundarios y fechas del Calendario de Estadías.'}
-              {activeRolePerspective === 'jefe_obra' && 'Enfocado en medidas reales (eslora, manga), inventario técnico (válvulas de casco, tanques, pocetes) y control de OTs activas.'}
+              {activeRolePerspective === 'admin' && 'Herramientas: Alta de buques, tipos personalizables, solicitudes con notas, eliminación auditada de armadores y control general.'}
+              {activeRolePerspective === 'maria_jose' && 'Herramientas: Armadores, teléfonos, emails dobles, fechas de estadías en varadero/muelle y resolución de barcos huérfanos.'}
+              {activeRolePerspective === 'jefe_obra' && 'Herramientas: Medidas de casco, inventario de válvulas/tanques/pocetes, subida de Plano de Anguilera (.dwg/.pdf) e Informe de Pintado (.pdf).'}
             </span>
           </div>
         </div>
 
-        {/* Acceso rápido a tareas del rol */}
+        {/* Acceso rápido específico para la terminal */}
         <div className="flex items-center gap-2 shrink-0">
           {activeRolePerspective === 'maria_jose' && (
-            <button
-              type="button"
-              onClick={() => setRoleQuickFilter(prev => prev === 'mis_pendientes' ? 'todos' : 'mis_pendientes')}
-              className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] cursor-pointer transition-all ${
-                roleQuickFilter === 'mis_pendientes'
-                  ? 'bg-amber-400 text-slate-950 border-amber-300'
-                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
-              }`}
-            >
-              {roleQuickFilter === 'mis_pendientes' ? '✓ Mostrando pendientes María José' : '⚡ Filtrar pendientes de María José'}
-            </button>
+            <>
+              {orphanShips.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setRoleQuickFilter(prev => prev === 'huerfanos' ? 'todos' : 'huerfanos')}
+                  className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] cursor-pointer transition-all flex items-center gap-1 ${
+                    roleQuickFilter === 'huerfanos'
+                      ? 'bg-rose-500 text-white border-rose-400'
+                      : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                  }`}
+                >
+                  <AlertTriangle className="w-3 h-3 text-rose-300" />
+                  <span>{orphanShips.length} Huérfanos</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setRoleQuickFilter(prev => prev === 'mis_pendientes' ? 'todos' : 'mis_pendientes')}
+                className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] cursor-pointer transition-all ${
+                  roleQuickFilter === 'mis_pendientes'
+                    ? 'bg-amber-400 text-slate-950 border-amber-300'
+                    : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                }`}
+              >
+                {roleQuickFilter === 'mis_pendientes' ? '✓ Mostrando pendientes María José' : '⚡ Filtrar pendientes de María José'}
+              </button>
+            </>
           )}
 
           {activeRolePerspective === 'jefe_obra' && (
@@ -772,7 +1024,31 @@ export default function Ships() {
         </div>
       )}
 
-      {/* KPIS CLICKEABLES INTERACTIVOS (Filtran al dar clic) */}
+      {/* ALERTA DE BARCOS HUÉRFANOS SI EXISTEN */}
+      {orphanShips.length > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-white text-xs block font-bold">
+                ⚠️ Alerta para María José: {orphanShips.length} Buque(s) Huérfano(s) sin Empresa Armadora
+              </strong>
+              <span className="text-[11px] text-amber-300/80">
+                Se eliminó la empresa armadora anterior. Estos buques requieren que María José asigne un nuevo armador o silencie la alerta si no se conoce su destino actual.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRoleQuickFilter('huerfanos')}
+            className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs cursor-pointer shadow-sm shrink-0"
+          >
+            Ver Buques Huérfanos ({orphanShips.length})
+          </button>
+        </div>
+      )}
+
+      {/* KPIS CLICKEABLES INTERACTIVOS (Locaciones limpias: VARADERO / MUELLE / ALDANA) */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {/* KPI 1: Total Buques */}
         <div
@@ -798,51 +1074,51 @@ export default function Ships() {
           </div>
         </div>
 
-        {/* KPI 2: En Varadero Alon Car */}
+        {/* KPI 2: En Varadero */}
         <div
-          onClick={() => handleKpiClick('VARADERO ALON CAR')}
+          onClick={() => handleKpiClick('VARADERO')}
           className={`p-4 rounded-2xl border cursor-pointer transition-all relative group ${
-            locationFilter === 'VARADERO ALON CAR'
+            locationFilter === 'VARADERO'
               ? 'bg-cyan-950/70 border-cyan-400 ring-2 ring-cyan-400/50 shadow-lg'
               : 'bg-cyan-950/20 border-cyan-500/30 hover:border-cyan-400/60 hover:bg-cyan-950/30'
           }`}
-          title="Clic para filtrar solo barcos en Varadero Alon Car (Puesta en seco)"
+          title="Clic para filtrar solo barcos en Varadero (Puesta en seco)"
         >
           <div className="text-[11px] font-bold uppercase text-cyan-300 flex items-center justify-between gap-1.5 mb-1">
             <span className="flex items-center gap-1.5">
               <Anchor className="w-3.5 h-3.5 text-cyan-400" /> En Varadero
             </span>
-            {locationFilter === 'VARADERO ALON CAR' && (
+            {locationFilter === 'VARADERO' && (
               <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
             )}
           </div>
           <div className="text-2xl font-black text-cyan-200 font-mono">{varaderoCount}</div>
           <div className="text-[10px] text-cyan-400/70 mt-0.5 group-hover:text-cyan-300">
-            {locationFilter === 'VARADERO ALON CAR' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
+            {locationFilter === 'VARADERO' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
           </div>
         </div>
 
-        {/* KPI 3: En Muelle Alon Car */}
+        {/* KPI 3: En Muelle */}
         <div
-          onClick={() => handleKpiClick('MUELLE ALON CAR')}
+          onClick={() => handleKpiClick('MUELLE')}
           className={`p-4 rounded-2xl border cursor-pointer transition-all relative group ${
-            locationFilter === 'MUELLE ALON CAR'
+            locationFilter === 'MUELLE'
               ? 'bg-blue-950/70 border-blue-400 ring-2 ring-blue-400/50 shadow-lg'
               : 'bg-blue-950/20 border-blue-500/30 hover:border-blue-400/60 hover:bg-blue-950/30'
           }`}
-          title="Clic para filtrar barcos a flote en Muelle Alon Car"
+          title="Clic para filtrar barcos a flote en Muelle"
         >
           <div className="text-[11px] font-bold uppercase text-blue-300 flex items-center justify-between gap-1.5 mb-1">
             <span className="flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-blue-400" /> En Muelle
             </span>
-            {locationFilter === 'MUELLE ALON CAR' && (
+            {locationFilter === 'MUELLE' && (
               <span className="text-[9px] px-1 py-0.2 rounded bg-blue-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
             )}
           </div>
           <div className="text-2xl font-black text-blue-200 font-mono">{muelleCount}</div>
           <div className="text-[10px] text-blue-400/70 mt-0.5 group-hover:text-blue-300">
-            {locationFilter === 'MUELLE ALON CAR' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
+            {locationFilter === 'MUELLE' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
           </div>
         </div>
 
@@ -854,7 +1130,7 @@ export default function Ships() {
               ? 'bg-purple-950/70 border-purple-400 ring-2 ring-purple-400/50 shadow-lg'
               : 'bg-purple-950/20 border-purple-500/30 hover:border-purple-400/60 hover:bg-purple-950/30'
           }`}
-          title="Clic para filtrar barcos en puertos externos Aldana"
+          title="Clic para filtrar barcos en apostaderos y puertos externos de Aldana"
         >
           <div className="text-[11px] font-bold uppercase text-purple-300 flex items-center justify-between gap-1.5 mb-1">
             <span className="flex items-center gap-1.5">
@@ -934,41 +1210,51 @@ export default function Ships() {
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>3. Armadores, Propietarios & Contactos ({owners.length})</span>
+            <span>3. Armadores & Empresas Propietarias ({owners.length})</span>
           </button>
         </div>
 
-        {/* SWITCHER DE VISTA EN TAB 1: FILAS (TABLA) VS TARJETAS (FICHAS) */}
-        {activeTab === 'buques' && (
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
-            <button
-              type="button"
-              onClick={() => setViewMode('tabla')}
-              className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
-                viewMode === 'tabla'
-                  ? 'bg-primary text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Vista tipo tabla con renglones como en Órdenes de Trabajo"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Vista Filas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('tarjetas')}
-              className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
-                viewMode === 'tarjetas'
-                  ? 'bg-primary text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Vista tipo fichas / tarjetas individuales"
-            >
-              <ClipboardList className="w-3.5 h-3.5" />
-              <span>Vista Fichas</span>
-            </button>
-          </div>
-        )}
+        {/* SWITCHER DE VISTA: FILAS (TABLA) VS FICHAS (TARJETAS) */}
+        <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              if (activeTab === 'buques') setViewModeShips('tabla')
+              if (activeTab === 'movimientos') setViewModeStays('tabla')
+              if (activeTab === 'armadores') setViewModeOwners('tabla')
+            }}
+            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+              (activeTab === 'buques' && viewModeShips === 'tabla') ||
+              (activeTab === 'movimientos' && viewModeStays === 'tabla') ||
+              (activeTab === 'armadores' && viewModeOwners === 'tabla')
+                ? 'bg-primary text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+            title="Vista tipo tabla con renglones"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Vista Filas</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (activeTab === 'buques') setViewModeShips('tarjetas')
+              if (activeTab === 'movimientos') setViewModeStays('tarjetas')
+              if (activeTab === 'armadores') setViewModeOwners('tarjetas')
+            }}
+            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+              (activeTab === 'buques' && viewModeShips === 'tarjetas') ||
+              (activeTab === 'movimientos' && viewModeStays === 'tarjetas') ||
+              (activeTab === 'armadores' && viewModeOwners === 'tarjetas')
+                ? 'bg-primary text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+            title="Vista tipo fichas / tarjetas individuales"
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            <span>Vista Fichas</span>
+          </button>
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -982,7 +1268,7 @@ export default function Ships() {
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar por nombre de buque, tipo, armador, matrícula o locación..."
+                placeholder="Buscar por buque, tipo, armador, matrícula o locación..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
@@ -996,9 +1282,9 @@ export default function Ships() {
                 className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-bold"
               >
                 <option value="todos">Todas las Locaciones</option>
-                <option value="VARADERO ALON CAR">Varadero Alon Car</option>
-                <option value="MUELLE ALON CAR">Muelle Alon Car</option>
-                <option value="PUERTO">Puertos Externos (Aldana)</option>
+                <option value="VARADERO">Varadero</option>
+                <option value="MUELLE">Muelle</option>
+                <option value="PUERTO">Puertos Aldana</option>
               </select>
 
               <select
@@ -1031,7 +1317,7 @@ export default function Ships() {
           </div>
 
           {/* VISTA FILAS / TABLA (Estilo Órdenes de Trabajo) */}
-          {viewMode === 'tabla' && (
+          {viewModeShips === 'tabla' && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
@@ -1039,8 +1325,8 @@ export default function Ships() {
                     <tr className="border-b border-slate-800 bg-slate-950/90 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
                       <th className="py-3 px-3">Buque</th>
                       <th className="py-3 px-3">Tipo</th>
-                      <th className="py-3 px-3">Locación Actual</th>
-                      <th className="py-3 px-3">Dimensiones (Eslora × Manga)</th>
+                      <th className="py-3 px-3">Locación</th>
+                      <th className="py-3 px-3">Dimensiones</th>
                       <th className="py-3 px-3">OTs Activas</th>
                       <th className="py-3 px-3">Armador / Empresa</th>
                       <th className="py-3 px-3">Estado / Solicitud</th>
@@ -1057,6 +1343,7 @@ export default function Ships() {
                     ) : (
                       filteredShips.map(ship => {
                         const cleanName = cleanShipName(ship.name)
+                        const locClean = cleanLocation(ship.current_location)
                         const hasPendingReq = ship.info_request_status && ship.info_request_status !== 'completo'
                         const otMetrics = getShipOtMetrics[ship.id] || { total: 0, active: 0, shipWos: [], activeWos: [] }
 
@@ -1064,7 +1351,11 @@ export default function Ships() {
                           <tr
                             key={ship.id}
                             className={`hover:bg-slate-800/40 transition-colors align-top ${
-                              hasPendingReq ? 'bg-amber-500/[0.02]' : ''
+                              ship.orphan_owner_alert
+                                ? 'bg-rose-500/[0.04]'
+                                : hasPendingReq
+                                ? 'bg-amber-500/[0.02]'
+                                : ''
                             }`}
                           >
                             {/* 1. Buque (Nombre, Matrícula, Inactivo) */}
@@ -1094,16 +1385,16 @@ export default function Ships() {
                               </span>
                             </td>
 
-                            {/* 3. Locación Actual */}
+                            {/* 3. Locación Actual Limpia */}
                             <td className="py-3.5 px-3 font-mono">
                               <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold ${
-                                ship.current_location === 'VARADERO ALON CAR'
+                                locClean === 'VARADERO'
                                   ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800'
-                                  : ship.current_location === 'MUELLE ALON CAR'
+                                  : locClean === 'MUELLE'
                                   ? 'bg-blue-950/80 text-blue-300 border-blue-800'
                                   : 'bg-purple-950/80 text-purple-300 border-purple-800'
                               }`}>
-                                {ship.current_location || 'VARADERO ALON CAR'}
+                                {locClean}
                               </span>
                             </td>
 
@@ -1117,7 +1408,7 @@ export default function Ships() {
                               </div>
                             </td>
 
-                            {/* 5. OTs Activas (Suma y cálculo preciso) */}
+                            {/* 5. OTs Activas */}
                             <td className="py-3.5 px-3">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 {otMetrics.active > 0 ? (
@@ -1141,24 +1432,52 @@ export default function Ships() {
                               </div>
                             </td>
 
-                            {/* 6. Armador / Contacto */}
+                            {/* 6. Armador / Contacto o Aviso Huérfano */}
                             <td className="py-3.5 px-3">
-                              <div className="font-bold text-slate-200 truncate max-w-[170px]" title={ship.owners?.name}>
-                                {ship.owners?.name || ship.client_name || 'Sin asignar'}
-                              </div>
-                              {ship.owners?.armador_name && (
-                                <div className="text-[11px] text-amber-300/90 font-medium">
-                                  Armador: {ship.owners.armador_name}
+                              {ship.orphan_owner_alert ? (
+                                <div className="space-y-1">
+                                  <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold inline-flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-rose-400" />
+                                    <span>Huérfano (Ex: {ship.orphan_owner_previous_name || 'Eliminado'})</span>
+                                  </span>
+                                  <div className="flex items-center gap-1.5 pt-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setModalAssignOrphan({ isOpen: true, ship, selectedOwnerId: '' })}
+                                      className="px-2 py-0.5 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 text-[10px] font-extrabold cursor-pointer"
+                                    >
+                                      Asignar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDismissOrphanAlert(ship)}
+                                      className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer"
+                                      title="Apagar alerta si no se conoce el armador"
+                                    >
+                                      Apagar
+                                    </button>
+                                  </div>
                                 </div>
-                              )}
-                              {ship.owners?.armador_phone && (
-                                <a
-                                  href={`tel:${ship.owners.armador_phone}`}
-                                  className="text-[10px] text-slate-400 hover:text-cyan-300 font-mono flex items-center gap-1 mt-0.5"
-                                >
-                                  <Phone className="w-2.5 h-2.5 text-cyan-400" />
-                                  <span>{ship.owners.armador_phone}</span>
-                                </a>
+                              ) : (
+                                <div>
+                                  <div className="font-bold text-slate-200 truncate max-w-[170px]" title={ship.owners?.name}>
+                                    {ship.owners?.name || ship.client_name || 'Sin asignar'}
+                                  </div>
+                                  {ship.owners?.armador_name && (
+                                    <div className="text-[11px] text-amber-300/90 font-medium">
+                                      Armador: {ship.owners.armador_name}
+                                    </div>
+                                  )}
+                                  {ship.owners?.armador_phone && (
+                                    <a
+                                      href={`tel:${ship.owners.armador_phone}`}
+                                      className="text-[10px] text-slate-400 hover:text-cyan-300 font-mono flex items-center gap-1 mt-0.5"
+                                    >
+                                      <Phone className="w-2.5 h-2.5 text-cyan-400" />
+                                      <span>{ship.owners.armador_phone}</span>
+                                    </a>
+                                  )}
+                                </div>
                               )}
                             </td>
 
@@ -1197,7 +1516,7 @@ export default function Ships() {
                                   type="button"
                                   onClick={() => handleOpenShip360(ship)}
                                   className="px-2.5 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg text-xs font-bold cursor-pointer transition-all flex items-center gap-1"
-                                  title="Abrir Ficha Técnica 360°, Armador y Componentes"
+                                  title="Abrir Ficha Técnica 360°, Planos y Armador"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                   <span>Ficha 360°</span>
@@ -1208,7 +1527,7 @@ export default function Ships() {
                                     type="button"
                                     onClick={() => handleOpenRequestInfoModal(ship)}
                                     className="p-1.5 text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 rounded-lg border border-amber-500/30 cursor-pointer transition-all"
-                                    title="Solicitar carga de info a María José o Jefe de Obra con instrucciones escritas"
+                                    title="Solicitar carga de info con instrucciones"
                                   >
                                     <BellRing className="w-3.5 h-3.5" />
                                   </button>
@@ -1250,10 +1569,11 @@ export default function Ships() {
           )}
 
           {/* VISTA TARJETAS / FICHAS */}
-          {viewMode === 'tarjetas' && (
+          {viewModeShips === 'tarjetas' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredShips.map(ship => {
                 const cleanName = cleanShipName(ship.name)
+                const locClean = cleanLocation(ship.current_location)
                 const hasPendingReq = ship.info_request_status && ship.info_request_status !== 'completo'
                 const otMetrics = getShipOtMetrics[ship.id] || { total: 0, active: 0, shipWos: [], activeWos: [] }
 
@@ -1261,7 +1581,9 @@ export default function Ships() {
                   <div
                     key={ship.id}
                     className={`rounded-2xl border p-5 transition-all relative flex flex-col justify-between ${
-                      hasPendingReq
+                      ship.orphan_owner_alert
+                        ? 'bg-slate-900/90 border-rose-500/50 shadow-md ring-1 ring-rose-500/20'
+                        : hasPendingReq
                         ? 'bg-slate-900/90 border-amber-500/40 hover:border-amber-400 shadow-sm'
                         : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
                     }`}
@@ -1285,20 +1607,48 @@ export default function Ships() {
                           </div>
                         </div>
 
-                        {/* Locación Badge */}
+                        {/* Locación Badge Limpio */}
                         <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border font-mono ${
-                          ship.current_location === 'VARADERO ALON CAR'
+                          locClean === 'VARADERO'
                             ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800'
-                            : ship.current_location === 'MUELLE ALON CAR'
+                            : locClean === 'MUELLE'
                             ? 'bg-blue-950/80 text-blue-300 border-blue-800'
                             : 'bg-purple-950/80 text-purple-300 border-purple-800'
                         }`}>
-                          {ship.current_location || 'VARADERO ALON CAR'}
+                          {locClean}
                         </span>
                       </div>
 
+                      {/* Alerta de Barco Huérfano */}
+                      {ship.orphan_owner_alert && (
+                        <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-[11px] text-rose-200 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold flex items-center gap-1.5 text-rose-300">
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                              <span>Buque Huérfano (Ex: {ship.orphan_owner_previous_name || 'Armador Eliminado'})</span>
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setModalAssignOrphan({ isOpen: true, ship, selectedOwnerId: '' })}
+                              className="px-2.5 py-1 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 text-[10px] font-extrabold cursor-pointer"
+                            >
+                              Asignar Armador
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDismissOrphanAlert(ship)}
+                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer"
+                            >
+                              Apagar Alerta
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Alerta de Solicitud de Carga con Notas */}
-                      {hasPendingReq && (
+                      {hasPendingReq && !ship.orphan_owner_alert && (
                         <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 space-y-1">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 font-bold">
@@ -1408,7 +1758,7 @@ export default function Ships() {
       )}
 
       {/* ========================================================================= */}
-      {/* PESTAÑA 2: CALENDARIO DE MOVIMIENTOS & ESTADÍAS (REEMPLAZO EXCEL LEGACY) */}
+      {/* PESTAÑA 2: CALENDARIO DE MOVIMIENTOS & ESTADÍAS                           */}
       {/* ========================================================================= */}
       {activeTab === 'movimientos' && (
         <div className="space-y-4">
@@ -1419,7 +1769,7 @@ export default function Ships() {
                 <span>Calendario de Movimientos & Estadías</span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Cálculo automático de días de permanencia: <code>Fin - Comienzo + 1</code>. Si la fecha de fin está vacía, acumula en vivo con <code>=HOY()</code>.
+                Cálculo de días: <code>Fin - Comienzo + 1</code>. Si la fecha de fin está vacía, acumula en vivo con <code>=HOY()</code>.
               </p>
             </div>
             <button
@@ -1432,111 +1782,188 @@ export default function Ships() {
             </button>
           </div>
 
-          {/* TABLA DE ESTADÍAS EXACTA A LA HOJA EXCEL */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                    <th className="py-3 px-4">LOCACIÓN / ESTADÍA</th>
-                    <th className="py-3 px-4">BARCO</th>
-                    <th className="py-3 px-4 text-center">Comienzo</th>
-                    <th className="py-3 px-4 text-center">Fin</th>
-                    <th className="py-3 px-4 text-center text-cyan-300">Días que estuvo el barco</th>
-                    <th className="py-3 px-4 text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
-                  {filteredStays.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-slate-500">
-                        No hay movimientos registrados todavía. Tocá &ldquo;+ Registrar Movimiento&rdquo; para asentar el primer ingreso.
-                      </td>
+          {/* VISTA FILAS / TABLA (ESTADÍAS) */}
+          {viewModeStays === 'tabla' && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Locación</th>
+                      <th className="py-3 px-4">Buque</th>
+                      <th className="py-3 px-4 text-center">Comienzo</th>
+                      <th className="py-3 px-4 text-center">Fin</th>
+                      <th className="py-3 px-4 text-center text-cyan-300">Días de Estadía</th>
+                      <th className="py-3 px-4 text-center">Acciones</th>
                     </tr>
-                  ) : (
-                    filteredStays.map(stay => {
-                      const isOngoing = !stay.end_date
-                      const days = calculateStayDays(stay.start_date, stay.end_date)
-                      const isVaradero = stay.location === 'VARADERO ALON CAR'
-                      const isMuelle = stay.location === 'MUELLE ALON CAR'
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
+                    {filteredStays.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-slate-500">
+                          No hay movimientos registrados todavía. Tocá &ldquo;+ Registrar Movimiento&rdquo; para asentar el primer ingreso.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredStays.map(stay => {
+                        const isOngoing = !stay.end_date
+                        const days = calculateStayDays(stay.start_date, stay.end_date)
+                        const locClean = cleanLocation(stay.location)
 
-                      return (
-                        <tr key={stay.id} className="hover:bg-slate-800/40 transition-colors">
-                          {/* Locación */}
-                          <td className="py-3 px-4 font-bold">
-                            <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono ${
-                              isVaradero
-                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800'
-                                : isMuelle
-                                ? 'bg-blue-950/80 text-blue-300 border-blue-800'
-                                : 'bg-amber-950/80 text-amber-300 border-amber-800'
-                            }`}>
-                              {stay.location}
-                            </span>
-                          </td>
-
-                          {/* Barco */}
-                          <td className="py-3 px-4 font-extrabold text-white text-sm">
-                            {cleanShipName(stay.ships?.name)}
-                          </td>
-
-                          {/* Fecha Comienzo */}
-                          <td className="py-3 px-4 text-center font-mono text-slate-200">
-                            {stay.start_date}
-                          </td>
-
-                          {/* Fecha Fin */}
-                          <td className="py-3 px-4 text-center font-mono">
-                            {stay.end_date ? (
-                              <span className="text-slate-200">{stay.end_date}</span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold">
-                                En curso (=HOY)
+                        return (
+                          <tr key={stay.id} className="hover:bg-slate-800/40 transition-colors">
+                            {/* Locación Limpia */}
+                            <td className="py-3 px-4 font-bold">
+                              <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono ${
+                                locClean === 'VARADERO'
+                                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800'
+                                  : locClean === 'MUELLE'
+                                  ? 'bg-blue-950/80 text-blue-300 border-blue-800'
+                                  : 'bg-amber-950/80 text-amber-300 border-amber-800'
+                              }`}>
+                                {locClean}
                               </span>
-                            )}
-                          </td>
+                            </td>
 
-                          {/* Días Calculados */}
-                          <td className="py-3 px-4 text-center font-mono font-black text-sm text-cyan-300">
-                            {days} {days === 1 ? 'día' : 'días'}
-                          </td>
+                            {/* Barco */}
+                            <td className="py-3 px-4 font-extrabold text-white text-sm">
+                              {cleanShipName(stay.ships?.name)}
+                            </td>
 
-                          {/* Acciones */}
-                          <td className="py-3 px-4 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              {isOngoing && (
+                            {/* Fecha Comienzo */}
+                            <td className="py-3 px-4 text-center font-mono text-slate-200">
+                              {stay.start_date}
+                            </td>
+
+                            {/* Fecha Fin */}
+                            <td className="py-3 px-4 text-center font-mono">
+                              {stay.end_date ? (
+                                <span className="text-slate-200">{stay.end_date}</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold">
+                                  En curso (=HOY)
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Días Calculados */}
+                            <td className="py-3 px-4 text-center font-mono font-black text-sm text-cyan-300">
+                              {days} {days === 1 ? 'día' : 'días'}
+                            </td>
+
+                            {/* Acciones */}
+                            <td className="py-3 px-4 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {isOngoing && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCloseStayQuick(stay)}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold cursor-pointer transition-all"
+                                    title="Cerrar fecha de salida de esta locación"
+                                  >
+                                    Cerrar Salida
+                                  </button>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() => handleCloseStayQuick(stay)}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold cursor-pointer transition-all"
-                                  title="Cerrar fecha de salida de esta locación"
+                                  onClick={() => setModalStay({ isOpen: true, stay, defaultShipId: stay.ship_id })}
+                                  className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
+                                  title="Editar movimiento"
                                 >
-                                  Cerrar Salida
+                                  <Pencil className="w-3.5 h-3.5" />
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setModalStay({ isOpen: true, stay, defaultShipId: stay.ship_id })}
-                                className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
-                                title="Editar movimiento"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* VISTA FICHAS / TARJETAS (ESTADÍAS) */}
+          {viewModeStays === 'tarjetas' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredStays.map(stay => {
+                const isOngoing = !stay.end_date
+                const days = calculateStayDays(stay.start_date, stay.end_date)
+                const locClean = cleanLocation(stay.location)
+
+                return (
+                  <div key={stay.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold ${
+                          locClean === 'VARADERO'
+                            ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                            : locClean === 'MUELLE'
+                            ? 'bg-blue-950 text-blue-300 border-blue-800'
+                            : 'bg-amber-950 text-amber-300 border-amber-800'
+                        }`}>
+                          {locClean}
+                        </span>
+                        {isOngoing ? (
+                          <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold">
+                            En curso (=HOY)
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 text-[10px] font-mono">Concluido</span>
+                        )}
+                      </div>
+
+                      <h3 className="font-extrabold text-white text-base">
+                        {cleanShipName(stay.ships?.name)}
+                      </h3>
+
+                      <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs font-mono space-y-1">
+                        <div className="flex justify-between text-slate-300">
+                          <span className="text-slate-500">Ingreso:</span>
+                          <span>{stay.start_date}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-300">
+                          <span className="text-slate-500">Salida:</span>
+                          <span>{stay.end_date || 'En curso'}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-center py-1">
+                        <span className="text-2xl font-black text-cyan-300 font-mono">
+                          {days} {days === 1 ? 'día' : 'días'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                      {isOngoing && (
+                        <button
+                          type="button"
+                          onClick={() => handleCloseStayQuick(stay)}
+                          className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold cursor-pointer"
+                        >
+                          Cerrar Salida
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setModalStay({ isOpen: true, stay, defaultShipId: stay.ship_id })}
+                        className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 ml-auto cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* PESTAÑA 3: ARMADORES, PROPIETARIOS & CONTACTOS                            */}
+      {/* PESTAÑA 3: ARMADORES & PROPIETARIOS (VISTA FILAS / VISTA FICHAS)          */}
       {/* ========================================================================= */}
       {activeTab === 'armadores' && (
         <div className="space-y-4">
@@ -1544,10 +1971,10 @@ export default function Ships() {
             <div>
               <h2 className="text-base font-extrabold text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-amber-400" />
-                <span>Empresas Armadoras & Contactos (María José)</span>
+                <span>Empresas Armadoras & Contactos Directos</span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Empresas armadoras propietarias de los buques, teléfonos de contacto directo y correos dobles para operaciones y facturación.
+                Razón social, armador, teléfonos directos y correos dobles para operaciones y facturación.
               </p>
             </div>
             <button
@@ -1560,79 +1987,211 @@ export default function Ships() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {owners.map(owner => {
-              const ownerShips = ships.filter(s => s.owner_id === owner.id)
-              return (
-                <div key={owner.id} className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3 flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-5 h-5 text-amber-400 shrink-0" />
-                        <div>
-                          <h3 className="font-extrabold text-white text-sm">{owner.name}</h3>
-                          {owner.cuit && <span className="text-[10px] text-slate-400 font-mono">CUIT: {owner.cuit}</span>}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setModalOwner({ isOpen: true, owner })}
-                        className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
-                        title="Editar armador"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+          {/* VISTA FILAS / TABLA (ARMADORES) */}
+          {viewModeOwners === 'tabla' && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Empresa / Razón Social</th>
+                      <th className="py-3 px-4">Nombre del Armador</th>
+                      <th className="py-3 px-4">Teléfono Directo</th>
+                      <th className="py-3 px-4">Correos (Principal / Facturación)</th>
+                      <th className="py-3 px-4">Flota Vinculada</th>
+                      <th className="py-3 px-4 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
+                    {owners.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-slate-500">
+                          No hay empresas armadoras registradas. Tocá &ldquo;+ Nueva Empresa Armadora&rdquo;.
+                        </td>
+                      </tr>
+                    ) : (
+                      owners.map(owner => {
+                        const ownerShips = ships.filter(s => s.owner_id === owner.id)
 
-                    {/* Datos del Armador y Contacto */}
-                    <div className="space-y-1.5 text-xs text-slate-300 bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 font-mono">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 text-[11px]">Armador:</span>
-                        <strong className="text-white">{owner.armador_name || 'No informado'}</strong>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 text-[11px]">Teléfono Armador:</span>
-                        {owner.armador_phone ? (
-                          <a href={`tel:${owner.armador_phone}`} className="text-cyan-400 hover:underline flex items-center gap-1 font-bold">
-                            <Phone className="w-3 h-3" />
-                            <span>{owner.armador_phone}</span>
-                          </a>
-                        ) : (
-                          <span className="text-slate-500">S/D</span>
-                        )}
-                      </div>
-                      <div className="border-t border-slate-800 pt-1.5 space-y-1 text-[11px]">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-400">Mail Principal:</span>
-                          <span className="text-slate-200 truncate max-w-[170px]">{owner.email_principal || '—'}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-400">Mail Secundario:</span>
-                          <span className="text-slate-200 truncate max-w-[170px]">{owner.email_secundario || '—'}</span>
-                        </div>
-                      </div>
-                    </div>
+                        return (
+                          <tr key={owner.id} className="hover:bg-slate-800/40 transition-colors">
+                            {/* Empresa */}
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
+                                <div>
+                                  <strong className="text-white text-sm block">{owner.name}</strong>
+                                  {owner.cuit && <span className="text-[10px] text-slate-400 font-mono">CUIT: {owner.cuit}</span>}
+                                </div>
+                              </div>
+                            </td>
 
-                    {/* Flota de buques vinculada */}
-                    <div className="text-xs pt-1">
-                      <span className="text-slate-400 text-[11px] block mb-1">Buques de este Armador ({ownerShips.length}):</span>
-                      <div className="flex flex-wrap gap-1">
-                        {ownerShips.length === 0 ? (
-                          <span className="text-slate-500 text-[10px]">Sin buques vinculados</span>
-                        ) : (
-                          ownerShips.map(s => (
-                            <span key={s.id} className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 text-[10px] font-bold border border-slate-700">
-                              {cleanShipName(s.name)}
-                            </span>
-                          ))
-                        )}
+                            {/* Armador */}
+                            <td className="py-3.5 px-4 text-amber-300 font-medium">
+                              {owner.armador_name || 'No informado'}
+                            </td>
+
+                            {/* Teléfono */}
+                            <td className="py-3.5 px-4 font-mono">
+                              {owner.armador_phone ? (
+                                <a href={`tel:${owner.armador_phone}`} className="text-cyan-400 hover:underline flex items-center gap-1 font-bold">
+                                  <Phone className="w-3 h-3" />
+                                  <span>{owner.armador_phone}</span>
+                                </a>
+                              ) : (
+                                <span className="text-slate-500">S/D</span>
+                              )}
+                            </td>
+
+                            {/* Mails */}
+                            <td className="py-3.5 px-4 text-[11px] font-mono space-y-0.5">
+                              {owner.email_principal && (
+                                <div className="text-slate-200 truncate max-w-[200px]" title={owner.email_principal}>
+                                  ✉️ {owner.email_principal}
+                                </div>
+                              )}
+                              {owner.email_secundario && (
+                                <div className="text-slate-400 truncate max-w-[200px]" title={owner.email_secundario}>
+                                  📧 {owner.email_secundario}
+                                </div>
+                              )}
+                              {!owner.email_principal && !owner.email_secundario && (
+                                <span className="text-slate-500">Sin emails</span>
+                              )}
+                            </td>
+
+                            {/* Flota de buques vinculada */}
+                            <td className="py-3.5 px-4">
+                              <div className="flex flex-wrap gap-1 max-w-[220px]">
+                                {ownerShips.length === 0 ? (
+                                  <span className="text-slate-500 text-[10px]">Sin buques</span>
+                                ) : (
+                                  ownerShips.map(s => (
+                                    <span key={s.id} className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 text-[10px] font-bold border border-slate-700">
+                                      {cleanShipName(s.name)}
+                                    </span>
+                                  ))
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Acciones (Editar y Eliminar Definitivamente) */}
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setModalOwner({ isOpen: true, owner })}
+                                  className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
+                                  title="Editar armador"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenDeleteOwner(owner)}
+                                  className="p-1.5 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-950/60 cursor-pointer"
+                                  title="Eliminar empresa armadora definitivamente (Auditado)"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* VISTA FICHAS / TARJETAS (ARMADORES) */}
+          {viewModeOwners === 'tarjetas' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {owners.map(owner => {
+                const ownerShips = ships.filter(s => s.owner_id === owner.id)
+                return (
+                  <div key={owner.id} className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-5 h-5 text-amber-400 shrink-0" />
+                          <div>
+                            <h3 className="font-extrabold text-white text-sm">{owner.name}</h3>
+                            {owner.cuit && <span className="text-[10px] text-slate-400 font-mono">CUIT: {owner.cuit}</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setModalOwner({ isOpen: true, owner })}
+                            className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
+                            title="Editar armador"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDeleteOwner(owner)}
+                            className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-950/60 cursor-pointer"
+                            title="Eliminar empresa definitivamente (Auditado)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Datos del Armador y Contacto */}
+                      <div className="space-y-1.5 text-xs text-slate-300 bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 font-mono">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 text-[11px]">Armador:</span>
+                          <strong className="text-white">{owner.armador_name || 'No informado'}</strong>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 text-[11px]">Teléfono Armador:</span>
+                          {owner.armador_phone ? (
+                            <a href={`tel:${owner.armador_phone}`} className="text-cyan-400 hover:underline flex items-center gap-1 font-bold">
+                              <Phone className="w-3 h-3" />
+                              <span>{owner.armador_phone}</span>
+                            </a>
+                          ) : (
+                            <span className="text-slate-500">S/D</span>
+                          )}
+                        </div>
+                        <div className="border-t border-slate-800 pt-1.5 space-y-1 text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Mail Principal:</span>
+                            <span className="text-slate-200 truncate max-w-[170px]">{owner.email_principal || '—'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Mail Secundario:</span>
+                            <span className="text-slate-200 truncate max-w-[170px]">{owner.email_secundario || '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Flota de buques vinculada */}
+                      <div className="text-xs pt-1">
+                        <span className="text-slate-400 text-[11px] block mb-1">Buques de este Armador ({ownerShips.length}):</span>
+                        <div className="flex flex-wrap gap-1">
+                          {ownerShips.length === 0 ? (
+                            <span className="text-slate-500 text-[10px]">Sin buques vinculados</span>
+                          ) : (
+                            ownerShips.map(s => (
+                              <span key={s.id} className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 text-[10px] font-bold border border-slate-700">
+                                {cleanShipName(s.name)}
+                              </span>
+                            ))
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1660,7 +2219,7 @@ export default function Ships() {
                   <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
                     <span>Matrícula: <strong className="text-slate-200 font-mono">{selectedShip360.matricula || 'S/D'}</strong></span>
                     <span>•</span>
-                    <span>Locación Actual: <strong className="text-cyan-300 font-mono">{selectedShip360.current_location || 'VARADERO ALON CAR'}</strong></span>
+                    <span>Locación: <strong className="text-cyan-300 font-mono">{cleanLocation(selectedShip360.current_location)}</strong></span>
                   </div>
                 </div>
               </div>
@@ -1673,6 +2232,32 @@ export default function Ships() {
                 <X className="w-6 h-6" />
               </button>
             </div>
+
+            {/* Alerta de Barco Huérfano */}
+            {selectedShip360.orphan_owner_alert && (
+              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-bold text-rose-300">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>Buque Huérfano: La empresa armadora fue eliminada. Requiere nueva asignación.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalAssignOrphan({ isOpen: true, ship: selectedShip360, selectedOwnerId: '' })}
+                    className="px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs cursor-pointer shadow-sm"
+                  >
+                    Asignar Armador
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDismissOrphanAlert(selectedShip360)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+                  >
+                    Apagar Alerta
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Alerta de Solicitud de Carga si está pendiente */}
             {selectedShip360.info_request_status && selectedShip360.info_request_status !== 'completo' && (
@@ -1712,7 +2297,7 @@ export default function Ships() {
                 }`}
               >
                 <Gauge className="w-3.5 h-3.5" />
-                <span>Ficha Técnica Naval (Jefe de Obra)</span>
+                <span>Ficha Técnica & Planos (Jefe de Obra)</span>
               </button>
 
               <button
@@ -1738,7 +2323,7 @@ export default function Ships() {
                 }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
-                <span>Historial de Movimientos</span>
+                <span>Historial de Estadías</span>
               </button>
 
               <button
@@ -1757,9 +2342,184 @@ export default function Ships() {
 
             {/* CONTENIDO SUBPESTAÑAS */}
             <div className="space-y-4 pt-1">
-              {/* SUBPESTAÑA 1: FICHA TÉCNICA DINÁMICA */}
+              {/* SUBPESTAÑA 1: FICHA TÉCNICA DINÁMICA & DOCUMENTACIÓN NAVAL */}
               {subTab360 === 'tecnica' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  {/* SECCIÓN DOCUMENTACIÓN TÉCNICA NAVAL (Jefe de Obra) */}
+                  <div className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-emerald-400" />
+                        <h3 className="font-extrabold text-white text-xs uppercase tracking-wider">
+                          Documentación Técnica Naval & Planos (Jefe de Obra)
+                        </h3>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">Terminal Jefe de Obra</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* 1. Plano de Diseño de Anguilera */}
+                      <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-2">
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <strong className="text-white text-xs flex items-center gap-1.5">
+                              <Anchor className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>Plano de Diseño de Anguilera</span>
+                            </strong>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono font-bold">
+                              .DWG / .PDF / .CAD
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Plano constructivo de puesta en seco, anguilera y picaderos específicos del buque.
+                          </p>
+                        </div>
+
+                        {selectedShip360.plan_anguilera_url ? (
+                          <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-emerald-300 font-bold truncate max-w-[190px]" title={selectedShip360.plan_anguilera_name}>
+                                📄 {selectedShip360.plan_anguilera_name || 'Plano_Anguilera'}
+                              </span>
+                              <span className="text-[9px] text-slate-500 font-mono">
+                                {selectedShip360.plan_anguilera_uploaded_at ? String(selectedShip360.plan_anguilera_uploaded_at).split('T')[0] : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 pt-1 border-t border-slate-800">
+                              <a
+                                href={selectedShip360.plan_anguilera_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2.5 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded text-[11px] font-bold flex items-center gap-1"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Ver / Descargar</span>
+                              </a>
+                              <label className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-bold cursor-pointer flex items-center gap-1">
+                                <Upload className="w-3 h-3" />
+                                <span>Reemplazar</span>
+                                <input
+                                  type="file"
+                                  accept=".dwg,.dxf,.pdf"
+                                  className="hidden"
+                                  disabled={uploadingDoc}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    if (file) handleUploadNavalFile(selectedShip360.id, 'plano_anguilera', file)
+                                  }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteNavalFile(selectedShip360.id, 'plano_anguilera')}
+                                className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer ml-auto"
+                                title="Quitar archivo"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="border-2 border-dashed border-slate-700 hover:border-cyan-400/60 p-4 rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-all bg-slate-950/60 hover:bg-slate-950">
+                            <Upload className="w-5 h-5 text-cyan-400" />
+                            <span className="text-xs font-bold text-slate-200">Subir Plano de Anguilera</span>
+                            <span className="text-[10px] text-slate-500">Seleccionar archivo .dwg, .dxf o .pdf</span>
+                            <input
+                              type="file"
+                              accept=".dwg,.dxf,.pdf"
+                              className="hidden"
+                              disabled={uploadingDoc}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) handleUploadNavalFile(selectedShip360.id, 'plano_anguilera', file)
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      {/* 2. Informe de Pintado de Casco */}
+                      <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-2">
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <strong className="text-white text-xs flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Informe de Pintado de Casco</span>
+                            </strong>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
+                              .PDF
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Informe de preparación de superficie, espesores de película y esquema de pintado.
+                          </p>
+                        </div>
+
+                        {selectedShip360.informe_pintado_url ? (
+                          <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-emerald-300 font-bold truncate max-w-[190px]" title={selectedShip360.informe_pintado_name}>
+                                📄 {selectedShip360.informe_pintado_name || 'Informe_Pintado.pdf'}
+                              </span>
+                              <span className="text-[9px] text-slate-500 font-mono">
+                                {selectedShip360.informe_pintado_uploaded_at ? String(selectedShip360.informe_pintado_uploaded_at).split('T')[0] : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 pt-1 border-t border-slate-800">
+                              <a
+                                href={selectedShip360.informe_pintado_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded text-[11px] font-bold flex items-center gap-1"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Ver PDF</span>
+                              </a>
+                              <label className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-bold cursor-pointer flex items-center gap-1">
+                                <Upload className="w-3 h-3" />
+                                <span>Reemplazar</span>
+                                <input
+                                  type="file"
+                                  accept=".pdf"
+                                  className="hidden"
+                                  disabled={uploadingDoc}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    if (file) handleUploadNavalFile(selectedShip360.id, 'informe_pintado', file)
+                                  }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteNavalFile(selectedShip360.id, 'informe_pintado')}
+                                className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer ml-auto"
+                                title="Quitar archivo"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="border-2 border-dashed border-slate-700 hover:border-emerald-400/60 p-4 rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-all bg-slate-950/60 hover:bg-slate-950">
+                            <Upload className="w-5 h-5 text-emerald-400" />
+                            <span className="text-xs font-bold text-slate-200">Subir Informe de Pintado</span>
+                            <span className="text-[10px] text-slate-500">Seleccionar archivo en formato .pdf</span>
+                            <input
+                              type="file"
+                              accept=".pdf"
+                              className="hidden"
+                              disabled={uploadingDoc}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) handleUploadNavalFile(selectedShip360.id, 'informe_pintado', file)
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Dimensiones Principales */}
                   <div>
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
@@ -1879,10 +2639,11 @@ export default function Ships() {
                     <div className="space-y-2">
                       {stays.filter(s => s.ship_id === selectedShip360.id).map(st => {
                         const days = calculateStayDays(st.start_date, st.end_date)
+                        const locClean = cleanLocation(st.location)
                         return (
                           <div key={st.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
                             <div>
-                              <strong className="text-white block">{st.location}</strong>
+                              <strong className="text-white block">{locClean}</strong>
                               <span className="text-slate-400 text-[11px]">
                                 {st.start_date} &rarr; {st.end_date || 'En curso (=HOY)'}
                               </span>
@@ -1900,7 +2661,7 @@ export default function Ships() {
                 </div>
               )}
 
-              {/* SUBPESTAÑA 4: OTS Y TRABAJOS (Con cálculo real de estado e items) */}
+              {/* SUBPESTAÑA 4: OTS Y TRABAJOS */}
               {subTab360 === 'ots' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -1945,7 +2706,6 @@ export default function Ships() {
                               </span>
                             </div>
 
-                            {/* Detalle de trabajos dentro de esta OT */}
                             {items.length > 0 && (
                               <div className="pl-3 border-l-2 border-slate-800 space-y-1 text-[11px]">
                                 {items.map(it => (
@@ -1973,7 +2733,7 @@ export default function Ships() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ALTA Y EDICIÓN DE BUQUE (DATOS CORE + TIPO EDITABLE)              */}
+      {/* MODAL: ALTA Y EDICIÓN DE BUQUE                                            */}
       {/* ========================================================================= */}
       {modalShip.isOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-6 animate-in fade-in">
@@ -2026,7 +2786,7 @@ export default function Ships() {
                   </select>
                 </div>
 
-                {/* Tipo de Embarcación (Editable con opción de crear otra) */}
+                {/* Tipo de Embarcación */}
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1">
                     Tipo de Embarcación
@@ -2056,7 +2816,6 @@ export default function Ships() {
                     <option value="__otro__">✏️ + Otro (Personalizado)...</option>
                   </select>
 
-                  {/* Input libre si eligió personalizado */}
                   {modalShip.isCustomVesselType && (
                     <input
                       type="text"
@@ -2082,12 +2841,12 @@ export default function Ships() {
                   />
                 </div>
 
-                {/* Locación Inicial */}
+                {/* Locación Inicial Limpia */}
                 <div className="sm:col-span-2">
                   <label className="text-xs font-bold text-slate-300 block mb-1">Locación Actual</label>
                   <select
-                    value={modalShip.ship.current_location || 'VARADERO ALON CAR'}
-                    onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, current_location: e.target.value } })}
+                    value={cleanLocation(modalShip.ship.current_location)}
+                    onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, current_location: cleanLocation(e.target.value) } })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
                   >
                     {STANDARD_LOCATIONS.map(loc => (
@@ -2097,7 +2856,7 @@ export default function Ships() {
                 </div>
               </div>
 
-              {/* MEDIDAS NAVALES PRINCIPALES (JEFES DE OBRA) */}
+              {/* MEDIDAS NAVALES PRINCIPALES */}
               <div className="pt-2 border-t border-slate-800 space-y-2">
                 <span className="text-xs font-extrabold text-cyan-300 block uppercase tracking-wider">
                   Medidas Principales (Jefe de Obra)
@@ -2150,7 +2909,7 @@ export default function Ships() {
                 </div>
               </div>
 
-              {/* COMPONENTES TÉCNICOS DINÁMICOS (Válvulas, Tanques, Pocetes) */}
+              {/* COMPONENTES TÉCNICOS DINÁMICOS */}
               <div className="pt-2 border-t border-slate-800 space-y-3">
                 <span className="text-xs font-extrabold text-cyan-300 block uppercase tracking-wider">
                   Inventario Técnico a Bordo (Válvulas, Tanques, Pocetes)
@@ -2187,7 +2946,6 @@ export default function Ships() {
                           </div>
                         </div>
 
-                        {/* Observaciones condicionales */}
                         {currentComp.quantity > 0 && (
                           <textarea
                             rows={2}
@@ -2270,11 +3028,11 @@ export default function Ships() {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">Locación / Estadía *</label>
+                <label className="text-xs font-bold text-slate-300 block mb-1">Locación *</label>
                 <select
                   required
-                  value={modalStay.stay.location}
-                  onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, location: e.target.value } })}
+                  value={cleanLocation(modalStay.stay.location)}
+                  onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, location: cleanLocation(e.target.value) } })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold"
                 >
                   {STANDARD_LOCATIONS.map(loc => (
@@ -2341,7 +3099,7 @@ export default function Ships() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: EMPRESA ARMADORA (MARÍA JOSÉ)                                      */}
+      {/* MODAL: EMPRESA ARMADORA (ALTA / EDICIÓN)                                  */}
       {/* ========================================================================= */}
       {modalOwner.isOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
@@ -2452,6 +3210,134 @@ export default function Ships() {
       )}
 
       {/* ========================================================================= */}
+      {/* MODAL: CONFIRMACIÓN DE ELIMINACIÓN DEFINITIVA DE ARMADOR (AUDITADA)        */}
+      {/* ========================================================================= */}
+      {modalDeleteOwner.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-rose-500/50 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-white text-base">¿Eliminar Empresa Armadora?</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Vas a eliminar definitivamente a <strong className="text-white">{modalDeleteOwner.owner?.name}</strong>. Esta acción quedará registrada en la Hoja de Auditoría permanente.
+                </p>
+              </div>
+            </div>
+
+            {modalDeleteOwner.linkedShips?.length > 0 && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  <span>Buques que quedarán Huérfanos ({modalDeleteOwner.linkedShips.length}):</span>
+                </div>
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {modalDeleteOwner.linkedShips.map(s => (
+                    <span key={s.id} className="px-2 py-0.5 rounded bg-amber-950 text-amber-200 border border-amber-700/60 font-bold text-[10px]">
+                      {cleanShipName(s.name)}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[10px] text-amber-300/80 pt-1">
+                  Se desvinculará la empresa y se emitirá una alerta a María José para que asigne un nuevo armador o apague la alerta.
+                </p>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setModalDeleteOwner({ isOpen: false, owner: null, linkedShips: [] })}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteOwner}
+                disabled={submitting}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Confirmar Eliminación Definitiva</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ASIGNAR ARMADOR A BUQUE HUÉRFANO                                   */}
+      {/* ========================================================================= */}
+      {modalAssignOrphan.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md p-5 md:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-extrabold text-white text-base flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-amber-400" />
+                <span>Asignar Empresa Armadora</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalAssignOrphan({ isOpen: false, ship: null, selectedOwnerId: '' })}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignOrphanOwner} className="space-y-4">
+              <div className="text-xs text-slate-300">
+                Buque: <strong className="text-white text-sm">{cleanShipName(modalAssignOrphan.ship?.name)}</strong>
+                {modalAssignOrphan.ship?.orphan_owner_previous_name && (
+                  <span className="block text-[11px] text-amber-300 mt-0.5">
+                    Armador anterior: {modalAssignOrphan.ship.orphan_owner_previous_name}
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  Seleccioná la Empresa Armadora Propietaria *
+                </label>
+                <select
+                  required
+                  value={modalAssignOrphan.selectedOwnerId}
+                  onChange={(e) => setModalAssignOrphan({ ...modalAssignOrphan, selectedOwnerId: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-medium"
+                >
+                  <option value="">-- Seleccionar Armador Activo --</option>
+                  {owners.map(o => (
+                    <option key={o.id} value={o.id}>{o.name} {o.armador_name ? `(${o.armador_name})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setModalAssignOrphan({ isOpen: false, ship: null, selectedOwnerId: '' })}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || !modalAssignOrphan.selectedOwnerId}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Asignar y Quitar Alerta</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* MODAL: SOLICITAR CARGA DE INFORMACIÓN CON NOTAS (JORGE SENTIS - ADMIN)    */}
       {/* ========================================================================= */}
       {modalRequestInfo.isOpen && (
@@ -2497,7 +3383,7 @@ export default function Ships() {
                     <div>
                       <strong className="text-xs text-emerald-300 block">🛠️ Solo a Jefes de Obra (Técnico / Operaciones)</strong>
                       <span className="text-[11px] text-slate-400">
-                        Solicita relevar Eslora, Manga, Superficie de Casco, Válvulas de fondo y Componentes Navales.
+                        Solicita relevar Eslora, Manga, Superficie de Casco, Válvulas, Plano de Anguilera e Informe de Pintado.
                       </span>
                     </div>
                   </label>
@@ -2546,7 +3432,7 @@ export default function Ships() {
                 </div>
               </div>
 
-              {/* CUADRO DE TEXTO PARA INSTRUCCIONES ESPECÍFICAS (Requerimiento del usuario) */}
+              {/* CUADRO DE TEXTO PARA INSTRUCCIONES ESPECÍFICAS */}
               <div>
                 <label className="text-xs font-bold text-slate-200 block mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
@@ -2557,7 +3443,7 @@ export default function Ships() {
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Ej: Por favor verificar espesores de chapa del fondo, relevar las 4 válvulas de casco de 3 a 6 pulgadas y medir altura de pocetes de achique..."
+                  placeholder="Ej: Por favor verificar espesores de chapa del fondo, relevar las 4 válvulas de casco de 3 a 6 pulgadas y subir el plano de anguilera actualizado..."
                   value={modalRequestInfo.notes}
                   onChange={(e) => setModalRequestInfo({ ...modalRequestInfo, notes: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary leading-relaxed"

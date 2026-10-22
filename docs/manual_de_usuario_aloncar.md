@@ -112,49 +112,40 @@ Los talleres y contratistas externos pueden prestar servicios en diversas especi
 
 Ubicado en `/barcos`:
 
-### 3.1 Catálogo de Buques, Vista Filas & Ficha 360°
-- **Vista Filas (Predeterminada):** Presentación tipo tabla con renglones (igual al módulo de Órdenes de Trabajo) que permite escanear de un vistazo: Buque, Tipo de Embarcación, Locación Actual, Medidas (Eslora × Manga × Puntal × Superficie), OTs Activas en ejecución, Armador/Contacto directo, Estado de Solicitud y Acciones. Se incluye botón para alternar a Vista Fichas/Tarjetas según preferencia.
-- **Nombres Limpios:** Todos los buques se presentan sin prefijos de empresa (ej. `TRITON I` en lugar de `Astillero Alon Car Triton`).
-- **Tipos de Embarcación Adaptables:** Se dispone del catálogo oficial (`Pesquero`, `Desguace`, `Remolcador`, `Pontón`, `Barcaza`, `Buque Motor General`, `Draga`, `Lancha / Prácticos`, `Yate / Recreo`). La opción obsoleta "Arenero" fue sustituida por "Desguace". Incluye la opción `✏️ + Otro (Personalizado)...` para tipear cualquier categoría naval especial.
-- **Baja Lógica Inviolable:** No se eliminan buques físicos para preservar el historial de OTs y jornales contables. Al desactivar un barco pasa a estado `Inactivo`.
-- **Cálculo Preciso de OTs Activas:** El sistema computa en vivo las órdenes de trabajo que tienen tareas (`work_items`) con estado `En ejecución`, mostrando por ejemplo `2 en ejecución` para *Nono Pascual* y enlazando con un clic al módulo `/ots`.
-- **Ficha 360° Integral:**
-  - **Ficha Técnica Naval (Jefes de Obra):** Eslora (m), Manga (m), Puntal (m), Superficie de Casco ($m^2$).
-  - **Componentes Dinámicos (JSONB):** Tanques de combustible, tanques de agua, válvulas de casco (1" a 2½" y 3" a 6"), válvulas intermediarias y pocetes de achique. Si la cantidad es mayor a 0, se habilita el campo amplio de observaciones/distribución.
-  - **Armador & Contactos (María José):** Razón social de la empresa, nombre del armador, teléfono directo (con marcado telefónico rápido), email principal y secundario.
-  - **Historial de OTs:** Consulta directa de trabajos activos e históricos en `/ots`.
+### 3.1 Catálogo de Buques, Vistas Universales & Ficha 360°
+- **Vistas Universales (Filas y Fichas):** Cada una de las 3 pestañas del módulo (Buques, Calendario de Estadías, y Armadores) cuenta con el conmutador `[☷ Vista Filas]` / `[⊞ Vista Fichas]`, con la Vista Filas activa de forma predeterminada para máxima legibilidad tipo planilla.
+- **Nombres y Locaciones Limpias:** Queda suprimido todo texto redundante como `"ALON CAR"`, `"ASTILLERO"` o `"USO INTERNO"`. Las locaciones oficiales en planta son estrictamente **`VARADERO`** (puesta en seco) y **`MUELLE`** (a flote), y los muelles externos `PUERTO 1RA ALDANA` a `7MA ALDANA`.
+- **Tipos de Embarcación Adaptables:** Catálogo oficial (`Pesquero`, `Desguace`, `Remolcador`, `Pontón`, `Barcaza`, `Buque Motor General`, `Draga`, `Lancha / Prácticos`, `Yate / Recreo`). La opción "Arenero" fue reemplazada por "Desguace", sumando además la opción `✏️ + Otro (Personalizado)...` para ingresar libremente cualquier otra categoría naval.
+- **Baja Lógica Inviolable en Buques:** Los buques nunca se eliminan físicamente para proteger el historial contable y de OTs. Al desactivar pasan a estado `Inactivo`.
+- **Cálculo Preciso de OTs Activas:** Suma en tiempo real las órdenes de trabajo que poseen tareas (`work_items`) con estado `En ejecución` (ej. *Nono Pascual* con `2 en ejecución`).
 
-### 3.2 KPIs Interactivos con Filtro Directo
-En la parte superior se exhiben 5 tarjetas resumen interactivas. Al hacer clic sobre cualquiera de ellas, se aplica el filtro inmediatamente sobre la tabla de buques:
-1. `Total Buques`: Restablece la vista para mostrar todos los buques de la base.
-2. `En Varadero`: Filtra exclusivamente barcos en varadero (puesta en seco).
-3. `En Muelle`: Filtra barcos a flote con servicios en Muelle Alon Car.
-4. `Puertos Aldana`: Filtra barcos en muelles externos o apostaderos de Aldana.
-5. `Solicitudes`: Filtra los barcos que tienen solicitudes de carga pendientes.
+### 3.2 Terminal del Jefe de Obra: Ficha Técnica & Documentación Naval
+Dentro de la Ficha 360° (pestaña técnica), el Jefe de Obra dispone de su terminal operativa especializada:
+- **Medidas Reales de Casco:** Eslora (m), Manga (m), Puntal (m), Superficie de Casco ($m^2$).
+- **Componentes a Bordo (JSONB):** Válvulas de casco (1" a 2½" y 3" a 6"), válvulas intermediarias, tanques de combustible, tanques de agua y pocetes de achique.
+- **Plano de Diseño de Anguilera:** Slot de carga directa a Supabase Storage con soporte para formatos **`.dwg`**, **`.dxf`**, **`.pdf`** y CAD constructivo. Permite descarga, reemplazo y eliminación.
+- **Informe de Pintado de Casco:** Slot de carga técnica en formato **`.pdf`** con metadatos de fecha y visualización directa en navegador.
 
-### 3.3 Calendario de Movimientos & Estadías (Reemplazo de Excel Legacy)
-- **Locaciones Oficiales:**
-  - `VARADERO ALON CAR` (Puesta en seco en anguilera).
-  - `MUELLE ALON CAR` (Permanencia a flote con servicios).
-  - `PUERTO 1RA ALDANA` a `PUERTO 7MA ALDANA` (Muelles y rada externa).
-- **Cálculo de Días Corridos:**
-  - Fecha de Comienzo ingresada manualmente.
-  - Si la Fecha Fin está vacía (estadía en curso), el sistema aplica dinámicamente `=HOY()` para acumular días en vivo.
-  - **Fórmula de Días:** `Fin - Comienzo + 1` días corridos inclusivos.
-  - Al cambiar de locación o zarpar, se cierra la fecha de salida manual.
-- **Electricidad:** Omitida deliberadamente en este submódulo operativo; su valorización monetaria se realiza en el Anexo de Factura del Módulo 5.
+### 3.3 Gestión de Armadores, Eliminación Definitiva & Barcos Huérfanos
+- **Eliminación Definitiva (Hard Delete):** A diferencia de los buques, las empresas armadoras admiten borrado físico si fueron ingresadas por error o cesaron.
+- **Hoja de Auditoría (`audit_logs`):** Todo borrado de una empresa queda grabado permanentemente en la tabla de auditoría con snapshot de CUIT, datos de contacto, usuario ejecutor y lista de buques afectados.
+- **Alerta de Buque Huérfano (para María José):**
+  - Si la empresa eliminada poseía buques vinculados, el sistema no borra los buques: desvincula el armador y activa la bandera `orphan_owner_alert` con el nombre de la empresa eliminada.
+  - En la lista de buques se despliega un banner de advertencia para María José.
+  - Cada buque huérfano ofrece dos acciones inmediatas:
+    1. **`🏢 Asignar Armador`**: Abre selector para vincular un nuevo armador activo y apagar la alerta.
+    2. **`🔕 Apagar Alerta`**: Silencia la alerta si el buque permanece inactivo o no se conoce su armador actual.
 
-### 3.4 Matriz de Roles y Solicitud con Instrucciones Claras
-- **Selector de Rol Activo:** En el encabezado se dispone del selector de perspectiva (`Admin / Jorge`, `María José`, `Jefe de Obra`). Al cambiar de rol:
-  - Se despliega un banner explicativo con las funciones clave de dicho perfil.
-  - Se ofrecen accesos rápidos directos (ej. *"Filtrar pendientes de María José"* o *"Filtrar pendientes de Jefe de Obra"*).
-  - Al abrir la Ficha 360°, el sistema posiciona automáticamente la subpestaña pertinente al rol (María José en Armador/Contactos, Jefe de Obra en Ficha Técnica).
-- **Jorge Sentis (Administrador):**
-  - Alta de buques, gestión de tipos y bajas lógicas.
-  - Botón **"📢 Solicitar Info"**: Cuenta con un **cuadro de texto amplio para escribir instrucciones claras y detalladas** (ej. *"Relevar espesores de chapa del fondo y verificar las 4 válvulas de aspiración"*). Esta nota queda registrada en la base de datos (`info_request_notes`) y se muestra destacada en la fila del barco y dentro de la Ficha 360°.
-- **María José (Comercial / Administración):** Administra empresas armadoras, datos de contacto y el Calendario de Movimientos.
-- **Jefes de Obra (Técnico / Operaciones):** Verifican y completan la Ficha Técnica Naval a bordo y revisan OTs.
-- **Botón `✓ Marcar como Completado`:** Permite a María José o al Jefe de Obra dar por cumplida la solicitud una vez cargados los datos.
+### 3.4 Calendario de Movimientos & Estadías
+- **Locaciones Oficiales:** `VARADERO`, `MUELLE`, `PUERTO 1RA ALDANA` a `7MA ALDANA`.
+- **Cálculo de Días Corridos:** `Fin - Comienzo + 1` días inclusivos. Si la fecha de fin está vacía, acumula en vivo contra la fecha actual (`=HOY()`).
+- **Vistas:** Alternador directo entre Vista Filas (tabla de estadías) y Vista Fichas (tarjetas con contador de días destacado).
+
+### 3.5 Filosofía de Terminales de Trabajo por Puesto (Navaja Suiza)
+El sistema concibe cada rol como una estación de trabajo autosuficiente:
+- **Terminal Jefe de Obra:** Completa medidas, válvulas, planos de anguilera e informe de pintado. Consume especificaciones técnicas y OTs en ejecución.
+- **Terminal María José:** Completa armadores, contactos, estadías y resuelve buques huérfanos. Consume días acumulados para facturación y estado de planta.
+- **Terminal Admin (Jorge Sentis):** Completa altas de buque y solicitudes con notas claras. Consume Hoja de Auditoría y gobernanza global.
 
 ---
 
