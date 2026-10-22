@@ -41,10 +41,12 @@ import {
   Info,
   CornerDownRight,
   ExternalLink,
-  Target
+  Target,
+  Brain
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import AiGovernancePanel from '../components/AiGovernancePanel'
 
 // Módulos del sistema controlables en la matriz de seguridad
 const SYSTEM_MODULES = [
@@ -991,7 +993,23 @@ export default function AdminDashboard() {
           <ShieldAlert className="w-4 h-4" />
           <span>Radar de Alertas Operativas</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('ia')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'ia'
+              ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(0,242,254,0.3)]'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <Brain className="w-4 h-4" />
+          <span>🧠 Gobernanza IA & Prompts</span>
+        </button>
       </div>
+
+      {activeTab === 'ia' && <AiGovernancePanel />}
+
 
       {/* ========================================================================= */}
       {/* PESTAÑA 1: MATRIZ VISUAL DE PUESTOS Y PERMISOS DE SEGURIDAD (OPCIÓN A) */}

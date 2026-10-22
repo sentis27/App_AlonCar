@@ -42,9 +42,17 @@ Este plan detalla la hoja de ruta para transformar los diseños y reglas de nego
     *   Pantalla de Retiro de Materiales (con carga múltiple).
     *   Pantalla del Pañolero para Pedidos.
     *   Bandeja de Compras (Gestor Documental 1-Clic).
-*   **Sprint 3: Operaciones (M3):**
-    *   Carga múltiple de Horas (UI).
-    *   Automatización del tipo de cambio quincenal.
+*   **Sprint 3: Operaciones (M3 & Gobernanza IA) [COMPLETADO]:**
+    *   Carga múltiple de Cuadrilla (Horas Normales, Extras 50% y 100%).
+    *   **Tabulador Inteligente de Partes por Grupo:** Ingesta de WhatsApp / Audio en lenguaje natural, multiplicación de operarios en paralelo (RN-03), corrección ortográfica naval (RN-09) y división prioritaria de subtareas (E5/E6).
+    *   **Puerta de Emergencia de Rubro (`🔓 Ajustar`):** Préstamos operativos y badge visual `🔄 Préstamo` para Astillero y Contratistas.
+    *   **Multi-Rubro en Padrón (M2):** Especialidades múltiples (`⭐ Principal` + secundarias) para contratistas y talleres.
+    *   **Tablero de Gobernanza IA (`/admin`):** Configuración de proveedor (Híbrido OpenAI `gpt-4o-mini` + Local), versionador de prompts en Supabase (Migración 0017), sandbox y bitácora de auditoría (`ai_processing_logs`).
+    *   **Tareas Pendientes Clave:**
+        *   `[ ] 🔴 Personal:` Rotar API Key de OpenAI y fijar límite mensual (\$5-\$10 USD) en `platform.openai.com`.
+        *   `[ ] 🟡 Producción:` Desplegar Supabase Edge Function `supabase/functions/parse-crew-message`.
+        *   `[ ] 🟢 Replicación:` Aplicar el Filtro en Cascada (Barco ➔ Contratista ➔ OT en Ejecución) en Materiales (M4) y Terceros.
+    *   Automatización del tipo de cambio quincenal y Sábana Quincenal estilo Excel.
 *   **Sprint 4: Activos y Personal (M1 y M2):**
     *   Ficha técnica dinámica del barco.
     *   Carga de operarios, terceros y tarifarios.

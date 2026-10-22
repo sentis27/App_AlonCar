@@ -24,10 +24,32 @@ import {
   AlertTriangle,
   Briefcase,
   Check,
-  FileText
+  FileText,
+  Sparkles,
+  Unlock,
+  Lock,
+  Scissors,
+  Link2,
+  Layers,
+  Zap,
+  RefreshCw
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import {
+  OFFICIAL_RUBROS_CATALOG,
+  canonicalizeRubroLabel,
+  parseWorkerTrades,
+  tabulateCrewMessage,
+  normalizeText
+} from '../lib/aiLaborEngine'
+
+// Muestra solo el nombre del barco, sin prefijos como "Astillero Alon Car" o "ASTILLERO"
+const cleanShipName = (name = '') =>
+  String(name || '')
+    .replace(/^\s*astillero\s+alon\s*car\s*[-–:]?\s*/i, '')
+    .replace(/^\s*astillero\s*[-–:]?\s*/i, '')
+    .trim() || String(name || '')
 
 // Nómina oficial de Personal Propio del Astillero (Regla: 9 hs diarias obligatorias, salvo Feriado que son 8 hs)
 const NOMINA_ASTILLERO_BASE = [
@@ -222,6 +244,25 @@ export default function LaborLogs() {
   const [reviewModalSearch, setReviewModalSearch] = useState('')
   const [dbWorkers, setDbWorkers] = useState([])
 
+  // =========================================================
+  // ESTADOS DEL TABULADOR DE PARTES DE GRUPO & PUERTA EMERGENCIA RUBRO
+  // =========================================================
+  const [isTabulatorOpen, setIsTabulatorOpen] = useState(true)
+  const [rawReportText, setRawReportText] = useState('')
+  const [isTabulating, setIsTabulating] = useState(false)
+  const [tabulatorSummary, setTabulatorSummary] = useState(null)
+  const [isMultiOtMode, setIsMultiOtMode] = useState(false)
+  const [openRubroEmergencyIds, setOpenRubroEmergencyIds] = useState(new Set())
+
+  const toggleRubroEmergency = (rowId) => {
+    setOpenRubroEmergencyIds(prev => {
+      const next = new Set(prev)
+      if (next.has(rowId)) next.delete(rowId)
+      else next.add(rowId)
+      return next
+    })
+  }
+
   // Modal interactivo para Observación / Duda de Auditoría en Estado R o Descargo RR
   const [reviewReasonModal, setReviewReasonModal] = useState({
     isOpen: false,
@@ -326,14 +367,6 @@ export default function LaborLogs() {
 
     const upper = newContractor.toUpperCase()
     if (upper.startsWith('ASTILLERO')) {
-      let suggestedRubro = ''
-      if (upper.includes('CALDERERIA')) suggestedRubro = 'Calderería'
-      else if (upper.includes('RASCHINAJE')) suggestedRubro = 'Raschinear'
-      else if (upper.includes('MECANICA')) suggestedRubro = 'Mecánica'
-      else if (upper.includes('CARPINTERIA')) suggestedRubro = 'Carpintería naval'
-      else if (upper.includes('ELECTRICIDAD')) suggestedRubro = 'Electricidad'
-      else if (upper.includes('PINTURA')) suggestedRubro = 'Pintura'
-
       setOperariosRows(prev => {
         const onlyAstillero = prev.filter(r => r.worker_type === 'Astillero')
         if (onlyAstillero.length === 0) {
@@ -342,7 +375,8 @@ export default function LaborLogs() {
               id: Date.now(),
               worker_name: '',
               worker_type: 'Astillero',
-              rubro: suggestedRubro || 'General',
+              default_rubro: '',
+              rubro: '',
               hours_normal: 9,
               hours_extra_50: 0,
               hours_extra_100: 0,
@@ -352,8 +386,7 @@ export default function LaborLogs() {
         }
         return onlyAstillero.map(row => ({
           ...row,
-          worker_type: 'Astillero',
-          rubro: suggestedRubro || row.rubro || 'General'
+          worker_type: 'Astillero'
         }))
       })
     } else {
@@ -361,12 +394,23 @@ export default function LaborLogs() {
         TALLERES_FRECUENTES.includes(newContractor) ||
         dbWorkers.some(w => w.work_group === newContractor && w.admin_center === 'TALLER')
       const targetType = isTaller ? 'Taller' : 'Contratista'
+
+      // Buscar los rubros habilitados del contratista en el Padrón (Soporte Multi-Rubro)
+      const matchedContractor = dbWorkers.find(
+        w => w.work_group === newContractor || w.name === newContractor
+      )
+      const tradesInfo = parseWorkerTrades(
+        matchedContractor?.trade || (isTaller ? 'Tornería' : 'Servicio Contratista')
+      )
+
       setOperariosRows([
         {
           id: Date.now(),
           worker_name: newContractor,
           worker_type: targetType,
-          rubro: isTaller ? 'Taller Externo' : 'Servicio Contratista',
+          default_rubro: tradesInfo.primaryLabel,
+          allowed_trades: tradesInfo.labelList,
+          rubro: tradesInfo.primaryLabel,
           hours_normal: 8,
           hours_extra_50: 0,
           hours_extra_100: 0,
@@ -394,11 +438,12 @@ export default function LaborLogs() {
     if (!selectedShipId || !selectedContractorGroup) return []
 
     const matchingWoIds = new Set()
+    const isSelectAst = selectedContractorGroup.toUpperCase().startsWith('ASTILLERO')
     activeWorkItemsForShip.forEach(item => {
       const list = item.contractors || []
       const isMatch =
         list.includes(selectedContractorGroup) ||
-        (selectedContractorGroup === 'ASTILLERO.GENERAL' && list.length === 0)
+        (isSelectAst && (list.length === 0 || list.some(c => String(c).toUpperCase().startsWith('ASTILLERO'))))
       if (isMatch) {
         matchingWoIds.add(item.work_order_id)
       }
@@ -420,12 +465,13 @@ export default function LaborLogs() {
   // Trabajos específicos ("En ejecución") dentro de la OT seleccionada para ese contratista (DEC-016 Ayuda Memoria)
   const activeItemsForSelectedWo = useMemo(() => {
     if (!selectedWorkOrderId || !selectedContractorGroup) return []
+    const isSelectAst = selectedContractorGroup.toUpperCase().startsWith('ASTILLERO')
     return activeWorkItemsForShip.filter(item => {
       if (item.work_order_id !== selectedWorkOrderId) return false
       const list = item.contractors || []
       return (
         list.includes(selectedContractorGroup) ||
-        (selectedContractorGroup === 'ASTILLERO.GENERAL' && list.length === 0)
+        (isSelectAst && (list.length === 0 || list.some(c => String(c).toUpperCase().startsWith('ASTILLERO'))))
       )
     })
   }, [activeWorkItemsForShip, selectedWorkOrderId, selectedContractorGroup])
@@ -467,16 +513,16 @@ export default function LaborLogs() {
     const forcedType = isAstillero ? 'Astillero' : (isTaller ? 'Taller' : 'Contratista')
 
     let defaultRubro = preset.rubro || ''
-    if (!defaultRubro && isAstillero && selectedContractorGroup) {
-      const upper = selectedContractorGroup.toUpperCase()
-      if (upper.includes('CALDERERIA')) defaultRubro = 'Calderería'
-      else if (upper.includes('RASCHINAJE')) defaultRubro = 'Raschinear'
-      else if (upper.includes('MECANICA')) defaultRubro = 'Mecánica'
-      else if (upper.includes('CARPINTERIA')) defaultRubro = 'Carpintería naval'
-      else if (upper.includes('ELECTRICIDAD')) defaultRubro = 'Electricidad'
-      else if (upper.includes('PINTURA')) defaultRubro = 'Pintura'
-    } else if (!defaultRubro && !isAstillero) {
-      defaultRubro = isTaller ? 'Taller Externo' : 'Servicio Contratista'
+    let allowedTrades = ['General']
+    if (!isAstillero) {
+      const matchedContractor = dbWorkers.find(
+        w => w.work_group === selectedContractorGroup || w.name === selectedContractorGroup
+      )
+      const tradesInfo = parseWorkerTrades(
+        matchedContractor?.trade || (isTaller ? 'Tornería' : 'Servicio Contratista')
+      )
+      if (!defaultRubro) defaultRubro = tradesInfo.primaryLabel
+      allowedTrades = tradesInfo.labelList
     }
 
     setOperariosRows(prev => [
@@ -485,7 +531,12 @@ export default function LaborLogs() {
         id: Date.now() + Math.random(), 
         worker_name: preset.worker_name || (isAstillero ? '' : selectedContractorGroup), 
         worker_type: forcedType, 
+        default_rubro: defaultRubro,
+        allowed_trades: allowedTrades,
         rubro: defaultRubro, 
+        ship_id: preset.ship_id || selectedShipId || '',
+        work_order_id: preset.work_order_id || selectedWorkOrderId || '',
+        work_item_id: preset.work_item_id || selectedWorkItemId || '',
         hours_normal: preset.hours_normal ?? defaultNorm, 
         hours_extra_50: preset.hours_extra_50 ?? 0, 
         hours_extra_100: preset.hours_extra_100 ?? 0, 
@@ -509,15 +560,20 @@ export default function LaborLogs() {
         if (field === 'rubro' && updated.worker_type === 'Astillero') {
           if (value.toLowerCase().includes('feriado')) {
             updated.hours_normal = 8
-          } else if (r.rubro.toLowerCase().includes('feriado') && updated.hours_normal === 8) {
+          } else if ((r.rubro || '').toLowerCase().includes('feriado') && updated.hours_normal === 8) {
             updated.hours_normal = 9
           }
+          updated.is_loaned_rubro = Boolean(
+            updated.default_rubro &&
+            updated.default_rubro !== 'General' &&
+            normalizeText(value) !== normalizeText(updated.default_rubro)
+          )
         }
 
         // Si cambia el tipo a Astillero
         if (field === 'worker_type') {
           if (value === 'Astillero') {
-            updated.hours_normal = updated.rubro.toLowerCase().includes('feriado') ? 8 : 9
+            updated.hours_normal = (updated.rubro || '').toLowerCase().includes('feriado') ? 8 : 9
           }
         }
 
@@ -526,6 +582,224 @@ export default function LaborLogs() {
       return r
     }))
   }
+
+  // =========================================================
+  // TABULADOR INTELIGENTE DE MENSAJES DE CUADRILLA (IA + LOCAL)
+  // =========================================================
+  const EXAMPLE_CREW_REPORT =
+    'Luciano Tritón reguillas cuvierta protección de bacha y colocación de parrilla andres y diego soldadura parches trancalin don Antonio 9hr franco y enzo higinio subir portones y matafuego vuoso 2hr 2hr maniobra para prueba navegación  5 hr en don Antonio bodega sacar porurietano y comentando'
+
+  const handleTabulateMessage = async () => {
+    if (!rawReportText.trim()) {
+      setStatusMessage({ type: 'error', text: 'Pegá o escribí el parte de trabajo de la cuadrilla para poder tabularlo.' })
+      return
+    }
+
+    setIsTabulating(true)
+    setStatusMessage(null)
+
+    try {
+      const effectiveWorkers = dbWorkers.length > 0
+        ? dbWorkers
+        : NOMINA_ASTILLERO_BASE.map(w => ({
+            name: w.name,
+            trade: w.defaultRubro,
+            work_group: 'ASTILLERO',
+            admin_center: 'ASTILLERO',
+            status: 'ACTIVO'
+          }))
+
+      const result = await tabulateCrewMessage(rawReportText, {
+        workers: effectiveWorkers,
+        ships,
+        workOrders,
+        workItems,
+        dateLogged,
+        userEmail: user?.email || 'Operador'
+      })
+
+      if (result.rows && result.rows.length > 0) {
+        setOperariosRows(result.rows)
+        setIsMultiOtMode(true)
+        setTabulatorSummary({
+          summary: result.summary,
+          engineUsed: result.engineUsed,
+          promptVersion: result.promptVersion,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          llmError: result.llmError
+        })
+        setStatusMessage({
+          type: 'success',
+          text: `⚡ Parte tabulado con éxito (${result.rows.length} filas en Cuadrilla). Revisá las etiquetas amarillas si hay homónimos u OTs por confirmar.`
+        })
+      } else {
+        setStatusMessage({
+          type: 'info',
+          text: 'No se detectaron filas de operarios en el mensaje. Revisá los nombres e intentá de nuevo.'
+        })
+      }
+    } catch (err) {
+      console.error('Error al tabular mensaje:', err)
+      setStatusMessage({ type: 'error', text: `Error al tabular mensaje: ${err.message}` })
+    } finally {
+      setIsTabulating(false)
+    }
+  }
+
+  // Alta rápida en 1 clic si un barco del mensaje aún no está en la base
+  const handleQuickCreateShipAndWoForRow = async (row) => {
+    const shipNameClean = (row.ship_name_raw || '').trim().toUpperCase()
+    if (!shipNameClean) return
+
+    try {
+      setSubmitting(true)
+      // 1. Verificar o crear Barco
+      let targetShip = ships.find(s => normalizeText(s.name) === normalizeText(shipNameClean))
+      if (!targetShip) {
+        const { data: shipData, error: shipErr } = await supabase
+          .from('ships')
+          .insert([{ name: shipNameClean, client_name: shipNameClean, status: 'En Obra' }])
+          .select()
+
+        if (shipErr) throw shipErr
+        targetShip = shipData?.[0]
+        if (targetShip) {
+          setShips(prev => [...prev, targetShip])
+        }
+      }
+
+      if (!targetShip) return
+
+      // 2. Crear OT-1 En ejecución habilitando ASTILLERO.GENERAL
+      const existingShipWos = workOrders.filter(w => w.ship_id === targetShip.id)
+      const nextNum = existingShipWos.length + 1
+      const otCode = `OT-${nextNum}`
+      const otTitle = row.notes ? row.notes.slice(0, 45) : `Trabajos Generales ${row.rubro || 'Astillero'}`
+
+      const { data: woData, error: woErr } = await supabase
+        .from('work_orders')
+        .insert([
+          {
+            ship_id: targetShip.id,
+            ot_number: otCode,
+            title: otTitle,
+            description: row.notes || otTitle,
+            status: 'En ejecución'
+          }
+        ])
+        .select()
+
+      if (woErr) throw woErr
+      const createdWo = woData?.[0]
+
+      let createdItem = null
+      if (createdWo) {
+        setWorkOrders(prev => [...prev, createdWo])
+        const rubroUpper = normalizeText(row.rubro || 'GENERAL')
+        const contractorCode = rubroUpper.includes('CALDER') || rubroUpper.includes('SOLDAD')
+          ? 'ASTILLERO.CALDERERIA'
+          : rubroUpper.includes('RASCHIN')
+          ? 'ASTILLERO.RASCHINAJE'
+          : 'ASTILLERO.GENERAL'
+
+        const { data: itemData } = await supabase
+          .from('work_items')
+          .insert([
+            {
+              work_order_id: createdWo.id,
+              description: row.notes || otTitle,
+              status: 'En ejecución',
+              contractors: [contractorCode],
+              work_type: 'HORA'
+            }
+          ])
+          .select()
+
+        createdItem = itemData?.[0] || null
+        if (createdItem) {
+          setWorkItems(prev => [...prev, createdItem])
+        }
+      }
+
+      // 3. Asignar el nuevo barco y OT a todas las filas del borrador que mencionaban ese barco
+      setOperariosRows(prev =>
+        prev.map(r => {
+          if (normalizeText(r.ship_name_raw) === normalizeText(shipNameClean)) {
+            return {
+              ...r,
+              ship_id: targetShip.id,
+              work_order_id: createdWo?.id || '',
+              work_item_id: createdItem?.id || '',
+              ot_match_status: 'single_enabled',
+              needs_review: false
+            }
+          }
+          return r
+        })
+      )
+
+      setStatusMessage({
+        type: 'success',
+        text: `Barco "${shipNameClean}" y ${otCode} ("${otTitle}") creados y vinculados automáticamente en la Cuadrilla.`
+      })
+    } catch (err) {
+      console.error('Error creando barco/OT rápida:', err)
+      setStatusMessage({ type: 'error', text: `No se pudo crear barco/OT: ${err.message}` })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Consolidar manualmente filas de la misma OT y mismo operario si la descripción lo permite
+  const handleConsolidateSameOtRows = () => {
+    setOperariosRows(prev => {
+      const map = new Map()
+      prev.forEach(r => {
+        const effShip = r.ship_id || r.ship_name_raw || selectedShipId
+        const effWo = r.work_order_id || selectedWorkOrderId
+        const key = `${r.worker_name}__${effShip}__${effWo}__${r.rubro}`
+        if (r.worker_name && effWo && map.has(key)) {
+          const existing = map.get(key)
+          existing.hours_normal = (parseFloat(existing.hours_normal) || 0) + (parseFloat(r.hours_normal) || 0)
+          existing.hours_extra_50 = (parseFloat(existing.hours_extra_50) || 0) + (parseFloat(r.hours_extra_50) || 0)
+          existing.hours_extra_100 = (parseFloat(existing.hours_extra_100) || 0) + (parseFloat(r.hours_extra_100) || 0)
+          if (r.notes && !existing.notes.includes(r.notes)) {
+            existing.notes = existing.notes ? `${existing.notes} + ${r.notes}` : r.notes
+          }
+        } else {
+          map.set(r.worker_name && effWo ? key : `row_${r.id}`, { ...r })
+        }
+      })
+      return Array.from(map.values())
+    })
+    setStatusMessage({
+      type: 'info',
+      text: 'Se consolidaron las subtareas que compartían exactamente el mismo Operario, Barco, OT y Rubro.'
+    })
+  }
+
+  // Resumen de horas del día por operario en el borrador actual (Control 9 hs Astillero)
+  const draftWorkerSummary = useMemo(() => {
+    const map = new Map()
+    operariosRows.forEach(r => {
+      const name = (r.worker_name || '').trim()
+      if (!name) return
+      if (!map.has(name)) {
+        map.set(name, {
+          name,
+          type: r.worker_type || 'Astillero',
+          parts: [],
+          total: 0
+        })
+      }
+      const entry = map.get(name)
+      const h = (parseFloat(r.hours_normal) || 0) + (parseFloat(r.hours_extra_50) || 0) + (parseFloat(r.hours_extra_100) || 0)
+      entry.parts.push(h)
+      entry.total += h
+    })
+    return Array.from(map.values())
+  }, [operariosRows])
 
   // Replicar Cuadrilla
   const replicateYesterday = () => {
@@ -540,11 +814,11 @@ export default function LaborLogs() {
       }
     } else {
       setOperariosRows([
-        { id: 1, worker_name: 'Carlos Peralta', worker_type: 'Astillero', rubro: 'Soldadura', hours_normal: 8, hours_extra_50: 1, hours_extra_100: 0, notes: 'Reparación chapa fondo' },
-        { id: 2, worker_name: 'Lucas Benítez', worker_type: 'Astillero', rubro: 'Pintura', hours_normal: 8, hours_extra_50: 1, hours_extra_100: 0, notes: 'Arenado y esquema anticorrosivo' },
-        { id: 3, worker_name: 'Aldo', worker_type: 'Contratista', rubro: 'Calderería', hours_normal: 6, hours_extra_50: 0, hours_extra_100: 0, notes: 'Corte y curvado de perfiles' },
+        { id: 1, worker_name: 'Toledo, Luciano', worker_type: 'Astillero', default_rubro: 'Calderería', rubro: 'Calderería', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: 'Rejillas cubierta y colocación de parrilla' },
+        { id: 2, worker_name: 'Gari, Mario Andres', worker_type: 'Astillero', default_rubro: 'Calderería', rubro: 'Soldadura', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: 'Soldadura parches trancalín' },
+        { id: 3, worker_name: 'Rodriguez, Diego', worker_type: 'Astillero', default_rubro: 'Calderería', rubro: 'Soldadura', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: 'Soldadura parches trancalín' },
       ])
-      setStatusMessage({ type: 'info', text: 'Se cargó una cuadrilla de ejemplo (Carlos, Lucas, Aldo).' })
+      setStatusMessage({ type: 'info', text: 'Se cargó una cuadrilla de ejemplo.' })
     }
     setTimeout(() => setStatusMessage(null), 4000)
   }
@@ -555,19 +829,23 @@ export default function LaborLogs() {
   const totalHoras100 = operariosRows.reduce((acc, r) => acc + (parseFloat(r.hours_extra_100) || 0), 0)
   const totalHorasGenerales = totalHorasNormales + totalHoras50 + totalHoras100
 
-  // Guardar Lote en Supabase
+  // Guardar Lote en Supabase (Soporta modo OT única de cabecera y modo Multi-Barco / Multi-OT por fila)
   const handleSubmitBatch = async (e) => {
     e.preventDefault()
     setStatusMessage(null)
 
-    if (!selectedWorkOrderId) {
-      setStatusMessage({ type: 'error', text: 'Debe seleccionar un Contratista habilitado y una Orden de Trabajo en ejecución.' })
+    const rowsMissingWo = operariosRows.filter(r => !(r.work_order_id || selectedWorkOrderId))
+    if (rowsMissingWo.length > 0) {
+      setStatusMessage({
+        type: 'error',
+        text: `Hay ${rowsMissingWo.length} fila(s) sin Orden de Trabajo asignada. Seleccioná una OT habilitada o usá el botón "+ Crear Barco/OT" en la fila correspondiente.`
+      })
       return
     }
 
     const rowsWithErrors = operariosRows.filter(r => !r.worker_name.trim() || !r.rubro.trim())
     if (rowsWithErrors.length > 0) {
-      setStatusMessage({ type: 'error', text: 'Complete Nombre y Rubro para todas las filas.' })
+      setStatusMessage({ type: 'error', text: 'Complete Operario y Rubro para todas las filas.' })
       return
     }
 
@@ -582,9 +860,13 @@ export default function LaborLogs() {
         const h100 = parseFloat(row.hours_extra_100) || 0
         const hTotal = hNorm + h50 + h100
 
+        const targetWoId = row.work_order_id || selectedWorkOrderId
+        const targetItemId = row.work_item_id || currentWorkItem?.id || null
+        const hasUnresolvedAlert = Boolean(row.needs_review)
+
         return {
-          work_order_id: selectedWorkOrderId,
-          work_item_id: currentWorkItem?.id || null,
+          work_order_id: targetWoId,
+          work_item_id: targetItemId,
           hours_worked: hTotal,
           hours_normal: hNorm,
           hours_extra_50: h50,
@@ -596,7 +878,8 @@ export default function LaborLogs() {
           work_type: workType,
           cost_center: 'CLIENTE',
           notes: row.notes || null,
-          approval_status: 'Aprobado'
+          approval_status: hasUnresolvedAlert ? 'R' : 'Aprobado',
+          review_reason: hasUnresolvedAlert ? (row.review_warnings || []).join(' | ') : null
         }
       })
 
@@ -605,12 +888,13 @@ export default function LaborLogs() {
 
       setStatusMessage({ 
         type: 'success', 
-        text: `¡Lote guardado! Se registraron ${operariosRows.length} operarios (${totalHorasGenerales} hs totales: ${totalHorasNormales}h normales, ${totalHoras50}h al 50%, ${totalHoras100}h al 100%) en ${currentWorkOrder?.ot_number ? `${currentWorkOrder.ot_number} - ` : ''}${currentWorkOrder?.title || 'la OT'}.` 
+        text: `¡Lote guardado! Se registraron ${operariosRows.length} imputaciones (${totalHorasGenerales} hs totales: ${totalHorasNormales}h normales, ${totalHoras50}h al 50%, ${totalHoras100}h al 100%).` 
       })
 
       setOperariosRows([
-        { id: Date.now(), worker_name: '', worker_type: 'Astillero', rubro: '', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: '' }
+        { id: Date.now(), worker_name: '', worker_type: 'Astillero', default_rubro: '', rubro: '', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: '' }
       ])
+      setTabulatorSummary(null)
 
       loadInitialData()
     } catch (err) {
@@ -1206,19 +1490,172 @@ export default function LaborLogs() {
       {/* ========================================================= */}
       {activeTab === 'carga' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-slate-400 text-xs">
-              Imputá múltiples operarios trabajando en la misma OT con desglose de <strong className="text-white">Horas Normales</strong> y <strong className="text-cyan-300">Horas Extras (50% / 100%)</strong>.
+              Imputá múltiples operarios por cuadrilla o tabulá un parte grupal con desglose de <strong className="text-white">Horas Normales</strong>, <strong className="text-cyan-300">Extras (50% / 100%)</strong> y <strong className="text-amber-300">Puerta de Emergencia de Rubro</strong>.
             </p>
-            <button
-              type="button"
-              onClick={replicateYesterday}
-              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition-all flex items-center gap-2 cursor-pointer shadow-sm"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Replicar Cuadrilla Anterior</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsTabulatorOpen(prev => !prev)}
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg border transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
+                  isTabulatorOpen
+                    ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
+                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{isTabulatorOpen ? 'Ocultar Tabulador de Mensajes' : '⚡ Tabular Parte por Grupo'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMultiOtMode(prev => !prev)}
+                className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
+                  isMultiOtMode
+                    ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+                }`}
+                title="Permite que cada fila de la cuadrilla apunte a un Barco y OT diferente en el mismo lote"
+              >
+                <Layers className="w-3.5 h-3.5 text-purple-400" />
+                <span>{isMultiOtMode ? 'Modo Multi-Barco / Multi-OT: ACTIVO' : 'Activar Multi-Barco por Fila'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={replicateYesterday}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Replicar Cuadrilla Anterior</span>
+              </button>
+            </div>
           </div>
+
+          {/* ========================================================= */}
+          {/* PANEL: TABULADOR INTELIGENTE DE PARTES POR GRUPO          */}
+          {/* ========================================================= */}
+          {isTabulatorOpen && (
+            <div className="bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-cyan-950/30 border border-cyan-500/30 rounded-2xl p-5 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-xs uppercase tracking-wider font-extrabold text-cyan-300 flex items-center gap-2">
+                      <span>⚡ Tabulador Inteligente de Partes por Grupo (WhatsApp / Audio Transcrito)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700/50 font-mono">
+                        Prioridad División E5/E6
+                      </span>
+                    </h2>
+                    <p className="text-[11px] text-slate-400">
+                      Pegá el reporte corrido del jefe de obra o capataz. El motor separa operarios en paralelo, infiere el rubro de la tarea real, cruza contra OTs en ejecución y pre-carga la Cuadrilla para que solo ajustes lo mínimo.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setRawReportText(EXAMPLE_CREW_REPORT)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold cursor-pointer transition-all"
+                  >
+                    📋 Cargar Ejemplo Real
+                  </button>
+                  {rawReportText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRawReportText('')
+                        setTabulatorSummary(null)
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700 text-[11px] cursor-pointer"
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <textarea
+                  rows={3}
+                  value={rawReportText}
+                  onChange={(e) => setRawReportText(e.target.value)}
+                  placeholder="Ej: Luciano Tritón reguillas cuvierta protección de bacha y colocación de parrilla andres y diego soldadura parches trancalin don Antonio 9hr franco y enzo higinio subir portones y matafuego vuoso 2hr 2hr maniobra para prueba navegación 5 hr en don Antonio bodega sacar porurietano..."
+                  className="w-full bg-slate-950/90 border border-slate-700/90 focus:border-cyan-400 rounded-xl p-3.5 text-xs text-white placeholder-slate-500 focus:outline-none font-mono leading-relaxed"
+                />
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                    <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300">
+                      ✔ Desglosa <strong>&ldquo;Andrés y Diego 9h&rdquo;</strong> &rarr; 9h c/u (RN-03)
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300">
+                      ✔ Corrige jerga naval (<em>trancalín, poliuretano, cubierta</em>)
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300">
+                      ✔ Prioriza dividir subtareas salvo que la OT cubra ambas
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {operariosRows.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={handleConsolidateSameOtRows}
+                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all"
+                        title="Unifica filas que tengan exactamente el mismo Operario, Barco, OT y Rubro sumando sus horas"
+                      >
+                        <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Consolidar Misma OT</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={isTabulating || !rawReportText.trim()}
+                      onClick={handleTabulateMessage}
+                      className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold text-xs shadow-[0_0_20px_rgba(0,242,254,0.25)] flex items-center gap-2 cursor-pointer disabled:opacity-50 transition-all"
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span>{isTabulating ? 'Analizando y Tabulando...' : '⚡ Tabular a Cuadrilla'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Resumen de auditoría del tabulado */}
+              {tabulatorSummary && (
+                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-cyan-500/30 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 font-bold font-mono text-[11px]">
+                      Motor: {tabulatorSummary.engineUsed === 'openai' ? 'OpenAI GPT-4o-mini' : 'Parser Naval Determinístico Local'}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                      Filas generadas: <strong className="text-white">{tabulatorSummary.summary?.totalRows || operariosRows.length}</strong>
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-700/40 text-emerald-300">
+                      OK automáticas: <strong>{tabulatorSummary.summary?.readyRows || 0}</strong>
+                    </span>
+                    {(tabulatorSummary.summary?.reviewRows || 0) > 0 && (
+                      <span className="px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-600/50 text-amber-300 font-semibold">
+                        ⚠️ Requieren pulido mínimo: {tabulatorSummary.summary.reviewRows}
+                      </span>
+                    )}
+                    {(tabulatorSummary.summary?.loanedRubroCount || 0) > 0 && (
+                      <span className="px-2.5 py-1 rounded-lg bg-purple-950/70 border border-purple-600/50 text-purple-300 font-semibold">
+                        🔄 Préstamos de rubro detectados: {tabulatorSummary.summary.loanedRubroCount}
+                      </span>
+                    )}
+                  </div>
+                  {tabulatorSummary.llmError && (
+                    <span className="text-[11px] text-amber-300 font-mono">
+                      Fallback local activo ({tabulatorSummary.llmError})
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <form onSubmit={handleSubmitBatch} className="space-y-6">
             {/* CABECERA OT CON FILTRO EN CASCADA (1. BARCO -> 2. CONTRATISTA HABILITADO -> 3. OT EN EJECUCIÓN) */}
@@ -1227,7 +1664,7 @@ export default function LaborLogs() {
                 <div className="flex items-center gap-2.5">
                   <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
                     <ClipboardList className="w-4 h-4" />
-                    Orden de Trabajo & Destino (Filtro de Habilitación en Cascada)
+                    Orden de Trabajo & Destino Por Defecto (Filtro de Habilitación en Cascada)
                   </h2>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-700/50 font-bold">
                     Solo OTs &ldquo;En ejecución&rdquo;
@@ -1265,7 +1702,7 @@ export default function LaborLogs() {
                   >
                     {ships.map(ship => (
                       <option key={ship.id} value={ship.id} className="bg-slate-900">
-                        {ship.name} ({ship.client_name || 'Astillero'})
+                        {cleanShipName(ship.name)}
                       </option>
                     ))}
                   </select>
@@ -1415,7 +1852,7 @@ export default function LaborLogs() {
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>
-                      No hay Órdenes de Trabajo en estado <strong>&ldquo;En ejecución&rdquo;</strong> habilitadas para este barco/contratista. Para cargar horas, primero habilitá el contratista o pasá el trabajo a &ldquo;En ejecución&rdquo;.
+                      No hay Órdenes de Trabajo en estado <strong>&ldquo;En ejecución&rdquo;</strong> habilitadas para este barco/contratista. Podés elegir otro barco en cada fila (Modo Multi-Barco) o habilitar la OT en Órdenes de Trabajo.
                     </span>
                   </div>
                   <Link
@@ -1434,22 +1871,23 @@ export default function LaborLogs() {
                 <div>
                   <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
                     <Users className="w-4 h-4" />
-                    Cuadrilla de Trabajo — {selectedContractorGroup || 'Sin contratista habilitado'}
+                    <span>
+                      Cuadrilla de Trabajo — {isMultiOtMode ? 'Modo Multi-Barco / Multi-OT Activo' : (selectedContractorGroup || 'Sin contratista habilitado')}
+                    </span>
                   </h2>
                   <p className="text-[11px] text-slate-400">
-                    {isSelectedGroupAstillero
-                      ? 'Seleccioná los operarios del Astillero habilitados y definí horas normales y extras (50% / 100%).'
-                      : `Imputación restringida exclusivamente a ${selectedContractorGroup} según habilitación de la OT.`}
+                    {isSelectedGroupAstillero || isMultiOtMode
+                      ? 'Habilitación abierta de Astillero: podés elegir cualquier operario del padrón y ajustar su rubro con la Puerta de Emergencia (🔓 Ajustar) cuando haga préstamos operativos.'
+                      : `Imputación para ${selectedContractorGroup}. Podés alternar entre sus rubros habilitados del Padrón o abrir la Puerta de Emergencia.`}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {isSelectedGroupAstillero ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {isSelectedGroupAstillero || isMultiOtMode ? (
                     <button
                       type="button"
-                      disabled={!selectedWorkOrderId}
                       onClick={() => addOperarioRow({ worker_type: 'Astillero' })}
-                      className="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                      className="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>+ Operario Astillero (9h)</span>
@@ -1457,9 +1895,8 @@ export default function LaborLogs() {
                   ) : (
                     <button
                       type="button"
-                      disabled={!selectedWorkOrderId}
                       onClick={() => addOperarioRow({ worker_name: selectedContractorGroup, hours_normal: 8 })}
-                      className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                      className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                     >
                       <Briefcase className="w-3.5 h-3.5" />
                       <span>+ Fila {selectedContractorGroup}</span>
@@ -1468,19 +1905,66 @@ export default function LaborLogs() {
                 </div>
               </div>
 
+              {/* BARRA DE CONTROL DE JORNADA DEL BORRADOR POR OPERARIO (REGLA 9 HS ASTILLERO) */}
+              {draftWorkerSummary.length > 0 && (
+                <div className="p-3 rounded-xl bg-slate-950/90 border border-slate-800/90 flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                    Control Jornada en Cuadrilla:
+                  </span>
+                  {draftWorkerSummary.map(item => {
+                    const isAstillero = item.type === 'Astillero'
+                    const isExact9 = item.total === 9
+                    const isUnder9 = isAstillero && item.total < 9
+                    const isOver9 = isAstillero && item.total > 9
+                    return (
+                      <span
+                        key={item.name}
+                        className={`text-[11px] px-2.5 py-1 rounded-lg border font-mono flex items-center gap-1.5 ${
+                          !isAstillero
+                            ? 'bg-amber-950/40 border-amber-700/40 text-amber-200'
+                            : isExact9
+                            ? 'bg-emerald-950/50 border-emerald-700/50 text-emerald-300'
+                            : isUnder9
+                            ? 'bg-rose-950/60 border-rose-700/60 text-rose-300'
+                            : 'bg-cyan-950/60 border-cyan-700/60 text-cyan-300'
+                        }`}
+                      >
+                        <strong className="font-sans">{item.name}:</strong>
+                        <span>
+                          {item.parts.length > 1 ? `${item.parts.join('h + ')}h = ` : ''}
+                          <strong>{item.total}h</strong>
+                        </span>
+                        {isAstillero && (
+                          <span>
+                            {isExact9 ? '✅' : isUnder9 ? '⚠️ (<9h)' : isOver9 ? '⚡ (>9h)' : ''}
+                          </span>
+                        )}
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+
               {/* FILAS DE LA CUADRILLA */}
               <div className="overflow-x-auto pb-1">
-                <div className="min-w-[960px] space-y-2.5">
+                <div className={isMultiOtMode ? 'min-w-[1220px] space-y-2.5' : 'min-w-[980px] space-y-2.5'}>
                   {/* Encabezado fijo en escritorio */}
-                  <div className="grid grid-cols-[125px_minmax(180px,1.5fr)_minmax(140px,1.2fr)_75px_75px_75px_65px_minmax(130px,1fr)_40px] gap-2.5 px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <div
+                    className={`grid ${
+                      isMultiOtMode
+                        ? 'grid-cols-[105px_minmax(190px,1.4fr)_minmax(180px,1.3fr)_minmax(210px,1.6fr)_68px_68px_68px_60px_minmax(150px,1.2fr)_36px]'
+                        : 'grid-cols-[115px_minmax(200px,1.5fr)_minmax(190px,1.4fr)_72px_72px_72px_65px_minmax(150px,1.1fr)_38px]'
+                    } gap-2.5 px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400`}
+                  >
                     <div>Tipo</div>
-                    <div>Operario / Prestador Habilitado</div>
-                    <div>Rubro (Manual)</div>
+                    <div>Operario / Prestador</div>
+                    <div>Rubro (Titular / 🔓 Emergencia)</div>
+                    {isMultiOtMode && <div>Barco & OT Habilitada (Por Fila)</div>}
                     <div className="text-center">Normales</div>
                     <div className="text-center text-cyan-400">Ext. 50%</div>
                     <div className="text-center text-amber-400">Ext. 100%</div>
                     <div className="text-center text-primary">Total</div>
-                    <div>Observaciones</div>
+                    <div>Tarea / Observaciones</div>
                     <div className="text-center"></div>
                   </div>
 
@@ -1490,174 +1974,447 @@ export default function LaborLogs() {
                     const h100 = parseFloat(row.hours_extra_100) || 0
                     const totalRow = hNorm + h50 + h100
 
+                    const isRowEmergencyOpen = openRubroEmergencyIds.has(row.id) || Boolean(row.is_loaned_rubro)
+                    const hasLoanedRubro = Boolean(
+                      row.worker_type === 'Astillero' &&
+                        row.default_rubro &&
+                        row.default_rubro !== 'General' &&
+                        row.rubro &&
+                        normalizeText(row.rubro) !== normalizeText(row.default_rubro)
+                    )
+
+                    // OTs en ejecución para el barco de la fila (Modo Multi-Barco / Multi-OT)
+                    const effectiveRowShipId = row.ship_id || selectedShipId
+                    const rowEnabledWorkOrders = workOrders.filter(wo => {
+                      if (String(wo.ship_id) !== String(effectiveRowShipId)) return false
+                      const itemsForWo = workItems.filter(
+                        i => String(i.work_order_id) === String(wo.id) && i.status === 'En ejecución'
+                      )
+                      return itemsForWo.length > 0
+                    })
+
                     return (
-                      <div 
+                      <div
                         key={row.id}
-                        className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 grid grid-cols-[125px_minmax(180px,1.5fr)_minmax(140px,1.2fr)_75px_75px_75px_65px_minmax(130px,1fr)_40px] gap-2.5 items-center hover:border-slate-700 transition-colors"
+                        className={`p-3 rounded-xl border transition-colors ${
+                          row.needs_review
+                            ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-400/60'
+                            : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                        }`}
                       >
-                        {/* Nº y Tipo (Bloqueado según el grupo habilitado en Paso 2) */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="w-5 h-5 shrink-0 rounded bg-slate-800 text-slate-300 font-mono text-[11px] font-bold flex items-center justify-center">
-                            {index + 1}
-                          </span>
-                          <span
-                            className={`w-[96px] text-[10px] font-bold px-2 py-1.5 rounded border text-center truncate ${
-                              row.worker_type === 'Astillero'
-                                ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
-                                : row.worker_type === 'Taller'
-                                ? 'bg-purple-950 text-purple-300 border-purple-800'
-                                : 'bg-amber-950 text-amber-300 border-amber-800'
-                            }`}
-                            title="Definido por el Contratista / Grupo habilitado elegido en el Paso 2"
-                          >
-                            {row.worker_type}
-                          </span>
-                        </div>
-
-                        {/* Operario (Filtrado estrictamente por el Contratista / Grupo habilitado en Paso 2) */}
-                        <div>
-                          {isSelectedGroupAstillero ? (
-                            <select
-                              required
-                              value={row.worker_name}
-                              onChange={(e) => {
-                                const val = e.target.value
-                                updateOperarioRow(row.id, 'worker_name', val)
-                                const found = astilleroSource.find(w => w.name === val)
-                                if (found && !row.rubro) {
-                                  updateOperarioRow(row.id, 'rubro', found.defaultRubro)
-                                }
-                              }}
-                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
+                        <div
+                          className={`grid ${
+                            isMultiOtMode
+                              ? 'grid-cols-[105px_minmax(190px,1.4fr)_minmax(180px,1.3fr)_minmax(210px,1.6fr)_68px_68px_68px_60px_minmax(150px,1.2fr)_36px]'
+                              : 'grid-cols-[115px_minmax(200px,1.5fr)_minmax(190px,1.4fr)_72px_72px_72px_65px_minmax(150px,1.1fr)_38px]'
+                          } gap-2.5 items-center`}
+                        >
+                          {/* Nº y Tipo */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="w-5 h-5 shrink-0 rounded bg-slate-800 text-slate-300 font-mono text-[11px] font-bold flex items-center justify-center">
+                              {index + 1}
+                            </span>
+                            <span
+                              className={`w-[78px] text-[10px] font-bold px-1.5 py-1.5 rounded border text-center truncate ${
+                                row.worker_type === 'Astillero'
+                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                                  : row.worker_type === 'Taller'
+                                  ? 'bg-purple-950 text-purple-300 border-purple-800'
+                                  : 'bg-amber-950 text-amber-300 border-amber-800'
+                              }`}
                             >
-                              <option value="">
-                                -- Seleccionar operario de {selectedContractorGroup || 'Astillero'} --
-                              </option>
-                              {(() => {
-                                const upperGroup = (selectedContractorGroup || '').toUpperCase()
-                                const tradeKey = upperGroup.includes('.') ? upperGroup.split('.')[1] : ''
-                                const normalize = (s) =>
-                                  String(s || '')
-                                    .normalize('NFD')
-                                    .replace(/[\u0300-\u036f]/g, '')
-                                    .toUpperCase()
-                                const matchingWorkers = tradeKey
-                                  ? astilleroSource.filter(w => {
-                                      const r = normalize(w.defaultRubro)
-                                      if (tradeKey === 'RASCHINAJE') return r.includes('RASCHIN')
-                                      return r.includes(tradeKey)
+                              {row.worker_type}
+                            </span>
+                          </div>
+
+                          {/* Operario (Con soporte de Homónimos y Habilitación Abierta de Astillero con <optgroup>) */}
+                          <div className="space-y-1">
+                            {row.homonym_candidates && row.homonym_candidates.length > 1 && (
+                              <div className="p-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-[10px] text-amber-200 space-y-1">
+                                <div className="font-bold flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <span>Homónimo &ldquo;{row.worker_raw}&rdquo;: elegí operario</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {row.homonym_candidates.map(cand => (
+                                    <button
+                                      key={cand.name}
+                                      type="button"
+                                      onClick={() => {
+                                        const tInfo = parseWorkerTrades(cand.trade || 'General')
+                                        setOperariosRows(prev =>
+                                          prev.map(r =>
+                                            r.id === row.id
+                                              ? {
+                                                  ...r,
+                                                  worker_name: cand.name,
+                                                  default_rubro: tInfo.primaryLabel,
+                                                  allowed_trades: tInfo.labelList,
+                                                  rubro: r.rubro || tInfo.primaryLabel,
+                                                  homonym_candidates: [],
+                                                  worker_match_status: 'exact',
+                                                  needs_review: Boolean(!r.work_order_id && !selectedWorkOrderId)
+                                                }
+                                              : r
+                                          )
+                                        )
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-amber-500/25 hover:bg-amber-500/40 border border-amber-400/50 text-white font-semibold cursor-pointer"
+                                    >
+                                      {cand.name} ({parseWorkerTrades(cand.trade).primaryLabel})
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {isSelectedGroupAstillero || row.worker_type === 'Astillero' ? (
+                              <select
+                                required
+                                value={row.worker_name}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  const found = astilleroSource.find(w => w.name === val)
+                                  setOperariosRows(prev =>
+                                    prev.map(r => {
+                                      if (r.id !== row.id) return r
+                                      const titular = found?.defaultRubro || r.default_rubro || 'Calderería'
+                                      return {
+                                        ...r,
+                                        worker_name: val,
+                                        default_rubro: titular,
+                                        allowed_trades: found?.allowedTrades || [titular],
+                                        rubro: r.is_loaned_rubro && r.rubro ? r.rubro : titular,
+                                        homonym_candidates: []
+                                      }
                                     })
-                                  : astilleroSource
-                                const listToRender = matchingWorkers.length > 0 ? matchingWorkers : astilleroSource
-                                return listToRender.map(w => (
-                                  <option key={w.name} value={w.name} className="bg-slate-900">
-                                    {w.name} ({w.defaultRubro})
-                                  </option>
-                                ))
-                              })()}
-                            </select>
-                          ) : (
-                            <select
-                              required
-                              value={row.worker_name}
-                              onChange={(e) => updateOperarioRow(row.id, 'worker_name', e.target.value)}
-                              className="w-full bg-slate-900 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-amber-200 font-bold focus:outline-none focus:border-amber-400"
-                            >
-                              <option value={selectedContractorGroup}>{selectedContractorGroup}</option>
-                              {allKnownWorkers
-                                .filter(
-                                  w =>
-                                    w.name !== selectedContractorGroup &&
-                                    w.name.toUpperCase().startsWith(selectedContractorGroup.toUpperCase() + ' ')
-                                )
-                                .map(w => (
-                                  <option key={w.name} value={w.name} className="bg-slate-900">
-                                    {w.name}
-                                  </option>
-                                ))}
-                            </select>
+                                  )
+                                }}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
+                              >
+                                <option value="">-- Seleccionar operario de Astillero --</option>
+                                {(() => {
+                                  const upperGroup = (selectedContractorGroup || '').toUpperCase()
+                                  const tradeKey = upperGroup.includes('.') ? upperGroup.split('.')[1] : ''
+                                  const normalize = (s) =>
+                                    String(s || '')
+                                      .normalize('NFD')
+                                      .replace(/[\u0300-\u036f]/g, '')
+                                      .toUpperCase()
+
+                                  const primaryWorkers = tradeKey
+                                    ? astilleroSource.filter(w => {
+                                        const r = normalize(w.defaultRubro)
+                                        if (tradeKey === 'RASCHINAJE') return r.includes('RASCHIN')
+                                        return r.includes(tradeKey)
+                                      })
+                                    : astilleroSource
+
+                                  const primaryNames = new Set(primaryWorkers.map(w => w.name))
+                                  const loanedWorkers = astilleroSource.filter(w => !primaryNames.has(w.name))
+
+                                  if (tradeKey && primaryWorkers.length > 0 && loanedWorkers.length > 0) {
+                                    return (
+                                      <>
+                                        <optgroup label={`⭐ Titulares de ${selectedContractorGroup} (${primaryWorkers.length})`}>
+                                          {primaryWorkers.map(w => (
+                                            <option key={w.name} value={w.name} className="bg-slate-900">
+                                              {w.name} ({w.defaultRubro})
+                                            </option>
+                                          ))}
+                                        </optgroup>
+                                        <optgroup label={`🔄 Resto del Padrón Astillero — Préstamo Operativo (${loanedWorkers.length})`}>
+                                          {loanedWorkers.map(w => (
+                                            <option key={w.name} value={w.name} className="bg-slate-900">
+                                              {w.name} (Titular: {w.defaultRubro})
+                                            </option>
+                                          ))}
+                                        </optgroup>
+                                      </>
+                                    )
+                                  }
+
+                                  return astilleroSource.map(w => (
+                                    <option key={w.name} value={w.name} className="bg-slate-900">
+                                      {w.name} ({w.defaultRubro})
+                                    </option>
+                                  ))
+                                })()}
+                              </select>
+                            ) : (
+                              <select
+                                required
+                                value={row.worker_name}
+                                onChange={(e) => updateOperarioRow(row.id, 'worker_name', e.target.value)}
+                                className="w-full bg-slate-900 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-amber-200 font-bold focus:outline-none focus:border-amber-400"
+                              >
+                                <option value={selectedContractorGroup}>{selectedContractorGroup}</option>
+                                {allKnownWorkers
+                                  .filter(
+                                    w =>
+                                      w.name !== selectedContractorGroup &&
+                                      w.name.toUpperCase().startsWith((selectedContractorGroup || '').toUpperCase() + ' ')
+                                  )
+                                  .map(w => (
+                                    <option key={w.name} value={w.name} className="bg-slate-900">
+                                      {w.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            )}
+                          </div>
+
+                          {/* RUBRO (Automático por defecto + Multi-Rubro de Contratista + Puerta de Emergencia 🔓) */}
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              {/* Si es Contratista con múltiples rubros en el Padrón y no abrió emergencia total */}
+                              {row.worker_type !== 'Astillero' &&
+                              Array.isArray(row.allowed_trades) &&
+                              row.allowed_trades.length > 1 &&
+                              !isRowEmergencyOpen ? (
+                                <select
+                                  value={row.rubro}
+                                  onChange={(e) => updateOperarioRow(row.id, 'rubro', e.target.value)}
+                                  className="w-full bg-slate-900 border border-amber-500/40 rounded-lg px-2 py-1.5 text-xs text-amber-200 font-semibold focus:outline-none focus:border-amber-400"
+                                  title="Rubros habilitados para este contratista en el Padrón"
+                                >
+                                  {row.allowed_trades.map((t, idx) => (
+                                    <option key={t} value={t} className="bg-slate-900 text-white">
+                                      {idx === 0 ? `⭐ ${t}` : t}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : isRowEmergencyOpen ? (
+                                <select
+                                  value={row.rubro}
+                                  onChange={(e) => updateOperarioRow(row.id, 'rubro', e.target.value)}
+                                  className={`w-full bg-slate-900 border rounded-lg px-2 py-1.5 text-xs font-semibold focus:outline-none ${
+                                    hasLoanedRubro
+                                      ? 'border-purple-500/60 text-purple-200 focus:border-purple-400'
+                                      : 'border-cyan-500/50 text-white focus:border-cyan-400'
+                                  }`}
+                                >
+                                  {row.default_rubro &&
+                                    !OFFICIAL_RUBROS_CATALOG.some(
+                                      c => normalizeText(c.label) === normalizeText(row.default_rubro)
+                                    ) && (
+                                      <option value={row.default_rubro} className="bg-slate-900">
+                                        ⭐ {row.default_rubro} (Titular)
+                                      </option>
+                                    )}
+                                  {OFFICIAL_RUBROS_CATALOG.map(cat => {
+                                    const isTitular =
+                                      row.default_rubro &&
+                                      normalizeText(cat.label) === normalizeText(row.default_rubro)
+                                    return (
+                                      <option key={cat.code} value={cat.label} className="bg-slate-900 text-white">
+                                        {isTitular ? `⭐ ${cat.label} (Titular)` : cat.label}
+                                      </option>
+                                    )
+                                  })}
+                                </select>
+                              ) : (
+                                <div
+                                  className="w-full bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-medium truncate flex items-center justify-between"
+                                  title={`Rubro titular por defecto: ${row.rubro || 'Sin definir'}`}
+                                >
+                                  <span className="truncate">{row.rubro || 'General'}</span>
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 ml-1 shrink-0">
+                                    Auto
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Botón Puerta de Emergencia (🔓 Ajustar Rubro) */}
+                              <button
+                                type="button"
+                                onClick={() => toggleRubroEmergency(row.id)}
+                                className={`px-2 py-1.5 rounded-lg border text-[10px] font-bold shrink-0 cursor-pointer transition-all flex items-center gap-1 ${
+                                  isRowEmergencyOpen || hasLoanedRubro
+                                    ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                                    : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-400 hover:text-cyan-300'
+                                }`}
+                                title="Puerta de Emergencia: permite cambiar el rubro operativo de hoy (ej. Pintor haciendo Raschinaje o Raschinaje haciendo Calderería)"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                <span>{isRowEmergencyOpen ? 'Fijar' : 'Ajustar'}</span>
+                              </button>
+                            </div>
+
+                            {/* Badge visual de Préstamo Operativo cuando el rubro del día difiere del titular */}
+                            {hasLoanedRubro && (
+                              <div className="flex items-center justify-between gap-1 px-2 py-0.5 rounded bg-purple-950/70 border border-purple-600/40 text-[10px] text-purple-200">
+                                <span className="truncate">
+                                  🔄 Préstamo: <strong>{row.default_rubro}</strong> &rarr; <strong>{row.rubro}</strong>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => updateOperarioRow(row.id, 'rubro', row.default_rubro)}
+                                  className="text-[9px] underline text-purple-300 hover:text-white shrink-0 cursor-pointer"
+                                  title="Volver al rubro titular"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* BARCO & OT HABILITADA POR FILA (Visible en Modo Multi-Barco / Multi-OT) */}
+                          {isMultiOtMode && (
+                            <div className="space-y-1">
+                              <div className="grid grid-cols-2 gap-1">
+                                {/* Selector de Barco de la fila */}
+                                <select
+                                  value={row.ship_id || selectedShipId}
+                                  onChange={(e) => {
+                                    const newShipId = e.target.value
+                                    const firstWo = workOrders.find(wo => {
+                                      if (String(wo.ship_id) !== String(newShipId)) return false
+                                      return workItems.some(
+                                        i => String(i.work_order_id) === String(wo.id) && i.status === 'En ejecución'
+                                      )
+                                    })
+                                    setOperariosRows(prev =>
+                                      prev.map(r =>
+                                        r.id === row.id
+                                          ? {
+                                              ...r,
+                                              ship_id: newShipId,
+                                              work_order_id: firstWo?.id || '',
+                                              needs_review: !firstWo
+                                            }
+                                          : r
+                                      )
+                                    )
+                                  }}
+                                  className="w-full bg-slate-900 border border-cyan-500/40 rounded-lg px-1.5 py-1.5 text-[11px] text-cyan-200 font-semibold focus:outline-none"
+                                >
+                                  <option value="">-- Barco --</option>
+                                  {ships.map(s => (
+                                    <option key={s.id} value={s.id} className="bg-slate-900 text-white">
+                                      {cleanShipName(s.name)}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                {/* Selector de OT Habilitada de la fila */}
+                                <select
+                                  value={row.work_order_id || selectedWorkOrderId}
+                                  onChange={(e) => {
+                                    const newWoId = e.target.value
+                                    setOperariosRows(prev =>
+                                      prev.map(r =>
+                                        r.id === row.id
+                                          ? {
+                                              ...r,
+                                              work_order_id: newWoId,
+                                              needs_review: !newWoId
+                                            }
+                                          : r
+                                      )
+                                    )
+                                  }}
+                                  className={`w-full bg-slate-900 border rounded-lg px-1.5 py-1.5 text-[11px] font-semibold focus:outline-none ${
+                                    row.work_order_id || selectedWorkOrderId
+                                      ? 'border-emerald-500/40 text-emerald-200'
+                                      : 'border-rose-500/60 text-rose-300'
+                                  }`}
+                                >
+                                  <option value="">-- Elegir OT --</option>
+                                  {rowEnabledWorkOrders.map(wo => (
+                                    <option key={wo.id} value={wo.id} className="bg-slate-900 text-white">
+                                      {wo.ot_number ? `${wo.ot_number}: ` : ''}{wo.title}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* Si el parte nombró un barco o trabajo que aún no tiene OT en ejecución, botón de alta en 1 clic */}
+                              {(!row.work_order_id && (row.ship_name_raw || rowEnabledWorkOrders.length === 0)) && (
+                                <div className="flex items-center justify-between gap-1 px-2 py-1 rounded bg-amber-500/15 border border-amber-500/40 text-[10px] text-amber-200">
+                                  <span className="truncate">
+                                    Barco/OT reportado: <strong>{row.ship_name_raw || 'Sin OT activa'}</strong>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickCreateShipAndWoForRow(row)}
+                                    className="px-2 py-0.5 rounded bg-emerald-500/25 hover:bg-emerald-500/40 border border-emerald-400/50 text-emerald-200 font-bold shrink-0 cursor-pointer"
+                                    title="Crea el Barco (si no existe) y abre una OT En ejecución habilitada para este rubro"
+                                  >
+                                    + Crear Barco/OT
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           )}
-                        </div>
 
-                        {/* Rubro */}
-                        <div>
-                          <input
-                            type="text"
-                            required
-                            list="rubros-list-carga"
-                            placeholder="Rubro manual..."
-                            value={row.rubro}
-                            onChange={(e) => updateOperarioRow(row.id, 'rubro', e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
-                          />
-                        </div>
+                          {/* Horas Normales */}
+                          <div>
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="24"
+                              value={row.hours_normal}
+                              onChange={(e) => updateOperarioRow(row.id, 'hours_normal', e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-primary font-mono"
+                            />
+                          </div>
 
-                        {/* Horas Normales */}
-                        <div>
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            max="24"
-                            value={row.hours_normal}
-                            onChange={(e) => updateOperarioRow(row.id, 'hours_normal', e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-primary font-mono"
-                          />
-                        </div>
+                          {/* Extras 50% */}
+                          <div>
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="24"
+                              value={row.hours_extra_50}
+                              onChange={(e) => updateOperarioRow(row.id, 'hours_extra_50', e.target.value)}
+                              className="w-full bg-slate-900 border border-cyan-800/60 rounded-lg px-1.5 py-1.5 text-xs text-cyan-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
+                            />
+                          </div>
 
-                        {/* Extras 50% */}
-                        <div>
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            max="24"
-                            value={row.hours_extra_50}
-                            onChange={(e) => updateOperarioRow(row.id, 'hours_extra_50', e.target.value)}
-                            className="w-full bg-slate-900 border border-cyan-800/60 rounded-lg px-1.5 py-1.5 text-xs text-cyan-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
-                          />
-                        </div>
+                          {/* Extras 100% */}
+                          <div>
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="24"
+                              value={row.hours_extra_100}
+                              onChange={(e) => updateOperarioRow(row.id, 'hours_extra_100', e.target.value)}
+                              className="w-full bg-slate-900 border border-amber-800/60 rounded-lg px-1.5 py-1.5 text-xs text-amber-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
+                            />
+                          </div>
 
-                        {/* Extras 100% */}
-                        <div>
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            max="24"
-                            value={row.hours_extra_100}
-                            onChange={(e) => updateOperarioRow(row.id, 'hours_extra_100', e.target.value)}
-                            className="w-full bg-slate-900 border border-amber-800/60 rounded-lg px-1.5 py-1.5 text-xs text-amber-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
-                          />
-                        </div>
+                          {/* Total Hs Calculado */}
+                          <div className="text-center font-mono font-extrabold text-primary text-xs bg-slate-900/80 py-1.5 rounded-lg border border-slate-800">
+                            {totalRow} hs
+                          </div>
 
-                        {/* Total Hs Calculado */}
-                        <div className="text-center font-mono font-extrabold text-primary text-xs bg-slate-900/80 py-1.5 rounded-lg border border-slate-800">
-                          {totalRow} hs
-                        </div>
+                          {/* Observaciones / Tarea */}
+                          <div>
+                            <input
+                              type="text"
+                              placeholder="Tarea / Nota..."
+                              value={row.notes}
+                              onChange={(e) => updateOperarioRow(row.id, 'notes', e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-primary"
+                            />
+                          </div>
 
-                        {/* Observaciones */}
-                        <div>
-                          <input
-                            type="text"
-                            placeholder="Nota opcional..."
-                            value={row.notes}
-                            onChange={(e) => updateOperarioRow(row.id, 'notes', e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-primary"
-                          />
-                        </div>
-
-                        {/* Eliminar Fila */}
-                        <div className="flex justify-center">
-                          <button
-                            type="button"
-                            disabled={operariosRows.length === 1}
-                            onClick={() => removeOperarioRow(row.id)}
-                            className="p-1.5 text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded hover:bg-rose-500/10 cursor-pointer"
-                            title="Eliminar fila"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {/* Eliminar Fila */}
+                          <div className="flex justify-center">
+                            <button
+                              type="button"
+                              disabled={operariosRows.length === 1}
+                              onClick={() => removeOperarioRow(row.id)}
+                              className="p-1.5 text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded hover:bg-rose-500/10 cursor-pointer"
+                              title="Eliminar fila"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )
@@ -1670,7 +2427,7 @@ export default function LaborLogs() {
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
                     <span className="text-slate-400">Cuadrilla: </span>
-                    <strong className="text-white font-mono">{operariosRows.length} operarios</strong>
+                    <strong className="text-white font-mono">{operariosRows.length} filas</strong>
                   </div>
                   <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
                     <span className="text-slate-400">Normales: </span>

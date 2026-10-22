@@ -99,26 +99,60 @@ function formatShortDate(isoStr, fullYear = false) {
   return fullYear ? `${d}/${m}/${y}` : `${d}/${m}/${y.slice(-2)}`
 }
 
+// Determina si un trabajo u OT fue desestimado por eliminación (sin borrar el registro para no alterar el consecutivo)
+function isWorkItemEliminada(item, wo) {
+  if (item?.status !== 'Desestimado' && wo?.status !== 'Cancelada') return false
+  const commentText = String(item?.comments || '').toUpperCase()
+  const notesText = String(wo?.notes || '').toUpperCase()
+  return commentText.includes('ELIMINADA') || notesText.includes('[ELIMINADA]')
+}
+
+// Limpia la etiqueta interna [ELIMINADA] del comentario visible para mostrarla como leyenda dedicada
+function cleanWorkItemComment(comment) {
+  if (!comment) return ''
+  return String(comment)
+    .replace(/\[ELIMINADA\]\s*Desestimada por eliminación\s*\|?\s*/gi, '')
+    .replace(/\|\s*\[ELIMINADA\]\s*Desestimada por eliminación/gi, '')
+    .replace(/\[ELIMINADA\]/gi, '')
+    .trim()
+}
+
 // Cálculo automático del estado de la OT (Contenedor) a partir de sus trabajos hijos (work_items)
 function computeOtState(wo, items = []) {
+  const isDeletedWo =
+    (wo?.notes || '').toUpperCase().includes('[ELIMINADA]') ||
+    (items.length > 0 && items.every(i => i.status === 'Desestimado' && isWorkItemEliminada(i, wo)))
+
   if (!items || items.length === 0) {
+    if (isDeletedWo || wo?.status === 'Cancelada') {
+      return {
+        label: 'Desestimado (Eliminada)',
+        color: 'text-rose-300 bg-rose-950/80 border-rose-700',
+        canClose: true,
+        activeCount: 0,
+        totalCount: 0,
+        isEliminada: true
+      }
+    }
     return {
       label: 'Sin trabajos cargados',
       color: 'text-slate-400 bg-slate-900 border-slate-700',
       canClose: true,
       activeCount: 0,
-      totalCount: 0
+      totalCount: 0,
+      isEliminada: false
     }
   }
 
   const validItems = items.filter(i => i.status !== 'Desestimado')
   if (validItems.length === 0) {
     return {
-      label: 'Desestimada',
+      label: isDeletedWo ? 'Desestimado (Eliminada)' : 'Desestimada',
       color: 'text-rose-300 bg-rose-950/80 border-rose-700',
       canClose: true,
       activeCount: 0,
-      totalCount: items.length
+      totalCount: items.length,
+      isEliminada: isDeletedWo
     }
   }
 
@@ -132,7 +166,8 @@ function computeOtState(wo, items = []) {
       color: 'text-emerald-300 bg-emerald-950/80 border-emerald-500/80',
       canClose: false,
       activeCount: inExecutionCount,
-      totalCount: items.length
+      totalCount: items.length,
+      isEliminada: false
     }
   }
 
@@ -142,7 +177,8 @@ function computeOtState(wo, items = []) {
       color: 'text-purple-300 bg-purple-950/80 border-purple-500/80',
       canClose: true,
       activeCount: 0,
-      totalCount: items.length
+      totalCount: items.length,
+      isEliminada: false
     }
   }
 
@@ -152,7 +188,8 @@ function computeOtState(wo, items = []) {
       color: 'text-amber-300 bg-amber-950/80 border-amber-600/80',
       canClose: false,
       activeCount: 0,
-      totalCount: items.length
+      totalCount: items.length,
+      isEliminada: false
     }
   }
 
@@ -161,7 +198,8 @@ function computeOtState(wo, items = []) {
     color: 'text-cyan-300 bg-cyan-950/80 border-cyan-500/80',
     canClose: true,
     activeCount: 0,
-    totalCount: items.length
+    totalCount: items.length,
+    isEliminada: false
   }
 }
 
@@ -212,13 +250,34 @@ export default function WorkOrders() {
   const [editingWorkItem, setEditingWorkItem] = useState(null)
   const [savingWork, setSavingWork] = useState(false)
 
-  // Caja in-situ para crear un nuevo Jefe de Obra sin salir del menú de OT
+  // Caja in-situ para crear un nuevo Jefe de Obra sin salir del menú de OT (Único rubro disponible: TECNICOS)
   const [isCreatingForemanInline, setIsCreatingForemanInline] = useState(false)
   const [newForemanForm, setNewForemanForm] = useState({
     name: '',
-    trade: 'SUPERVISION'
+    trade: 'TECNICOS'
   })
   const [savingNewForeman, setSavingNewForeman] = useState(false)
+
+  // Selección múltiple de OTs del Catálogo OT.ABC (para abrir 5-6 OTs al mismo tiempo cuando sube el barco)
+  // Cada ítem: { template_id, ot_title, description, status }
+  const [selectedBatchTemplates, setSelectedBatchTemplates] = useState([])
+  const [inlineCatalogSearch, setInlineCatalogSearch] = useState('')
+  const [showInlineMultiPicker, setShowInlineMultiPicker] = useState(false)
+
+  // Ayuda auto-entrenable para Tipo de Facturación (Centro de Facturación)
+  const [billingTypeHelp, setBillingTypeHelp] = useState(() => {
+    try {
+      const saved = localStorage.getItem('aloncar_billing_type_help_v1')
+      if (saved) return JSON.parse(saved)
+    } catch {
+      // ignore storage errors
+    }
+    return {
+      presupuestoGeneral: 'Pendiente definir.',
+      adicionalEspecifico: 'Pendiente definir.'
+    }
+  })
+  const [isEditingBillingHelp, setIsEditingBillingHelp] = useState(false)
 
   // Formulario en cascada (Barco -> OT Existente o Nueva [Tabulada/Libre] -> Trabajo)
   const [workForm, setWorkForm] = useState({
@@ -242,8 +301,9 @@ export default function WorkOrders() {
     specific_observations: ''
   })
 
-  // Selector de contratista dentro del formulario
+  // Buscador por escritura en tiempo real para Contratista(s) / Grupo(s) de Trabajo
   const [contractorSelectInput, setContractorSelectInput] = useState('')
+  const [isContractorListOpen, setIsContractorListOpen] = useState(false)
 
   // Modal para Separar / Independizar un Trabajo de un Contenedor OT
   const [separatingRow, setSeparatingRow] = useState(null)
@@ -273,12 +333,13 @@ export default function WorkOrders() {
   })
   const [savingTpCascade, setSavingTpCascade] = useState(false)
 
-  // Modal de Catálogo de Trabajos (OT.ABC)
+  // Modal de Catálogo de Trabajos (OT.ABC) con soporte de selección múltiple y estado individual
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
   const [templatePickerFromForm, setTemplatePickerFromForm] = useState(false)
   const [templateEdit, setTemplateEdit] = useState(null)
   const [templateSearch, setTemplateSearch] = useState('')
   const [savingTemplate, setSavingTemplate] = useState(false)
+  const [catalogMultiSelection, setCatalogMultiSelection] = useState([]) // [{ template_id, ot_title, description, status }]
 
   // Modal de Ficha 360° de OT / Botón Ampliar / Cierre DEC-011
   const [selectedWoDetail, setSelectedWoDetail] = useState(null)
@@ -444,8 +505,8 @@ export default function WorkOrders() {
     }
   }, [workForm.contractors, contractorPermissionsMap, workers])
 
-  // Calcular el siguiente número consecutivo de OT para un barco específico
-  const getNextOtNumberForShip = (shipId) => {
+  // Calcular el siguiente número consecutivo de OT para un barco específico (100% automático por sistema)
+  const getNextOtNumberForShip = (shipId, offset = 0) => {
     const shipWos = workOrders.filter(w => w.ship_id === shipId)
     let maxNum = 0
     shipWos.forEach(w => {
@@ -456,8 +517,33 @@ export default function WorkOrders() {
         else if (n >= 100 && shipWos.length === 1) maxNum = 1
       }
     })
-    return `OT-${maxNum + 1}`
+    return `OT-${maxNum + 1 + offset}`
   }
+
+  // Guardar cambios en la ayuda auto-entrenable de Tipo de Facturación
+  const handleSaveBillingHelp = (newHelp) => {
+    setBillingTypeHelp(newHelp)
+    try {
+      localStorage.setItem('aloncar_billing_type_help_v1', JSON.stringify(newHelp))
+    } catch {
+      // ignore storage errors
+    }
+    setIsEditingBillingHelp(false)
+  }
+
+  // Lista filtrada en tiempo real para el buscador de contratistas por escritura
+  const filteredContractorsForSearch = useMemo(() => {
+    const q = contractorSelectInput.trim().toLowerCase()
+    return contractorCatalog.filter(c => {
+      if ((workForm.contractors || []).includes(c.name)) return false
+      if (!q) return true
+      return (
+        c.name.toLowerCase().includes(q) ||
+        (c.trade || '').toLowerCase().includes(q) ||
+        (c.admin_center || '').toLowerCase().includes(q)
+      )
+    })
+  }, [contractorCatalog, contractorSelectInput, workForm.contractors])
 
   // Agrupar work_items por work_order_id
   const itemsByWoMap = useMemo(() => {
@@ -575,6 +661,8 @@ export default function WorkOrders() {
         endDate: null
       }
       if (items.length === 0) {
+        const isWoEliminada =
+          wo.status === 'Cancelada' || (wo.notes || '').toUpperCase().includes('[ELIMINADA]')
         rows.push({
           isPlaceholder: true,
           id: `placeholder-${wo.id}`,
@@ -584,13 +672,13 @@ export default function WorkOrders() {
           otDates,
           siblingsCount: 0,
           description: wo.description || '',
-          status: 'Pendiente de inicio',
+          status: isWoEliminada ? 'Desestimado' : 'Pendiente de inicio',
           foreman_name: wo.foreman_name || foremenList[0] || 'ALE CAMADELLI',
           work_type: wo.work_type || 'HORA',
           assignment_type: wo.assignment_type || 'Presupuesto General',
           specific_budget_id: wo.budget_code || '',
           contractors: wo.contractor_name ? [wo.contractor_name] : [],
-          comments: '',
+          comments: isWoEliminada ? '[ELIMINADA] Desestimada por eliminación' : '',
           send_to_third_party_prc: false,
           created_at: wo.created_at
         })
@@ -638,21 +726,26 @@ export default function WorkOrders() {
     })
   }, [unifiedRows, selectedShipFilter, selectedOtFilter, selectedStatusFilter, selectedForemanFilter, selectedContractorFilter, searchQuery])
 
-  // Métricas operativas globales
+  // Métricas operativas globales (Sin PRC $0 en Terceros)
   const stats = useMemo(() => {
     const enEjecucion = unifiedRows.filter(r => r.status === 'En ejecución').length
     const pendientes = unifiedRows.filter(r => r.status === 'Pendiente de inicio').length
     const pdteRemito = unifiedRows.filter(r => r.status === 'Pendiente remito' || r.status === 'Remito realizado/Pdte firma' || r.status === 'Finalizado').length
     const facturados = unifiedRows.filter(r => r.status === 'Facturado').length
     const barcosActivos = new Set(unifiedRows.filter(r => r.status === 'En ejecución').map(r => r.wo?.ship_id)).size
-    const prcTercerosCount = thirdPartyServices.length
-    return { enEjecucion, pendientes, pdteRemito, facturados, barcosActivos, prcTercerosCount }
-  }, [unifiedRows, thirdPartyServices])
+    return { enEjecucion, pendientes, pdteRemito, facturados, barcosActivos }
+  }, [unifiedRows])
 
   // Abrir Modal para Crear Nuevo Trabajo / OT (Fecha de creación sale automática de HOY)
   const handleOpenNewWorkModal = (preselectedWo = null) => {
     setEditingWorkItem(null)
     setIsCreatingForemanInline(false)
+    setSelectedBatchTemplates([])
+    setInlineCatalogSearch('')
+    setShowInlineMultiPicker(false)
+    setContractorSelectInput('')
+    setIsContractorListOpen(false)
+
     const todayIso = new Date().toISOString().split('T')[0]
     const defaultShipId = preselectedWo
       ? preselectedWo.ship_id
@@ -660,7 +753,6 @@ export default function WorkOrders() {
     const shipWos = workOrders.filter(w => w.ship_id === defaultShipId)
     const defaultForeman = preselectedWo?.foreman_name || foremenList[0] || 'ALE CAMADELLI'
 
-    setContractorSelectInput('')
     setWorkForm({
       ship_id: defaultShipId,
       ot_mode: preselectedWo ? 'existing' : (shipWos.length > 0 ? 'existing' : 'new'),
@@ -688,11 +780,16 @@ export default function WorkOrders() {
   const handleOpenEditWorkModal = (row) => {
     setEditingWorkItem(row.isPlaceholder ? null : row)
     setIsCreatingForemanInline(false)
+    setSelectedBatchTemplates([])
+    setInlineCatalogSearch('')
+    setShowInlineMultiPicker(false)
+    setContractorSelectInput('')
+    setIsContractorListOpen(false)
+
     const tp = row.thirdPartyRecord
     const createdIso = row.wo?.created_at
       ? String(row.wo.created_at).split('T')[0]
       : new Date().toISOString().split('T')[0]
-    setContractorSelectInput('')
     setWorkForm({
       ship_id: row.wo?.ship_id || '',
       ot_mode: 'existing',
@@ -709,14 +806,14 @@ export default function WorkOrders() {
       assignment_type: row.assignment_type || 'Presupuesto General',
       specific_budget_id: row.specific_budget_id || '',
       contractors: Array.isArray(row.contractors) ? [...row.contractors] : [],
-      comments: row.comments || '',
+      comments: cleanWorkItemComment(row.comments),
       send_to_third_party_prc: Boolean(row.send_to_third_party_prc || tp),
       specific_observations: tp?.specific_observations || ''
     })
     setIsWorkModalOpen(true)
   }
 
-  // Crear nuevo Jefe de Obra In-Situ desde el selector de la OT (Impacta en workers y organization_roles)
+  // Crear nuevo Jefe de Obra In-Situ desde el selector de la OT (Único rubro disponible: TECNICOS)
   const handleCreateForemanInline = async () => {
     const cleanName = newForemanForm.name.trim().toUpperCase()
     if (!cleanName) {
@@ -733,18 +830,19 @@ export default function WorkOrders() {
           .from('workers')
           .update({
             is_foreman: true,
+            trade: 'TECNICOS',
             status: 'ACTIVO'
           })
           .eq('id', existingWorker.id)
           .select()
         if (error) throw error
-        savedWorker = data?.[0] || { ...existingWorker, is_foreman: true, status: 'ACTIVO' }
+        savedWorker = data?.[0] || { ...existingWorker, is_foreman: true, trade: 'TECNICOS', status: 'ACTIVO' }
         setWorkers(prev => prev.map(w => (w.id === existingWorker.id ? savedWorker : w)))
       } else {
         const workerPayload = {
           name: cleanName,
           work_group: 'ASTILLERO',
-          trade: newForemanForm.trade || 'SUPERVISION',
+          trade: 'TECNICOS',
           admin_center: 'ASTILLERO',
           consumables: 'CLIENTE',
           consumables_discount_pct: 0,
@@ -774,24 +872,24 @@ export default function WorkOrders() {
         .upsert(
           {
             role_key: roleSlug,
-            role_title: `Jefe de Obra Naval (${newForemanForm.trade || 'SUPERVISION'})`,
+            role_title: 'Jefe de Obra Naval (TECNICOS)',
             holder_name: cleanName,
             department: 'Operaciones',
             security_level: 'SUPERVISOR',
             allowed_sections: ['barcos', 'ots', 'horas', 'panol'],
             status: 'ACTIVO',
-            notes: 'Jefe de Obra dado de alta desde el módulo de Órdenes de Trabajo',
+            notes: 'Jefe de Obra (Rubro Técnico) dado de alta desde el módulo de Órdenes de Trabajo',
             updated_at: new Date().toISOString()
           },
           { onConflict: 'role_key' }
         )
 
       setWorkForm(prev => ({ ...prev, foreman_name: cleanName }))
-      setNewForemanForm({ name: '', trade: 'SUPERVISION' })
+      setNewForemanForm({ name: '', trade: 'TECNICOS' })
       setIsCreatingForemanInline(false)
       setStatusMessage({
         type: 'success',
-        text: `Jefe de Obra "${cleanName}" creado y sincronizado automáticamente en el Padrón de Personal (JO) y en Roles de Operaciones.`
+        text: `Jefe de Obra "${cleanName}" (Rubro: Técnico) creado y sincronizado automáticamente en el Padrón de Personal (JO) y en Roles de Operaciones.`
       })
       setTimeout(() => setStatusMessage(null), 4000)
     } catch (err) {
@@ -854,7 +952,7 @@ export default function WorkOrders() {
       const author = user?.email?.split('@')[0] || 'Supervisor'
 
       if (separateForm.mode === 'new_ot') {
-        const newOtNum = separateForm.new_ot_number.trim() || getNextOtNumberForShip(shipId)
+        const newOtNum = getNextOtNumberForShip(shipId)
         const newTitle = separateForm.new_ot_title.trim()
         const originNote = `[${timestamp} - Separación de OT por ${author}]: Trabajo independizado desde ${sourceWo?.ot_number} (${sourceWo?.title}). Motivo: ${separateForm.reason.trim()}`
 
@@ -957,11 +1055,12 @@ export default function WorkOrders() {
     }))
   }
 
-  // Seleccionar plantilla tabulada del Catálogo (OT.ABC)
+  // Seleccionar una plantilla tabulada del Catálogo (OT.ABC) desde el selector simple
   const handleSelectTabulatedTemplate = (tplId) => {
     const tpl = templates.find(t => t.id === tplId)
     if (!tpl) {
       setWorkForm(prev => ({ ...prev, selected_template_id: '' }))
+      setSelectedBatchTemplates([])
       return
     }
     setWorkForm(prev => ({
@@ -970,6 +1069,69 @@ export default function WorkOrders() {
       ot_title: tpl.name,
       description: tpl.description || prev.description
     }))
+    setSelectedBatchTemplates([
+      {
+        template_id: tpl.id,
+        ot_title: tpl.name,
+        description: tpl.description || '',
+        status: workForm.status || 'En ejecución'
+      }
+    ])
+  }
+
+  // Alternar selección múltiple de plantilla OT.ABC dentro del formulario de Nueva OT
+  const handleToggleBatchTemplate = (tpl) => {
+    setSelectedBatchTemplates(prev => {
+      const exists = prev.some(item => item.template_id === tpl.id)
+      const next = exists
+        ? prev.filter(item => item.template_id !== tpl.id)
+        : [
+            ...prev,
+            {
+              template_id: tpl.id,
+              ot_title: tpl.name,
+              description: tpl.description || '',
+              status: workForm.status || 'En ejecución'
+            }
+          ]
+
+      if (next.length > 0) {
+        setWorkForm(wf => ({
+          ...wf,
+          ot_creation_type: 'tabulada',
+          selected_template_id: next[0].template_id,
+          ot_title: next[0].ot_title,
+          description: next[0].description,
+          status: next[0].status
+        }))
+      } else {
+        setWorkForm(wf => ({
+          ...wf,
+          selected_template_id: '',
+          ot_title: '',
+          description: ''
+        }))
+      }
+      return next
+    })
+  }
+
+  // Actualizar estado o descripción individual de una OT en la selección múltiple
+  const handleUpdateBatchTemplateItem = (templateId, field, value) => {
+    setSelectedBatchTemplates(prev => {
+      const next = prev.map(item =>
+        item.template_id === templateId ? { ...item, [field]: value } : item
+      )
+      if (next.length > 0 && next[0].template_id === templateId) {
+        setWorkForm(wf => ({
+          ...wf,
+          ot_title: field === 'ot_title' ? value : wf.ot_title,
+          description: field === 'description' ? value : wf.description,
+          status: field === 'status' ? value : wf.status
+        }))
+      }
+      return next
+    })
   }
 
   // Agregar contratista a la lista del trabajo
@@ -986,6 +1148,7 @@ export default function WorkOrders() {
       }
     })
     setContractorSelectInput('')
+    setIsContractorListOpen(false)
   }
 
   // Quitar contratista de la lista del trabajo
@@ -1001,7 +1164,7 @@ export default function WorkOrders() {
     })
   }
 
-  // Guardar Trabajo (y crear OT si ot_mode === 'new', y sincronizar PRC $0 en Terceros si aplica)
+  // Guardar Trabajo(s) (soporta apertura masiva de múltiples OTs de OT.ABC con estado individual por cada una)
   const handleSaveWorkSubmit = async (e) => {
     e.preventDefault()
 
@@ -1010,7 +1173,13 @@ export default function WorkOrders() {
       return
     }
 
-    if (workForm.ot_mode === 'new' && !workForm.ot_title.trim()) {
+    const isBatchMode =
+      !editingWorkItem &&
+      workForm.ot_mode === 'new' &&
+      workForm.ot_creation_type === 'tabulada' &&
+      selectedBatchTemplates.length > 1
+
+    if (!isBatchMode && workForm.ot_mode === 'new' && !workForm.ot_title.trim()) {
       alert('Ingresá o seleccioná el nombre de la Orden de Trabajo (OT).')
       return
     }
@@ -1027,15 +1196,120 @@ export default function WorkOrders() {
 
     setSavingWork(true)
     try {
+      const todayIso = new Date().toISOString().split('T')[0]
+      const validFor3ros =
+        workForm.contractors.length === 1 &&
+        hasThirdPartyPermission(workForm.contractors[0]) &&
+        Boolean(workForm.send_to_third_party_prc)
+
+      // CASO A: APERTURA MÚLTIPLE DE OTs DESDE CATÁLOGO OT.ABC (5-6 OTs simultáneas con estado individual)
+      if (isBatchMode) {
+        const createdOtNumbers = []
+
+        for (let idx = 0; idx < selectedBatchTemplates.length; idx++) {
+          const batchItem = selectedBatchTemplates[idx]
+          const consecutiveOtNum = getNextOtNumberForShip(workForm.ship_id, idx)
+          createdOtNumbers.push(consecutiveOtNum)
+
+          const itemStatus = batchItem.status || 'En ejecución'
+          const itemDesc = (batchItem.description ?? '').trim()
+          const itemTitle = (batchItem.ot_title || '').trim()
+
+          const woPayload = {
+            ship_id: workForm.ship_id,
+            ot_number: consecutiveOtNum,
+            title: itemTitle,
+            description: itemDesc || null,
+            status:
+              itemStatus === 'En ejecución'
+                ? 'En Progreso'
+                : itemStatus === 'Desestimado'
+                ? 'Cancelada'
+                : 'Pendiente',
+            work_type: workForm.work_type,
+            assignment_type: workForm.assignment_type,
+            budget_code: workForm.specific_budget_id.trim() || null,
+            foreman_name: workForm.foreman_name,
+            contractor_name: workForm.contractors.join(', ') || null,
+            is_tabulated: true,
+            start_date: todayIso
+          }
+
+          const { data: newWoData, error: woErr } = await supabase
+            .from('work_orders')
+            .insert([woPayload])
+            .select()
+
+          if (woErr) throw woErr
+          const createdWoId = newWoData[0].id
+
+          const itemPayload = {
+            work_order_id: createdWoId,
+            description: itemDesc,
+            status: itemStatus,
+            foreman_name: workForm.foreman_name,
+            work_type: workForm.work_type,
+            assignment_type: workForm.assignment_type,
+            specific_budget_id: workForm.specific_budget_id.trim() || null,
+            contractors: workForm.contractors,
+            contractor_name: workForm.contractors.join(', ') || null,
+            comments: workForm.comments.trim() || null,
+            send_to_third_party_prc: validFor3ros,
+            updated_at: new Date().toISOString()
+          }
+
+          const { data: insItemData, error: itemErr } = await supabase
+            .from('work_items')
+            .insert([itemPayload])
+            .select()
+
+          if (itemErr) throw itemErr
+          const createdWorkItem = insItemData?.[0]
+
+          if (createdWorkItem && validFor3ros) {
+            const singleContractor = workForm.contractors[0]
+            await supabase
+              .from('third_party_services')
+              .upsert(
+                {
+                  work_item_id: createdWorkItem.id,
+                  work_order_id: createdWoId,
+                  ship_id: workForm.ship_id,
+                  contractor_name: singleContractor,
+                  status: 'PRC',
+                  voucher_type: 'PRC',
+                  amount_ars: 0,
+                  service_date: todayIso,
+                  direct_observations: itemDesc || 'Sin descripción cargada en la OT',
+                  specific_observations: workForm.specific_observations.trim() || null,
+                  updated_at: new Date().toISOString()
+                },
+                { onConflict: 'work_item_id' }
+              )
+          }
+        }
+
+        setIsWorkModalOpen(false)
+        setSelectedBatchTemplates([])
+        await loadData()
+        setStatusMessage({
+          type: 'success',
+          text: `Se abrieron ${createdOtNumbers.length} Órdenes de Trabajo consecutivas (${createdOtNumbers.join(', ')}) con sus estados individuales configurados.`
+        })
+        setTimeout(() => setStatusMessage(null), 4500)
+        return
+      }
+
+      // CASO B: GUARDADO DE UNA SOLA OT / TRABAJO
       let targetWoId = workForm.existing_wo_id
       let targetShipId = workForm.ship_id
 
-      // 1. Si es Nueva OT, crear primero el contenedor en work_orders con fecha de creación = hoy()
+      // 1. Si es Nueva OT, crear primero el contenedor en work_orders con consecutivo automático y fecha de creación = hoy()
       if (workForm.ot_mode === 'new') {
-        const todayIso = new Date().toISOString().split('T')[0]
+        const autoConsecutiveOt = getNextOtNumberForShip(workForm.ship_id, 0)
         const woPayload = {
           ship_id: workForm.ship_id,
-          ot_number: workForm.ot_number.trim() || getNextOtNumberForShip(workForm.ship_id),
+          ot_number: autoConsecutiveOt,
           title: workForm.ot_title.trim(),
           description: workForm.description.trim() || null,
           status: workForm.status === 'En ejecución' ? 'En Progreso' : 'Pendiente',
@@ -1065,13 +1339,13 @@ export default function WorkOrders() {
           .eq('id', targetWoId)
       }
 
-      // Validar elegibilidad real de Terceros (1 contratista + permiso 3ros)
-      const validFor3ros =
-        workForm.contractors.length === 1 &&
-        hasThirdPartyPermission(workForm.contractors[0]) &&
-        Boolean(workForm.send_to_third_party_prc)
-
       // 2. Insertar o actualizar el Trabajo en work_items
+      const existingEliminadaTag =
+        editingWorkItem && isWorkItemEliminada(editingWorkItem, editingWorkItem.wo) && workForm.status === 'Desestimado'
+          ? '[ELIMINADA] Desestimada por eliminación'
+          : ''
+      const mergedComments = [workForm.comments.trim(), existingEliminadaTag].filter(Boolean).join(' | ') || null
+
       const itemPayload = {
         work_order_id: targetWoId,
         description: workForm.description.trim(),
@@ -1082,7 +1356,7 @@ export default function WorkOrders() {
         specific_budget_id: workForm.specific_budget_id.trim() || null,
         contractors: workForm.contractors,
         contractor_name: workForm.contractors.join(', ') || null,
-        comments: workForm.comments.trim() || null,
+        comments: mergedComments,
         send_to_third_party_prc: validFor3ros,
         updated_at: new Date().toISOString()
       }
@@ -1117,7 +1391,7 @@ export default function WorkOrders() {
             status: 'PRC',
             voucher_type: 'PRC',
             amount_ars: 0,
-            service_date: new Date().toISOString().split('T')[0],
+            service_date: todayIso,
             direct_observations: workForm.description.trim() || 'Sin descripción cargada en la OT',
             specific_observations: workForm.specific_observations.trim() || null,
             updated_at: new Date().toISOString()
@@ -1137,6 +1411,7 @@ export default function WorkOrders() {
       }
 
       setIsWorkModalOpen(false)
+      setSelectedBatchTemplates([])
       await loadData()
       setStatusMessage({
         type: 'success',
@@ -1264,34 +1539,113 @@ export default function WorkOrders() {
     }
   }
 
-  // Eliminar un Trabajo individual
+  // "Eliminar" un Trabajo individual: NO borra el registro (para no alterar el consecutivo de la OT),
+  // sino que pasa a ESTADO DEL TRABAJO = Desestimado con la leyenda "[ELIMINADA]"
   const handleDeleteWorkItem = async (row) => {
-    if (!window.confirm('¿Eliminar este trabajo de la Orden de Trabajo?')) return
+    if (
+      !window.confirm(
+        `¿Desestimar por eliminación este trabajo de la ${row.wo?.ot_number || 'OT'}?\n\nNota: Las OTs no se borran físicamente para no alterar el número consecutivo; el trabajo pasará a estado "Desestimado" con la leyenda "Eliminada".`
+      )
+    ) {
+      return
+    }
     try {
-      const { error } = await supabase.from('work_items').delete().eq('id', row.id)
+      const baseComment = cleanWorkItemComment(row.comments)
+      const nextComment = [baseComment, '[ELIMINADA] Desestimada por eliminación'].filter(Boolean).join(' | ')
+
+      const { error } = await supabase
+        .from('work_items')
+        .update({
+          status: 'Desestimado',
+          comments: nextComment,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', row.id)
+
       if (error) throw error
       await loadData()
-      setStatusMessage({ type: 'info', text: 'Trabajo eliminado.' })
-      setTimeout(() => setStatusMessage(null), 3000)
+      setStatusMessage({
+        type: 'info',
+        text: `Trabajo de ${row.wo?.ot_number || 'OT'} pasado a estado "Desestimado" con leyenda "Eliminada" (se preserva el consecutivo).`
+      })
+      setTimeout(() => setStatusMessage(null), 4000)
     } catch (err) {
       console.error(err)
-      setStatusMessage({ type: 'error', text: `Error al eliminar trabajo: ${err.message}` })
+      setStatusMessage({ type: 'error', text: `Error al desestimar trabajo: ${err.message}` })
     }
   }
 
-  // Eliminar Orden de Trabajo completa
+  // "Eliminar" Orden de Trabajo completa: NO borra la OT (para no alterar el número consecutivo),
+  // sino que pasa sus trabajos a ESTADO DEL TRABAJO = Desestimado con la leyenda "Eliminada"
   const handleDeleteWo = async (wo) => {
-    if (!window.confirm(`¿Eliminar la Orden de Trabajo "${wo.ot_number} - ${wo.title}" y todos sus trabajos asociados?`)) return
+    if (
+      !window.confirm(
+        `¿Desestimar por eliminación la Orden de Trabajo "${wo.ot_number} - ${wo.title}"?\n\nNota: Las OTs no se eliminan de la base de datos para no alterar el número consecutivo; pasará a ESTADO DEL TRABAJO = "Desestimado" con la leyenda "Eliminada".`
+      )
+    ) {
+      return
+    }
     try {
-      const { error } = await supabase.from('work_orders').delete().eq('id', wo.id)
-      if (error) throw error
+      const items = itemsByWoMap[wo.id] || []
+      const timestamp = new Date().toLocaleString('es-AR')
+      const elimNote = `[ELIMINADA] Desestimada por eliminación (${timestamp})`
+      const updatedNotes = (wo.notes || '').includes('[ELIMINADA]')
+        ? wo.notes
+        : [wo.notes, elimNote].filter(Boolean).join('\n\n')
+
+      // 1. Marcar el contenedor work_orders como Cancelada con nota [ELIMINADA]
+      const { error: woError } = await supabase
+        .from('work_orders')
+        .update({
+          status: 'Cancelada',
+          notes: updatedNotes
+        })
+        .eq('id', wo.id)
+
+      if (woError) throw woError
+
+      // 2. Pasar todos sus work_items a estado "Desestimado" con la leyenda "[ELIMINADA]"
+      if (items.length > 0) {
+        for (const item of items) {
+          const baseComment = cleanWorkItemComment(item.comments)
+          const nextComment = [baseComment, '[ELIMINADA] Desestimada por eliminación'].filter(Boolean).join(' | ')
+          await supabase
+            .from('work_items')
+            .update({
+              status: 'Desestimado',
+              comments: nextComment,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', item.id)
+        }
+      } else {
+        // Si no tenía work_items aún, creamos el registro en estado Desestimado con leyenda Eliminada
+        await supabase.from('work_items').insert([
+          {
+            work_order_id: wo.id,
+            description: wo.description || wo.title,
+            status: 'Desestimado',
+            foreman_name: wo.foreman_name || foremenList[0] || 'ALE CAMADELLI',
+            work_type: wo.work_type || 'HORA',
+            assignment_type: wo.assignment_type || 'Presupuesto General',
+            contractors: wo.contractor_name ? [wo.contractor_name] : [],
+            contractor_name: wo.contractor_name || null,
+            comments: '[ELIMINADA] Desestimada por eliminación',
+            updated_at: new Date().toISOString()
+          }
+        ])
+      }
+
       if (selectedWoDetail?.id === wo.id) setSelectedWoDetail(null)
       await loadData()
-      setStatusMessage({ type: 'info', text: `Se eliminó la OT ${wo.ot_number}.` })
-      setTimeout(() => setStatusMessage(null), 3000)
+      setStatusMessage({
+        type: 'info',
+        text: `La ${wo.ot_number} pasó a estado "Desestimado" con leyenda "Eliminada" (conservando su número consecutivo).`
+      })
+      setTimeout(() => setStatusMessage(null), 4000)
     } catch (err) {
       console.error(err)
-      setStatusMessage({ type: 'error', text: `Error al eliminar OT: ${err.message}` })
+      setStatusMessage({ type: 'error', text: `Error al desestimar OT: ${err.message}` })
     }
   }
 
@@ -1368,16 +1722,95 @@ export default function WorkOrders() {
     }
   }
 
-  // Gestión del Catálogo de Trabajos (OT.ABC)
+  // Gestión del Catálogo de Trabajos (OT.ABC) con soporte de Selección Múltiple
   const handleOpenCatalog = (fromForm = false) => {
     setTemplatePickerFromForm(fromForm)
     setTemplateEdit(null)
     setTemplateSearch('')
+    setCatalogMultiSelection(fromForm ? [...selectedBatchTemplates] : [])
     setIsTemplateModalOpen(true)
   }
 
-  const handleUseTemplate = (tpl) => {
+  // Alternar una plantilla en la selección múltiple del modal Catálogo OT.ABC
+  const handleToggleCatalogMultiItem = (tpl) => {
+    setCatalogMultiSelection(prev => {
+      const exists = prev.some(i => i.template_id === tpl.id)
+      if (exists) return prev.filter(i => i.template_id !== tpl.id)
+      return [
+        ...prev,
+        {
+          template_id: tpl.id,
+          ot_title: tpl.name,
+          description: tpl.description || '',
+          status: 'En ejecución'
+        }
+      ]
+    })
+  }
+
+  // Cambiar el estado individual de una OT seleccionada dentro del modal Catálogo OT.ABC
+  const handleUpdateCatalogMultiStatus = (templateId, newStatus) => {
+    setCatalogMultiSelection(prev =>
+      prev.map(i => (i.template_id === templateId ? { ...i, status: newStatus } : i))
+    )
+  }
+
+  // Confirmar selección múltiple desde el Catálogo OT.ABC hacia el formulario de Nueva OT
+  const handleConfirmCatalogMultiSelection = () => {
+    if (catalogMultiSelection.length === 0) return
+    const first = catalogMultiSelection[0]
+
     if (templatePickerFromForm && isWorkModalOpen) {
+      setSelectedBatchTemplates(catalogMultiSelection)
+      setWorkForm(prev => ({
+        ...prev,
+        ot_mode: 'new',
+        ot_creation_type: 'tabulada',
+        selected_template_id: first.template_id,
+        ot_title: first.ot_title,
+        description: first.description || prev.description,
+        status: first.status || prev.status
+      }))
+    } else {
+      const defaultShipId = selectedShipFilter !== 'todos' ? selectedShipFilter : (ships[0]?.id || '')
+      setEditingWorkItem(null)
+      setSelectedBatchTemplates(catalogMultiSelection)
+      setWorkForm({
+        ship_id: defaultShipId,
+        ot_mode: 'new',
+        existing_wo_id: '',
+        ot_creation_type: 'tabulada',
+        selected_template_id: first.template_id,
+        ot_number: getNextOtNumberForShip(defaultShipId),
+        ot_title: first.ot_title,
+        created_date: new Date().toISOString().split('T')[0],
+        description: first.description || '',
+        status: first.status || 'En ejecución',
+        foreman_name: foremenList[0] || 'ALE CAMADELLI',
+        work_type: 'HORA',
+        assignment_type: 'Presupuesto General',
+        specific_budget_id: '',
+        contractors: [],
+        comments: '',
+        send_to_third_party_prc: false,
+        specific_observations: ''
+      })
+      setIsWorkModalOpen(true)
+    }
+    setIsTemplateModalOpen(false)
+  }
+
+  const handleUseTemplate = (tpl) => {
+    const singleItem = [
+      {
+        template_id: tpl.id,
+        ot_title: tpl.name,
+        description: tpl.description || '',
+        status: workForm.status || 'En ejecución'
+      }
+    ]
+    if (templatePickerFromForm && isWorkModalOpen) {
+      setSelectedBatchTemplates(singleItem)
       setWorkForm(prev => ({
         ...prev,
         ot_creation_type: 'tabulada',
@@ -1388,6 +1821,7 @@ export default function WorkOrders() {
     } else {
       const defaultShipId = selectedShipFilter !== 'todos' ? selectedShipFilter : (ships[0]?.id || '')
       setEditingWorkItem(null)
+      setSelectedBatchTemplates(singleItem)
       setWorkForm({
         ship_id: defaultShipId,
         ot_mode: 'new',
@@ -1539,9 +1973,9 @@ export default function WorkOrders() {
       )}
 
       {/* ========================================================= */}
-      {/* 2. MÉTRICAS OPERATIVAS SUPERIORES                         */}
+      {/* 2. MÉTRICAS OPERATIVAS SUPERIORES (5 KPIs)                */}
       {/* ========================================================= */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
             <span>Trabajos en Ejecución</span>
@@ -1594,17 +2028,6 @@ export default function WorkOrders() {
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className="text-2xl font-black text-white font-mono">{stats.barcosActivos}</span>
             <span className="text-[10px] text-slate-500">buques activos</span>
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-purple-900/50 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-purple-300 text-[11px] font-semibold">
-            <span>PRC $0 en Terceros</span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 border border-purple-700 font-black">3ros</span>
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-purple-300 font-mono">{stats.prcTercerosCount}</span>
-            <span className="text-[10px] text-slate-500">vinculados</span>
           </div>
         </div>
       </div>
@@ -1692,7 +2115,7 @@ export default function WorkOrders() {
               <option value="todos">Todos los Barcos</option>
               {ships.map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.name} {s.name === 'ASTILLERO' ? '(Interno)' : ''}
+                  {s.name}
                 </option>
               ))}
             </select>
@@ -1781,7 +2204,7 @@ export default function WorkOrders() {
                 <th className="py-3 px-3 min-w-[240px]">Descripción del Trabajo</th>
                 <th className="py-3 px-3">Contratista(s) / Permiso 3ros</th>
                 <th className="py-3 px-3">Jefe de Obra</th>
-                <th className="py-3 px-2.5">Tipo / Asignación</th>
+                <th className="py-3 px-2.5">Tipo / Facturación</th>
                 <th className="py-3 px-3 text-center">Estado del Trabajo</th>
                 <th className="py-3 px-2.5 text-center">Alertas / 3ros</th>
                 <th className="py-3 px-3 text-right">Acciones</th>
@@ -1801,18 +2224,17 @@ export default function WorkOrders() {
                   const contractors = row.contractors || []
                   const tp = row.thirdPartyRecord
                   const dates = row.otDates || {}
+                  const visibleComment = cleanWorkItemComment(row.comments)
+                  const rowIsEliminada = isWorkItemEliminada(row, row.wo)
 
                   return (
                     <tr key={row.id} className="hover:bg-slate-800/30 transition-colors align-top">
-                      {/* 1. Barco */}
+                      {/* 1. Barco (Nombre limpio sin texto extra) */}
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1.5 font-bold text-white">
                           <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                           <span>{row.wo?.ships?.name || 'Sin barco'}</span>
                         </div>
-                        <span className="text-[10px] text-slate-500 block mt-0.5">
-                          {row.wo?.ships?.client_name || 'Alon Car'}
-                        </span>
                       </td>
 
                       {/* 2. Orden de Trabajo + Estado Calculado + Botón Separar OT */}
@@ -1892,9 +2314,9 @@ export default function WorkOrders() {
                         ) : (
                           <span className="text-amber-400/80 italic text-xs">Sin descripción cargada</span>
                         )}
-                        {row.comments && (
+                        {visibleComment && (
                           <div className="mt-1 text-[10px] text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                            💬 <strong>Comentario:</strong> {row.comments}
+                            💬 <strong>Comentario:</strong> {visibleComment}
                           </div>
                         )}
                       </td>
@@ -1936,7 +2358,7 @@ export default function WorkOrders() {
                         </span>
                       </td>
 
-                      {/* 7. Tipo y Asignación */}
+                      {/* 7. Tipo y Facturación */}
                       <td className="py-3 px-2.5">
                         <span className="font-mono font-bold text-cyan-300 text-[11px] block">
                           {row.work_type || 'HORA'}
@@ -1948,19 +2370,29 @@ export default function WorkOrders() {
                         </span>
                       </td>
 
-                      {/* 8. Estado del Trabajo (Editable inline) */}
+                      {/* 8. Estado del Trabajo (Editable inline + Leyenda Eliminada abajo si corresponde) */}
                       <td className="py-3 px-3 text-center">
-                        <select
-                          value={row.status}
-                          onChange={(e) => handleQuickItemStatusChange(row, e.target.value)}
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer focus:outline-none ${stConfig.color}`}
-                        >
-                          {ESTADOS_TRABAJO.map(st => (
-                            <option key={st.value} value={st.value} className="bg-slate-950 text-white">
-                              {st.value}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex flex-col items-center gap-1">
+                          <select
+                            value={row.status}
+                            onChange={(e) => handleQuickItemStatusChange(row, e.target.value)}
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer focus:outline-none ${stConfig.color}`}
+                          >
+                            {ESTADOS_TRABAJO.map(st => (
+                              <option key={st.value} value={st.value} className="bg-slate-950 text-white">
+                                {st.value}
+                              </option>
+                            ))}
+                          </select>
+                          {row.status === 'Desestimado' && rowIsEliminada && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-700/80 text-[9px] font-black uppercase tracking-wider"
+                              title="Esta OT / trabajo fue desestimada por eliminación (se conserva el registro para no alterar el número consecutivo)"
+                            >
+                              🗑️ Eliminada
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 9. Alertas y Vinculación PRC Terceros */}
@@ -2025,7 +2457,7 @@ export default function WorkOrders() {
                               type="button"
                               onClick={() => handleDeleteWorkItem(row)}
                               className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
-                              title="Eliminar este trabajo"
+                              title="Desestimar por eliminación (conserva el consecutivo)"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -2066,15 +2498,21 @@ export default function WorkOrders() {
                       <span className="font-mono text-xs font-black text-primary px-2.5 py-0.5 rounded bg-primary/10 border border-primary/30">
                         {wo.ot_number}
                       </span>
-                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${computed.color}`}>
-                        {computed.label}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${computed.color}`}>
+                          {computed.label}
+                        </span>
+                        {computed.isEliminada && (
+                          <span className="px-2 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-700 text-[9px] font-black uppercase">
+                            🗑️ Eliminada
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 mb-1">
                       <Ship className="w-3.5 h-3.5 text-cyan-400" />
                       <span className="text-white font-bold">{wo.ships?.name}</span>
-                      <span className="text-slate-500 text-[11px]">&bull; {wo.ships?.client_name || 'Alon Car'}</span>
                     </div>
 
                     <h3 className="text-base font-black text-white">{wo.title}</h3>
@@ -2094,6 +2532,7 @@ export default function WorkOrders() {
 
                       {items.map(item => {
                         const st = ESTADOS_TRABAJO.find(s => s.value === item.status) || ESTADOS_TRABAJO[0]
+                        const itemElim = isWorkItemEliminada(item, wo)
                         return (
                           <div
                             key={item.id}
@@ -2113,9 +2552,16 @@ export default function WorkOrders() {
                               )}
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${st.color}`}>
-                                {item.status}
-                              </span>
+                              <div className="flex flex-col items-end gap-0.5">
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${st.color}`}>
+                                  {item.status}
+                                </span>
+                                {item.status === 'Desestimado' && itemElim && (
+                                  <span className="text-[8px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-700 font-black uppercase">
+                                    🗑️ Eliminada
+                                  </span>
+                                )}
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleOpenSeparateModal({ ...item, wo })}
@@ -2190,7 +2636,7 @@ export default function WorkOrders() {
                           type="button"
                           onClick={() => handleDeleteWo(wo)}
                           className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 cursor-pointer"
-                          title="Eliminar OT"
+                          title="Desestimar OT por eliminación (conserva el consecutivo)"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -2327,7 +2773,7 @@ export default function WorkOrders() {
                   {editingWorkItem ? 'Editar Trabajo en Orden de Trabajo' : 'Cargar Trabajo / Nueva Orden de Trabajo'}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Flujo de carga según planilla GS-003: 1º Barco &rarr; 2º OT (Tabulada o Libre) &rarr; 3º Estado del Trabajo, Contratista(s), Jefe de Obra y validación de PRC $0 a Terceros.
+                  Flujo de carga según planilla GS-003: 1º Barco &rarr; 2º OT (Tabulada con Selección Múltiple o Libre) &rarr; 3º Estado del Trabajo, Contratista(s), Jefe de Obra y Tipo de Facturación.
                 </p>
               </div>
               <button
@@ -2343,7 +2789,7 @@ export default function WorkOrders() {
               {/* PASO 1 Y 2: BARCO Y CONTENEDOR OT */}
               <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3.5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* 1. Selección de Barco */}
+                  {/* 1. Selección de Barco (Nombre limpio y solo) */}
                   <div>
                     <label className="block text-xs font-bold text-cyan-400 uppercase mb-1">
                       1. Barco / Embarcación *
@@ -2357,7 +2803,7 @@ export default function WorkOrders() {
                     >
                       {ships.map(s => (
                         <option key={s.id} value={s.id}>
-                          {s.name} {s.name === 'ASTILLERO' ? '(Uso Interno Astillero)' : ''} &bull; {s.client_name || 'Cliente'}
+                          {s.name}
                         </option>
                       ))}
                     </select>
@@ -2449,7 +2895,7 @@ export default function WorkOrders() {
                   </div>
                 )}
 
-                {/* Si elige Crear Nueva OT: Tabulada (OT.ABC) vs Libre */}
+                {/* Si elige Crear Nueva OT: Tabulada (OT.ABC con selección múltiple) vs Libre */}
                 {(workForm.ot_mode === 'new' || editingWorkItem) && (
                   <div className="space-y-3 pt-2 border-t border-slate-800/80">
                     {!editingWorkItem && (
@@ -2469,7 +2915,11 @@ export default function WorkOrders() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setWorkForm(prev => ({ ...prev, ot_creation_type: 'libre', selected_template_id: '' }))}
+                            onClick={() => {
+                              setSelectedBatchTemplates([])
+                              setShowInlineMultiPicker(false)
+                              setWorkForm(prev => ({ ...prev, ot_creation_type: 'libre', selected_template_id: '' }))
+                            }}
                             className={`px-3 py-1 rounded-lg text-xs font-bold border cursor-pointer ${
                               workForm.ot_creation_type === 'libre'
                                 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500'
@@ -2480,72 +2930,291 @@ export default function WorkOrders() {
                           </button>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleOpenCatalog(true)}
-                          className="text-[11px] text-amber-400 hover:text-amber-300 font-bold underline flex items-center gap-1 cursor-pointer"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Explorar / Editar Catálogo OT.ABC</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {workForm.ot_creation_type === 'tabulada' && (
+                            <button
+                              type="button"
+                              onClick={() => setShowInlineMultiPicker(prev => !prev)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-all ${
+                                showInlineMultiPicker || selectedBatchTemplates.length > 1
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500'
+                                  : 'bg-slate-900 text-amber-300 border-amber-500/40 hover:border-amber-400'
+                              }`}
+                            >
+                              <Layers className="w-3.5 h-3.5" />
+                              <span>
+                                {selectedBatchTemplates.length > 1
+                                  ? `Selección Múltiple (${selectedBatchTemplates.length} OTs)`
+                                  : 'Seleccionar Varias OTs (5-6 al subir barco)'}
+                              </span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCatalog(true)}
+                            className="text-[11px] text-amber-400 hover:text-amber-300 font-bold underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>Catálogo OT.ABC</span>
+                          </button>
+                        </div>
                       </div>
                     )}
 
-                    {/* Selector directo de plantilla si es OT Tabulada */}
+                    {/* Selector directo o Selección Múltiple de plantillas si es OT Tabulada */}
                     {!editingWorkItem && workForm.ot_creation_type === 'tabulada' && (
-                      <div>
-                        <label className="block text-[11px] font-semibold text-amber-300 mb-1">
-                          Seleccionar Trabajo Tabulado del Catálogo (OT.ABC):
-                        </label>
-                        <select
-                          value={workForm.selected_template_id}
-                          onChange={(e) => handleSelectTabulatedTemplate(e.target.value)}
-                          className="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-amber-400"
-                        >
-                          <option value="">-- Elegir trabajo estándar de OT.ABC --</option>
-                          {[...GRUPOS_CATALOGO, ''].map(grupo => {
-                            const groupItems = templates.filter(t => (t.category || '') === grupo)
-                            if (groupItems.length === 0) return null
-                            return (
-                              <optgroup key={grupo || 'sin'} label={grupo || 'General / Sin clasificar'}>
-                                {groupItems.map(tpl => (
-                                  <option key={tpl.id} value={tpl.id}>
-                                    {tpl.name}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )
-                          })}
-                        </select>
+                      <div className="space-y-3">
+                        {/* Selector rápido para 1 OT si no está usando selección múltiple */}
+                        {selectedBatchTemplates.length <= 1 && !showInlineMultiPicker && (
+                          <div>
+                            <label className="block text-[11px] font-semibold text-amber-300 mb-1">
+                              Seleccionar Trabajo Tabulado del Catálogo (OT.ABC) — o usá &quot;Seleccionar Varias OTs&quot; arriba para abrir 5-6 juntas:
+                            </label>
+                            <select
+                              value={workForm.selected_template_id}
+                              onChange={(e) => handleSelectTabulatedTemplate(e.target.value)}
+                              className="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-amber-400"
+                            >
+                              <option value="">-- Elegir trabajo estándar de OT.ABC --</option>
+                              {[...GRUPOS_CATALOGO, ''].map(grupo => {
+                                const groupItems = templates.filter(t => (t.category || '') === grupo)
+                                if (groupItems.length === 0) return null
+                                return (
+                                  <optgroup key={grupo || 'sin'} label={grupo || 'General / Sin clasificar'}>
+                                    {groupItems.map(tpl => (
+                                      <option key={tpl.id} value={tpl.id}>
+                                        {tpl.name}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )
+                              })}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Panel desplegable de Selección Múltiple de OTs del Catálogo OT.ABC */}
+                        {showInlineMultiPicker && (
+                          <div className="p-3.5 rounded-2xl bg-slate-900 border border-amber-500/40 space-y-2.5 animate-in fade-in duration-150">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <span className="text-xs font-black text-amber-300 block">
+                                  ☑️ Selección Múltiple del Catálogo OT.ABC ({selectedBatchTemplates.length} seleccionada{selectedBatchTemplates.length === 1 ? '' : 's'})
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  Marcá todas las OTs estándar que quieras abrir simultáneamente para este barco. Abajo podrás editar el estado de cada una.
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setShowInlineMultiPicker(false)}
+                                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-bold cursor-pointer"
+                              >
+                                Listo ({selectedBatchTemplates.length})
+                              </button>
+                            </div>
+
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 absolute left-3 top-2 text-slate-500" />
+                              <input
+                                type="text"
+                                value={inlineCatalogSearch}
+                                onChange={(e) => setInlineCatalogSearch(e.target.value)}
+                                placeholder="Filtrar plantillas en OT.ABC por nombre o descripción..."
+                                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+
+                            <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                              {[...GRUPOS_CATALOGO, ''].map(grupo => {
+                                const q = inlineCatalogSearch.trim().toLowerCase()
+                                const groupItems = templates.filter(
+                                  t =>
+                                    (t.category || '') === grupo &&
+                                    (!q ||
+                                      t.name.toLowerCase().includes(q) ||
+                                      (t.description || '').toLowerCase().includes(q))
+                                )
+                                if (groupItems.length === 0) return null
+                                return (
+                                  <div key={grupo || 'sin'} className="space-y-1">
+                                    <span className="text-[10px] font-black uppercase text-amber-400/90 block">
+                                      {grupo || 'General / Sin clasificar'}
+                                    </span>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                      {groupItems.map(tpl => {
+                                        const isChecked = selectedBatchTemplates.some(i => i.template_id === tpl.id)
+                                        return (
+                                          <label
+                                            key={tpl.id}
+                                            className={`flex items-start gap-2 p-2 rounded-xl border text-xs cursor-pointer transition-all ${
+                                              isChecked
+                                                ? 'bg-amber-500/15 border-amber-400 text-white font-bold'
+                                                : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                                            }`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() => handleToggleBatchTemplate(tpl)}
+                                              className="mt-0.5 w-3.5 h-3.5 rounded accent-amber-500 shrink-0"
+                                            />
+                                            <div className="min-w-0 flex-1">
+                                              <span className="block truncate">{tpl.name}</span>
+                                              {tpl.description && (
+                                                <span className="block text-[10px] text-slate-400 truncate font-normal">
+                                                  {tpl.description}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </label>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Grilla de OTs seleccionadas cuando se abren múltiples OTs a la vez (Consecutivo bloqueado + Estado editable por cada una) */}
+                        {selectedBatchTemplates.length > 1 && (
+                          <div className="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-500/50 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                                <Layers className="w-4 h-4 text-emerald-400" />
+                                <span>
+                                  Apertura Simultánea de {selectedBatchTemplates.length} OTs Consecutivas (Estado editable por cada OT)
+                                </span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBatchTemplates([])}
+                                className="text-[10px] text-slate-400 hover:text-rose-400 underline cursor-pointer"
+                              >
+                                Limpiar selección
+                              </button>
+                            </div>
+
+                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                              {selectedBatchTemplates.map((batchItem, idx) => {
+                                const autoOtNum = getNextOtNumberForShip(workForm.ship_id, idx)
+                                const stObj = ESTADOS_TRABAJO.find(s => s.value === batchItem.status) || ESTADOS_TRABAJO[0]
+                                return (
+                                  <div
+                                    key={batchItem.template_id}
+                                    className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2"
+                                  >
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span
+                                          className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono text-[11px] font-black text-primary shrink-0"
+                                          title="Consecutivo asignado automáticamente por el sistema"
+                                        >
+                                          🔒 {autoOtNum}
+                                        </span>
+                                        <span className="font-bold text-white text-xs truncate">
+                                          {batchItem.ot_title}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase">
+                                          Estado:
+                                        </label>
+                                        <select
+                                          value={batchItem.status}
+                                          onChange={(e) =>
+                                            handleUpdateBatchTemplateItem(
+                                              batchItem.template_id,
+                                              'status',
+                                              e.target.value
+                                            )
+                                          }
+                                          className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer focus:outline-none ${stObj.color}`}
+                                        >
+                                          {ESTADOS_TRABAJO.map(st => (
+                                            <option key={st.value} value={st.value} className="bg-slate-950 text-white">
+                                              {st.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleToggleBatchTemplate({
+                                              id: batchItem.template_id,
+                                              name: batchItem.ot_title,
+                                              description: batchItem.description
+                                            })
+                                          }
+                                          className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
+                                          title="Quitar esta OT del lote"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <input
+                                      type="text"
+                                      value={batchItem.description}
+                                      onChange={(e) =>
+                                        handleUpdateBatchTemplateItem(
+                                          batchItem.template_id,
+                                          'description',
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="Descripción del trabajo para esta OT..."
+                                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 focus:outline-none focus:border-primary"
+                                    />
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                          Nº OT (Consecutivo Barco)
-                        </label>
-                        <input
-                          type="text"
-                          value={workForm.ot_number}
-                          onChange={(e) => setWorkForm(prev => ({ ...prev, ot_number: e.target.value }))}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-primary font-mono font-bold"
-                        />
+                    {/* Si es 1 sola OT (o Libre, o Edición): Mostrar Nº Consecutivo BLOQUEADO y Nombre de la OT */}
+                    {selectedBatchTemplates.length <= 1 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                            Nº OT (Consecutivo Sistema)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              readOnly
+                              disabled
+                              value={workForm.ot_number}
+                              title="El número consecutivo lo decide automáticamente el sistema y no es editable"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-primary font-mono font-black cursor-not-allowed opacity-90"
+                            />
+                            <span className="absolute right-2.5 top-2 text-[10px] text-slate-500 font-bold">
+                              🔒 Auto
+                            </span>
+                          </div>
+                        </div>
+                        <div className="sm:col-span-3">
+                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                            Nombre de la Orden de Trabajo (OT) *
+                          </label>
+                          <input
+                            type="text"
+                            required={workForm.ot_mode === 'new' && selectedBatchTemplates.length <= 1}
+                            value={workForm.ot_title}
+                            onChange={(e) => setWorkForm(prev => ({ ...prev, ot_title: e.target.value }))}
+                            placeholder="Ej: CARENADO DE CASCO o CAMBIO MOTOR"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-primary"
+                          />
+                        </div>
                       </div>
-                      <div className="sm:col-span-3">
-                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                          Nombre de la Orden de Trabajo (OT) *
-                        </label>
-                        <input
-                          type="text"
-                          required={workForm.ot_mode === 'new'}
-                          value={workForm.ot_title}
-                          onChange={(e) => setWorkForm(prev => ({ ...prev, ot_title: e.target.value }))}
-                          placeholder="Ej: CARENADO DE CASCO o CAMBIO MOTOR"
-                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-primary"
-                        />
-                      </div>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2553,32 +3222,42 @@ export default function WorkOrders() {
               {/* PASO 3: DATOS DEL TRABAJO INDIVIDUAL (WORK ITEM) */}
               <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3.5">
                 <h4 className="text-xs font-black uppercase tracking-wider text-primary">
-                  3. Detalle Operativo del Trabajo
+                  3. Detalle Operativo del Trabajo {selectedBatchTemplates.length > 1 ? `(Común a las ${selectedBatchTemplates.length} OTs seleccionadas)` : ''}
                 </h4>
 
-                {/* Descripción del Trabajo */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Descripción del Trabajo (Si se envía a Terceros, este texto pasa a Observaciones Directas) *
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={workForm.description}
-                    onChange={(e) => setWorkForm(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Detalle específico del trabajo a realizar..."
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
-                  />
-                </div>
+                {/* Descripción del Trabajo (oculta si ya está editando cada una en lote múltiple) */}
+                {selectedBatchTemplates.length <= 1 && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Descripción del Trabajo (Si se envía a Terceros, este texto pasa a Observaciones Directas) *
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={workForm.description}
+                      onChange={(e) => setWorkForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Detalle específico del trabajo a realizar..."
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                )}
 
                 {/* Estado del Trabajo, Jefe de Obra (con opción de Crear al final de la lista) y Tipo de Trabajo */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Estado del Trabajo *
+                      {selectedBatchTemplates.length > 1 ? 'Estado por Defecto (o individual arriba)' : 'Estado del Trabajo *'}
                     </label>
                     <select
                       value={workForm.status}
-                      onChange={(e) => setWorkForm(prev => ({ ...prev, status: e.target.value }))}
+                      onChange={(e) => {
+                        const nextStatus = e.target.value
+                        setWorkForm(prev => ({ ...prev, status: nextStatus }))
+                        if (selectedBatchTemplates.length === 1) {
+                          setSelectedBatchTemplates(prev =>
+                            prev.map((it, idx) => (idx === 0 ? { ...it, status: nextStatus } : it))
+                          )
+                        }
+                      }}
                       className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-primary"
                     >
                       {ESTADOS_TRABAJO.map(st => (
@@ -2638,7 +3317,7 @@ export default function WorkOrders() {
                   </div>
                 </div>
 
-                {/* CAJA IN-SITU PARA CREAR NUEVO JEFE DE OBRA SIN SALIR DEL MODAL */}
+                {/* CAJA IN-SITU PARA CREAR NUEVO JEFE DE OBRA SIN SALIR DEL MODAL (Único rubro disponible: Técnico) */}
                 {isCreatingForemanInline && (
                   <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/50 space-y-3 animate-in fade-in duration-150">
                     <div className="flex items-center justify-between">
@@ -2669,26 +3348,20 @@ export default function WorkOrders() {
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">
-                          Rubro / Especialidad
+                          Rubro / Especialidad (Fijo)
                         </label>
                         <select
-                          value={newForemanForm.trade}
-                          onChange={(e) => setNewForemanForm(prev => ({ ...prev, trade: e.target.value }))}
-                          className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold"
+                          value="TECNICOS"
+                          disabled
+                          className="w-full bg-slate-950 border border-amber-500/40 rounded-xl px-2.5 py-1.5 text-xs text-amber-300 font-bold cursor-not-allowed"
                         >
-                          <option value="SUPERVISION">SUPERVISION</option>
-                          <option value="TECNICOS">TECNICOS</option>
-                          <option value="CALDERERIA">CALDERERIA</option>
-                          <option value="MECANICA">MECANICA</option>
-                          <option value="CARPINTERIA">CARPINTERIA</option>
-                          <option value="PINTURA">PINTURA</option>
-                          <option value="ELECTRICIDAD">ELECTRICIDAD</option>
+                          <option value="TECNICOS">Técnico (TECNICOS)</option>
                         </select>
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <span className="text-[10px] text-slate-400">
-                        Se dará de alta en <strong>Personal y Tarifas</strong> con permiso <strong>JO</strong> activo y en <strong>Roles de Operaciones</strong>.
+                        Se dará de alta en <strong>Personal y Tarifas</strong> bajo el rubro <strong>Técnico (TECNICOS)</strong> con permiso <strong>JO</strong> activo.
                       </span>
                       <button
                         type="button"
@@ -2703,70 +3376,187 @@ export default function WorkOrders() {
                   </div>
                 )}
 
-                {/* Tipo de Asignación y Nº Presupuesto Específico */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Tipo de Asignación (Centro de Costos)
-                    </label>
-                    <select
-                      value={workForm.assignment_type}
-                      onChange={(e) => setWorkForm(prev => ({ ...prev, assignment_type: e.target.value }))}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-                    >
-                      <option value="Presupuesto General">Presupuesto General</option>
-                      <option value="Adicional / Específico">Adicional / Específico</option>
-                    </select>
+                {/* Tipo de Facturación (Centro de Facturación) + Ayuda Auto-Entrenable y Nº Presupuesto Específico */}
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Tipo de Facturación (Centro de Facturación)
+                      </label>
+                      <select
+                        value={workForm.assignment_type}
+                        onChange={(e) => setWorkForm(prev => ({ ...prev, assignment_type: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+                      >
+                        <option value="Presupuesto General">Presupuesto General</option>
+                        <option value="Adicional / Específico">Adicional / Específico</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Nº Presupuesto Específico {workForm.assignment_type === 'Adicional / Específico' ? '*' : '(Opcional)'}
+                      </label>
+                      <input
+                        type="text"
+                        required={workForm.assignment_type === 'Adicional / Específico'}
+                        value={workForm.specific_budget_id}
+                        onChange={(e) => setWorkForm(prev => ({ ...prev, specific_budget_id: e.target.value }))}
+                        placeholder="Ej: PRES-ADIC-04"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-primary"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Nº Presupuesto Específico {workForm.assignment_type === 'Adicional / Específico' ? '*' : '(Opcional)'}
-                    </label>
-                    <input
-                      type="text"
-                      required={workForm.assignment_type === 'Adicional / Específico'}
-                      value={workForm.specific_budget_id}
-                      onChange={(e) => setWorkForm(prev => ({ ...prev, specific_budget_id: e.target.value }))}
-                      placeholder="Ej: PRES-ADIC-04"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-primary"
-                    />
+                  {/* Cuadro de Ayuda al Usuario Auto-Entrenable para Tipo de Facturación */}
+                  <div className="p-3 rounded-xl bg-slate-900/90 border border-cyan-900/50 text-[11px] space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                        <span>Guía de Ayuda al Usuario (Auto-entrenable) &bull; Tipo de Facturación</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingBillingHelp(prev => !prev)}
+                        className="text-[10px] text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
+                      >
+                        {isEditingBillingHelp ? 'Cerrar edición' : '✏️ Entrenar / Editar ayuda'}
+                      </button>
+                    </div>
+
+                    {isEditingBillingHelp ? (
+                      <div className="space-y-2 pt-1">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-300 mb-0.5">
+                            Presupuesto General:
+                          </label>
+                          <input
+                            type="text"
+                            value={billingTypeHelp.presupuestoGeneral}
+                            onChange={(e) =>
+                              setBillingTypeHelp(prev => ({ ...prev, presupuestoGeneral: e.target.value }))
+                            }
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-300 mb-0.5">
+                            Adicional/especifico:
+                          </label>
+                          <input
+                            type="text"
+                            value={billingTypeHelp.adicionalEspecifico}
+                            onChange={(e) =>
+                              setBillingTypeHelp(prev => ({ ...prev, adicionalEspecifico: e.target.value }))
+                            }
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveBillingHelp(billingTypeHelp)}
+                            className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg text-[10px] cursor-pointer"
+                          >
+                            Guardar Ayuda
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
+                        <div className="p-2 rounded-lg bg-slate-950/80 border border-slate-800/80">
+                          <strong className="text-white">Presupuesto General:</strong>{' '}
+                          <span className="text-slate-400">{billingTypeHelp.presupuestoGeneral}</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-950/80 border border-slate-800/80">
+                          <strong className="text-white">Adicional/especifico:</strong>{' '}
+                          <span className="text-slate-400">{billingTypeHelp.adicionalEspecifico}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Selección de Contratista(s) / Taller(es) desde el Padrón */}
+                {/* Selección de Contratista(s) / Taller(es) con Buscador por Escritura en Tiempo Real */}
                 <div className="space-y-2 pt-2 border-t border-slate-800/80">
                   <label className="block text-xs font-bold text-slate-200">
                     Contratista(s) / Grupo(s) de Trabajo Habilitados en esta OT (Filtra Carga de Horas, Materiales y Terceros)
                   </label>
-                  <div className="flex gap-2">
-                    <select
-                      value={contractorSelectInput}
-                      onChange={(e) => {
-                        if (e.target.value) handleAddContractorToForm(e.target.value)
-                      }}
-                      className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-primary"
-                    >
-                      <option value="">+ Seleccionar contratista, taller o rubro para habilitar en este trabajo...</option>
-                      <optgroup label="Sectores Propios (Astillero)">
-                        {contractorCatalog
-                          .filter(c => c.admin_center === 'ASTILLERO')
-                          .map(c => (
-                            <option key={c.name} value={c.name}>
-                              {c.name} {c.can_charge_third_party ? '[Permiso 3ros ACTIVO]' : '[Sin Permiso 3ros]'}
-                            </option>
-                          ))}
-                      </optgroup>
-                      <optgroup label="Contratistas y Talleres Externos">
-                        {contractorCatalog
-                          .filter(c => c.admin_center !== 'ASTILLERO')
-                          .map(c => (
-                            <option key={c.name} value={c.name}>
-                              {c.name} ({c.admin_center}) {c.can_charge_third_party ? '• [Permiso 3ros ACTIVO]' : '• [Sin Permiso 3ros]'}
-                            </option>
-                          ))}
-                      </optgroup>
-                    </select>
+                  <div className="relative">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                        <input
+                          type="text"
+                          value={contractorSelectInput}
+                          onFocus={() => setIsContractorListOpen(true)}
+                          onChange={(e) => {
+                            setContractorSelectInput(e.target.value)
+                            setIsContractorListOpen(true)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && filteredContractorsForSearch.length > 0) {
+                              e.preventDefault()
+                              handleAddContractorToForm(filteredContractorsForSearch[0].name)
+                            }
+                          }}
+                          placeholder="Escribí para filtrar conforme vas escribiendo (ej: raschinaje, caldereria, pintor juarez)..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-8 py-2 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-primary"
+                        />
+                        {contractorSelectInput && (
+                          <button
+                            type="button"
+                            onClick={() => setContractorSelectInput('')}
+                            className="absolute right-2.5 top-2 text-slate-400 hover:text-white cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsContractorListOpen(prev => !prev)}
+                        className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-300 cursor-pointer shrink-0"
+                      >
+                        {isContractorListOpen ? 'Ocultar lista' : `Ver lista (${filteredContractorsForSearch.length})`}
+                      </button>
+                    </div>
+
+                    {/* Resultados filtrados en vivo conforme se escribe */}
+                    {(isContractorListOpen || contractorSelectInput.trim().length > 0) && (
+                      <div className="mt-1.5 p-2 rounded-xl bg-slate-900 border border-slate-700 shadow-xl max-h-48 overflow-y-auto space-y-1 z-20">
+                        {filteredContractorsForSearch.length === 0 ? (
+                          <p className="text-[11px] text-slate-400 py-2 px-2 text-center">
+                            No se encontraron contratistas o grupos que coincidan con &quot;{contractorSelectInput}&quot;.
+                          </p>
+                        ) : (
+                          filteredContractorsForSearch.map(c => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => handleAddContractorToForm(c.name)}
+                              className="w-full text-left px-3 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between gap-2 text-xs font-mono transition-colors cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-bold text-white truncate">{c.name}</span>
+                                <span className="text-[10px] text-slate-400">
+                                  ({c.admin_center === 'ASTILLERO' ? 'Sector Propio' : c.admin_center})
+                                </span>
+                              </div>
+                              <span
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-black border shrink-0 ${
+                                  c.can_charge_third_party
+                                    ? 'bg-purple-950 text-purple-300 border-purple-500'
+                                    : 'bg-slate-950 text-slate-500 border-slate-800'
+                                }`}
+                              >
+                                {c.can_charge_third_party ? 'Permiso 3ros ACTIVO' : 'Sin Permiso 3ros'}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Chips de contratistas seleccionados */}
@@ -2872,7 +3662,7 @@ export default function WorkOrders() {
                   )}
                 </div>
 
-                {/* Comentario Auxiliar (Sin texto Columna F y sin Nº Comprobante / Remito) */}
+                {/* Comentario Auxiliar */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Comentario Auxiliar
@@ -2901,7 +3691,13 @@ export default function WorkOrders() {
                   className="px-5 py-2 bg-gradient-to-r from-primary to-cyan-500 hover:brightness-110 text-slate-950 text-xs font-black rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Check className="w-4 h-4 stroke-[3]" />
-                  <span>{savingWork ? 'Guardando...' : 'Guardar Trabajo'}</span>
+                  <span>
+                    {savingWork
+                      ? 'Guardando...'
+                      : selectedBatchTemplates.length > 1 && workForm.ot_mode === 'new' && workForm.ot_creation_type === 'tabulada'
+                      ? `Abrir ${selectedBatchTemplates.length} OTs Seleccionadas`
+                      : 'Guardar Trabajo'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -3026,7 +3822,7 @@ export default function WorkOrders() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSeparateForm(prev => ({ ...prev, ot_creation_type: 'libre' }))}
+                      onClick={() => setSeparateForm(prev => ({ ...prev, ot_creation_type: 'libre', selected_template_id: '' }))}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
                         separateForm.ot_creation_type === 'libre'
                           ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500'
@@ -3066,13 +3862,22 @@ export default function WorkOrders() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Nº Nueva OT</label>
-                      <input
-                        type="text"
-                        value={separateForm.new_ot_number}
-                        onChange={(e) => setSeparateForm(prev => ({ ...prev, new_ot_number: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-primary font-mono font-bold"
-                      />
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                        Nº Nueva OT (Sistema)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={separateForm.new_ot_number}
+                          title="El número consecutivo lo decide automáticamente el sistema"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-primary font-mono font-black cursor-not-allowed"
+                        />
+                        <span className="absolute right-2 top-1.5 text-[10px] text-slate-500 font-bold">
+                          🔒 Auto
+                        </span>
+                      </div>
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">
@@ -3493,6 +4298,11 @@ export default function WorkOrders() {
                         <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${computed.color}`}>
                           Estado Calculado OT: {computed.label}
                         </span>
+                        {computed.isEliminada && (
+                          <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-700 text-[10px] font-black uppercase">
+                            🗑️ Eliminada
+                          </span>
+                        )}
                       </div>
                       <h2 className="text-xl font-black text-white">{selectedWoDetail.title}</h2>
                       <p className="text-xs text-slate-400 mt-1">
@@ -3560,6 +4370,7 @@ export default function WorkOrders() {
                       <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                         {items.map(it => {
                           const st = ESTADOS_TRABAJO.find(s => s.value === it.status) || ESTADOS_TRABAJO[0]
+                          const itElim = isWorkItemEliminada(it, selectedWoDetail)
                           return (
                             <div key={it.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-start justify-between gap-3 text-xs">
                               <div className="space-y-1">
@@ -3571,9 +4382,16 @@ export default function WorkOrders() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
-                                <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${st.color}`}>
-                                  {it.status}
-                                </span>
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${st.color}`}>
+                                    {it.status}
+                                  </span>
+                                  {it.status === 'Desestimado' && itElim && (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-700 font-black uppercase">
+                                      🗑️ Eliminada
+                                    </span>
+                                  )}
+                                </div>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -3662,7 +4480,7 @@ export default function WorkOrders() {
       )}
 
       {/* ========================================================= */}
-      {/* 8. MODAL: CATÁLOGO DE TRABAJOS (OT.ABC) - EDITABLE         */}
+      {/* 8. MODAL: CATÁLOGO DE TRABAJOS (OT.ABC) - SELECCIÓN MÚLTIPLE */}
       {/* ========================================================= */}
       {isTemplateModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto">
@@ -3675,7 +4493,7 @@ export default function WorkOrders() {
                 <div>
                   <h3 className="text-base font-black text-white">Catálogo de Trabajos (OT.ABC)</h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Guía de texto tabulada: Nombre de la OT y Descripción estándar agrupada en Renovación e Intermediaria.
+                    Seleccioná varias OTs a la vez (5-6 al subir el barco) y definí el estado individual de cada una, o agregá/editá plantillas.
                   </p>
                 </div>
               </div>
@@ -3746,6 +4564,67 @@ export default function WorkOrders() {
               </form>
             ) : (
               <>
+                {/* Barra de Selección Múltiple de OTs dentro del Catálogo OT.ABC */}
+                {catalogMultiSelection.length > 0 && (
+                  <div className="mb-3 p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/60 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-black text-emerald-300">
+                        ☑️ {catalogMultiSelection.length} OT(s) seleccionada(s) para apertura simultánea (Estado editable por cada una):
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCatalogMultiSelection([])}
+                          className="text-[11px] text-slate-400 hover:text-rose-400 underline cursor-pointer"
+                        >
+                          Limpiar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConfirmCatalogMultiSelection}
+                          className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black cursor-pointer flex items-center gap-1.5 shadow"
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>Cargar {catalogMultiSelection.length} OT(s) Seleccionada(s)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      {catalogMultiSelection.map((sel, idx) => {
+                        const stObj = ESTADOS_TRABAJO.find(s => s.value === sel.status) || ESTADOS_TRABAJO[0]
+                        return (
+                          <div
+                            key={sel.template_id}
+                            className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-mono text-[10px] font-black text-primary">
+                                #{idx + 1}
+                              </span>
+                              <span className="font-bold text-white truncate">{sel.ot_title}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[10px] text-slate-400 font-semibold">Estado:</span>
+                              <select
+                                value={sel.status}
+                                onChange={(e) => handleUpdateCatalogMultiStatus(sel.template_id, e.target.value)}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border cursor-pointer ${stObj.color}`}
+                              >
+                                {ESTADOS_TRABAJO.map(st => (
+                                  <option key={st.value} value={st.value} className="bg-slate-950 text-white">
+                                    {st.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 mb-3">
                   <div className="relative flex-1">
                     <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
@@ -3767,7 +4646,7 @@ export default function WorkOrders() {
                   </button>
                 </div>
 
-                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
                   {[...GRUPOS_CATALOGO, ''].map(grupo => {
                     const q = templateSearch.toLowerCase()
                     const items = templates.filter(
@@ -3782,50 +4661,66 @@ export default function WorkOrders() {
                           {grupo || 'Sin clasificar'} ({items.length})
                         </h4>
                         <div className="space-y-1.5">
-                          {items.map(tpl => (
-                            <div
-                              key={tpl.id}
-                              className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500/40 transition-colors"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <span className="font-bold text-white text-xs block">{tpl.name}</span>
-                                  {tpl.description ? (
-                                    <p className="text-[11px] text-slate-400 mt-1 whitespace-pre-line">
-                                      {tpl.description}
-                                    </p>
-                                  ) : (
-                                    <p className="text-[11px] text-slate-600 italic mt-0.5">Sin descripción</p>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUseTemplate(tpl)}
-                                    className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[11px] font-bold cursor-pointer"
-                                  >
-                                    Usar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setTemplateEdit(tpl)}
-                                    className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
-                                    title="Editar"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteTemplate(tpl)}
-                                    className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 cursor-pointer"
-                                    title="Eliminar"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                          {items.map(tpl => {
+                            const isChecked = catalogMultiSelection.some(i => i.template_id === tpl.id)
+                            return (
+                              <div
+                                key={tpl.id}
+                                className={`p-3 rounded-xl border transition-colors ${
+                                  isChecked
+                                    ? 'bg-emerald-950/20 border-emerald-500/50'
+                                    : 'bg-slate-950 border-slate-800 hover:border-amber-500/40'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <label className="flex items-start gap-2.5 flex-1 min-w-0 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => handleToggleCatalogMultiItem(tpl)}
+                                      className="mt-0.5 w-4 h-4 rounded accent-emerald-500 shrink-0"
+                                      title="Seleccionar para abrir varias OTs al mismo tiempo"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <span className="font-bold text-white text-xs block">{tpl.name}</span>
+                                      {tpl.description ? (
+                                        <p className="text-[11px] text-slate-400 mt-1 whitespace-pre-line">
+                                          {tpl.description}
+                                        </p>
+                                      ) : (
+                                        <p className="text-[11px] text-slate-600 italic mt-0.5">Sin descripción</p>
+                                      )}
+                                    </div>
+                                  </label>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUseTemplate(tpl)}
+                                      className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[11px] font-bold cursor-pointer"
+                                    >
+                                      Usar 1
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTemplateEdit(tpl)}
+                                      className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                                      title="Editar"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteTemplate(tpl)}
+                                      className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 cursor-pointer"
+                                      title="Eliminar"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     )

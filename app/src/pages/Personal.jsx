@@ -1320,18 +1320,25 @@ export default function Personal() {
 
         if (error) throw error
 
-        // Si es Contratista/Taller, sincronizar permiso 3ros en todo su Grupo de Trabajo
+        // Si es Contratista/Taller, sincronizar permiso 3ros y Rubros Habilitados en todo su Grupo de Trabajo
         if (finalGroup !== 'ASTILLERO') {
           await supabase
             .from('workers')
-            .update({ can_charge_third_party: payload.can_charge_third_party })
+            .update({
+              can_charge_third_party: payload.can_charge_third_party,
+              trade: payload.trade
+            })
             .eq('work_group', finalGroup)
         }
 
         setWorkers(prev => prev.map(w => {
           if (w.id === editingWorker.id) return { ...w, ...payload }
           if (finalGroup !== 'ASTILLERO' && w.work_group === finalGroup) {
-            return { ...w, can_charge_third_party: payload.can_charge_third_party }
+            return {
+              ...w,
+              can_charge_third_party: payload.can_charge_third_party,
+              trade: payload.trade
+            }
           }
           return w
         }))
@@ -3218,11 +3225,23 @@ export default function Personal() {
                             )}
                           </td>
 
-                          {/* 3. Rubro */}
+                          {/* 3. Rubro (Soporta Multi-Rubro para Contratistas y Talleres) */}
                           <td className="py-2 px-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRubroBadgeColor(w.trade)}`}>
-                              {w.trade || 'General'}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-1">
+                              {String(w.trade || 'General')
+                                .split(/[,;/|]+/)
+                                .map(s => s.trim())
+                                .filter(Boolean)
+                                .map((tr, tIdx) => (
+                                  <span
+                                    key={`${w.id}-tr-${tIdx}`}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRubroBadgeColor(tr)}`}
+                                    title={tIdx === 0 ? 'Rubro Principal' : 'Rubro Secundario Habilitado'}
+                                  >
+                                    {tIdx === 0 && String(w.trade || '').includes(',') ? `⭐ ${tr}` : tr}
+                                  </span>
+                                ))}
+                            </div>
                           </td>
 
                           {/* 4. AR$/Hora */}
@@ -3650,8 +3669,8 @@ export default function Personal() {
                 </div>
               )}
 
-              {/* 3. DATOS DE LA PERSONA: NOMBRE & RUBRO */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* 3. DATOS DE LA PERSONA: NOMBRE & RUBRO (SOPORTE MULTI-RUBRO EN CONTRATISTAS) */}
+              <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Nombre y Apellido
@@ -3666,25 +3685,129 @@ export default function Personal() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Rubro Principal
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    list="trades-datalist"
-                    placeholder="CALDERERIA, PINTURA, MECANICA..."
-                    value={formData.trade}
-                    onChange={(e) => setFormData({ ...formData, trade: e.target.value.toUpperCase() })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                  />
-                  <datalist id="trades-datalist">
-                    {uniqueTrades.map(t => (
-                      <option key={t} value={t} />
-                    ))}
-                  </datalist>
-                </div>
+                {formData.admin_center === 'ASTILLERO' ? (
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Rubro Titular en Padrón (Astillero)
+                      </label>
+                      <span className="text-[10px] text-cyan-400">
+                        🔄 En Carga de Horas permite préstamo a otros rubros
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      list="trades-datalist"
+                      placeholder="CALDERERIA, RASCHINAJE, PINTURA, MECANICA..."
+                      value={formData.trade}
+                      onChange={(e) => setFormData({ ...formData, trade: e.target.value.toUpperCase() })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
+                    />
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {['CALDERERIA', 'RASCHINAJE', 'PINTURA', 'MECANICA', 'CARPINTERIA', 'ELECTRICIDAD', 'SOLDADURA', 'MAQUINARIA', 'PANOLERO', 'MANDADOS', 'SUPERVISION', 'TECNICOS'].map(stdTrade => {
+                        const isSelected = (formData.trade || '').trim().toUpperCase() === stdTrade
+                        return (
+                          <button
+                            key={stdTrade}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, trade: stdTrade })}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-cyan-500 text-slate-950 border-cyan-300 shadow-sm'
+                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            {stdTrade}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 bg-slate-950 rounded-xl border border-amber-500/30 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <label className="text-xs font-bold text-amber-300 block">
+                          Rubro(s) Habilitados del Contratista / Taller (Multi-Rubro)
+                        </label>
+                        <p className="text-[10px] text-slate-400">
+                          Podés seleccionar <strong>varios rubros</strong>. El primero queda como <strong>⭐ Principal</strong> por defecto en Carga de Horas y los demás quedan habilitados para elegir en 1 clic.
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-700">
+                        {String(formData.trade || '').split(',').map(s => s.trim()).filter(Boolean).length} rubro(s)
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        'CALDERERIA',
+                        'SOLDADURA',
+                        'RASCHINAJE',
+                        'PINTURA',
+                        'MECANICA',
+                        'CARPINTERIA',
+                        'ELECTRICIDAD',
+                        'TORNERIA',
+                        'PRFV',
+                        'MANIOBRAS',
+                        'SERVICIOS INDUSTRIALES'
+                      ].map(stdTrade => {
+                        const currentList = String(formData.trade || '')
+                          .split(',')
+                          .map(s => s.trim().toUpperCase())
+                          .filter(Boolean)
+                        const idxInList = currentList.indexOf(stdTrade)
+                        const isSelected = idxInList !== -1
+                        const isPrimary = idxInList === 0
+
+                        return (
+                          <button
+                            key={stdTrade}
+                            type="button"
+                            onClick={() => {
+                              let nextList = [...currentList]
+                              if (isSelected) {
+                                if (nextList.length > 1) {
+                                  nextList = nextList.filter(t => t !== stdTrade)
+                                }
+                              } else {
+                                nextList.push(stdTrade)
+                              }
+                              setFormData({ ...formData, trade: nextList.join(', ') })
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                              isPrimary
+                                ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-md ring-1 ring-amber-300 font-black'
+                                : isSelected
+                                ? 'bg-amber-950 text-amber-200 border-amber-500'
+                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            <span>{isPrimary ? '⭐ ' : isSelected ? '✓ ' : '+ '}{stdTrade}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <input
+                      type="text"
+                      required
+                      list="trades-datalist"
+                      placeholder="Ej: CALDERERIA, SOLDADURA, MECANICA (separados por coma)"
+                      value={formData.trade}
+                      onChange={(e) => setFormData({ ...formData, trade: e.target.value.toUpperCase() })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-amber-200 font-mono font-bold focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                )}
+
+                <datalist id="trades-datalist">
+                  {uniqueTrades.map(t => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
               </div>
 
               {/* 4. TARIFA AR$, U$/HORA (CONGELADO/CALCULADO) & CATEGORÍA */}
