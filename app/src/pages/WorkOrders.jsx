@@ -1385,15 +1385,19 @@ export default function WorkOrders() {
       if (savedWorkItem) {
         if (validFor3ros) {
           const singleContractor = workForm.contractors[0]
+          const workerObj = workers.find(w => w.name.toUpperCase().trim() === singleContractor?.toUpperCase().trim())
+          const resolvedTrade = workerObj?.trade && workerObj.trade.toUpperCase().trim() !== 'MANUAL' ? workerObj.trade : null
           const tpPayload = {
             work_item_id: savedWorkItem.id,
             work_order_id: targetWoId,
             ship_id: targetShipId,
             contractor_name: singleContractor,
+            trade: resolvedTrade,
             status: 'PRC',
             voucher_type: 'PRC',
             amount_ars: 0,
             service_date: todayIso,
+            entry_date: todayIso,
             direct_observations: workForm.description.trim() || 'Sin descripción cargada en la OT',
             specific_observations: workForm.specific_observations.trim() || null,
             updated_at: new Date().toISOString()
@@ -1488,16 +1492,25 @@ export default function WorkOrders() {
     }
     setSavingTpCascade(true)
     try {
+      const workerObj = workers.find(w => w.name.toUpperCase().trim() === tpCascadeForm.contractor_name?.toUpperCase().trim())
+      const resolvedTrade = workerObj?.trade && workerObj.trade.toUpperCase().trim() !== 'MANUAL' ? workerObj.trade : null
+      const vNum = tpCascadeForm.voucher_number.trim() || null
+      const isPrc = (tpCascadeForm.status || 'PRC') === 'PRC'
+
       const payload = {
         work_item_id: selectedTpCascadeWorkItem.id,
         work_order_id: selectedTpCascadeWorkItem.work_order_id,
         ship_id: tpCascadeForm.ship_id,
         contractor_name: tpCascadeForm.contractor_name,
+        trade: resolvedTrade,
         status: tpCascadeForm.status || 'PRC',
         voucher_type: tpCascadeForm.status || 'PRC',
-        voucher_number: tpCascadeForm.voucher_number.trim() || null,
+        voucher_number: vNum,
+        budget_number: isPrc ? vNum : null,
+        invoice_number: !isPrc ? vNum : null,
         amount_ars: parseFloat(tpCascadeForm.amount_ars) || 0,
         service_date: tpCascadeForm.service_date || new Date().toISOString().split('T')[0],
+        entry_date: tpCascadeForm.service_date || new Date().toISOString().split('T')[0],
         direct_observations: selectedTpCascadeWorkItem.description || 'Sin descripción en la OT',
         specific_observations: tpCascadeForm.specific_observations.trim() || null,
         updated_at: new Date().toISOString()

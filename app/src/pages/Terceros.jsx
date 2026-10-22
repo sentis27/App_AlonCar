@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -95,6 +95,18 @@ const OFFICIAL_TRADES = [
   'DESGASIFICACION'
 ]
 
+// Formateador estándar de fecha dd/mm/aaaa para todo el sistema
+function formatDate(dateStr) {
+  if (!dateStr) return '-'
+  const clean = String(dateStr).split('T')[0]
+  const parts = clean.split('-')
+  if (parts.length === 3) {
+    const [y, m, d] = parts
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`
+  }
+  return dateStr
+}
+
 // Función utilitaria para obtener el tipo de cambio oficial congelado por fecha de carga
 function getDollarRateForDate(dateStr, macroVariables) {
   if (!dateStr) return 1500
@@ -115,6 +127,121 @@ function getDollarRateForDate(dateStr, macroVariables) {
   }
   const rate = day <= 15 ? (mv.dollar_rate_1q || mv.dollar_rate) : (mv.dollar_rate_2q || mv.dollar_rate)
   return Number(rate) || 1500
+}
+
+// Desplegable integrado con buscador en tiempo real (Regla general como en creación de OT)
+function SearchableContractorSelect({ contractors, value, onChange, disabled }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const selectedContractor = useMemo(() => {
+    if (!value) return null
+    return contractors.find((c) => c.name.toUpperCase().trim() === value.toUpperCase().trim())
+  }, [contractors, value])
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return contractors
+    const q = query.toLowerCase().trim()
+    return contractors.filter(
+      (c) => c.name.toLowerCase().includes(q) || (c.trade || '').toLowerCase().includes(q)
+    )
+  }, [contractors, query])
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative flex items-center">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none z-10" />
+        <input
+          type="text"
+          disabled={disabled}
+          placeholder="Escribí para buscar o seleccioná de la lista..."
+          value={isOpen ? query : (selectedContractor ? `${selectedContractor.name} [${selectedContractor.trade || 'SIN RUBRO'}]` : '')}
+          onFocus={() => {
+            setIsOpen(true)
+            setQuery('')
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setIsOpen(true)
+          }}
+          className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-16 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 placeholder-slate-500 transition-colors cursor-pointer"
+        />
+        <div className="absolute right-2 flex items-center gap-1 z-10">
+          {value && !disabled && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onChange('')
+                setQuery('')
+              }}
+              className="p-1 text-slate-400 hover:text-white rounded-md hover:bg-slate-800"
+              title="Borrar selección"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setIsOpen((prev) => !prev)}
+            className="p-1 text-slate-400 hover:text-white rounded-md cursor-pointer"
+          >
+            <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {isOpen && !disabled && (
+        <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 p-1 divide-y divide-slate-800/60">
+          {filtered.length === 0 ? (
+            <div className="p-3 text-center text-slate-500 text-xs font-mono">
+              No se encontraron contratistas que coincidan con &quot;{query}&quot;
+            </div>
+          ) : (
+            filtered.map((c) => {
+              const isSelected = selectedContractor?.name === c.name
+              return (
+                <button
+                  key={c.id || c.name}
+                  type="button"
+                  onClick={() => {
+                    onChange(c.name)
+                    setIsOpen(false)
+                    setQuery('')
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between text-xs font-mono transition-colors cursor-pointer ${
+                    isSelected ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-700' : 'text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate font-bold">{c.name}</span>
+                    <span className="text-[10px] text-slate-400 shrink-0">
+                      [{c.trade || 'SIN RUBRO'}]
+                    </span>
+                  </div>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-purple-300 border border-purple-800 shrink-0">
+                    {c.trade === 'MANUAL' ? 'Polirrubro' : '3ROS'}
+                  </span>
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function Terceros() {
@@ -161,7 +288,7 @@ export default function Terceros() {
   const [savingService, setSavingService] = useState(false)
   const [contractorModalSearch, setContractorModalSearch] = useState('')
 
-  // Formulario de servicio
+  // Formulario de servicio con soporte multi-comprobante
   const [formData, setFormData] = useState({
     ship_id: '',
     work_order_id: '',
@@ -171,10 +298,13 @@ export default function Terceros() {
     is_manual_trade: false,
     voucher_type: 'PRC',
     voucher_number: '',
+    budget_number: '',
+    invoice_number: '',
+    internal_remito_number: '',
+    supplier_remito_number: '',
     voucher_date: new Date().toISOString().split('T')[0],
     entry_date: new Date().toISOString().split('T')[0],
     service_date: new Date().toISOString().split('T')[0],
-    internal_remito_number: '',
     amount_ars: '',
     usd_rate: 1500,
     amount_usd: 0,
@@ -286,9 +416,16 @@ export default function Terceros() {
     return map
   }, [workOrders])
 
-  // Recálculo del dólar congelado al cambiar fecha de entrada o monto AR$
-  const handleEntryDateOrAmountChange = (newDate, newAmountArs, overrideRate = null) => {
-    const rate = overrideRate !== null && overrideRate > 0 ? overrideRate : getDollarRateForDate(newDate, macroVariables)
+  // Mapa de contratistas por nombre en mayúsculas para rápida resolución de rubros
+  const contractorMap = useMemo(() => {
+    const map = new Map()
+    contractors.forEach((c) => map.set(c.name.toUpperCase().trim(), c))
+    return map
+  }, [contractors])
+
+  // Recálculo del dólar oficial congelado por fecha de entrada (intocable)
+  const handleEntryDateOrAmountChange = (newDate, newAmountArs) => {
+    const rate = getDollarRateForDate(newDate, macroVariables) || 1500
     const ars = parseFloat(newAmountArs) || 0
     const usd = rate > 0 ? Number((ars / rate).toFixed(2)) : 0
     return { usd_rate: rate, amount_usd: usd }
@@ -325,13 +462,16 @@ export default function Terceros() {
       is_manual_trade: false,
       voucher_type: 'PRC',
       voucher_number: '',
+      budget_number: '',
+      invoice_number: '',
+      internal_remito_number: '',
+      supplier_remito_number: '',
       voucher_date: today,
       entry_date: today,
       service_date: today,
-      internal_remito_number: '',
       amount_ars: '',
-      usd_rate: usd_rate || 1500,
-      amount_usd: 0,
+      usd_rate,
+      amount_usd,
       direct_observations: '',
       specific_observations: '',
       audit_status: 'PENDIENTE'
@@ -341,9 +481,17 @@ export default function Terceros() {
 
   // Abrir modal de edición
   const handleOpenEditModal = (service) => {
-    const tradeUpper = (service.trade || '').toUpperCase().trim()
     const foundContractor = contractors.find((c) => c.name.toUpperCase().trim() === (service.contractor_name || '').toUpperCase().trim())
     const isManual = foundContractor?.trade?.toUpperCase().trim() === 'MANUAL'
+    const resolvedTrade = service.trade || (!isManual ? foundContractor?.trade || '' : '')
+
+    const bNum = service.budget_number || (service.voucher_type === 'PRC' ? service.voucher_number || '' : '')
+    const iNum = service.invoice_number || (['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(service.voucher_type) ? service.voucher_number || '' : '')
+    const sNum = service.supplier_remito_number || (['RMO', 'RPF'].includes(service.voucher_type) ? service.voucher_number || '' : '')
+
+    const rate = getDollarRateForDate(service.entry_date || service.service_date, macroVariables) || service.usd_rate || 1500
+    const ars = service.amount_ars !== null ? service.amount_ars : ''
+    const usd = rate > 0 && ars ? Number((parseFloat(ars) / rate).toFixed(2)) : (service.amount_usd || 0)
 
     setContractorModalSearch('')
     setEditingService(service)
@@ -352,17 +500,20 @@ export default function Terceros() {
       work_order_id: service.work_order_id || '',
       work_item_id: service.work_item_id || '',
       contractor_name: service.contractor_name || '',
-      trade: service.trade || '',
+      trade: resolvedTrade,
       is_manual_trade: isManual,
       voucher_type: service.voucher_type || 'PRC',
       voucher_number: service.voucher_number || '',
+      budget_number: bNum,
+      invoice_number: iNum,
+      internal_remito_number: service.internal_remito_number || '',
+      supplier_remito_number: sNum,
       voucher_date: service.voucher_date || service.service_date || '',
       entry_date: service.entry_date || service.service_date || '',
       service_date: service.service_date || '',
-      internal_remito_number: service.internal_remito_number || '',
-      amount_ars: service.amount_ars !== null ? service.amount_ars : '',
-      usd_rate: service.usd_rate || 1500,
-      amount_usd: service.amount_usd || 0,
+      amount_ars: ars,
+      usd_rate: rate,
+      amount_usd: usd,
       direct_observations: service.direct_observations || '',
       specific_observations: service.specific_observations || '',
       audit_status: service.audit_status || 'PENDIENTE'
@@ -387,6 +538,12 @@ export default function Terceros() {
       return
     }
 
+    // Regla obligatoria: Si es PRC requiere número de presupuesto sí o sí
+    if (formData.voucher_type === 'PRC' && !formData.budget_number?.trim() && !formData.voucher_number?.trim()) {
+      showFeedback('error', 'La opción PRC requiere cargar un número de presupuesto sí o sí.')
+      return
+    }
+
     // Comprobar permiso de edición de montos si es una edición
     if (editingService && !canEditAmounts) {
       formData.amount_ars = editingService.amount_ars
@@ -397,21 +554,37 @@ export default function Terceros() {
     try {
       setSavingService(true)
       const parsedArs = parseFloat(formData.amount_ars) || 0
-      const rate = formData.usd_rate > 0 ? formData.usd_rate : getDollarRateForDate(formData.entry_date, macroVariables)
+      const rate = getDollarRateForDate(formData.entry_date, macroVariables) || 1500
       const parsedUsd = rate > 0 ? Number((parsedArs / rate).toFixed(2)) : 0
+
+      const foundContractor = contractors.find((c) => c.name.toUpperCase().trim() === formData.contractor_name.toUpperCase().trim())
+      const isManual = foundContractor?.trade?.toUpperCase().trim() === 'MANUAL'
+      const resolvedTrade = formData.trade?.trim().toUpperCase() || (!isManual ? (foundContractor?.trade || '').trim().toUpperCase() : null)
+
+      let primaryVoucherNumber = formData.voucher_number?.trim() || null
+      if (formData.voucher_type === 'PRC') {
+        primaryVoucherNumber = formData.budget_number?.trim() || primaryVoucherNumber
+      } else if (['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(formData.voucher_type)) {
+        primaryVoucherNumber = formData.invoice_number?.trim() || primaryVoucherNumber
+      } else if (['RMO', 'RPF'].includes(formData.voucher_type)) {
+        primaryVoucherNumber = formData.supplier_remito_number?.trim() || primaryVoucherNumber
+      }
 
       const payload = {
         ship_id: formData.ship_id,
         work_order_id: formData.work_order_id || null,
         work_item_id: formData.work_item_id || null,
         contractor_name: formData.contractor_name.trim().toUpperCase(),
-        trade: formData.trade.trim().toUpperCase(),
+        trade: resolvedTrade || 'VARIOS',
         voucher_type: formData.voucher_type,
-        voucher_number: formData.voucher_number ? formData.voucher_number.trim() : null,
+        voucher_number: primaryVoucherNumber,
+        budget_number: formData.budget_number?.trim() || (formData.voucher_type === 'PRC' ? primaryVoucherNumber : null),
+        invoice_number: formData.invoice_number?.trim() || (['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(formData.voucher_type) ? primaryVoucherNumber : null),
+        internal_remito_number: formData.internal_remito_number ? formData.internal_remito_number.trim() : null,
+        supplier_remito_number: formData.supplier_remito_number?.trim() || (['RMO', 'RPF'].includes(formData.voucher_type) ? primaryVoucherNumber : null),
         voucher_date: formData.voucher_date || formData.entry_date,
         entry_date: formData.entry_date,
         service_date: formData.service_date || formData.entry_date,
-        internal_remito_number: formData.internal_remito_number ? formData.internal_remito_number.trim() : null,
         amount_ars: parsedArs,
         usd_rate: rate,
         amount_usd: parsedUsd,
@@ -647,23 +820,27 @@ export default function Terceros() {
       // 3. Filtro Contratista
       if (selectedContractorFilter !== 'todos' && srv.contractor_name !== selectedContractorFilter) return false
 
-      // 4. Filtro Rubro
-      if (selectedTradeFilter !== 'todos' && (srv.trade || '').toUpperCase() !== selectedTradeFilter.toUpperCase()) return false
+      // 4. Filtro Rubro (evalúa trade directo o rubro del contratista)
+      const contractorObj = contractorMap.get(srv.contractor_name?.toUpperCase()?.trim())
+      const effectiveTrade = (srv.trade || (contractorObj?.trade && contractorObj.trade !== 'MANUAL' ? contractorObj.trade : '')).toUpperCase()
+      if (selectedTradeFilter !== 'todos' && effectiveTrade !== selectedTradeFilter.toUpperCase()) return false
 
       // 5. Filtro Comprobante
       if (selectedVoucherFilter !== 'todos' && srv.voucher_type !== selectedVoucherFilter) return false
 
-      // 6. Filtro Auditoría
-      if (selectedAuditFilter !== 'todos' && (srv.audit_status || 'PENDIENTE') !== selectedAuditFilter) return false
-
-      // 7. Búsqueda de texto libre
+      // 6. Búsqueda de texto libre (cubre barco, OT, contratista, rubro, observaciones y todos los números de comprobantes)
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase().trim()
         const ship = shipMap.get(srv.ship_id)?.name?.toLowerCase() || ''
-        const ot = otMap.get(srv.work_order_id)?.ot_number?.toLowerCase() || ''
+        const otObj = otMap.get(srv.work_order_id)
+        const ot = otObj?.ot_number?.toLowerCase() || ''
+        const otTitle = otObj?.title?.toLowerCase() || ''
         const contractor = (srv.contractor_name || '').toLowerCase()
-        const trade = (srv.trade || '').toLowerCase()
+        const trade = effectiveTrade.toLowerCase()
         const vnum = (srv.voucher_number || '').toLowerCase()
+        const bnum = (srv.budget_number || '').toLowerCase()
+        const inum = (srv.invoice_number || '').toLowerCase()
+        const snum = (srv.supplier_remito_number || '').toLowerCase()
         const remito = (srv.internal_remito_number || '').toLowerCase()
         const dirObs = (srv.direct_observations || '').toLowerCase()
         const specObs = (srv.specific_observations || '').toLowerCase()
@@ -671,9 +848,13 @@ export default function Terceros() {
         if (
           !ship.includes(q) &&
           !ot.includes(q) &&
+          !otTitle.includes(q) &&
           !contractor.includes(q) &&
           !trade.includes(q) &&
           !vnum.includes(q) &&
+          !bnum.includes(q) &&
+          !inum.includes(q) &&
+          !snum.includes(q) &&
           !remito.includes(q) &&
           !dirObs.includes(q) &&
           !specObs.includes(q)
@@ -684,7 +865,7 @@ export default function Terceros() {
 
       return true
     })
-  }, [services, kpiFilter, selectedShipFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, selectedAuditFilter, searchTerm, shipMap, otMap])
+  }, [services, kpiFilter, selectedShipFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm, shipMap, otMap, contractorMap])
 
   // Métricas calculadas para los KPIs
   const kpiCounts = useMemo(() => {
@@ -1113,18 +1294,6 @@ export default function Terceros() {
               </option>
             ))}
           </select>
-
-          {/* Auditoría Técnica */}
-          <select
-            value={selectedAuditFilter}
-            onChange={(e) => setSelectedAuditFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary"
-          >
-            <option value="todos">Auditoría: Todas</option>
-            <option value="PENDIENTE">Auditoría: Pendiente</option>
-            <option value="CONFORME">Auditoría: Conforme</option>
-            <option value="OBSERVADO">Auditoría: Observado</option>
-          </select>
         </div>
       </div>
 
@@ -1161,11 +1330,11 @@ export default function Terceros() {
                   <th className="py-3 px-3">Fecha</th>
                   <th className="py-3 px-3">Barco / OT</th>
                   <th className="py-3 px-3">Contratista / Rubro</th>
-                  <th className="py-3 px-3">Comprobante</th>
-                  <th className="py-3 px-3">Remito Aloncar</th>
                   <th className="py-3 px-3 text-right">Importe AR$</th>
                   <th className="py-3 px-3 text-right">Dólar / US$</th>
-                  <th className="py-3 px-3 text-center">Auditoría</th>
+                  <th className="py-3 px-3">Comprobante</th>
+                  <th className="py-3 px-3">Nº Comprobante</th>
+                  <th className="py-3 px-3">Comentarios</th>
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -1175,20 +1344,31 @@ export default function Terceros() {
                   const ot = otMap.get(srv.work_order_id)
                   const voucherConfig = VOUCHER_TYPES.find((v) => v.code === srv.voucher_type) || VOUCHER_TYPES[0]
                   const isEvolvable = srv.voucher_type === 'RMO' || srv.voucher_type === 'RPF'
+                  const contractorObj = contractorMap.get(srv.contractor_name?.toUpperCase()?.trim())
+                  const effectiveTrade = srv.trade || (contractorObj?.trade && contractorObj.trade !== 'MANUAL' ? contractorObj.trade : null)
+
+                  // Detección de múltiples comprobantes vinculados
+                  const fcrNumber = srv.invoice_number || (['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(srv.voucher_type) ? srv.voucher_number : null)
+                  const prcNumber = srv.budget_number || (srv.voucher_type === 'PRC' ? srv.voucher_number : null)
+                  const remitoAloncar = srv.internal_remito_number || null
+                  const supplierRemito = srv.supplier_remito_number || (['RMO', 'RPF'].includes(srv.voucher_type) ? srv.voucher_number : null)
+                  const hasAnyVoucherNumber = Boolean(fcrNumber || prcNumber || remitoAloncar || supplierRemito)
 
                   return (
                     <tr key={srv.id} className="hover:bg-slate-800/40 transition-colors">
-                      {/* Fecha */}
+                      {/* 1. Fecha (dd/mm/aaaa) */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         <div className="font-semibold text-slate-200">
-                          {srv.service_date || srv.entry_date || '-'}
+                          {formatDate(srv.service_date || srv.entry_date)}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-sans">
-                          Carga: {srv.entry_date || '-'}
-                        </div>
+                        {srv.entry_date && srv.entry_date !== srv.service_date && (
+                          <div className="text-[10px] text-slate-500 font-sans">
+                            Carga: {formatDate(srv.entry_date)}
+                          </div>
+                        )}
                       </td>
 
-                      {/* Barco / OT */}
+                      {/* 2. Barco / OT */}
                       <td className="py-3 px-3 font-sans">
                         <div className="font-bold text-white flex items-center gap-1.5">
                           <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
@@ -1208,44 +1388,23 @@ export default function Terceros() {
                         </div>
                       </td>
 
-                      {/* Contratista y Rubro */}
+                      {/* 3. Contratista y Rubro */}
                       <td className="py-3 px-3 font-sans">
                         <div className="font-bold text-slate-100 uppercase tracking-wide truncate max-w-[180px]" title={srv.contractor_name}>
                           {srv.contractor_name}
                         </div>
                         <div className="mt-0.5">
-                          {srv.trade ? (
-                            <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium">
-                              {srv.trade}
+                          {effectiveTrade ? (
+                            <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono">
+                              {effectiveTrade}
                             </span>
                           ) : (
-                            <span className="text-[10px] text-rose-400">⚠️ Sin Rubro</span>
+                            <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro</span>
                           )}
                         </div>
                       </td>
 
-                      {/* Comprobante */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${voucherConfig.color}`}>
-                          {srv.voucher_type}
-                        </span>
-                        <div className="text-[11px] text-slate-300 font-mono mt-0.5">
-                          {srv.voucher_number || <span className="text-slate-500 italic">S/N</span>}
-                        </div>
-                      </td>
-
-                      {/* Remito Aloncar */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        {srv.internal_remito_number ? (
-                          <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-800 font-mono font-semibold">
-                            Rem #{srv.internal_remito_number}
-                          </span>
-                        ) : (
-                          <span className="text-slate-600 text-[10px] font-sans">-</span>
-                        )}
-                      </td>
-
-                      {/* Importe AR$ */}
+                      {/* 4. Importe AR$ */}
                       <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-semibold text-slate-100">
                         {Number(srv.amount_ars) > 0 ? (
                           <span>${Number(srv.amount_ars).toLocaleString('es-AR')}</span>
@@ -1254,7 +1413,7 @@ export default function Terceros() {
                         )}
                       </td>
 
-                      {/* Dólar / US$ */}
+                      {/* 5. Dólar / US$ */}
                       <td className="py-3 px-3 text-right whitespace-nowrap">
                         <div className="font-mono font-extrabold text-cyan-300">
                           ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1264,27 +1423,80 @@ export default function Terceros() {
                         </div>
                       </td>
 
-                      {/* Auditoría Técnica */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap font-sans">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAuditModal(srv)}
-                          className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold border transition-all cursor-pointer ${
-                            srv.audit_status === 'CONFORME'
-                              ? 'bg-emerald-950 text-emerald-300 border-emerald-700 hover:bg-emerald-900'
-                              : srv.audit_status === 'OBSERVADO'
-                              ? 'bg-rose-950 text-rose-300 border-rose-700 hover:bg-rose-900'
-                              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                          }`}
-                          title="Clic para cambiar conformidad técnica"
-                        >
-                          {srv.audit_status === 'CONFORME' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
-                          {srv.audit_status === 'OBSERVADO' && <AlertTriangle className="w-3 h-3 text-rose-400" />}
-                          <span>{srv.audit_status || 'PENDIENTE'}</span>
-                        </button>
+                      {/* 6. Comprobante (Tipo) */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${voucherConfig.color}`}>
+                          {srv.voucher_type}
+                        </span>
                       </td>
 
-                      {/* Acciones */}
+                      {/* 7. Nº Comprobante (Reemplaza a Remito Alon Car - Múltiples comprobantes) */}
+                      <td className="py-3 px-3 font-mono">
+                        <div className="space-y-1 min-w-[130px]">
+                          {/* Factura Fiscal FCR / FCA */}
+                          {fcrNumber && (
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-300">
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 shrink-0 font-sans">
+                                {['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(srv.voucher_type) ? srv.voucher_type : 'FCR'}
+                              </span>
+                              <span className="truncate">{fcrNumber}</span>
+                            </div>
+                          )}
+
+                          {/* Presupuesto Interno PRC */}
+                          {prcNumber && (
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-300">
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800 shrink-0 font-sans">
+                                PRC
+                              </span>
+                              <span className="truncate">{prcNumber}</span>
+                            </div>
+                          )}
+
+                          {/* Remito Aloncar (Cruce Pañol) */}
+                          {remitoAloncar && (
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300">
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 shrink-0 font-sans">
+                                ALONCAR
+                              </span>
+                              <span className="truncate">#{remitoAloncar}</span>
+                            </div>
+                          )}
+
+                          {/* Remito de Proveedor / Taller RMO / RPF */}
+                          {supplierRemito && (
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-purple-300">
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800 shrink-0 font-sans">
+                                {['RMO', 'RPF'].includes(srv.voucher_type) ? srv.voucher_type : 'REMITO'}
+                              </span>
+                              <span className="truncate">{supplierRemito}</span>
+                            </div>
+                          )}
+
+                          {!hasAnyVoucherNumber && (
+                            <span className="text-slate-600 text-[11px] italic font-sans">S/N</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 8. Comentarios (Observaciones Directas y Específicas) */}
+                      <td className="py-3 px-3 font-sans max-w-[220px]">
+                        {srv.direct_observations ? (
+                          <div className="text-xs text-slate-200 truncate font-medium" title={srv.direct_observations}>
+                            {srv.direct_observations}
+                          </div>
+                        ) : null}
+                        {srv.specific_observations ? (
+                          <div className="text-[10px] text-slate-400 italic truncate" title={srv.specific_observations}>
+                            {srv.specific_observations}
+                          </div>
+                        ) : null}
+                        {!srv.direct_observations && !srv.specific_observations && (
+                          <span className="text-slate-600 text-[11px] italic">Sin observaciones</span>
+                        )}
+                      </td>
+
+                      {/* 9. Acciones */}
                       <td className="py-3 px-3 text-right whitespace-nowrap font-sans">
                         <div className="flex items-center justify-end gap-1">
                           {/* Botón Evolucionar (RMO / RPF -> FCR) */}
@@ -1366,30 +1578,62 @@ export default function Terceros() {
                       {srv.voucher_type} - {voucherConfig.label.split(' - ')[1] || srv.voucher_type}
                     </span>
                     <span className="text-xs text-slate-400 font-mono">
-                      {srv.service_date || srv.entry_date}
+                      {formatDate(srv.service_date || srv.entry_date)}
                     </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                    <span>N° {srv.voucher_number || 'S/N'}</span>
                   </div>
 
                   <div>
                     <h3 className="font-extrabold text-base text-white tracking-wide uppercase truncate" title={srv.contractor_name}>
                       {srv.contractor_name}
                     </h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      {srv.trade && (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium">
-                          {srv.trade}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      {effectiveTrade ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono">
+                          {effectiveTrade}
                         </span>
-                      )}
-                      {srv.internal_remito_number && (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-mono">
-                          Remito Aloncar #{srv.internal_remito_number}
-                        </span>
+                      ) : (
+                        <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro</span>
                       )}
                     </div>
+                  </div>
+
+                  {/* Números de Comprobantes Asociados */}
+                  <div className="bg-slate-950/70 p-2 rounded-xl border border-slate-800/80 space-y-1 font-mono text-xs">
+                    {/* Factura Fiscal FCR / FCA */}
+                    {(srv.invoice_number || (['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(srv.voucher_type) && srv.voucher_number)) && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-emerald-400 font-bold">FACTURA:</span>
+                        <span className="text-emerald-300 font-bold">{srv.invoice_number || srv.voucher_number}</span>
+                      </div>
+                    )}
+
+                    {/* Presupuesto Interno PRC */}
+                    {(srv.budget_number || (srv.voucher_type === 'PRC' && srv.voucher_number)) && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-amber-400 font-bold">PRESUPUESTO:</span>
+                        <span className="text-amber-300 font-bold">{srv.budget_number || srv.voucher_number}</span>
+                      </div>
+                    )}
+
+                    {/* Remito Aloncar */}
+                    {srv.internal_remito_number && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-cyan-400 font-bold">REMITO ALONCAR:</span>
+                        <span className="text-cyan-300 font-bold">#{srv.internal_remito_number}</span>
+                      </div>
+                    )}
+
+                    {/* Remito Proveedor */}
+                    {(srv.supplier_remito_number || (['RMO', 'RPF'].includes(srv.voucher_type) && srv.voucher_number)) && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-purple-400 font-bold">REMITO PROV:</span>
+                        <span className="text-purple-300 font-bold">{srv.supplier_remito_number || srv.voucher_number}</span>
+                      </div>
+                    )}
+
+                    {!srv.invoice_number && !srv.budget_number && !srv.internal_remito_number && !srv.supplier_remito_number && !srv.voucher_number && (
+                      <span className="text-slate-600 italic text-[11px] block text-center font-sans">Sin comprobante numerado</span>
+                    )}
                   </div>
                 </div>
 
@@ -1423,7 +1667,7 @@ export default function Terceros() {
                     )}
                     {srv.specific_observations && (
                       <div className="line-clamp-2 text-slate-500 italic" title={srv.specific_observations}>
-                        <span className="font-semibold text-slate-400 font-sans not-italic">Obs Admin:</span> {srv.specific_observations}
+                        <span className="font-semibold text-slate-400 font-sans not-italic">Obs:</span> {srv.specific_observations}
                       </div>
                     )}
                   </div>
@@ -1445,23 +1689,11 @@ export default function Terceros() {
                   </div>
                 </div>
 
-                {/* Footer de Tarjeta con Auditoría y Acciones */}
+                {/* Footer de Tarjeta con Acciones */}
                 <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAuditModal(srv)}
-                    className={`text-[10px] px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 transition-all cursor-pointer ${
-                      srv.audit_status === 'CONFORME'
-                        ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
-                        : srv.audit_status === 'OBSERVADO'
-                        ? 'bg-rose-950 text-rose-300 border-rose-700'
-                        : 'bg-slate-800 text-slate-400 border-slate-700'
-                    }`}
-                  >
-                    {srv.audit_status === 'CONFORME' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
-                    {srv.audit_status === 'OBSERVADO' && <AlertTriangle className="w-3 h-3 text-rose-400" />}
-                    <span>{srv.audit_status || 'PENDIENTE'}</span>
-                  </button>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Cotiz: ${Number(srv.usd_rate || 0).toLocaleString('es-AR')}
+                  </span>
 
                   <div className="flex items-center gap-1">
                     {isEvolvable && activeRolePerspective !== 'direccion' && (
@@ -1573,50 +1805,17 @@ export default function Terceros() {
 
               {/* PASO 2: SELECCIONAR CONTRATISTA (CON PERMISO 3ROS) */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>2° Contratista o Taller Autorizado [3ros] ({contractors.length} disponibles) *</span>
-                  </label>
-                  {contractors.length > 5 && (
-                    <span className="text-[10px] text-cyan-400">Búsqueda rápida activada</span>
-                  )}
-                </div>
+                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>2° Contratista o Taller Autorizado [3ros] ({contractors.length} disponibles) *</span>
+                </label>
 
-                {/* Buscador veloz de contratistas */}
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2 text-slate-500" />
-                  <input
-                    type="text"
-                    placeholder="Filtrar por nombre o rubro (ej: Cormetal, Tornería, INA, Vidondo)..."
-                    value={contractorModalSearch}
-                    onChange={(e) => setContractorModalSearch(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-7 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-                  />
-                  {contractorModalSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setContractorModalSearch('')}
-                      className="absolute right-2 top-1.5 text-slate-400 hover:text-white"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                <select
-                  required
+                {/* Desplegable integrado con buscador en tiempo real */}
+                <SearchableContractorSelect
+                  contractors={contractors}
                   value={formData.contractor_name}
-                  onChange={(e) => handleContractorSelect(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
-                >
-                  <option value="">-- Seleccionar Contratista / Taller ({filteredModalContractors.length}) --</option>
-                  {filteredModalContractors.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name} {c.trade ? `[${c.trade}]` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={handleContractorSelect}
+                />
 
                 {/* MANEJO DE RUBRO MANUAL / POLIRRUBRO */}
                 {formData.is_manual_trade ? (
@@ -1672,10 +1871,10 @@ export default function Terceros() {
                 </select>
               </div>
 
-              {/* TIPO DE COMPROBANTE (SIN LOCACIÓN) */}
+              {/* TIPO DE COMPROBANTE PRINCIPAL */}
               <div className="space-y-1 pt-1">
                 <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-                  Tipo de Comprobante (DEC-017) *
+                  Tipo de Comprobante Principal (DEC-017) *
                 </label>
                 <select
                   value={formData.voucher_type}
@@ -1686,7 +1885,7 @@ export default function Terceros() {
                       voucher_type: vCode
                     }))
                   }}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-400 text-xs"
                 >
                   {VOUCHER_TYPES.map((v) => (
                     <option key={v.code} value={v.code}>
@@ -1699,37 +1898,88 @@ export default function Terceros() {
                 </p>
               </div>
 
-              {/* NÚMERO DE COMPROBANTE & REMITO ALONCAR */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-                    N° Factura / Remito / Comprobante
+              {/* NÚMEROS DE COMPROBANTES ASOCIADOS (MÚLTIPLES COMPROBANTES POR TRABAJO) */}
+              <div className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Identificación de Comprobantes (Pueden registrarse varios)</span>
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: FAC-B-0004-00012480 o RMO-102"
-                    value={formData.voucher_number}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, voucher_number: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary font-mono text-xs"
-                  />
+                  <span className="text-[10px] text-slate-500">Se mostrarán en la columna Nº Comprobante</span>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center justify-between">
-                    <span>N° Remito Aloncar (Cruce Pañol)</span>
-                    <span className="text-[10px] text-purple-400 font-normal">Materiales</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: 1042 (Remito de salida de Pañol)"
-                    value={formData.internal_remito_number}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, internal_remito_number: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary font-mono text-xs"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* 1. Nº Presupuesto Interno (PRC) */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-xs flex items-center justify-between">
+                      <span className={formData.voucher_type === 'PRC' ? 'text-amber-300 font-black' : 'text-slate-300'}>
+                        Nº Presupuesto Interno (PRC) {formData.voucher_type === 'PRC' && '* (Obligatorio)'}
+                      </span>
+                      <span className="text-[10px] text-amber-500 font-mono">PRC</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: 104 o PRC-2026-01"
+                      value={formData.budget_number || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, budget_number: e.target.value }))}
+                      className={`w-full bg-slate-900 border rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none ${
+                        formData.voucher_type === 'PRC' && !formData.budget_number?.trim()
+                          ? 'border-amber-500/80 focus:border-amber-400'
+                          : 'border-slate-700 focus:border-cyan-400'
+                      }`}
+                    />
+                  </div>
+
+                  {/* 2. Nº Factura / Comprobante Fiscal (FCR / FCA) */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-xs flex items-center justify-between">
+                      <span className={['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(formData.voucher_type) ? 'text-emerald-300 font-black' : 'text-slate-300'}>
+                        Nº Factura / Comprobante Fiscal
+                      </span>
+                      <span className="text-[10px] text-emerald-500 font-mono">FCR / FCA</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: FAC-B-0004-00012480"
+                      value={formData.invoice_number || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, invoice_number: e.target.value }))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  {/* 3. Nº Remito Alon Car (Cruce Pañol) */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-300 text-xs flex items-center justify-between">
+                      <span>Nº Remito Alon Car (Cruce Pañol)</span>
+                      <span className="text-[10px] text-cyan-500 font-mono">ALONCAR</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: 1042 (Remito de salida de Pañol)"
+                      value={formData.internal_remito_number || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, internal_remito_number: e.target.value }))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  {/* 4. Nº Remito de Proveedor / Taller (RPF / RMO) */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-300 text-xs flex items-center justify-between">
+                      <span>Nº Remito Proveedor / Taller</span>
+                      <span className="text-[10px] text-purple-500 font-mono">RPF / RMO</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: RMO-789"
+                      value={formData.supplier_remito_number || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, supplier_remito_number: e.target.value }))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* FECHAS & DÓLAR CONGELADO POR FECHA DE CARGA */}
+              {/* FECHAS & DÓLAR INTOCABLE SEGÚN FECHA DE CARGA */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
                 <div className="space-y-1">
                   <label className="font-bold text-slate-300 text-[11px] flex items-center justify-between">
@@ -1757,7 +2007,7 @@ export default function Terceros() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-300 text-[11px]">
+                  <label className="font-bold text-amber-300 text-[11px]">
                     Importe AR$ *
                   </label>
                   <div className="relative">
@@ -1769,7 +2019,7 @@ export default function Terceros() {
                       value={formData.amount_ars}
                       onChange={(e) => {
                         const newArs = e.target.value
-                        const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(formData.entry_date, newArs, formData.usd_rate > 0 ? formData.usd_rate : null)
+                        const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(formData.entry_date, newArs)
                         setFormData((prev) => ({
                           ...prev,
                           amount_ars: newArs,
@@ -1777,7 +2027,7 @@ export default function Terceros() {
                           amount_usd
                         }))
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-3 pr-7 py-1.5 text-white font-mono font-bold text-xs focus:outline-none focus:border-primary disabled:opacity-50"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-3 pr-7 py-1.5 text-white font-mono font-bold text-xs focus:outline-none focus:border-amber-400 disabled:opacity-50"
                     />
                     {editingService && !canEditAmounts && (
                       <Lock className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2" title="Edición de montos bloqueada" />
@@ -1788,29 +2038,20 @@ export default function Terceros() {
 
                 <div className="space-y-1">
                   <label className="font-bold text-cyan-300 text-[11px] flex items-center justify-between">
-                    <span>Cotiz. Dólar AR$/US$</span>
+                    <span className="flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-cyan-400" />
+                      Cotiz. Dólar (Intocable)
+                    </span>
                     <span className="text-white font-black font-mono text-xs">US$ {formData.amount_usd}</span>
                   </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={formData.usd_rate || ''}
-                    onChange={(e) => {
-                      const customRate = parseFloat(e.target.value) || 0
-                      const ars = parseFloat(formData.amount_ars) || 0
-                      const usd = customRate > 0 ? Number((ars / customRate).toFixed(2)) : 0
-                      setFormData(prev => ({
-                        ...prev,
-                        usd_rate: customRate,
-                        amount_usd: usd
-                      }))
-                    }}
-                    className="w-full bg-slate-900 border border-cyan-800/80 rounded-lg px-2.5 py-1.5 font-mono text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-400"
-                  />
-                  <span className="text-[10px] text-cyan-400/90 font-mono">
+                  <div className="w-full bg-slate-900/90 border border-cyan-800/60 rounded-lg px-2.5 py-1.5 font-mono text-xs text-cyan-300 font-bold flex items-center justify-between select-none">
+                    <span>${Number(formData.usd_rate).toLocaleString('es-AR')}</span>
+                    <span className="text-[10px] text-cyan-500 font-normal">Quincena Oficial</span>
+                  </div>
+                  <span className="text-[10px] text-cyan-400/90 font-mono block truncate">
                     {formData.amount_ars && formData.usd_rate > 0
                       ? `$${Number(formData.amount_ars).toLocaleString('es-AR')} ÷ $${formData.usd_rate} = US$ ${formData.amount_usd}`
-                      : 'Cotización oficial congelada por quincena'}
+                      : 'Congelado según fecha de carga'}
                   </span>
                 </div>
               </div>
