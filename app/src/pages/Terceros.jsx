@@ -1,0 +1,2196 @@
+import { useState, useEffect, useMemo } from 'react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
+import {
+  Wrench,
+  Building2,
+  ShieldCheck,
+  FileText,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  DollarSign,
+  Filter,
+  Plus,
+  Search,
+  X,
+  ChevronRight,
+  Layers,
+  ArrowRight,
+  Lock,
+  Unlock,
+  FileCheck,
+  Eye,
+  History,
+  Calendar,
+  Anchor,
+  AlertCircle,
+  Trash2,
+  Edit3,
+  Ship,
+  Sparkles,
+  ExternalLink,
+  ChevronDown
+} from 'lucide-react'
+
+// Tipos de Comprobante y Reglas de Negocio (DEC-017)
+const VOUCHER_TYPES = [
+  {
+    code: 'PRC',
+    label: 'PRC - Presupuesto / Planta',
+    location: 'PLANTA',
+    color: 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60',
+    description: 'Trabajo ejecutado dentro de las instalaciones del astillero. Estado definitivo, no evoluciona.'
+  },
+  {
+    code: 'RMO',
+    label: 'RMO - Remito Mano de Obra (Taller)',
+    location: 'TALLER',
+    color: 'bg-blue-950/80 text-blue-300 border-blue-800/60',
+    description: 'Trabajo ejecutado en taller externo del contratista. Evoluciona a FCR (Factura) o SDT.'
+  },
+  {
+    code: 'RPF',
+    label: 'RPF - Remito Pendiente de Factura',
+    location: 'TALLER',
+    color: 'bg-amber-950/80 text-amber-300 border-amber-800/60 ring-1 ring-amber-500/50',
+    description: 'Remito valorizado pendiente de factura oficial. Genera alerta administrativa para exigir factura.'
+  },
+  {
+    code: 'FCR',
+    label: 'FCR - Factura Fiscal Oficial',
+    location: 'TALLER',
+    color: 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60',
+    description: 'Comprobante fiscal respaldatorio oficial definitivo.'
+  },
+  {
+    code: 'SDT',
+    label: 'SDT - Sin Documentación',
+    location: 'TALLER',
+    color: 'bg-rose-950/80 text-rose-300 border-rose-800/60',
+    description: 'Gasto o trabajo cerrado sin factura fiscal oficial (Excepcional).'
+  }
+]
+
+// Lista oficial de rubros disponibles (para contratistas MANUAL / polirrubro)
+const OFFICIAL_TRADES = [
+  'CALDERERIA',
+  'TORNERIA',
+  'MECANICA',
+  'CORTE/PLEGADO',
+  'CORTE PANTOGRAFO',
+  'CARPINTERIA',
+  'ELECTRICIDAD',
+  'PINTURA',
+  'MANIOBRA',
+  'HIDRAULICA',
+  'SOLDADURAS',
+  'ARENADO',
+  'RECTIFICACION MECANICA',
+  'FLETE',
+  'ELECTRONICA',
+  'FIBRA VIDRIO',
+  'SERVICIOS',
+  'LONAS',
+  'TALLER',
+  'HONORARIOS',
+  'CONTENEDORES',
+  'GRUA',
+  'ENSAYOS',
+  'DESGASIFICACION'
+]
+
+// Función utilitaria para obtener el tipo de cambio oficial congelado por fecha de carga
+function getDollarRateForDate(dateStr, macroVariables) {
+  if (!dateStr || !macroVariables || macroVariables.length === 0) return 0
+  const parts = dateStr.split('-')
+  if (parts.length < 3) return 0
+  const year = parseInt(parts[0], 10)
+  const month = parseInt(parts[1], 10)
+  const day = parseInt(parts[2], 10)
+
+  const mv = macroVariables.find((m) => m.year === year && m.month === month)
+  if (!mv) {
+    const sorted = [...macroVariables].sort((a, b) => b.year * 100 + b.month - (a.year * 100 + a.month))
+    const latest = sorted[0]
+    if (!latest) return 0
+    return day <= 15 ? Number(latest.dollar_rate_1q) : Number(latest.dollar_rate_2q)
+  }
+  return day <= 15 ? Number(mv.dollar_rate_1q) : Number(mv.dollar_rate_2q)
+}
+
+export default function Terceros() {
+  const { profile, user } = useAuth()
+
+  // 1. Perspectiva / Terminal Activa
+  // 'admin' (Jorge Sentis) | 'maria_jose' (Administración) | 'jefe_obra' (Omar / Supervisión) | 'direccion' (Hugo)
+  const [activeRolePerspective, setActiveRolePerspective] = useState(() => {
+    const saved = localStorage.getItem('aloncar_terceros_terminal')
+    return saved || 'maria_jose'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('aloncar_terceros_terminal', activeRolePerspective)
+  }, [activeRolePerspective])
+
+  // Permiso de edición de montos: Exclusivo para María José y Jorge Sentis (Admin)
+  const canEditAmounts = useMemo(() => {
+    return activeRolePerspective === 'admin' || activeRolePerspective === 'maria_jose'
+  }, [activeRolePerspective])
+
+  // 2. Estados principales de datos
+  const [services, setServices] = useState([])
+  const [ships, setShips] = useState([])
+  const [workOrders, setWorkOrders] = useState([])
+  const [contractors, setContractors] = useState([])
+  const [macroVariables, setMacroVariables] = useState([])
+  const [voucherHistory, setVoucherHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [feedbackMessage, setFeedbackMessage] = useState(null)
+
+  // 3. Filtros y Vistas
+  const [viewMode, setViewMode] = useState('filas') // 'filas' | 'fichas'
+  const [kpiFilter, setKpiFilter] = useState('todos') // 'todos' | 'PRC' | 'RMO' | 'RPF' | 'FCR' | 'SDT' | 'sin_precio' | 'sin_ot'
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedShipFilter, setSelectedShipFilter] = useState('todos')
+  const [selectedContractorFilter, setSelectedContractorFilter] = useState('todos')
+  const [selectedTradeFilter, setSelectedTradeFilter] = useState('todos')
+  const [selectedVoucherFilter, setSelectedVoucherFilter] = useState('todos')
+  const [selectedAuditFilter, setSelectedAuditFilter] = useState('todos')
+
+  // 4. Modal de Carga Guiada en Cascada (Barco -> Contratista 3ros -> OT)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingService, setEditingService] = useState(null)
+  const [savingService, setSavingService] = useState(false)
+
+  // Formulario de servicio
+  const [formData, setFormData] = useState({
+    ship_id: '',
+    work_order_id: '',
+    work_item_id: '',
+    contractor_name: '',
+    trade: '',
+    is_manual_trade: false,
+    voucher_type: 'PRC',
+    voucher_number: '',
+    voucher_date: new Date().toISOString().split('T')[0],
+    entry_date: new Date().toISOString().split('T')[0],
+    service_date: new Date().toISOString().split('T')[0],
+    service_location: 'PLANTA',
+    internal_remito_number: '',
+    amount_ars: '',
+    usd_rate: 0,
+    amount_usd: 0,
+    direct_observations: '',
+    specific_observations: '',
+    audit_status: 'PENDIENTE'
+  })
+
+  // 5. Modal de Evolución Rápida de Comprobante (RMO / RPF -> FCR o SDT)
+  const [evolvingService, setEvolvingService] = useState(null)
+  const [evolutionForm, setEvolutionForm] = useState({
+    target_voucher_type: 'FCR',
+    new_voucher_number: '',
+    voucher_date: new Date().toISOString().split('T')[0],
+    final_amount_ars: '',
+    evolution_notes: ''
+  })
+  const [savingEvolution, setSavingEvolution] = useState(false)
+
+  // 6. Modal de Auditoría Técnica (Jefes de Obra)
+  const [auditingService, setAuditingService] = useState(null)
+  const [auditForm, setAuditForm] = useState({
+    audit_status: 'CONFORME',
+    audit_notes: ''
+  })
+  const [savingAudit, setSavingAudit] = useState(false)
+
+  // 7. Modal de Historial de Comprobante
+  const [historyService, setHistoryService] = useState(null)
+
+  // Cargar datos desde Supabase
+  const fetchData = async () => {
+    try {
+      setLoading(true)
+      const [
+        { data: srvData, error: srvErr },
+        { data: shpData, error: shpErr },
+        { data: woData, error: woErr },
+        { data: wkrData, error: wkrErr },
+        { data: mvData, error: mvErr },
+        { data: vhData, error: vhErr }
+      ] = await Promise.all([
+        supabase.from('third_party_services').select('*').order('created_at', { ascending: false }),
+        supabase.from('ships').select('id, name, ship_type, current_location').order('name'),
+        supabase.from('work_orders').select('id, ot_number, title, ship_id, status, is_tabulated').order('ot_number'),
+        supabase.from('workers').select('id, name, trade, work_group, admin_center, can_charge_third_party').eq('can_charge_third_party', true).order('name'),
+        supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
+        supabase.from('third_party_voucher_history').select('*').order('created_at', { ascending: false })
+      ])
+
+      if (srvErr) throw srvErr
+      if (shpErr) throw shpErr
+      if (woErr) throw woErr
+      if (wkrErr) throw wkrErr
+      if (mvErr) throw mvErr
+
+      setServices(srvData || [])
+      setShips(shpData || [])
+      setWorkOrders(woData || [])
+      setContractors(wkrData || [])
+      setMacroVariables(mvData || [])
+      setVoucherHistory(vhData || [])
+    } catch (err) {
+      console.error('Error cargando módulo de terceros:', err)
+      showFeedback('error', 'Error al sincronizar datos de Terceros: ' + (err.message || err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const showFeedback = (type, text) => {
+    setFeedbackMessage({ type, text })
+    setTimeout(() => {
+      setFeedbackMessage(null)
+    }, 4500)
+  }
+
+  // OTs disponibles en cascada para el barco seleccionado en el formulario
+  const availableWorkOrdersForSelectedShip = useMemo(() => {
+    if (!formData.ship_id) return []
+    return workOrders.filter((wo) => wo.ship_id === formData.ship_id)
+  }, [workOrders, formData.ship_id])
+
+  // Mapa de barcos por id
+  const shipMap = useMemo(() => {
+    const map = new Map()
+    ships.forEach((s) => map.set(s.id, s))
+    return map
+  }, [ships])
+
+  // Mapa de OTs por id
+  const otMap = useMemo(() => {
+    const map = new Map()
+    workOrders.forEach((w) => map.set(w.id, w))
+    return map
+  }, [workOrders])
+
+  // Recálculo del dólar congelado al cambiar fecha de entrada o monto AR$
+  const handleEntryDateOrAmountChange = (newDate, newAmountArs) => {
+    const rate = getDollarRateForDate(newDate, macroVariables)
+    const ars = parseFloat(newAmountArs) || 0
+    const usd = rate > 0 ? Number((ars / rate).toFixed(2)) : 0
+    return { usd_rate: rate, amount_usd: usd }
+  }
+
+  // Al seleccionar un contratista en el modal de carga:
+  // Manejo de 'MANUAL' (polirrubro) vs rubro fijo
+  const handleContractorSelect = (contractorName) => {
+    const found = contractors.find((c) => c.name.toUpperCase().trim() === contractorName.toUpperCase().trim())
+    const tradeUpper = (found?.trade || '').toUpperCase().trim()
+    const isManual = tradeUpper === 'MANUAL' || tradeUpper === 'POLIRRUBRO'
+
+    setFormData((prev) => ({
+      ...prev,
+      contractor_name: contractorName,
+      trade: isManual ? '' : found?.trade || '',
+      is_manual_trade: isManual
+    }))
+  }
+
+  // Abrir modal para nuevo gasto de terceros
+  const handleOpenNewModal = () => {
+    const today = new Date().toISOString().split('T')[0]
+    const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(today, 0)
+
+    setEditingService(null)
+    setFormData({
+      ship_id: ships[0]?.id || '',
+      work_order_id: '',
+      work_item_id: '',
+      contractor_name: '',
+      trade: '',
+      is_manual_trade: false,
+      voucher_type: 'PRC',
+      voucher_number: '',
+      voucher_date: today,
+      entry_date: today,
+      service_date: today,
+      service_location: 'PLANTA',
+      internal_remito_number: '',
+      amount_ars: '',
+      usd_rate,
+      amount_usd,
+      direct_observations: '',
+      specific_observations: '',
+      audit_status: 'PENDIENTE'
+    })
+    setIsModalOpen(true)
+  }
+
+  // Abrir modal de edición
+  const handleOpenEditModal = (service) => {
+    const tradeUpper = (service.trade || '').toUpperCase().trim()
+    const foundContractor = contractors.find((c) => c.name.toUpperCase().trim() === (service.contractor_name || '').toUpperCase().trim())
+    const isManual = foundContractor?.trade?.toUpperCase().trim() === 'MANUAL'
+
+    setEditingService(service)
+    setFormData({
+      ship_id: service.ship_id || '',
+      work_order_id: service.work_order_id || '',
+      work_item_id: service.work_item_id || '',
+      contractor_name: service.contractor_name || '',
+      trade: service.trade || '',
+      is_manual_trade: isManual,
+      voucher_type: service.voucher_type || 'PRC',
+      voucher_number: service.voucher_number || '',
+      voucher_date: service.voucher_date || service.service_date || '',
+      entry_date: service.entry_date || service.service_date || '',
+      service_date: service.service_date || '',
+      service_location: service.service_location || 'PLANTA',
+      internal_remito_number: service.internal_remito_number || '',
+      amount_ars: service.amount_ars !== null ? service.amount_ars : '',
+      usd_rate: service.usd_rate || 0,
+      amount_usd: service.amount_usd || 0,
+      direct_observations: service.direct_observations || '',
+      specific_observations: service.specific_observations || '',
+      audit_status: service.audit_status || 'PENDIENTE'
+    })
+    setIsModalOpen(true)
+  }
+
+  // Guardar servicio (Insertar o Editar)
+  const handleSaveService = async (e) => {
+    e.preventDefault()
+
+    if (!formData.ship_id) {
+      showFeedback('error', 'Debe seleccionar un buque/embarcación.')
+      return
+    }
+    if (!formData.contractor_name) {
+      showFeedback('error', 'Debe seleccionar un contratista o taller autorizado.')
+      return
+    }
+    if (formData.is_manual_trade && !formData.trade) {
+      showFeedback('error', 'Este contratista es polirrubro (MANUAL). Debe seleccionar el rubro aplicable de la lista oficial.')
+      return
+    }
+
+    // Comprobar permiso de edición de montos si es una edición
+    if (editingService && !canEditAmounts) {
+      // Si el rol no puede editar montos, preservar el monto original de la base de datos
+      formData.amount_ars = editingService.amount_ars
+      formData.amount_usd = editingService.amount_usd
+      formData.usd_rate = editingService.usd_rate
+    }
+
+    try {
+      setSavingService(true)
+      const parsedArs = parseFloat(formData.amount_ars) || 0
+      const rate = formData.usd_rate > 0 ? formData.usd_rate : getDollarRateForDate(formData.entry_date, macroVariables)
+      const parsedUsd = rate > 0 ? Number((parsedArs / rate).toFixed(2)) : 0
+
+      const payload = {
+        ship_id: formData.ship_id,
+        work_order_id: formData.work_order_id || null,
+        work_item_id: formData.work_item_id || null,
+        contractor_name: formData.contractor_name.trim().toUpperCase(),
+        trade: formData.trade.trim().toUpperCase(),
+        voucher_type: formData.voucher_type,
+        voucher_number: formData.voucher_number ? formData.voucher_number.trim() : null,
+        voucher_date: formData.voucher_date || formData.entry_date,
+        entry_date: formData.entry_date,
+        service_date: formData.service_date || formData.entry_date,
+        service_location: formData.service_location,
+        internal_remito_number: formData.internal_remito_number ? formData.internal_remito_number.trim() : null,
+        amount_ars: parsedArs,
+        usd_rate: rate,
+        amount_usd: parsedUsd,
+        direct_observations: formData.direct_observations ? formData.direct_observations.trim() : null,
+        specific_observations: formData.specific_observations ? formData.specific_observations.trim() : null,
+        status: formData.voucher_type,
+        audit_status: formData.audit_status || 'PENDIENTE',
+        updated_at: new Date().toISOString()
+      }
+
+      if (editingService) {
+        // Actualización
+        const { error: updErr } = await supabase
+          .from('third_party_services')
+          .update(payload)
+          .eq('id', editingService.id)
+
+        if (updErr) throw updErr
+
+        // Registrar auditoría de edición
+        await supabase.from('audit_logs').insert({
+          action: 'EDICION_TERCEROS',
+          entity_type: 'third_party_services',
+          entity_id: editingService.id,
+          entity_name: formData.contractor_name,
+          details: {
+            changes: payload,
+            previous_amount_ars: editingService.amount_ars,
+            new_amount_ars: parsedArs
+          },
+          performed_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+        })
+
+        showFeedback('success', `Comprobante de ${formData.contractor_name} actualizado exitosamente.`)
+      } else {
+        // Creación
+        payload.created_by = activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+
+        const { error: insErr } = await supabase
+          .from('third_party_services')
+          .insert(payload)
+
+        if (insErr) throw insErr
+
+        showFeedback('success', `Comprobante de ${formData.contractor_name} (${formData.voucher_type}) cargado con éxito.`)
+      }
+
+      setIsModalOpen(false)
+      fetchData()
+    } catch (err) {
+      console.error('Error guardando comprobante de terceros:', err)
+      showFeedback('error', 'Error al guardar comprobante: ' + (err.message || err))
+    } finally {
+      setSavingService(false)
+    }
+  }
+
+  // Eliminar servicio con registro de auditoría
+  const handleDeleteService = async (service) => {
+    if (!window.confirm(`¿Confirmas la baja del comprobante ${service.voucher_type} - ${service.contractor_name} por $${Number(service.amount_ars).toLocaleString('es-AR')}?`)) {
+      return
+    }
+
+    try {
+      const { error: delErr } = await supabase
+        .from('third_party_services')
+        .delete()
+        .eq('id', service.id)
+
+      if (delErr) throw delErr
+
+      // Registrar auditoría
+      await supabase.from('audit_logs').insert({
+        action: 'ELIMINACION_TERCEROS',
+        entity_type: 'third_party_services',
+        entity_id: service.id,
+        entity_name: service.contractor_name,
+        details: {
+          voucher_type: service.voucher_type,
+          voucher_number: service.voucher_number,
+          amount_ars: service.amount_ars,
+          amount_usd: service.amount_usd
+        },
+        performed_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+      })
+
+      showFeedback('success', 'Registro de Terceros eliminado y asentado en Hoja de Auditorías.')
+      fetchData()
+    } catch (err) {
+      console.error('Error eliminando servicio:', err)
+      showFeedback('error', 'No se pudo eliminar el comprobante: ' + (err.message || err))
+    }
+  }
+
+  // Abrir modal de evolución rápida de comprobante (RMO / RPF -> FCR o SDT)
+  const handleOpenEvolutionModal = (service) => {
+    setEvolvingService(service)
+    setEvolutionForm({
+      target_voucher_type: 'FCR',
+      new_voucher_number: '',
+      voucher_date: new Date().toISOString().split('T')[0],
+      final_amount_ars: service.amount_ars !== null ? service.amount_ars : '',
+      evolution_notes: `Evolución de ${service.voucher_type} a Factura oficial respaldatoria.`
+    })
+  }
+
+  // Confirmar evolución de comprobante
+  const handleConfirmEvolution = async (e) => {
+    e.preventDefault()
+    if (!evolvingService) return
+
+    if (evolutionForm.target_voucher_type === 'FCR' && !evolutionForm.new_voucher_number) {
+      showFeedback('error', 'Debe especificar el número de Factura oficial definitiva.')
+      return
+    }
+
+    try {
+      setSavingEvolution(true)
+      const parsedArs = parseFloat(evolutionForm.final_amount_ars) || evolvingService.amount_ars || 0
+      const rate = evolvingService.usd_rate > 0 ? evolvingService.usd_rate : 1500
+      const parsedUsd = Number((parsedArs / rate).toFixed(2))
+
+      // 1. Actualizar el servicio
+      const { error: updErr } = await supabase
+        .from('third_party_services')
+        .update({
+          voucher_type: evolutionForm.target_voucher_type,
+          status: evolutionForm.target_voucher_type,
+          voucher_number: evolutionForm.new_voucher_number.trim(),
+          voucher_date: evolutionForm.voucher_date,
+          amount_ars: parsedArs,
+          amount_usd: parsedUsd,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', evolvingService.id)
+
+      if (updErr) throw updErr
+
+      // 2. Registrar en historial de comprobantes
+      await supabase.from('third_party_voucher_history').insert({
+        third_party_service_id: evolvingService.id,
+        from_voucher_type: evolvingService.voucher_type,
+        to_voucher_type: evolutionForm.target_voucher_type,
+        from_amount_ars: evolvingService.amount_ars,
+        to_amount_ars: parsedArs,
+        voucher_number: evolutionForm.new_voucher_number.trim(),
+        notes: evolutionForm.evolution_notes,
+        changed_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+      })
+
+      // 3. Registrar en audit_logs general
+      await supabase.from('audit_logs').insert({
+        action: 'EVOLUCION_COMPROBANTE_TERCEROS',
+        entity_type: 'third_party_services',
+        entity_id: evolvingService.id,
+        entity_name: evolvingService.contractor_name,
+        details: {
+          from_voucher_type: evolvingService.voucher_type,
+          to_voucher_type: evolutionForm.target_voucher_type,
+          invoice_number: evolutionForm.new_voucher_number,
+          notes: evolutionForm.evolution_notes
+        },
+        performed_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+      })
+
+      showFeedback('success', `Comprobante evolucionado exitosamente a ${evolutionForm.target_voucher_type} (${evolutionForm.new_voucher_number}).`)
+      setEvolvingService(null)
+      fetchData()
+    } catch (err) {
+      console.error('Error al evolucionar comprobante:', err)
+      showFeedback('error', 'Error al evolucionar comprobante: ' + (err.message || err))
+    } finally {
+      setSavingEvolution(false)
+    }
+  }
+
+  // Abrir modal de auditoría técnica
+  const handleOpenAuditModal = (service) => {
+    setAuditingService(service)
+    setAuditForm({
+      audit_status: service.audit_status === 'CONFORME' ? 'CONFORME' : 'CONFORME',
+      audit_notes: service.audit_notes || ''
+    })
+  }
+
+  // Guardar conformidad técnica
+  const handleSaveAudit = async (e) => {
+    e.preventDefault()
+    if (!auditingService) return
+
+    try {
+      setSavingAudit(true)
+      const auditorName = activeRolePerspective === 'jefe_obra' ? 'JEFE DE OBRA' : activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+
+      const { error: updErr } = await supabase
+        .from('third_party_services')
+        .update({
+          audit_status: auditForm.audit_status,
+          audit_notes: auditForm.audit_notes.trim(),
+          audited_by: auditorName,
+          audited_at: new Date().toISOString()
+        })
+        .eq('id', auditingService.id)
+
+      if (updErr) throw updErr
+
+      showFeedback('success', `Conformidad técnica guardada como "${auditForm.audit_status}".`)
+      setAuditingService(null)
+      fetchData()
+    } catch (err) {
+      console.error('Error guardando auditoría técnica:', err)
+      showFeedback('error', 'Error al asentar auditoría técnica: ' + (err.message || err))
+    } finally {
+      setSavingAudit(false)
+    }
+  }
+
+  // Filtrado reactivo de servicios
+  const filteredServices = useMemo(() => {
+    return services.filter((srv) => {
+      // 1. Filtro KPI
+      if (kpiFilter === 'PRC' && srv.voucher_type !== 'PRC') return false
+      if (kpiFilter === 'RMO' && srv.voucher_type !== 'RMO') return false
+      if (kpiFilter === 'RPF' && srv.voucher_type !== 'RPF') return false
+      if (kpiFilter === 'FCR' && srv.voucher_type !== 'FCR') return false
+      if (kpiFilter === 'SDT' && srv.voucher_type !== 'SDT') return false
+      if (kpiFilter === 'sin_precio' && Number(srv.amount_ars) > 0) return false
+      if (kpiFilter === 'sin_ot' && srv.work_order_id) return false
+
+      // 2. Filtro Buque
+      if (selectedShipFilter !== 'todos' && srv.ship_id !== selectedShipFilter) return false
+
+      // 3. Filtro Contratista
+      if (selectedContractorFilter !== 'todos' && srv.contractor_name !== selectedContractorFilter) return false
+
+      // 4. Filtro Rubro
+      if (selectedTradeFilter !== 'todos' && (srv.trade || '').toUpperCase() !== selectedTradeFilter.toUpperCase()) return false
+
+      // 5. Filtro Comprobante
+      if (selectedVoucherFilter !== 'todos' && srv.voucher_type !== selectedVoucherFilter) return false
+
+      // 6. Filtro Auditoría
+      if (selectedAuditFilter !== 'todos' && (srv.audit_status || 'PENDIENTE') !== selectedAuditFilter) return false
+
+      // 7. Búsqueda de texto libre
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase().trim()
+        const ship = shipMap.get(srv.ship_id)?.name?.toLowerCase() || ''
+        const ot = otMap.get(srv.work_order_id)?.ot_number?.toLowerCase() || ''
+        const contractor = (srv.contractor_name || '').toLowerCase()
+        const trade = (srv.trade || '').toLowerCase()
+        const vnum = (srv.voucher_number || '').toLowerCase()
+        const remito = (srv.internal_remito_number || '').toLowerCase()
+        const dirObs = (srv.direct_observations || '').toLowerCase()
+        const specObs = (srv.specific_observations || '').toLowerCase()
+
+        if (
+          !ship.includes(q) &&
+          !ot.includes(q) &&
+          !contractor.includes(q) &&
+          !trade.includes(q) &&
+          !vnum.includes(q) &&
+          !remito.includes(q) &&
+          !dirObs.includes(q) &&
+          !specObs.includes(q)
+        ) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [services, kpiFilter, selectedShipFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, selectedAuditFilter, searchTerm, shipMap, otMap])
+
+  // Métricas calculadas para los KPIs
+  const kpiCounts = useMemo(() => {
+    let prcCount = 0
+    let rmoCount = 0
+    let rpfCount = 0
+    let fcrCount = 0
+    let sdtCount = 0
+    let sinPrecioCount = 0
+    let sinOtCount = 0
+    let totalUsdSum = 0
+
+    services.forEach((s) => {
+      if (s.voucher_type === 'PRC') prcCount++
+      if (s.voucher_type === 'RMO') rmoCount++
+      if (s.voucher_type === 'RPF') rpfCount++
+      if (s.voucher_type === 'FCR') fcrCount++
+      if (s.voucher_type === 'SDT') sdtCount++
+      if (!s.amount_ars || Number(s.amount_ars) === 0) sinPrecioCount++
+      if (!s.work_order_id) sinOtCount++
+      totalUsdSum += Number(s.amount_usd) || 0
+    })
+
+    return {
+      total: services.length,
+      prc: prcCount,
+      rmo: rmoCount,
+      rpf: rpfCount,
+      fcr: fcrCount,
+      sdt: sdtCount,
+      sinPrecio: sinPrecioCount,
+      sinOt: sinOtCount,
+      totalUsd: totalUsdSum
+    }
+  }, [services])
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+      {/* ALERTA DE FEEDBACK / TOAST */}
+      {feedbackMessage && (
+        <div
+          className={`p-4 rounded-xl border flex items-center justify-between shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-4 transition-all ${
+            feedbackMessage.type === 'success'
+              ? 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200'
+              : 'bg-rose-950/90 border-rose-500/60 text-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            {feedbackMessage.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            )}
+            <span className="text-sm font-medium">{feedbackMessage.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFeedbackMessage(null)}
+            className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* CABECERA & SELECTOR DE TERMINAL */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-800/80 pb-6">
+        <div>
+          <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+            <span>Alon Car ERP</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+            <span className="text-primary font-medium">Módulo M3: Terceros y Talleres Externos (GS-005)</span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+            <Wrench className="w-8 h-8 text-primary" />
+            <span>Costos de Contratistas & Servicios de Terceros</span>
+          </h1>
+        </div>
+
+        {/* SELECTOR DE TERMINALES DE TRABAJO */}
+        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+          <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1 text-xs shadow-inner">
+            <span className="text-[10px] uppercase font-bold text-slate-400 px-2 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Terminal Activa:
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveRolePerspective('admin')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRolePerspective === 'admin'
+                  ? 'bg-primary text-slate-950 shadow-md ring-1 ring-primary/50'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Terminal Jorge Sentis: Control total, edición de montos autorizada, auditoría y configuración general"
+            >
+              <span>👑 Terminal Admin</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveRolePerspective('maria_jose')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRolePerspective === 'maria_jose'
+                  ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/50'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Terminal María José: Carga y valorización de comprobantes, control de facturación, reclamos de RPF, edición de montos y evolución a factura"
+            >
+              <span>📋 Terminal María José</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveRolePerspective('jefe_obra')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRolePerspective === 'jefe_obra'
+                  ? 'bg-emerald-400 text-slate-950 shadow-md ring-1 ring-emerald-400/50'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Terminal Jefe de Obra: Auditoría técnica y conformidad de trabajos ejecutados en planta/taller, notas técnicas"
+            >
+              <span>🛠️ Terminal Jefe de Obra</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveRolePerspective('direccion')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRolePerspective === 'direccion'
+                  ? 'bg-purple-400 text-slate-950 shadow-md ring-1 ring-purple-400/50'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Terminal Dirección: Solo lectura gerencial en USD por buque y órdenes de trabajo"
+            >
+              <span>👁️ Terminal Dirección</span>
+            </button>
+          </div>
+
+          {/* Botón Nuevo Comprobante */}
+          {activeRolePerspective !== 'direccion' && (
+            <button
+              type="button"
+              onClick={handleOpenNewModal}
+              className="px-4 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,254,0.25)] transition-all"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>+ Cargar Comprobante / Gasto</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* BANNER DINÁMICO DE INSTRUCCIONES POR PUESTO DE TRABAJO */}
+      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 md:p-5 text-xs text-slate-300 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-primary font-bold tracking-wide uppercase text-[11px]">
+            <Sparkles className="w-4 h-4 text-primary" />
+            <span>
+              {activeRolePerspective === 'admin' && 'Terminal Administrador General — Control Maestro & Finanzas'}
+              {activeRolePerspective === 'maria_jose' && 'Terminal Administración Comercial (María José) — Ciclo de Comprobantes & Valorización'}
+              {activeRolePerspective === 'jefe_obra' && 'Terminal Jefes de Obra (Omar / Pablo / Ale) — Conformidad Técnica & Control de Obra'}
+              {activeRolePerspective === 'direccion' && 'Terminal Dirección Estratégica (Hugo) — Supervisión de Costos & Alertas'}
+            </span>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+            {canEditAmounts ? '🔓 Edición de montos AR$/US$ Habilitada' : '🔒 Edición de montos AR$/US$ Bloqueada'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-400 pt-1">
+          <div className="flex items-start gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+            <span className="font-bold text-slate-200 shrink-0">📌 Qué debes completar:</span>
+            <span>
+              {activeRolePerspective === 'admin' && 'Aprobar evoluciones excepcionales (SDT), auditar montos sensibles y configurar cotizaciones oficiales de dólar por quincena.'}
+              {activeRolePerspective === 'maria_jose' && 'Cargar facturas (FCR), presupuestos (PRC) y remitos (RMO/RPF). Reclamar facturas a proveedores con alerta RPF y evolucionarlos a FCR.'}
+              {activeRolePerspective === 'jefe_obra' && 'Revisar trabajos ejecutados por contratistas en planta o taller, dar conformidad técnica (Conforme / Observado) y anotar observaciones técnicas.'}
+              {activeRolePerspective === 'direccion' && 'Supervisión ejecutiva. Módulo en modo consulta.'}
+            </span>
+          </div>
+          <div className="flex items-start gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+            <span className="font-bold text-slate-200 shrink-0">🔍 Qué puedes consultar / consumir:</span>
+            <span>
+              {activeRolePerspective === 'admin' && 'Total acumulado en USD, auditoría completa de bajas y modificaciones, historial de pases y cruce de remitos con Pañol.'}
+              {activeRolePerspective === 'maria_jose' && 'Contratistas autorizados en Padrón (con permiso 3ros), cotización quincenal congelada, y estado de reclamos por facturar.'}
+              {activeRolePerspective === 'jefe_obra' && 'Costos y servicios asignados a cada buque y OT, piezas enviadas a taller externo con Remito Aloncar, y observaciones directas.'}
+              {activeRolePerspective === 'direccion' && 'Total de costos de terceros imputados a cada buque en USD, OTs sin costo y comparador de contratistas.'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* KPIS CLICKEABLES (FILTROS INSTANTÁNEOS) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        {/* Total */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter('todos')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            kpiFilter === 'todos'
+              ? 'bg-slate-800 border-primary shadow-[0_0_15px_rgba(0,242,254,0.2)] ring-1 ring-primary'
+              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
+          }`}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Gral</p>
+          <p className="text-xl font-extrabold text-white mt-1">{kpiCounts.total}</p>
+          <span className="text-[10px] text-slate-500">Comprobantes</span>
+        </button>
+
+        {/* PRC Planta */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter('PRC')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            kpiFilter === 'PRC'
+              ? 'bg-emerald-950/70 border-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.2)] ring-1 ring-emerald-400'
+              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">PRC Planta</p>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          </div>
+          <p className="text-xl font-extrabold text-emerald-300 mt-1">{kpiCounts.prc}</p>
+          <span className="text-[10px] text-slate-500">En Astillero</span>
+        </button>
+
+        {/* RMO Taller */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter('RMO')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            kpiFilter === 'RMO'
+              ? 'bg-blue-950/70 border-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.2)] ring-1 ring-blue-400'
+              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400">RMO Taller</p>
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+          </div>
+          <p className="text-xl font-extrabold text-blue-300 mt-1">{kpiCounts.rmo}</p>
+          <span className="text-[10px] text-slate-500">En Taller Externo</span>
+        </button>
+
+        {/* RPF Reclamar Factura */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter('RPF')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            kpiFilter === 'RPF'
+              ? 'bg-amber-950/70 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.2)] ring-1 ring-amber-400'
+              : 'bg-amber-950/20 border-amber-800/40 hover:bg-amber-950/40'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+              ⚠️ RPF Alerta
+            </p>
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+          </div>
+          <p className="text-xl font-extrabold text-amber-300 mt-1">{kpiCounts.rpf}</p>
+          <span className="text-[10px] text-amber-500 font-semibold">Exigir Factura</span>
+        </button>
+
+        {/* FCR Facturas */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter('FCR')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            kpiFilter === 'FCR'
+              ? 'bg-cyan-950/70 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)] ring-1 ring-cyan-400'
+              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
+          }`}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">FCR Oficial</p>
+          <p className="text-xl font-extrabold text-cyan-300 mt-1">{kpiCounts.fcr}</p>
+          <span className="text-[10px] text-slate-500">Facturados</span>
+        </button>
+
+        {/* SDT Sin Doc */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter('SDT')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            kpiFilter === 'SDT'
+              ? 'bg-rose-950/70 border-rose-400 shadow-[0_0_15px_rgba(251,113,133,0.2)] ring-1 ring-rose-400'
+              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
+          }`}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-400">SDT Sin Doc</p>
+          <p className="text-xl font-extrabold text-rose-300 mt-1">{kpiCounts.sdt}</p>
+          <span className="text-[10px] text-slate-500">Excepcional</span>
+        </button>
+
+        {/* Sin Precio / Sin OT */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === 'sin_precio' ? 'todos' : 'sin_precio')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            kpiFilter === 'sin_precio' || kpiFilter === 'sin_ot'
+              ? 'bg-orange-950/70 border-orange-400 shadow-[0_0_15px_rgba(251,146,60,0.2)] ring-1 ring-orange-400'
+              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
+          }`}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1">
+            ⚠️ Faltantes
+          </p>
+          <p className="text-xl font-extrabold text-orange-300 mt-1">{kpiCounts.sinPrecio + kpiCounts.sinOt}</p>
+          <span className="text-[10px] text-slate-500">Sin $ o Sin OT</span>
+        </button>
+
+        {/* Total USD */}
+        <div className="p-3.5 rounded-2xl border bg-gradient-to-br from-slate-900 to-cyan-950/40 border-cyan-800/60 text-left">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1">
+            <DollarSign className="w-3 h-3 text-cyan-400" /> Total USD
+          </p>
+          <p className="text-lg font-extrabold text-white mt-1">
+            ${kpiCounts.totalUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <span className="text-[10px] text-cyan-400/80">Valorizado Oficial</span>
+        </div>
+      </div>
+
+      {/* BARRA DE FILTROS & BÚSQUEDA */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          {/* Buscador */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary transition-all"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Toggle de Vistas Universales (Filas / Fichas) */}
+          <div className="bg-slate-950 border border-slate-800 p-1 rounded-xl flex items-center shrink-0 self-end md:self-auto">
+            <button
+              type="button"
+              onClick={() => setViewMode('filas')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                viewMode === 'filas'
+                  ? 'bg-primary text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>☷ Vista Filas</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('fichas')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                viewMode === 'fichas'
+                  ? 'bg-primary text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>⊞ Vista Fichas</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Filtros Dropdown */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-1 text-xs">
+          {/* Buque */}
+          <select
+            value={selectedShipFilter}
+            onChange={(e) => setSelectedShipFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary"
+          >
+            <option value="todos">Buque: Todos ({ships.length})</option>
+            {ships.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Contratista */}
+          <select
+            value={selectedContractorFilter}
+            onChange={(e) => setSelectedContractorFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary truncate"
+          >
+            <option value="todos">Contratista: Todos ({contractors.length})</option>
+            {contractors.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Rubro */}
+          <select
+            value={selectedTradeFilter}
+            onChange={(e) => setSelectedTradeFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary"
+          >
+            <option value="todos">Rubro: Todos</option>
+            {OFFICIAL_TRADES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+
+          {/* Comprobante */}
+          <select
+            value={selectedVoucherFilter}
+            onChange={(e) => setSelectedVoucherFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary"
+          >
+            <option value="todos">Comprobante: Todos</option>
+            {VOUCHER_TYPES.map((v) => (
+              <option key={v.code} value={v.code}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Auditoría Técnica */}
+          <select
+            value={selectedAuditFilter}
+            onChange={(e) => setSelectedAuditFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary"
+          >
+            <option value="todos">Auditoría: Todas</option>
+            <option value="PENDIENTE">Auditoría: Pendiente</option>
+            <option value="CONFORME">Auditoría: Conforme</option>
+            <option value="OBSERVADO">Auditoría: Observado</option>
+          </select>
+        </div>
+      </div>
+
+      {/* CONTENIDO PRINCIPAL: VISTA FILAS / VISTA FICHAS */}
+      {loading ? (
+        <div className="p-12 text-center text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800">
+          <Clock className="w-8 h-8 animate-spin mx-auto text-primary mb-3" />
+          <p className="text-sm font-medium">Sincronizando registros de Terceros con Supabase...</p>
+        </div>
+      ) : filteredServices.length === 0 ? (
+        <div className="p-12 text-center text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800 space-y-3">
+          <Wrench className="w-10 h-10 mx-auto text-slate-600 mb-2" />
+          <p className="text-base font-semibold text-slate-300">No se encontraron comprobantes con los filtros seleccionados.</p>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Prueba cambiando los filtros superiores o carga un nuevo comprobante de contratista mediante el botón "+ Cargar Comprobante".
+          </p>
+          {activeRolePerspective !== 'direccion' && (
+            <button
+              type="button"
+              onClick={handleOpenNewModal}
+              className="px-4 py-2 bg-primary/20 text-primary border border-primary/40 rounded-xl text-xs font-bold hover:bg-primary hover:text-slate-950 transition-all cursor-pointer"
+            >
+              + Cargar Primer Gasto
+            </button>
+          )}
+        </div>
+      ) : viewMode === 'filas' ? (
+        /* VISTA FILAS (TABLA DENSA) */
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-950/90 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-3">Fecha</th>
+                  <th className="py-3 px-3">Barco / OT</th>
+                  <th className="py-3 px-3">Contratista / Rubro</th>
+                  <th className="py-3 px-3">Comprobante</th>
+                  <th className="py-3 px-3">Remito Aloncar</th>
+                  <th className="py-3 px-3 text-right">Importe AR$</th>
+                  <th className="py-3 px-3 text-right">Dólar / US$</th>
+                  <th className="py-3 px-3 text-center">Locación</th>
+                  <th className="py-3 px-3 text-center">Auditoría</th>
+                  <th className="py-3 px-3 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-mono">
+                {filteredServices.map((srv) => {
+                  const shipName = shipMap.get(srv.ship_id)?.name || 'Sin Buque'
+                  const ot = otMap.get(srv.work_order_id)
+                  const voucherConfig = VOUCHER_TYPES.find((v) => v.code === srv.voucher_type) || VOUCHER_TYPES[0]
+                  const isEvolvable = srv.voucher_type === 'RMO' || srv.voucher_type === 'RPF'
+
+                  return (
+                    <tr key={srv.id} className="hover:bg-slate-800/40 transition-colors">
+                      {/* Fecha */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <div className="font-semibold text-slate-200">
+                          {srv.service_date || srv.entry_date || '-'}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-sans">
+                          Carga: {srv.entry_date || '-'}
+                        </div>
+                      </td>
+
+                      {/* Barco / OT */}
+                      <td className="py-3 px-3 font-sans">
+                        <div className="font-bold text-white flex items-center gap-1.5">
+                          <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                          <span>{shipName}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          {ot ? (
+                            <span className="font-mono text-cyan-300 font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50">
+                              {ot.ot_number}
+                            </span>
+                          ) : (
+                            <span className="text-amber-400 text-[10px]">⚠️ Sin OT asignada</span>
+                          )}
+                          <span className="truncate max-w-[140px] text-[10px] text-slate-500" title={ot?.title}>
+                            {ot?.title || ''}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Contratista y Rubro */}
+                      <td className="py-3 px-3 font-sans">
+                        <div className="font-bold text-slate-100 uppercase tracking-wide truncate max-w-[180px]" title={srv.contractor_name}>
+                          {srv.contractor_name}
+                        </div>
+                        <div className="mt-0.5">
+                          {srv.trade ? (
+                            <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium">
+                              {srv.trade}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-rose-400">⚠️ Sin Rubro</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Comprobante */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${voucherConfig.color}`}>
+                          {srv.voucher_type}
+                        </span>
+                        <div className="text-[11px] text-slate-300 font-mono mt-0.5">
+                          {srv.voucher_number || <span className="text-slate-500 italic">S/N</span>}
+                        </div>
+                      </td>
+
+                      {/* Remito Aloncar */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        {srv.internal_remito_number ? (
+                          <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-800 font-mono font-semibold">
+                            Rem #{srv.internal_remito_number}
+                          </span>
+                        ) : (
+                          <span className="text-slate-600 text-[10px] font-sans">-</span>
+                        )}
+                      </td>
+
+                      {/* Importe AR$ */}
+                      <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-semibold text-slate-100">
+                        {Number(srv.amount_ars) > 0 ? (
+                          <span>${Number(srv.amount_ars).toLocaleString('es-AR')}</span>
+                        ) : (
+                          <span className="text-amber-400 text-xs">$0 (Sin Precio)</span>
+                        )}
+                      </td>
+
+                      {/* Dólar / US$ */}
+                      <td className="py-3 px-3 text-right whitespace-nowrap">
+                        <div className="font-mono font-extrabold text-cyan-300">
+                          ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          Cotiz: ${Number(srv.usd_rate || 0).toLocaleString('es-AR')}
+                        </div>
+                      </td>
+
+                      {/* Locación */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap font-sans">
+                        <span
+                          className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                            srv.service_location === 'PLANTA'
+                              ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/60'
+                              : 'bg-blue-950/60 text-blue-300 border border-blue-800/60'
+                          }`}
+                        >
+                          {srv.service_location || 'PLANTA'}
+                        </span>
+                      </td>
+
+                      {/* Auditoría Técnica */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap font-sans">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAuditModal(srv)}
+                          className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold border transition-all cursor-pointer ${
+                            srv.audit_status === 'CONFORME'
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-700 hover:bg-emerald-900'
+                              : srv.audit_status === 'OBSERVADO'
+                              ? 'bg-rose-950 text-rose-300 border-rose-700 hover:bg-rose-900'
+                              : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                          }`}
+                          title="Clic para cambiar conformidad técnica"
+                        >
+                          {srv.audit_status === 'CONFORME' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                          {srv.audit_status === 'OBSERVADO' && <AlertTriangle className="w-3 h-3 text-rose-400" />}
+                          <span>{srv.audit_status || 'PENDIENTE'}</span>
+                        </button>
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="py-3 px-3 text-right whitespace-nowrap font-sans">
+                        <div className="flex items-center justify-end gap-1">
+                          {/* Botón Evolucionar (RMO / RPF -> FCR) */}
+                          {isEvolvable && activeRolePerspective !== 'direccion' && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEvolutionModal(srv)}
+                              className="px-2 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500 hover:text-slate-950 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                              title="Evolucionar comprobante a Factura oficial (FCR) o SDT"
+                            >
+                              <span>⚡ Evolucionar</span>
+                            </button>
+                          )}
+
+                          {/* Historial */}
+                          <button
+                            type="button"
+                            onClick={() => setHistoryService(srv)}
+                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                            title="Ver trazabilidad e historial"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Editar */}
+                          {activeRolePerspective !== 'direccion' && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(srv)}
+                              className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer"
+                              title="Editar comprobante"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Eliminar (solo Admin / María José) */}
+                          {canEditAmounts && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteService(srv)}
+                              className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                              title="Eliminar comprobante con auditoría"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* VISTA FICHAS (TARJETAS MODERNAS) */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredServices.map((srv) => {
+            const shipName = shipMap.get(srv.ship_id)?.name || 'Sin Buque'
+            const ot = otMap.get(srv.work_order_id)
+            const voucherConfig = VOUCHER_TYPES.find((v) => v.code === srv.voucher_type) || VOUCHER_TYPES[0]
+            const isEvolvable = srv.voucher_type === 'RMO' || srv.voucher_type === 'RPF'
+
+            return (
+              <div
+                key={srv.id}
+                className={`bg-slate-900/90 border rounded-2xl p-5 space-y-4 flex flex-col justify-between shadow-lg transition-all hover:border-slate-700 ${
+                  srv.voucher_type === 'RPF'
+                    ? 'border-amber-500/40 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20'
+                    : 'border-slate-800'
+                }`}
+              >
+                {/* Header de la tarjeta */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${voucherConfig.color}`}>
+                      {srv.voucher_type} - {voucherConfig.label.split(' - ')[1] || srv.voucher_type}
+                    </span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                        srv.service_location === 'PLANTA'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          : 'bg-blue-950 text-blue-300 border border-blue-800'
+                      }`}
+                    >
+                      {srv.service_location || 'PLANTA'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+                    <span>N° {srv.voucher_number || 'S/N'}</span>
+                    <span>{srv.service_date || srv.entry_date}</span>
+                  </div>
+
+                  <div>
+                    <h3 className="font-extrabold text-base text-white tracking-wide uppercase truncate" title={srv.contractor_name}>
+                      {srv.contractor_name}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      {srv.trade && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium">
+                          {srv.trade}
+                        </span>
+                      )}
+                      {srv.internal_remito_number && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-mono">
+                          Remito Aloncar #{srv.internal_remito_number}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Buque y OT */}
+                <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                    <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span>{shipName}</span>
+                  </div>
+                  <div className="text-xs text-slate-400 flex items-center gap-1.5">
+                    {ot ? (
+                      <>
+                        <span className="font-mono text-cyan-300 font-bold bg-cyan-950/80 px-1 rounded border border-cyan-800/60">
+                          {ot.ot_number}
+                        </span>
+                        <span className="truncate text-slate-300 text-[11px]">{ot.title}</span>
+                      </>
+                    ) : (
+                      <span className="text-amber-400 text-xs">⚠️ Sin Orden de Trabajo asignada</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Observaciones Directas y Específicas */}
+                {(srv.direct_observations || srv.specific_observations) && (
+                  <div className="space-y-1 text-xs text-slate-400">
+                    {srv.direct_observations && (
+                      <div className="line-clamp-2" title={srv.direct_observations}>
+                        <span className="font-semibold text-slate-300">Tarea:</span> {srv.direct_observations}
+                      </div>
+                    )}
+                    {srv.specific_observations && (
+                      <div className="line-clamp-2 text-slate-500 italic" title={srv.specific_observations}>
+                        <span className="font-semibold text-slate-400 font-sans not-italic">Obs Admin:</span> {srv.specific_observations}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Importe y Cotización */}
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Importe AR$</span>
+                    <span className="font-mono font-bold text-slate-200 text-sm">
+                      ${Number(srv.amount_ars).toLocaleString('es-AR')}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-cyan-400 uppercase font-bold block">Costo Total US$</span>
+                    <span className="font-mono font-extrabold text-cyan-300 text-lg">
+                      ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Footer de Tarjeta con Auditoría y Acciones */}
+                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAuditModal(srv)}
+                    className={`text-[10px] px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 transition-all cursor-pointer ${
+                      srv.audit_status === 'CONFORME'
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
+                        : srv.audit_status === 'OBSERVADO'
+                        ? 'bg-rose-950 text-rose-300 border-rose-700'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}
+                  >
+                    {srv.audit_status === 'CONFORME' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                    {srv.audit_status === 'OBSERVADO' && <AlertTriangle className="w-3 h-3 text-rose-400" />}
+                    <span>{srv.audit_status || 'PENDIENTE'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {isEvolvable && activeRolePerspective !== 'direccion' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEvolutionModal(srv)}
+                        className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500 hover:text-slate-950 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                        title="Evolucionar a Factura oficial (FCR)"
+                      >
+                        <span>⚡ Factura</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setHistoryService(srv)}
+                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      title="Ver trazabilidad"
+                    >
+                      <History className="w-4 h-4" />
+                    </button>
+
+                    {activeRolePerspective !== 'direccion' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(srv)}
+                        className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer"
+                        title="Editar"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    {canEditAmounts && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteService(srv)}
+                        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL 1: CARGA GUIADA EN CASCADA (Barco -> Contratista 3ros -> OT)   */}
+      {/* ==================================================================== */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 my-8">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 font-bold">
+                  <Wrench className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {editingService ? 'Editar Comprobante de Terceros' : 'Carga Guiada de Gasto de Terceros (GS-005)'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Cascada estricta: 1° Barco ➔ 2° Contratista [3ros] ➔ 3° Orden de Trabajo
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveService} className="p-6 space-y-4 text-xs">
+              {/* PASO 1: SELECCIONAR BARCO */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Ship className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>1° Buque / Embarcación de la Obra *</span>
+                </label>
+                <select
+                  required
+                  value={formData.ship_id}
+                  onChange={(e) => {
+                    const newShipId = e.target.value
+                    setFormData((prev) => ({
+                      ...prev,
+                      ship_id: newShipId,
+                      work_order_id: '' // reset OT en cascada
+                    }))
+                  }}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
+                >
+                  <option value="">-- Seleccionar Buque --</option>
+                  {ships.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.current_location ? `(${s.current_location})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* PASO 2: SELECCIONAR CONTRATISTA (CON PERMISO 3ROS) */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>2° Contratista o Taller Autorizado [3ros] *</span>
+                </label>
+                <select
+                  required
+                  value={formData.contractor_name}
+                  onChange={(e) => handleContractorSelect(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
+                >
+                  <option value="">-- Seleccionar Contratista / Taller --</option>
+                  {contractors.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name} {c.trade ? `[${c.trade}]` : ''}
+                    </option>
+                  ))}
+                </select>
+
+                {/* MANEJO DE RUBRO MANUAL / POLIRRUBRO */}
+                {formData.is_manual_trade ? (
+                  <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/50 space-y-1.5 mt-2">
+                    <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px]">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Proveedor Polirrubro (MANUAL): Debe seleccionar el rubro aplicable al trabajo</span>
+                    </div>
+                    <select
+                      required
+                      value={formData.trade}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, trade: e.target.value }))}
+                      className="w-full bg-slate-950 border border-amber-600/70 rounded-lg px-2.5 py-1.5 text-amber-200 text-xs focus:outline-none"
+                    >
+                      <option value="">-- Seleccionar Rubro Oficial --</option>
+                      {OFFICIAL_TRADES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : formData.trade ? (
+                  <div className="flex items-center gap-2 text-slate-400 text-[11px] mt-1 pl-1">
+                    <span>Rubro asignado automáticamente:</span>
+                    <span className="font-bold text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60">
+                      {formData.trade}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* PASO 3: SELECCIONAR ORDEN DE TRABAJO (OT) */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>3° Orden de Trabajo (OT) en Ejecución *</span>
+                </label>
+                <select
+                  value={formData.work_order_id}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, work_order_id: e.target.value }))}
+                  disabled={!formData.ship_id}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs disabled:opacity-50"
+                >
+                  <option value="">
+                    {!formData.ship_id ? '-- Primero seleccione un buque --' : '-- Seleccionar OT del buque --'}
+                  </option>
+                  {availableWorkOrdersForSelectedShip.map((wo) => (
+                    <option key={wo.id} value={wo.id}>
+                      {wo.ot_number}: {wo.title} ({wo.status || 'En ejecución'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* TIPO DE COMPROBANTE Y LOCACIÓN */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+                    Tipo de Comprobante (DEC-017) *
+                  </label>
+                  <select
+                    value={formData.voucher_type}
+                    onChange={(e) => {
+                      const vCode = e.target.value
+                      const vConf = VOUCHER_TYPES.find((v) => v.code === vCode)
+                      setFormData((prev) => ({
+                        ...prev,
+                        voucher_type: vCode,
+                        service_location: vConf?.location || prev.service_location
+                      }))
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
+                  >
+                    {VOUCHER_TYPES.map((v) => (
+                      <option key={v.code} value={v.code}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-500 italic">
+                    {VOUCHER_TYPES.find((v) => v.code === formData.voucher_type)?.description}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+                    Locación del Servicio
+                  </label>
+                  <select
+                    value={formData.service_location}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, service_location: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
+                  >
+                    <option value="PLANTA">PLANTA (Instalaciones Astillero)</option>
+                    <option value="TALLER">TALLER (Taller Externo)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* NÚMERO DE COMPROBANTE & REMITO ALONCAR */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+                    N° Factura / Remito / Comprobante
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: FAC-B-0004-00012480 o RMO-102"
+                    value={formData.voucher_number}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, voucher_number: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary font-mono text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center justify-between">
+                    <span>N° Remito Aloncar (Cruce Pañol)</span>
+                    <span className="text-[10px] text-purple-400 font-normal">Materiales</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 1042 (Remito de salida de Pañol)"
+                    value={formData.internal_remito_number}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, internal_remito_number: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* FECHAS & DÓLAR CONGELADO POR FECHA DE CARGA */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 text-[11px]">
+                    Fecha de Carga (A mano) *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.entry_date}
+                    onChange={(e) => {
+                      const newDate = e.target.value
+                      const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(newDate, formData.amount_ars)
+                      setFormData((prev) => ({
+                        ...prev,
+                        entry_date: newDate,
+                        service_date: newDate,
+                        usd_rate,
+                        amount_usd
+                      }))
+                    }}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none font-mono text-xs"
+                  />
+                  <span className="text-[10px] text-slate-500">Define el dólar oficial</span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 text-[11px]">
+                    Importe AR$ *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="0.00"
+                      disabled={editingService && !canEditAmounts}
+                      value={formData.amount_ars}
+                      onChange={(e) => {
+                        const newArs = e.target.value
+                        const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(formData.entry_date, newArs)
+                        setFormData((prev) => ({
+                          ...prev,
+                          amount_ars: newArs,
+                          usd_rate,
+                          amount_usd
+                        }))
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-3 pr-7 py-1.5 text-white font-mono font-bold text-xs focus:outline-none focus:border-primary disabled:opacity-50"
+                    />
+                    {editingService && !canEditAmounts && (
+                      <Lock className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2" title="Edición de montos bloqueada" />
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-500">Monto sin IVA o según acuerdo</span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-cyan-300 text-[11px]">
+                    Cotiz. Dólar / Monto US$
+                  </label>
+                  <div className="bg-slate-900 border border-cyan-800/60 rounded-lg px-2.5 py-1.5 font-mono text-xs text-cyan-300 flex items-center justify-between">
+                    <span>${formData.usd_rate}</span>
+                    <span className="font-extrabold text-white">US$ {formData.amount_usd}</span>
+                  </div>
+                  <span className="text-[10px] text-cyan-500">Congelado por quincena</span>
+                </div>
+              </div>
+
+              {/* OBSERVACIONES DIRECTAS (TÉCNICAS) Y ESPECÍFICAS (ADMINISTRATIVAS) */}
+              <div className="space-y-2">
+                <div>
+                  <label className="font-bold text-slate-300 text-[11px]">
+                    Observaciones Directas (Detalle técnico de la tarea ejecutada)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Describa el trabajo realizado por el contratista en la obra..."
+                    value={formData.direct_observations}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, direct_observations: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-300 text-[11px]">
+                    Observaciones Específicas (Administración / Reclamo de Facturas)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Notas contables, reclamos de facturas pendientes, condiciones de pago..."
+                    value={formData.specific_observations}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, specific_observations: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* BOTONES DE ACCIÓN */}
+              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingService}
+                  className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {savingService ? (
+                    <>
+                      <Clock className="w-4 h-4 animate-spin" />
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <span>{editingService ? 'Actualizar Comprobante' : 'Guardar Comprobante'}</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL 2: EVOLUCIÓN RÁPIDA DE COMPROBANTE (RMO / RPF -> FCR o SDT)     */}
+      {/* ==================================================================== */}
+      {evolvingService && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center border border-amber-500/40 font-bold">
+                  ⚡
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Evolución de Comprobante (DEC-017)</h3>
+                  <p className="text-xs text-amber-300/80">
+                    Pasar {evolvingService.voucher_type} a Factura Oficial Definitiva (FCR)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEvolvingService(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmEvolution} className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                <p className="font-bold text-slate-200">
+                  Proveedor: <span className="text-primary">{evolvingService.contractor_name}</span>
+                </p>
+                <p className="text-slate-400">
+                  Comprobante actual: <span className="font-mono text-amber-300 font-bold">{evolvingService.voucher_type}</span> ({evolvingService.voucher_number || 'S/N'})
+                </p>
+                <p className="text-slate-400">
+                  Importe actual registrado: <span className="font-mono text-white font-bold">${Number(evolvingService.amount_ars).toLocaleString('es-AR')}</span>
+                </p>
+              </div>
+
+              {/* Tipo de Destino */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+                  Evolucionar a *
+                </label>
+                <select
+                  value={evolutionForm.target_voucher_type}
+                  onChange={(e) => setEvolutionForm((prev) => ({ ...prev, target_voucher_type: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400 font-bold"
+                >
+                  <option value="FCR">FCR - Factura Fiscal Oficial Definitiva (Recomendado)</option>
+                  {evolvingService.voucher_type === 'RMO' && (
+                    <option value="SDT">SDT - Sin Documentación Fiscal (Cierre excepcional)</option>
+                  )}
+                </select>
+              </div>
+
+              {/* Número de Factura */}
+              {evolutionForm.target_voucher_type === 'FCR' && (
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+                    Número de Factura Fiscal Oficial *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: FAC-A-0001-00012345"
+                    value={evolutionForm.new_voucher_number}
+                    onChange={(e) => setEvolutionForm((prev) => ({ ...prev, new_voucher_number: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              )}
+
+              {/* Fecha y Monto Final */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 text-[11px]">
+                    Fecha de Factura
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={evolutionForm.voucher_date}
+                    onChange={(e) => setEvolutionForm((prev) => ({ ...prev, voucher_date: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono text-xs focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-300 text-[11px]">
+                    Monto Final Facturado AR$
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    disabled={!canEditAmounts}
+                    value={evolutionForm.final_amount_ars}
+                    onChange={(e) => setEvolutionForm((prev) => ({ ...prev, final_amount_ars: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono font-bold text-xs focus:outline-none disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              {/* Notas de Evolución */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 text-[11px]">
+                  Constancia / Motivo del Pase
+                </label>
+                <textarea
+                  rows={2}
+                  value={evolutionForm.evolution_notes}
+                  onChange={(e) => setEvolutionForm((prev) => ({ ...prev, evolution_notes: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none"
+                />
+              </div>
+
+              {/* Botones */}
+              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEvolvingService(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEvolution}
+                  className="px-5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:brightness-110 text-slate-950 font-extrabold rounded-xl flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {savingEvolution ? 'Evolucionando...' : 'Confirmar Pase a Factura Oficial'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL 3: AUDITORÍA TÉCNICA (Jefes de Obra)                           */}
+      {/* ==================================================================== */}
+      {auditingService && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+              <div className="flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white">Conformidad Técnica de Obra</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAuditingService(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAudit} className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                <p className="font-bold text-slate-200">
+                  {auditingService.contractor_name} — <span className="text-cyan-400">{auditingService.voucher_type}</span>
+                </p>
+                <p className="text-slate-400">
+                  Buque: {shipMap.get(auditingService.ship_id)?.name} | OT: {otMap.get(auditingService.work_order_id)?.ot_number || 'S/N'}
+                </p>
+                {auditingService.direct_observations && (
+                  <p className="text-slate-500 text-[11px] italic">
+                    "{auditingService.direct_observations}"
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+                  Estado de Auditoría Técnica *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAuditForm((prev) => ({ ...prev, audit_status: 'CONFORME' }))}
+                    className={`py-2 rounded-xl font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      auditForm.audit_status === 'CONFORME'
+                        ? 'bg-emerald-950 border-emerald-400 text-emerald-300 ring-1 ring-emerald-400'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>CONFORME</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAuditForm((prev) => ({ ...prev, audit_status: 'OBSERVADO' }))}
+                    className={`py-2 rounded-xl font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      auditForm.audit_status === 'OBSERVADO'
+                        ? 'bg-rose-950 border-rose-400 text-rose-300 ring-1 ring-rose-400'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <AlertTriangle className="w-4 h-4 text-rose-400" />
+                    <span>OBSERVADO</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-300 text-[11px]">
+                  Notas u Observaciones del Jefe de Obra
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Detalle de inspección dimensional, prueba hidráulica, ensayo o inconformidad..."
+                  value={auditForm.audit_notes}
+                  onChange={(e) => setAuditForm((prev) => ({ ...prev, audit_notes: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAuditingService(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAudit}
+                  className="px-5 py-2 bg-primary text-slate-950 font-extrabold rounded-xl hover:brightness-110 disabled:opacity-50"
+                >
+                  {savingAudit ? 'Guardando...' : 'Asentar Conformidad'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL 4: HISTORIAL DE TRAZABILIDAD DEL COMPROBANTE                  */}
+      {/* ==================================================================== */}
+      {historyService && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+              <div className="flex items-center gap-2">
+                <History className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-base font-bold text-white">Trazabilidad del Comprobante</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryService(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <h4 className="font-bold text-white uppercase">{historyService.contractor_name}</h4>
+                <p className="text-slate-400 text-[11px] mt-0.5">
+                  Estado actual: <span className="font-mono text-cyan-300 font-bold">{historyService.voucher_type}</span> - N° {historyService.voucher_number || 'S/N'}
+                </p>
+                <p className="text-slate-400 text-[11px]">
+                  Cargado por: <span className="text-slate-200">{historyService.created_by || 'Administración'}</span> ({historyService.created_at?.split('T')[0]})
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <h5 className="font-bold text-slate-300 uppercase tracking-wider text-[10px]">
+                  Historial de Evoluciones (Pases de Estado)
+                </h5>
+
+                {voucherHistory.filter((h) => h.third_party_service_id === historyService.id).length === 0 ? (
+                  <p className="text-slate-500 italic p-3 bg-slate-950/40 rounded-xl border border-slate-800/60 text-center">
+                    Este comprobante permanece en su estado original ({historyService.voucher_type}). No ha tenido evoluciones de comprobante.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {voucherHistory
+                      .filter((h) => h.third_party_service_id === historyService.id)
+                      .map((h) => (
+                        <div key={h.id} className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-amber-300 flex items-center gap-1.5 font-mono">
+                              <span>{h.from_voucher_type}</span>
+                              <ArrowRight className="w-3 h-3 text-slate-500" />
+                              <span className="text-cyan-300">{h.to_voucher_type}</span>
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {h.created_at?.split('T')[0]}
+                            </span>
+                          </div>
+                          {h.voucher_number && (
+                            <p className="text-slate-300 font-mono text-[11px]">
+                              Nuevo N°: {h.voucher_number}
+                            </p>
+                          )}
+                          {h.notes && (
+                            <p className="text-slate-400 text-[11px] italic">
+                              "{h.notes}"
+                            </p>
+                          )}
+                          <p className="text-[10px] text-slate-500">
+                            Por: <span className="text-slate-400 font-semibold">{h.changed_by || 'Sistema'}</span>
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setHistoryService(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

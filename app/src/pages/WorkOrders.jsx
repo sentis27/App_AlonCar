@@ -22,8 +22,10 @@ import {
   ArrowRight,
   UserPlus,
   Info,
-  Lock
+  Lock,
+  ExternalLink
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
@@ -2663,14 +2665,23 @@ export default function WorkOrders() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleOpenTpCascadeModal}
-              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-lg shadow-purple-600/20 shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Cargar en Terceros (Cascada Barco &rarr; Contratista &rarr; OT)</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/terceros"
+                className="px-3.5 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20 shrink-0"
+              >
+                <ExternalLink className="w-4 h-4 stroke-[2.5]" />
+                <span>Abrir Módulo Completo de Terceros ↗</span>
+              </Link>
+              <button
+                type="button"
+                onClick={handleOpenTpCascadeModal}
+                className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-lg shadow-purple-600/20 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Carga Rápida</span>
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto border border-slate-800 rounded-xl">

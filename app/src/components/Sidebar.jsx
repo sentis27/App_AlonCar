@@ -10,7 +10,8 @@ import {
   BarChart3, 
   LogOut, 
   Anchor,
-  ShieldCheck
+  ShieldCheck,
+  Wrench
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -18,6 +19,7 @@ const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
   { name: 'Órdenes de Trabajo', path: '/ots', icon: ClipboardList },
   { name: 'Barcos y Obras', path: '/barcos', icon: Ship },
+  { name: 'Terceros y Talleres', path: '/terceros', icon: Wrench },
   { name: 'Carga de Horas', path: '/horas', icon: Clock },
   { name: 'Pañol / Materiales', path: '/panol', icon: Package },
   { name: 'Compras', path: '/compras', icon: ShoppingCart },

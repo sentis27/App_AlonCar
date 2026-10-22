@@ -373,6 +373,17 @@ Semana 3+:
 7. [ ] Resto de módulos
 8. [ ] Flujos de datos completos
 
+### ✓ HECHO — 3.6 Módulo M3: Costos de Terceros y Talleres Externos (`Terceros.jsx`, GS-005)
+- **Ruta Dedicada y Navegación:** `/terceros` integrada en `App.jsx`, `Sidebar.jsx` (icono Wrench) y enlace directo desde `/ots`.
+- **Catálogo de Contratistas y Permisos:** 251 proveedores únicos del catálogo oficial cargados en `public.workers` con `can_charge_third_party = true`, `can_withdraw_materials = false` y `can_impute_hours = false`.
+- **Contratistas Polirrubro ("MANUAL"):** Detección interactiva de contratistas con rubro MANUAL (Alon Car SA, Atlántica Gas, etc.) con selector obligatorio de entre 24 rubros oficiales sin inventar nombres.
+- **Ciclo de Comprobantes DEC-017:** Soporte y badges para PRC (Planta), RMO (Taller), RPF (Remito pendiente de factura con alerta visual urgente), FCR (Factura oficial definitiva) y SDT (Sin documentación). Modal de evolución rápida a FCR/SDT con trazabilidad inmutable en `public.third_party_voucher_history`.
+- **Dólar Congelado por Fecha de Carga a Mano:** Búsqueda automática en `macro_variables` por quincena (`dollar_rate_1q` / `dollar_rate_2q`) y cálculo automático en US$.
+- **Control de Permisos de Montos:** Edición de importes reservada exclusivamente a María José y Jorge Sentis (Admin). Para otros roles, campos bloqueados con candado 🔒.
+- **Auditoría Técnica y Vistas Universales:** `[☷ Vista Filas]` y `[⊞ Vista Fichas]`, KPIs clickeables como filtros instantáneos y conformidad técnica (`CONFORME` / `OBSERVADO`) para Jefes de Obra.
+- **Datos Iniciales:** 10 registros históricos representativos sembrados en `public.third_party_services`.
+- **Documentación:** Creado `DEC-021` y actualizado `manual_de_usuario_aloncar.md`.
+
 📝 Cómo Actualizar Este Archivo
 Cuando cierres una tarea:
 markdown- [x] **HECHO** — Descripción
@@ -380,5 +391,5 @@ Cuando cambies una prioridad:
 markdown- [ ] **AHORA CRÍTICA** — Descripción (era Media)
 Responsable: Tú + Antigravity (colaborativo)
 
-Última actualización: 2026-10-20
-Siguiente revisión: Al iniciar Módulos M1/M2 o M4
+Última actualización: 2026-10-22
+Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales

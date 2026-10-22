@@ -20,8 +20,9 @@ Este documento constituye el **Manual Integral de la Aplicación Alon Car**, dis
    - [4.3 Editor de Prompts Versionados](#43-editor-de-prompts-versionados)
    - [4.4 Sandbox de Prueba](#44-sandbox-de-prueba)
    - [4.5 Bitácora de Auditoría (ai_processing_logs)](#45-bitácora-de-auditoría-ai_processing_logs)
-5. [Arquitectura Técnica de Respaldo en 3 Niveles](#5-arquitectura-técnica-de-respaldo-en-3-niveles)
-6. [📋 Lista de Tareas Pendientes y Hoja de Ruta](#6--lista-de-tareas-pendientes-y-hoja-de-ruta)
+5. [Módulo M3: Costos de Terceros y Talleres Externos (GS-005)](#7-módulo-m3-costos-de-terceros-y-talleres-externos-gs-005)
+6. [Arquitectura Técnica de Respaldo en 3 Niveles](#6-arquitectura-técnica-de-respaldo-en-3-niveles)
+7. [📋 Lista de Tareas Pendientes y Hoja de Ruta](#8--lista-de-tareas-pendientes-y-hoja-de-ruta)
 
 ---
 
@@ -231,7 +232,42 @@ El procesamiento de partes opera bajo una arquitectura de alta disponibilidad de
 
 ---
 
-## 6. 📋 Lista de Tareas Pendientes y Hoja de Ruta
+## 7. Módulo M3: Costos de Terceros y Talleres Externos (GS-005)
+
+Ubicado en `/terceros` (con acceso rápido desde la pestaña correspondiente en `/ots`):
+
+### 7.1 Catálogo Oficial y Permisos de Proveedores
+- **Padrón de Contratistas:** Se integraron más de 250 contratistas y talleres externos del catálogo oficial.
+- **Permisos Estrictos:** Ninguno de estos proveedores de terceros tiene habilitación para imputar horas de personal propio (`can_impute_hours = false`) ni para retirar insumos de Pañol (`can_withdraw_materials = false`). Tienen exclusivamente activo el permiso de terceros (`can_charge_third_party = true`).
+- **Contratistas Polirrubro ("MANUAL"):** Aquellos contratistas catalogados con rubro `MANUAL` (ej. Alon Car SA, Atlántica Gas, Birigain, Ordoqui, etc.) son polirrubro. En el formulario de carga guiada, el sistema detecta esta marca y despliega un selector obligatorio para elegir el oficio aplicable a la tarea de una lista oficial de 24 rubros sin inventar nombres nuevos.
+
+### 7.2 Ciclo de Comprobantes (DEC-017)
+El sistema gestiona 5 estados con comportamientos y reglas de evolución específicas:
+1. **PRC (Presupuesto / Trabajo en Planta):** Todo trabajo realizado dentro de las instalaciones del astillero (Varadero / Muelle). Estado definitivo, no evoluciona.
+2. **RMO (Remito Mano de Obra):** Trabajos ejecutados en taller externo del contratista. Evoluciona a `FCR` o `SDT`.
+3. **RPF (Remito Pendiente de Factura):** Estado transitorio de alerta administrativa. Genera un llamado de atención visual urgente para exigir la factura oficial al proveedor. Debe evolucionar obligatoriamente a `FCR`.
+4. **FCR (Factura Fiscal Oficial):** Estado final respaldatorio con número legal de factura.
+5. **SDT (Sin Documentación):** Estado final para gastos o trabajos cerrados excepcionalmente sin factura oficial.
+
+### 7.3 Congelamiento de Dólar Oficial por Fecha de Carga
+- La cotización se congela automáticamente tomando la **fecha de carga del dato ingresada a mano** (`entry_date`).
+- El sistema consulta la cotización oficial de la quincena en `macro_variables` (Días 1-15: 1Q; Días 16-31: 2Q).
+- Calcula automáticamente el monto en USD (`amount_usd = amount_ars / usd_rate`).
+
+### 7.4 Control de Edición de Montos y Auditoría
+- **Permiso Exclusivo:** Solo **María José** y **Jorge Sentis (Admin)** pueden editar importes monetarios en AR$ o US$ una vez guardados. Para otros roles, el campo permanece bloqueado con candado 🔒.
+- **Trazabilidad:** Cualquier edición de montos o eliminación de comprobantes queda asentada en `public.audit_logs`.
+- **Historial de Evoluciones:** Al pasar un comprobante de RMO o RPF a Factura (FCR), se guarda el historial inmutable en `public.third_party_voucher_history`.
+
+### 7.5 Terminales de Trabajo Especializadas
+- **Terminal Jorge Sentis (Admin):** Permiso total, edición de montos y aprobación de excepciones.
+- **Terminal María José (Administración):** Carga y valorización de comprobantes, reclamo de facturas pendientes (RPF) y pasaje a FCR.
+- **Terminal Jefes de Obra (Omar / Pablo / Ale):** Conformidad técnica (`CONFORME` / `OBSERVADO`), notas técnicas y cruce de piezas con Remito Aloncar.
+- **Terminal Dirección (Hugo):** Solo lectura gerencial de costos consolidados en USD.
+
+---
+
+## 8. 📋 Lista de Tareas Pendientes y Hoja de Ruta
 
 ### 🔴 Tarea 1: Rotar API Key y fijar Límite de Gasto Mensual
 - **Responsable:** Usuario Administrador (Acción Personal).
@@ -253,7 +289,6 @@ El procesamiento de partes opera bajo una arquitectura de alta disponibilidad de
   ```
 - Al desplegarla, el sistema pasará a utilizar de forma transparente el Nivel 1 (Servidor).
 
-### 🟢 Tarea 3: Replicar Habilitación en Cascada en Materiales (M4) y Terceros
-- Aplicar exactamente la misma lógica desarrollada en Horas:
-  - Al elegir el Barco ➔ se filtran los contratistas y proveedores autorizados.
-  - Al elegir el Contratista/Rubro ➔ se filtran únicamente las OTs en estado *"En ejecución"*.
+### 🟢 Tarea 3: Módulo M4 Pañol / Materiales y Cruce con Remito Aloncar
+- Construir el módulo de Pañol (`/panol`) y conectar el campo `N° Remito Aloncar` (`internal_remito_number`) para auditar automáticamente si los materiales entregados a talleres coinciden con la mano de obra facturada.
+
