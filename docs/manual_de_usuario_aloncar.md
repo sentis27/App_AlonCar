@@ -106,9 +106,43 @@ Los talleres y contratistas externos pueden prestar servicios en diversas especi
 
 ---
 
-## 3. Módulo M1: Órdenes de Trabajo (OTs)
+---
 
-Ubicado en `/ordenes`:
+## 3. Módulo M1: Barcos, Ficha Técnica Naval & Calendario de Estadías
+
+Ubicado en `/barcos`:
+
+### 3.1 Catálogo de Buques & Ficha 360°
+- **Nombres Limpios:** Todos los buques se presentan sin prefijos de empresa (ej. `TRITON I` en lugar de `Astillero Alon Car Triton`).
+- **Baja Lógica Inviolable:** No se eliminan buques físicos para preservar el historial de OTs y jornales contables. Al desactivar un barco pasa a estado `Inactivo`.
+- **Ficha 360° Integral:**
+  - **Ficha Técnica Naval (Jefes de Obra):** Eslora (m), Manga (m), Puntal (m), Superficie de Casco ($m^2$).
+  - **Componentes Dinámicos (JSONB):** Tanques de combustible, tanques de agua, válvulas de casco (1" a 2½" y 3" a 6"), válvulas intermediarias y pocetes de achique. Si la cantidad es mayor a 0, se habilita el campo amplio de observaciones/distribución.
+  - **Armador & Contactos (María José):** Razón social de la empresa, nombre del armador, teléfono directo, email principal y secundario.
+  - **Historial de OTs:** Consulta directa de trabajos activos e históricos en `/ots`.
+
+### 3.2 Calendario de Movimientos & Estadías (Reemplazo de Excel Legacy)
+- **Locaciones Oficiales:**
+  - `VARADERO ALON CAR` (Puesta en seco en anguilera).
+  - `MUELLE ALON CAR` (Permanencia a flote con servicios).
+  - `PUERTO 1RA ALDANA` a `PUERTO 7MA ALDANA` (Muelles y rada externa).
+- **Cálculo de Días Corridos:**
+  - Fecha de Comienzo ingresada manualmente.
+  - Si la Fecha Fin está vacía (estadía en curso), el sistema aplica dinámicamente `=HOY()` para acumular días en vivo.
+  - **Fórmula de Días:** `Fin - Comienzo + 1` días corridos inclusivos.
+  - Al cambiar de locación o zarpar, se cierra la fecha de salida manual.
+- **Electricidad:** Omitida deliberadamente en este submódulo operativo; su valorización monetaria se realiza en el Anexo de Factura del Módulo 5.
+
+### 3.3 Matriz de Roles y Solicitud de Carga
+- **Jorge Sentis (Administrador):** Da de alta el buque y tiene el botón **"📢 Solicitar Info"** para encomendar la carga de datos a María José (armador/contactos), a Jefes de Obra (medidas/ficha técnica) o a ambos.
+- **María José (Comercial / Administración):** Administra empresas armadoras, datos de contacto y el Calendario de Movimientos.
+- **Jefes de Obra (Técnico / Operaciones):** Verifican y completan la Ficha Técnica Naval a bordo.
+
+---
+
+## 4. Módulo: Órdenes de Trabajo (OTs)
+
+Ubicado en `/ots`:
 1. **Consecutivo Automático:** El número correlativo de OT es generado exclusivamente por el sistema y no es editable manualmente para preservar la integridad contable.
 2. **Tipo de Facturación (Centro de Facturación):**
    - *Presupuesto General:* Trabajos cotizados dentro del contrato base de la obra.
@@ -119,22 +153,22 @@ Ubicado en `/ordenes`:
 
 ---
 
-## 4. Módulo Administrador: Tablero de Gobernanza IA & Prompts
+## 5. Módulo Administrador: Tablero de Gobernanza IA & Prompts
 
 Ubicado exclusivamente dentro de `/admin` en la pestaña **`🧠 Gobernanza IA & Prompts`**.
 
-### 4.1 Acceso y Seguridad
+### 5.1 Acceso y Seguridad
 - Esta pestaña está **oculta para los operadores normales** y solo es visible para usuarios con rol de Administrador.
 - Permite la configuración integral del motor de inteligencia artificial sin necesidad de modificar código fuente ni reiniciar servidores.
 
-### 4.2 Configuración del Proveedor
+### 5.2 Configuración del Proveedor
 - **Modos de Operación:**
   - `Híbrido`: Intenta interpretar con OpenAI (`gpt-4o-mini`) y, si hay corte de red o falta de saldo, activa instantáneamente el parser local.
   - `Solo OpenAI`: Exige validación con el modelo LLM.
   - `Solo Local`: Utiliza el motor determinístico naval (costo \$0 permanente).
 - **Parámetros:** Configuración de Modelo (`gpt-4o-mini`), Temperatura (`0.0` para máxima precisión determinística) y API Key.
 
-### 4.3 Editor de Prompts Versionados
+### 5.3 Editor de Prompts Versionados
 El sistema cuenta con 4 prompts maestros almacenados en la tabla `public.system_prompts`:
 1. `router_clasificador_e3a`: Clasifica si el parte corresponde a personal propio, contratistas o maquinaria.
 2. `prompt_astillero`: Reglas de jornada de 9h, distribución de extras (50%/100%) y resolución de oficios.
@@ -143,10 +177,10 @@ El sistema cuenta con 4 prompts maestros almacenados en la tabla `public.system_
 
 > Al editar y presionar **"Guardar nueva versión"**, el sistema incrementa el número correlativo (ej. de `v2.4` a `v2.5`), registra el usuario administrador que realizó el cambio y lo sincroniza de inmediato en Supabase para toda la empresa.
 
-### 4.4 Sandbox de Prueba
+### 5.4 Sandbox de Prueba
 Permite pegar cualquier parte de trabajo y ejecutar el análisis en vivo contra los prompts actuales para validar cómo se estructuran las filas antes de que los operarios lo usen en producción. **No guarda horas en la base de datos.**
 
-### 4.5 Bitácora de Auditoría (`ai_processing_logs`)
+### 5.5 Bitácora de Auditoría (`ai_processing_logs`)
 Cada vez que se procesa un mensaje en la aplicación, se guarda una entrada inmutable con:
 - Fecha y hora del procesamiento.
 - Usuario emisor.
@@ -157,7 +191,7 @@ Cada vez que se procesa un mensaje en la aplicación, se guarda una entrada inmu
 
 ---
 
-## 5. Arquitectura Técnica de Respaldo en 3 Niveles
+## 6. Arquitectura Técnica de Respaldo en 3 Niveles
 
 El procesamiento de partes opera bajo una arquitectura de alta disponibilidad de triple capa:
 

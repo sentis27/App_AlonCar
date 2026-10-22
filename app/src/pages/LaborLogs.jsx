@@ -654,12 +654,21 @@ export default function LaborLogs() {
 
     try {
       setSubmitting(true)
-      // 1. Verificar o crear Barco
+      // 1. Verificar o crear Barco con solicitud de apertura
       let targetShip = ships.find(s => normalizeText(s.name) === normalizeText(shipNameClean))
       if (!targetShip) {
         const { data: shipData, error: shipErr } = await supabase
           .from('ships')
-          .insert([{ name: shipNameClean, client_name: shipNameClean, status: 'En Obra' }])
+          .insert([
+            { 
+              name: shipNameClean, 
+              client_name: shipNameClean, 
+              status: 'Activo',
+              info_request_status: 'pendiente_ambos',
+              info_requested_at: new Date().toISOString(),
+              info_requested_by: user?.email || 'Operador en Carga de Horas'
+            }
+          ])
           .select()
 
         if (shipErr) throw shipErr
@@ -741,7 +750,7 @@ export default function LaborLogs() {
 
       setStatusMessage({
         type: 'success',
-        text: `Barco "${shipNameClean}" y ${otCode} ("${otTitle}") creados y vinculados automáticamente en la Cuadrilla.`
+        text: `📢 Se solicitó la apertura del Centro de Costos para "${shipNameClean}". Se habilitó provisoriamente ${otCode} ("${otTitle}") para permitir la imputación de horas.`
       })
     } catch (err) {
       console.error('Error creando barco/OT rápida:', err)
@@ -1841,7 +1850,7 @@ export default function LaborLogs() {
                     </div>
                   </div>
                   <Link
-                    to="/ordenes"
+                    to="/ots"
                     className="shrink-0 text-[11px] text-cyan-400 hover:text-cyan-300 underline font-semibold"
                   >
                     Ver en Órdenes de Trabajo &rarr;
@@ -1856,7 +1865,7 @@ export default function LaborLogs() {
                     </span>
                   </div>
                   <Link
-                    to="/ordenes"
+                    to="/ots"
                     className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold"
                   >
                     Ir a OTs
@@ -2333,15 +2342,15 @@ export default function LaborLogs() {
                               {(!row.work_order_id && (row.ship_name_raw || rowEnabledWorkOrders.length === 0)) && (
                                 <div className="flex items-center justify-between gap-1 px-2 py-1 rounded bg-amber-500/15 border border-amber-500/40 text-[10px] text-amber-200">
                                   <span className="truncate">
-                                    Barco/OT reportado: <strong>{row.ship_name_raw || 'Sin OT activa'}</strong>
+                                    Reportado sin OT: <strong>{row.ship_name_raw || 'Sin OT activa'}</strong>
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() => handleQuickCreateShipAndWoForRow(row)}
-                                    className="px-2 py-0.5 rounded bg-emerald-500/25 hover:bg-emerald-500/40 border border-emerald-400/50 text-emerald-200 font-bold shrink-0 cursor-pointer"
-                                    title="Crea el Barco (si no existe) y abre una OT En ejecución habilitada para este rubro"
+                                    className="px-2 py-0.5 rounded bg-amber-500/30 hover:bg-amber-500/50 border border-amber-400 text-amber-100 font-bold shrink-0 cursor-pointer flex items-center gap-1"
+                                    title="Avisa al Administrador que se reportaron trabajos de este barco pero sin Centro de Costos/OT abierto para cargar"
                                   >
-                                    + Crear Barco/OT
+                                    📢 Solicitar Apertura
                                   </button>
                                 </div>
                               )}

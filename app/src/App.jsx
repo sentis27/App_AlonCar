@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import LaborLogs from './pages/LaborLogs'
 import Personal from './pages/Personal'
 import WorkOrders from './pages/WorkOrders'
+import Ships from './pages/Ships'
 import AdminDashboard from './pages/AdminDashboard'
 import ModulePlaceholder from './pages/ModulePlaceholder'
 import { Loader2 } from 'lucide-react'
@@ -69,7 +70,7 @@ export default function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="ots" element={<WorkOrders />} />
-            <Route path="barcos" element={<ModulePlaceholder />} />
+            <Route path="barcos" element={<Ships />} />
             <Route path="horas" element={<LaborLogs />} />
             <Route path="panol" element={<ModulePlaceholder />} />
             <Route path="compras" element={<ModulePlaceholder />} />
