@@ -112,16 +112,27 @@ Los talleres y contratistas externos pueden prestar servicios en diversas especi
 
 Ubicado en `/barcos`:
 
-### 3.1 Catálogo de Buques & Ficha 360°
+### 3.1 Catálogo de Buques, Vista Filas & Ficha 360°
+- **Vista Filas (Predeterminada):** Presentación tipo tabla con renglones (igual al módulo de Órdenes de Trabajo) que permite escanear de un vistazo: Buque, Tipo de Embarcación, Locación Actual, Medidas (Eslora × Manga × Puntal × Superficie), OTs Activas en ejecución, Armador/Contacto directo, Estado de Solicitud y Acciones. Se incluye botón para alternar a Vista Fichas/Tarjetas según preferencia.
 - **Nombres Limpios:** Todos los buques se presentan sin prefijos de empresa (ej. `TRITON I` en lugar de `Astillero Alon Car Triton`).
+- **Tipos de Embarcación Adaptables:** Se dispone del catálogo oficial (`Pesquero`, `Desguace`, `Remolcador`, `Pontón`, `Barcaza`, `Buque Motor General`, `Draga`, `Lancha / Prácticos`, `Yate / Recreo`). La opción obsoleta "Arenero" fue sustituida por "Desguace". Incluye la opción `✏️ + Otro (Personalizado)...` para tipear cualquier categoría naval especial.
 - **Baja Lógica Inviolable:** No se eliminan buques físicos para preservar el historial de OTs y jornales contables. Al desactivar un barco pasa a estado `Inactivo`.
+- **Cálculo Preciso de OTs Activas:** El sistema computa en vivo las órdenes de trabajo que tienen tareas (`work_items`) con estado `En ejecución`, mostrando por ejemplo `2 en ejecución` para *Nono Pascual* y enlazando con un clic al módulo `/ots`.
 - **Ficha 360° Integral:**
   - **Ficha Técnica Naval (Jefes de Obra):** Eslora (m), Manga (m), Puntal (m), Superficie de Casco ($m^2$).
   - **Componentes Dinámicos (JSONB):** Tanques de combustible, tanques de agua, válvulas de casco (1" a 2½" y 3" a 6"), válvulas intermediarias y pocetes de achique. Si la cantidad es mayor a 0, se habilita el campo amplio de observaciones/distribución.
-  - **Armador & Contactos (María José):** Razón social de la empresa, nombre del armador, teléfono directo, email principal y secundario.
+  - **Armador & Contactos (María José):** Razón social de la empresa, nombre del armador, teléfono directo (con marcado telefónico rápido), email principal y secundario.
   - **Historial de OTs:** Consulta directa de trabajos activos e históricos en `/ots`.
 
-### 3.2 Calendario de Movimientos & Estadías (Reemplazo de Excel Legacy)
+### 3.2 KPIs Interactivos con Filtro Directo
+En la parte superior se exhiben 5 tarjetas resumen interactivas. Al hacer clic sobre cualquiera de ellas, se aplica el filtro inmediatamente sobre la tabla de buques:
+1. `Total Buques`: Restablece la vista para mostrar todos los buques de la base.
+2. `En Varadero`: Filtra exclusivamente barcos en varadero (puesta en seco).
+3. `En Muelle`: Filtra barcos a flote con servicios en Muelle Alon Car.
+4. `Puertos Aldana`: Filtra barcos en muelles externos o apostaderos de Aldana.
+5. `Solicitudes`: Filtra los barcos que tienen solicitudes de carga pendientes.
+
+### 3.3 Calendario de Movimientos & Estadías (Reemplazo de Excel Legacy)
 - **Locaciones Oficiales:**
   - `VARADERO ALON CAR` (Puesta en seco en anguilera).
   - `MUELLE ALON CAR` (Permanencia a flote con servicios).
@@ -133,10 +144,17 @@ Ubicado en `/barcos`:
   - Al cambiar de locación o zarpar, se cierra la fecha de salida manual.
 - **Electricidad:** Omitida deliberadamente en este submódulo operativo; su valorización monetaria se realiza en el Anexo de Factura del Módulo 5.
 
-### 3.3 Matriz de Roles y Solicitud de Carga
-- **Jorge Sentis (Administrador):** Da de alta el buque y tiene el botón **"📢 Solicitar Info"** para encomendar la carga de datos a María José (armador/contactos), a Jefes de Obra (medidas/ficha técnica) o a ambos.
+### 3.4 Matriz de Roles y Solicitud con Instrucciones Claras
+- **Selector de Rol Activo:** En el encabezado se dispone del selector de perspectiva (`Admin / Jorge`, `María José`, `Jefe de Obra`). Al cambiar de rol:
+  - Se despliega un banner explicativo con las funciones clave de dicho perfil.
+  - Se ofrecen accesos rápidos directos (ej. *"Filtrar pendientes de María José"* o *"Filtrar pendientes de Jefe de Obra"*).
+  - Al abrir la Ficha 360°, el sistema posiciona automáticamente la subpestaña pertinente al rol (María José en Armador/Contactos, Jefe de Obra en Ficha Técnica).
+- **Jorge Sentis (Administrador):**
+  - Alta de buques, gestión de tipos y bajas lógicas.
+  - Botón **"📢 Solicitar Info"**: Cuenta con un **cuadro de texto amplio para escribir instrucciones claras y detalladas** (ej. *"Relevar espesores de chapa del fondo y verificar las 4 válvulas de aspiración"*). Esta nota queda registrada en la base de datos (`info_request_notes`) y se muestra destacada en la fila del barco y dentro de la Ficha 360°.
 - **María José (Comercial / Administración):** Administra empresas armadoras, datos de contacto y el Calendario de Movimientos.
-- **Jefes de Obra (Técnico / Operaciones):** Verifican y completan la Ficha Técnica Naval a bordo.
+- **Jefes de Obra (Técnico / Operaciones):** Verifican y completan la Ficha Técnica Naval a bordo y revisan OTs.
+- **Botón `✓ Marcar como Completado`:** Permite a María José o al Jefe de Obra dar por cumplida la solicitud una vez cargados los datos.
 
 ---
 

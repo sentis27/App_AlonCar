@@ -57,14 +57,21 @@ El Módulo M1 requería pasar de un estado provisional (*placeholder*) a un mód
 - **Jefes de Obra (Técnico / Operaciones):** Completan las medidas core y la Ficha Técnica Dinámica a bordo.
 - **Badge de Alerta:** En el listado de buques, se destaca con badge ámbar los buques con información pendiente de carga.
 
-### 2.5 Carga de Horas: "Solicitar Apertura"
-- En `LaborLogs.jsx`, cuando un parte nombra un barco o trabajo que no tiene OT activa, el botón ahora reza **`📢 Solicitar Apertura`**, registrando el barco en estado de solicitud pendiente (`pendiente_ambos`) y avisando a la administración.
-- Se corrigieron los enlaces que apuntaban a `/ordenes` para que naveguen a `/ots`.
+### 2.6 Mejoras Operativas de Usabilidad (Feedback de Producción)
+- **Vista Filas / Tabla como Predeterminada:** Siguiendo el diseño de Órdenes de Trabajo, se incorporó una tabla compacta con renglones detallados (Buque, Tipo, Locación, Medidas, OTs Activas, Armador, Solicitud y Acciones), manteniendo la opción de alternar a Vista Fichas/Tarjetas.
+- **KPIs Interactivos con Filtro Directo:** Al hacer clic sobre cualquier casilla de KPI (`Total Buques`, `En Varadero`, `En Muelle`, `Puertos Aldana`, `Solicitudes`), el sistema aplica inmediatamente el filtro correspondiente en la tabla inferior (con opción de deseleccionar al volver a cliquear).
+- **Solicitud con Cuadro de Instrucciones Claras (`info_request_notes`):** La ventana de solicitud de información ahora incluye un cuadro de texto amplio donde Jorge Sentis (Admin) escribe instrucciones detalladas para el Jefe de Obra o María José (ej. *"Relevar espesores de chapa del fondo y verificar las 4 válvulas de aspiración"*). Esta nota se muestra destacada en la fila y en la Ficha 360°.
+- **Tipos de Embarcación Adaptables:** Se eliminó la opción obsoleta "Arenero" y se incorporó "Desguace", sumando una opción abierta de *"Otro tipo personalizado..."* para escribir libremente cualquier otra categoría naval.
+- **Cálculo Preciso de OTs Activas:** Se vinculó la carga de `work_items` junto a `work_orders`, reconociendo como activas las órdenes con trabajos en ejecución (ej. NONO PASCUAL con 2 OTs en curso).
+- **Banner Contextual de Roles:** Al alternar el selector de rol (`Admin`, `María José`, `Jefe de Obra`), un banner dinámico explica qué responsabilidades corresponden a cada perfil y ofrece botones de filtrado rápido directo.
 
 ---
 
-## 3. Base de Datos (Migración 0018)
-- Ejecutada en Supabase PostgreSQL:
+## 3. Base de Datos (Migraciones 0018 y 0019)
+- **Migración 0018 (`0018_ships_owners_and_stays.sql`):**
   - Creación de `public.owners`, `public.contacts`, `public.ship_stays`.
   - Ampliación de columnas en `public.ships` (`owner_id`, `eslora_mts`, `manga_mts`, `technical_specs`, `current_location`, `info_request_status`, etc.).
   - Políticas RLS configuradas para acceso seguro.
+- **Migración 0019 (`0019_add_ship_info_request_notes.sql`):**
+  - Incorporación del campo `info_request_notes TEXT` a `public.ships` para almacenar las instrucciones personalizadas de la solicitud de carga.
+
