@@ -3,12 +3,18 @@
 -- Y CATÁLOGO DE CONTRATISTAS / TALLERES (SIN CARGA DE MATERIALES NI HORAS)
 -- ==============================================================================
 
--- 1. Desacoplar unicidad de work_item_id y permitir múltiples comprobantes por trabajo / OT
-ALTER TABLE public.third_party_services 
-  DROP CONSTRAINT IF EXISTS third_party_services_work_item_id_key;
-
+-- 1. Asegurar que work_item_id sea nullable pero tenga constraint UNIQUE para soportar upsert desde OTs
 ALTER TABLE public.third_party_services
   ALTER COLUMN work_item_id DROP NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'third_party_services_work_item_id_key'
+  ) THEN
+    ALTER TABLE public.third_party_services ADD CONSTRAINT third_party_services_work_item_id_key UNIQUE (work_item_id);
+  END IF;
+END $$;
 
 -- 2. Ampliar campos de comprobantes, fechas, dólares congelados, locación y auditoría
 ALTER TABLE public.third_party_services

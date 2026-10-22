@@ -37,36 +37,31 @@ import {
 const VOUCHER_TYPES = [
   {
     code: 'PRC',
-    label: 'PRC - Presupuesto / Planta',
-    location: 'PLANTA',
+    label: 'PRC - Presupuesto Interno',
     color: 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60',
     description: 'Trabajo ejecutado dentro de las instalaciones del astillero. Estado definitivo, no evoluciona.'
   },
   {
     code: 'RMO',
     label: 'RMO - Remito Mano de Obra (Taller)',
-    location: 'TALLER',
     color: 'bg-blue-950/80 text-blue-300 border-blue-800/60',
     description: 'Trabajo ejecutado en taller externo del contratista. Evoluciona a FCR (Factura) o SDT.'
   },
   {
     code: 'RPF',
     label: 'RPF - Remito Pendiente de Factura',
-    location: 'TALLER',
     color: 'bg-amber-950/80 text-amber-300 border-amber-800/60 ring-1 ring-amber-500/50',
     description: 'Remito valorizado pendiente de factura oficial. Genera alerta administrativa para exigir factura.'
   },
   {
     code: 'FCR',
     label: 'FCR - Factura Fiscal Oficial',
-    location: 'TALLER',
     color: 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60',
     description: 'Comprobante fiscal respaldatorio oficial definitivo.'
   },
   {
     code: 'SDT',
     label: 'SDT - Sin Documentación',
-    location: 'TALLER',
     color: 'bg-rose-950/80 text-rose-300 border-rose-800/60',
     description: 'Gasto o trabajo cerrado sin factura fiscal oficial (Excepcional).'
   }
@@ -102,9 +97,10 @@ const OFFICIAL_TRADES = [
 
 // Función utilitaria para obtener el tipo de cambio oficial congelado por fecha de carga
 function getDollarRateForDate(dateStr, macroVariables) {
-  if (!dateStr || !macroVariables || macroVariables.length === 0) return 0
+  if (!dateStr) return 1500
+  if (!macroVariables || macroVariables.length === 0) return 1500
   const parts = dateStr.split('-')
-  if (parts.length < 3) return 0
+  if (parts.length < 3) return 1500
   const year = parseInt(parts[0], 10)
   const month = parseInt(parts[1], 10)
   const day = parseInt(parts[2], 10)
@@ -113,17 +109,18 @@ function getDollarRateForDate(dateStr, macroVariables) {
   if (!mv) {
     const sorted = [...macroVariables].sort((a, b) => b.year * 100 + b.month - (a.year * 100 + a.month))
     const latest = sorted[0]
-    if (!latest) return 0
-    return day <= 15 ? Number(latest.dollar_rate_1q) : Number(latest.dollar_rate_2q)
+    if (!latest) return 1500
+    const rate = day <= 15 ? (latest.dollar_rate_1q || latest.dollar_rate) : (latest.dollar_rate_2q || latest.dollar_rate)
+    return Number(rate) || 1500
   }
-  return day <= 15 ? Number(mv.dollar_rate_1q) : Number(mv.dollar_rate_2q)
+  const rate = day <= 15 ? (mv.dollar_rate_1q || mv.dollar_rate) : (mv.dollar_rate_2q || mv.dollar_rate)
+  return Number(rate) || 1500
 }
 
 export default function Terceros() {
   const { profile, user } = useAuth()
 
   // 1. Perspectiva / Terminal Activa
-  // 'admin' (Jorge Sentis) | 'maria_jose' (Administración) | 'jefe_obra' (Omar / Supervisión) | 'direccion' (Hugo)
   const [activeRolePerspective, setActiveRolePerspective] = useState(() => {
     const saved = localStorage.getItem('aloncar_terceros_terminal')
     return saved || 'maria_jose'
@@ -162,6 +159,7 @@ export default function Terceros() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingService, setEditingService] = useState(null)
   const [savingService, setSavingService] = useState(false)
+  const [contractorModalSearch, setContractorModalSearch] = useState('')
 
   // Formulario de servicio
   const [formData, setFormData] = useState({
@@ -176,10 +174,9 @@ export default function Terceros() {
     voucher_date: new Date().toISOString().split('T')[0],
     entry_date: new Date().toISOString().split('T')[0],
     service_date: new Date().toISOString().split('T')[0],
-    service_location: 'PLANTA',
     internal_remito_number: '',
     amount_ars: '',
-    usd_rate: 0,
+    usd_rate: 1500,
     amount_usd: 0,
     direct_observations: '',
     specific_observations: '',
@@ -213,33 +210,34 @@ export default function Terceros() {
     try {
       setLoading(true)
       const [
-        { data: srvData, error: srvErr },
-        { data: shpData, error: shpErr },
-        { data: woData, error: woErr },
-        { data: wkrData, error: wkrErr },
-        { data: mvData, error: mvErr },
-        { data: vhData, error: vhErr }
+        srvRes,
+        shpRes,
+        woRes,
+        wkrRes,
+        mvRes,
+        vhRes
       ] = await Promise.all([
         supabase.from('third_party_services').select('*').order('created_at', { ascending: false }),
-        supabase.from('ships').select('id, name, ship_type, current_location').order('name'),
+        supabase.from('ships').select('id, name, vessel_type, current_location').order('name'),
         supabase.from('work_orders').select('id, ot_number, title, ship_id, status, is_tabulated').order('ot_number'),
         supabase.from('workers').select('id, name, trade, work_group, admin_center, can_charge_third_party').eq('can_charge_third_party', true).order('name'),
         supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
         supabase.from('third_party_voucher_history').select('*').order('created_at', { ascending: false })
       ])
 
-      if (srvErr) throw srvErr
-      if (shpErr) throw shpErr
-      if (woErr) throw woErr
-      if (wkrErr) throw wkrErr
-      if (mvErr) throw mvErr
+      if (srvRes.error) console.warn('Aviso third_party_services:', srvRes.error.message)
+      if (shpRes.error) console.warn('Aviso ships:', shpRes.error.message)
+      if (woRes.error) console.warn('Aviso work_orders:', woRes.error.message)
+      if (wkrRes.error) console.warn('Aviso workers:', wkrRes.error.message)
+      if (mvRes.error) console.warn('Aviso macro_variables:', mvRes.error.message)
+      if (vhRes.error) console.warn('Aviso third_party_voucher_history:', vhRes.error.message)
 
-      setServices(srvData || [])
-      setShips(shpData || [])
-      setWorkOrders(woData || [])
-      setContractors(wkrData || [])
-      setMacroVariables(mvData || [])
-      setVoucherHistory(vhData || [])
+      setServices(srvRes.data || [])
+      setShips(shpRes.data || [])
+      setWorkOrders(woRes.data || [])
+      setContractors(wkrRes.data || [])
+      setMacroVariables(mvRes.data || [])
+      setVoucherHistory(vhRes.data || [])
     } catch (err) {
       console.error('Error cargando módulo de terceros:', err)
       showFeedback('error', 'Error al sincronizar datos de Terceros: ' + (err.message || err))
@@ -265,6 +263,15 @@ export default function Terceros() {
     return workOrders.filter((wo) => wo.ship_id === formData.ship_id)
   }, [workOrders, formData.ship_id])
 
+  // Contratistas filtrados en el modal de carga para búsqueda veloz
+  const filteredModalContractors = useMemo(() => {
+    if (!contractorModalSearch.trim()) return contractors
+    const q = contractorModalSearch.toLowerCase().trim()
+    return contractors.filter(
+      (c) => c.name.toLowerCase().includes(q) || (c.trade || '').toLowerCase().includes(q)
+    )
+  }, [contractors, contractorModalSearch])
+
   // Mapa de barcos por id
   const shipMap = useMemo(() => {
     const map = new Map()
@@ -280,15 +287,14 @@ export default function Terceros() {
   }, [workOrders])
 
   // Recálculo del dólar congelado al cambiar fecha de entrada o monto AR$
-  const handleEntryDateOrAmountChange = (newDate, newAmountArs) => {
-    const rate = getDollarRateForDate(newDate, macroVariables)
+  const handleEntryDateOrAmountChange = (newDate, newAmountArs, overrideRate = null) => {
+    const rate = overrideRate !== null && overrideRate > 0 ? overrideRate : getDollarRateForDate(newDate, macroVariables)
     const ars = parseFloat(newAmountArs) || 0
     const usd = rate > 0 ? Number((ars / rate).toFixed(2)) : 0
     return { usd_rate: rate, amount_usd: usd }
   }
 
   // Al seleccionar un contratista en el modal de carga:
-  // Manejo de 'MANUAL' (polirrubro) vs rubro fijo
   const handleContractorSelect = (contractorName) => {
     const found = contractors.find((c) => c.name.toUpperCase().trim() === contractorName.toUpperCase().trim())
     const tradeUpper = (found?.trade || '').toUpperCase().trim()
@@ -305,11 +311,13 @@ export default function Terceros() {
   // Abrir modal para nuevo gasto de terceros
   const handleOpenNewModal = () => {
     const today = new Date().toISOString().split('T')[0]
+    const defaultShipId = ships.length > 0 ? ships[0].id : ''
     const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(today, 0)
 
+    setContractorModalSearch('')
     setEditingService(null)
     setFormData({
-      ship_id: ships[0]?.id || '',
+      ship_id: defaultShipId,
       work_order_id: '',
       work_item_id: '',
       contractor_name: '',
@@ -320,11 +328,10 @@ export default function Terceros() {
       voucher_date: today,
       entry_date: today,
       service_date: today,
-      service_location: 'PLANTA',
       internal_remito_number: '',
       amount_ars: '',
-      usd_rate,
-      amount_usd,
+      usd_rate: usd_rate || 1500,
+      amount_usd: 0,
       direct_observations: '',
       specific_observations: '',
       audit_status: 'PENDIENTE'
@@ -338,6 +345,7 @@ export default function Terceros() {
     const foundContractor = contractors.find((c) => c.name.toUpperCase().trim() === (service.contractor_name || '').toUpperCase().trim())
     const isManual = foundContractor?.trade?.toUpperCase().trim() === 'MANUAL'
 
+    setContractorModalSearch('')
     setEditingService(service)
     setFormData({
       ship_id: service.ship_id || '',
@@ -351,10 +359,9 @@ export default function Terceros() {
       voucher_date: service.voucher_date || service.service_date || '',
       entry_date: service.entry_date || service.service_date || '',
       service_date: service.service_date || '',
-      service_location: service.service_location || 'PLANTA',
       internal_remito_number: service.internal_remito_number || '',
       amount_ars: service.amount_ars !== null ? service.amount_ars : '',
-      usd_rate: service.usd_rate || 0,
+      usd_rate: service.usd_rate || 1500,
       amount_usd: service.amount_usd || 0,
       direct_observations: service.direct_observations || '',
       specific_observations: service.specific_observations || '',
@@ -382,7 +389,6 @@ export default function Terceros() {
 
     // Comprobar permiso de edición de montos si es una edición
     if (editingService && !canEditAmounts) {
-      // Si el rol no puede editar montos, preservar el monto original de la base de datos
       formData.amount_ars = editingService.amount_ars
       formData.amount_usd = editingService.amount_usd
       formData.usd_rate = editingService.usd_rate
@@ -405,7 +411,6 @@ export default function Terceros() {
         voucher_date: formData.voucher_date || formData.entry_date,
         entry_date: formData.entry_date,
         service_date: formData.service_date || formData.entry_date,
-        service_location: formData.service_location,
         internal_remito_number: formData.internal_remito_number ? formData.internal_remito_number.trim() : null,
         amount_ars: parsedArs,
         usd_rate: rate,
@@ -797,7 +802,7 @@ export default function Terceros() {
                   ? 'bg-emerald-400 text-slate-950 shadow-md ring-1 ring-emerald-400/50'
                   : 'text-slate-400 hover:text-white'
               }`}
-              title="Terminal Jefe de Obra: Auditoría técnica y conformidad de trabajos ejecutados en planta/taller, notas técnicas"
+              title="Terminal Jefe de Obra: Auditoría técnica y conformidad de trabajos ejecutados en obra, notas técnicas"
             >
               <span>🛠️ Terminal Jefe de Obra</span>
             </button>
@@ -852,7 +857,7 @@ export default function Terceros() {
             <span>
               {activeRolePerspective === 'admin' && 'Aprobar evoluciones excepcionales (SDT), auditar montos sensibles y configurar cotizaciones oficiales de dólar por quincena.'}
               {activeRolePerspective === 'maria_jose' && 'Cargar facturas (FCR), presupuestos (PRC) y remitos (RMO/RPF). Reclamar facturas a proveedores con alerta RPF y evolucionarlos a FCR.'}
-              {activeRolePerspective === 'jefe_obra' && 'Revisar trabajos ejecutados por contratistas en planta o taller, dar conformidad técnica (Conforme / Observado) y anotar observaciones técnicas.'}
+              {activeRolePerspective === 'jefe_obra' && 'Revisar trabajos ejecutados por contratistas, dar conformidad técnica (Conforme / Observado) y anotar observaciones técnicas.'}
               {activeRolePerspective === 'direccion' && 'Supervisión ejecutiva. Módulo en modo consulta.'}
             </span>
           </div>
@@ -896,11 +901,11 @@ export default function Terceros() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">PRC Planta</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">PRC Interno</p>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           </div>
           <p className="text-xl font-extrabold text-emerald-300 mt-1">{kpiCounts.prc}</p>
-          <span className="text-[10px] text-slate-500">En Astillero</span>
+          <span className="text-[10px] text-slate-500">Presupuestos</span>
         </button>
 
         {/* RMO Taller */}
@@ -918,7 +923,7 @@ export default function Terceros() {
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
           </div>
           <p className="text-xl font-extrabold text-blue-300 mt-1">{kpiCounts.rmo}</p>
-          <span className="text-[10px] text-slate-500">En Taller Externo</span>
+          <span className="text-[10px] text-slate-500">Remitos M.O.</span>
         </button>
 
         {/* RPF Reclamar Factura */}
@@ -1160,7 +1165,6 @@ export default function Terceros() {
                   <th className="py-3 px-3">Remito Aloncar</th>
                   <th className="py-3 px-3 text-right">Importe AR$</th>
                   <th className="py-3 px-3 text-right">Dólar / US$</th>
-                  <th className="py-3 px-3 text-center">Locación</th>
                   <th className="py-3 px-3 text-center">Auditoría</th>
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
@@ -1258,19 +1262,6 @@ export default function Terceros() {
                         <div className="text-[10px] text-slate-500 font-mono">
                           Cotiz: ${Number(srv.usd_rate || 0).toLocaleString('es-AR')}
                         </div>
-                      </td>
-
-                      {/* Locación */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap font-sans">
-                        <span
-                          className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                            srv.service_location === 'PLANTA'
-                              ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/60'
-                              : 'bg-blue-950/60 text-blue-300 border border-blue-800/60'
-                          }`}
-                        >
-                          {srv.service_location || 'PLANTA'}
-                        </span>
                       </td>
 
                       {/* Auditoría Técnica */}
@@ -1374,20 +1365,13 @@ export default function Terceros() {
                     <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${voucherConfig.color}`}>
                       {srv.voucher_type} - {voucherConfig.label.split(' - ')[1] || srv.voucher_type}
                     </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
-                        srv.service_location === 'PLANTA'
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                          : 'bg-blue-950 text-blue-300 border border-blue-800'
-                      }`}
-                    >
-                      {srv.service_location || 'PLANTA'}
+                    <span className="text-xs text-slate-400 font-mono">
+                      {srv.service_date || srv.entry_date}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
                     <span>N° {srv.voucher_number || 'S/N'}</span>
-                    <span>{srv.service_date || srv.entry_date}</span>
                   </div>
 
                   <div>
@@ -1563,7 +1547,7 @@ export default function Terceros() {
               <div className="space-y-1">
                 <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                   <Ship className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>1° Buque / Embarcación de la Obra *</span>
+                  <span>1° Buque / Embarcación de la Obra ({ships.length} disponibles) *</span>
                 </label>
                 <select
                   required
@@ -1581,26 +1565,53 @@ export default function Terceros() {
                   <option value="">-- Seleccionar Buque --</option>
                   {ships.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} {s.current_location ? `(${s.current_location})` : ''}
+                      {s.name} {s.current_location ? `[${s.current_location}]` : ''}
                     </option>
                   ))}
                 </select>
               </div>
 
               {/* PASO 2: SELECCIONAR CONTRATISTA (CON PERMISO 3ROS) */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>2° Contratista o Taller Autorizado [3ros] *</span>
-                </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>2° Contratista o Taller Autorizado [3ros] ({contractors.length} disponibles) *</span>
+                  </label>
+                  {contractors.length > 5 && (
+                    <span className="text-[10px] text-cyan-400">Búsqueda rápida activada</span>
+                  )}
+                </div>
+
+                {/* Buscador veloz de contratistas */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nombre o rubro (ej: Cormetal, Tornería, INA, Vidondo)..."
+                    value={contractorModalSearch}
+                    onChange={(e) => setContractorModalSearch(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-7 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                  />
+                  {contractorModalSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setContractorModalSearch('')}
+                      className="absolute right-2 top-1.5 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
                 <select
                   required
                   value={formData.contractor_name}
                   onChange={(e) => handleContractorSelect(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
                 >
-                  <option value="">-- Seleccionar Contratista / Taller --</option>
-                  {contractors.map((c) => (
+                  <option value="">-- Seleccionar Contratista / Taller ({filteredModalContractors.length}) --</option>
+                  {filteredModalContractors.map((c) => (
                     <option key={c.id} value={c.name}>
                       {c.name} {c.trade ? `[${c.trade}]` : ''}
                     </option>
@@ -1612,7 +1623,7 @@ export default function Terceros() {
                   <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/50 space-y-1.5 mt-2">
                     <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px]">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Proveedor Polirrubro (MANUAL): Debe seleccionar el rubro aplicable al trabajo</span>
+                      <span>Proveedor Polirrubro (MANUAL): Seleccione el rubro aplicable al trabajo de la lista oficial</span>
                     </div>
                     <select
                       required
@@ -1661,49 +1672,31 @@ export default function Terceros() {
                 </select>
               </div>
 
-              {/* TIPO DE COMPROBANTE Y LOCACIÓN */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-                    Tipo de Comprobante (DEC-017) *
-                  </label>
-                  <select
-                    value={formData.voucher_type}
-                    onChange={(e) => {
-                      const vCode = e.target.value
-                      const vConf = VOUCHER_TYPES.find((v) => v.code === vCode)
-                      setFormData((prev) => ({
-                        ...prev,
-                        voucher_type: vCode,
-                        service_location: vConf?.location || prev.service_location
-                      }))
-                    }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
-                  >
-                    {VOUCHER_TYPES.map((v) => (
-                      <option key={v.code} value={v.code}>
-                        {v.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-slate-500 italic">
-                    {VOUCHER_TYPES.find((v) => v.code === formData.voucher_type)?.description}
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-                    Locación del Servicio
-                  </label>
-                  <select
-                    value={formData.service_location}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, service_location: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
-                  >
-                    <option value="PLANTA">PLANTA (Instalaciones Astillero)</option>
-                    <option value="TALLER">TALLER (Taller Externo)</option>
-                  </select>
-                </div>
+              {/* TIPO DE COMPROBANTE (SIN LOCACIÓN) */}
+              <div className="space-y-1 pt-1">
+                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+                  Tipo de Comprobante (DEC-017) *
+                </label>
+                <select
+                  value={formData.voucher_type}
+                  onChange={(e) => {
+                    const vCode = e.target.value
+                    setFormData((prev) => ({
+                      ...prev,
+                      voucher_type: vCode
+                    }))
+                  }}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
+                >
+                  {VOUCHER_TYPES.map((v) => (
+                    <option key={v.code} value={v.code}>
+                      {v.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 italic">
+                  {VOUCHER_TYPES.find((v) => v.code === formData.voucher_type)?.description}
+                </p>
               </div>
 
               {/* NÚMERO DE COMPROBANTE & REMITO ALONCAR */}
@@ -1737,10 +1730,11 @@ export default function Terceros() {
               </div>
 
               {/* FECHAS & DÓLAR CONGELADO POR FECHA DE CARGA */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-300 text-[11px]">
-                    Fecha de Carga (A mano) *
+                  <label className="font-bold text-slate-300 text-[11px] flex items-center justify-between">
+                    <span>Fecha de Carga (A mano) *</span>
+                    <span className="text-[10px] text-cyan-400 font-normal">Quincena Oficial</span>
                   </label>
                   <input
                     type="date"
@@ -1757,9 +1751,9 @@ export default function Terceros() {
                         amount_usd
                       }))
                     }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none font-mono text-xs"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-primary font-mono text-xs"
                   />
-                  <span className="text-[10px] text-slate-500">Define el dólar oficial</span>
+                  <span className="text-[10px] text-slate-500">Determina el tipo de cambio oficial</span>
                 </div>
 
                 <div className="space-y-1">
@@ -1775,7 +1769,7 @@ export default function Terceros() {
                       value={formData.amount_ars}
                       onChange={(e) => {
                         const newArs = e.target.value
-                        const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(formData.entry_date, newArs)
+                        const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(formData.entry_date, newArs, formData.usd_rate > 0 ? formData.usd_rate : null)
                         setFormData((prev) => ({
                           ...prev,
                           amount_ars: newArs,
@@ -1789,18 +1783,35 @@ export default function Terceros() {
                       <Lock className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2" title="Edición de montos bloqueada" />
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-500">Monto sin IVA o según acuerdo</span>
+                  <span className="text-[10px] text-slate-500">Monto del trabajo o comprobante</span>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-cyan-300 text-[11px]">
-                    Cotiz. Dólar / Monto US$
+                  <label className="font-bold text-cyan-300 text-[11px] flex items-center justify-between">
+                    <span>Cotiz. Dólar AR$/US$</span>
+                    <span className="text-white font-black font-mono text-xs">US$ {formData.amount_usd}</span>
                   </label>
-                  <div className="bg-slate-900 border border-cyan-800/60 rounded-lg px-2.5 py-1.5 font-mono text-xs text-cyan-300 flex items-center justify-between">
-                    <span>${formData.usd_rate}</span>
-                    <span className="font-extrabold text-white">US$ {formData.amount_usd}</span>
-                  </div>
-                  <span className="text-[10px] text-cyan-500">Congelado por quincena</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={formData.usd_rate || ''}
+                    onChange={(e) => {
+                      const customRate = parseFloat(e.target.value) || 0
+                      const ars = parseFloat(formData.amount_ars) || 0
+                      const usd = customRate > 0 ? Number((ars / customRate).toFixed(2)) : 0
+                      setFormData(prev => ({
+                        ...prev,
+                        usd_rate: customRate,
+                        amount_usd: usd
+                      }))
+                    }}
+                    className="w-full bg-slate-900 border border-cyan-800/80 rounded-lg px-2.5 py-1.5 font-mono text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-400"
+                  />
+                  <span className="text-[10px] text-cyan-400/90 font-mono">
+                    {formData.amount_ars && formData.usd_rate > 0
+                      ? `$${Number(formData.amount_ars).toLocaleString('es-AR')} ÷ $${formData.usd_rate} = US$ ${formData.amount_usd}`
+                      : 'Cotización oficial congelada por quincena'}
+                  </span>
                 </div>
               </div>
 
