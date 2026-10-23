@@ -274,13 +274,17 @@ export default function Terceros() {
 
   // 3. Filtros y Vistas
   const [viewMode, setViewMode] = useState('filas') // 'filas' | 'fichas'
-  const [kpiFilter, setKpiFilter] = useState('todos') // 'todos' | 'PRC' | 'RMO' | 'RPF' | 'FCR' | 'SDT' | 'sin_precio' | 'sin_ot'
+  const [kpiFilter, setKpiFilter] = useState('todos') // 'todos' | 'sin_precio' | 'sin_ot'
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedShipFilter, setSelectedShipFilter] = useState('todos')
   const [selectedContractorFilter, setSelectedContractorFilter] = useState('todos')
   const [selectedTradeFilter, setSelectedTradeFilter] = useState('todos')
   const [selectedVoucherFilter, setSelectedVoucherFilter] = useState('todos')
   const [selectedAuditFilter, setSelectedAuditFilter] = useState('todos')
+
+  // Selección múltiple interactiva (estilo Excel / Google Sheets)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
 
   // 4. Modal de Carga Guiada en Cascada (Barco -> Contratista 3ros -> OT)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -867,43 +871,128 @@ export default function Terceros() {
     })
   }, [services, kpiFilter, selectedShipFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm, shipMap, otMap, contractorMap])
 
-  // Métricas calculadas para los KPIs
+  // Métricas calculadas para las alertas individuales de KPI
   const kpiCounts = useMemo(() => {
-    let prcCount = 0
-    let rmoCount = 0
-    let rpfCount = 0
-    let fcrCount = 0
-    let sdtCount = 0
     let sinPrecioCount = 0
     let sinOtCount = 0
-    let totalUsdSum = 0
 
     services.forEach((s) => {
-      if (s.voucher_type === 'PRC') prcCount++
-      if (s.voucher_type === 'RMO') rmoCount++
-      if (s.voucher_type === 'RPF') rpfCount++
-      if (s.voucher_type === 'FCR') fcrCount++
-      if (s.voucher_type === 'SDT') sdtCount++
       if (!s.amount_ars || Number(s.amount_ars) === 0) sinPrecioCount++
       if (!s.work_order_id) sinOtCount++
-      totalUsdSum += Number(s.amount_usd) || 0
     })
 
     return {
-      total: services.length,
-      prc: prcCount,
-      rmo: rmoCount,
-      rpf: rpfCount,
-      fcr: fcrCount,
-      sdt: sdtCount,
       sinPrecio: sinPrecioCount,
-      sinOt: sinOtCount,
-      totalUsd: totalUsdSum
+      sinOt: sinOtCount
     }
   }, [services])
 
+  // Manejo de selección de filas estilo Excel / Sheets (Clic, Ctrl+Clic, Shift+Clic)
+  const handleRowClick = (id, index, event) => {
+    if (event.target.closest('button') || event.target.closest('a') || event.target.tagName === 'INPUT') {
+      return
+    }
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (event.shiftKey && lastSelectedIndex !== null) {
+        const start = Math.min(lastSelectedIndex, index)
+        const end = Math.max(lastSelectedIndex, index)
+        for (let i = start; i <= end; i++) {
+          const item = filteredServices[i]
+          if (item) next.add(item.id)
+        }
+      } else if (event.ctrlKey || event.metaKey) {
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        setLastSelectedIndex(index)
+      } else {
+        // Clic simple: alterna selección
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        setLastSelectedIndex(index)
+      }
+      return next
+    })
+  }
+
+  // Alternar checkbox individual
+  const handleCheckboxToggle = (id, index, event) => {
+    event.stopPropagation()
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (event.shiftKey && lastSelectedIndex !== null) {
+        const start = Math.min(lastSelectedIndex, index)
+        const end = Math.max(lastSelectedIndex, index)
+        for (let i = start; i <= end; i++) {
+          const item = filteredServices[i]
+          if (item) next.add(item.id)
+        }
+      } else {
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        setLastSelectedIndex(index)
+      }
+      return next
+    })
+  }
+
+  // Alternar selección de todas las filas visibles
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredServices.length && filteredServices.length > 0) {
+      setSelectedIds(new Set())
+      setLastSelectedIndex(null)
+    } else {
+      setSelectedIds(new Set(filteredServices.map((s) => s.id)))
+    }
+  }
+
+  // Limpiar selección
+  const handleClearSelection = () => {
+    setSelectedIds(new Set())
+    setLastSelectedIndex(null)
+  }
+
+  // Métricas reactivas para la barra inferior inteligente tipo Sheets / Excel
+  const stats = useMemo(() => {
+    const isCustomSelection = selectedIds.size > 0
+    const targetItems = isCustomSelection
+      ? filteredServices.filter((s) => selectedIds.has(s.id))
+      : filteredServices
+
+    const count = targetItems.length
+    let sumArs = 0
+    let sumUsd = 0
+    let sumDollarRate = 0
+    let validRatesCount = 0
+
+    targetItems.forEach((s) => {
+      sumArs += Number(s.amount_ars) || 0
+      sumUsd += Number(s.amount_usd) || 0
+      if (Number(s.usd_rate) > 0) {
+        sumDollarRate += Number(s.usd_rate)
+        validRatesCount++
+      }
+    })
+
+    const avgArs = count > 0 ? sumArs / count : 0
+    const avgUsd = count > 0 ? sumUsd / count : 0
+    const avgRate = validRatesCount > 0 ? sumDollarRate / validRatesCount : 0
+
+    return {
+      isCustomSelection,
+      count,
+      totalVisible: filteredServices.length,
+      sumArs,
+      sumUsd,
+      avgArs,
+      avgUsd,
+      avgRate
+    }
+  }, [selectedIds, filteredServices])
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+    <div className="space-y-6 w-full pb-20">
       {/* ALERTA DE FEEDBACK / TOAST */}
       {feedbackMessage && (
         <div
@@ -1054,136 +1143,79 @@ export default function Terceros() {
         </div>
       </div>
 
-      {/* KPIS CLICKEABLES (FILTROS INSTANTÁNEOS) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-        {/* Total */}
-        <button
-          type="button"
-          onClick={() => setKpiFilter('todos')}
-          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-            kpiFilter === 'todos'
-              ? 'bg-slate-800 border-primary shadow-[0_0_15px_rgba(0,242,254,0.2)] ring-1 ring-primary'
-              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
-          }`}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Gral</p>
-          <p className="text-xl font-extrabold text-white mt-1">{kpiCounts.total}</p>
-          <span className="text-[10px] text-slate-500">Comprobantes</span>
-        </button>
-
-        {/* PRC Planta */}
-        <button
-          type="button"
-          onClick={() => setKpiFilter('PRC')}
-          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-            kpiFilter === 'PRC'
-              ? 'bg-emerald-950/70 border-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.2)] ring-1 ring-emerald-400'
-              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">PRC Interno</p>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-          </div>
-          <p className="text-xl font-extrabold text-emerald-300 mt-1">{kpiCounts.prc}</p>
-          <span className="text-[10px] text-slate-500">Presupuestos</span>
-        </button>
-
-        {/* RMO Taller */}
-        <button
-          type="button"
-          onClick={() => setKpiFilter('RMO')}
-          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-            kpiFilter === 'RMO'
-              ? 'bg-blue-950/70 border-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.2)] ring-1 ring-blue-400'
-              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400">RMO Taller</p>
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-          </div>
-          <p className="text-xl font-extrabold text-blue-300 mt-1">{kpiCounts.rmo}</p>
-          <span className="text-[10px] text-slate-500">Remitos M.O.</span>
-        </button>
-
-        {/* RPF Reclamar Factura */}
-        <button
-          type="button"
-          onClick={() => setKpiFilter('RPF')}
-          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-            kpiFilter === 'RPF'
-              ? 'bg-amber-950/70 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.2)] ring-1 ring-amber-400'
-              : 'bg-amber-950/20 border-amber-800/40 hover:bg-amber-950/40'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-              ⚠️ RPF Alerta
-            </p>
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
-          </div>
-          <p className="text-xl font-extrabold text-amber-300 mt-1">{kpiCounts.rpf}</p>
-          <span className="text-[10px] text-amber-500 font-semibold">Exigir Factura</span>
-        </button>
-
-        {/* FCR Facturas */}
-        <button
-          type="button"
-          onClick={() => setKpiFilter('FCR')}
-          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-            kpiFilter === 'FCR'
-              ? 'bg-cyan-950/70 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)] ring-1 ring-cyan-400'
-              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
-          }`}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">FCR Oficial</p>
-          <p className="text-xl font-extrabold text-cyan-300 mt-1">{kpiCounts.fcr}</p>
-          <span className="text-[10px] text-slate-500">Facturados</span>
-        </button>
-
-        {/* SDT Sin Doc */}
-        <button
-          type="button"
-          onClick={() => setKpiFilter('SDT')}
-          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-            kpiFilter === 'SDT'
-              ? 'bg-rose-950/70 border-rose-400 shadow-[0_0_15px_rgba(251,113,133,0.2)] ring-1 ring-rose-400'
-              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
-          }`}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-400">SDT Sin Doc</p>
-          <p className="text-xl font-extrabold text-rose-300 mt-1">{kpiCounts.sdt}</p>
-          <span className="text-[10px] text-slate-500">Excepcional</span>
-        </button>
-
-        {/* Sin Precio / Sin OT */}
+      {/* ALERTAS OPERATIVAS INDIVIDUALES (KPIs Clickeables) */}
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Alerta 1: Sin Costo */}
         <button
           type="button"
           onClick={() => setKpiFilter(kpiFilter === 'sin_precio' ? 'todos' : 'sin_precio')}
-          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-            kpiFilter === 'sin_precio' || kpiFilter === 'sin_ot'
-              ? 'bg-orange-950/70 border-orange-400 shadow-[0_0_15px_rgba(251,146,60,0.2)] ring-1 ring-orange-400'
-              : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50'
+          className={`flex-1 min-w-[240px] p-4 rounded-2xl border transition-all cursor-pointer text-left shadow-sm ${
+            kpiFilter === 'sin_precio'
+              ? 'bg-amber-950/80 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.25)] ring-2 ring-amber-400'
+              : 'bg-slate-900/70 border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/60'
           }`}
         >
-          <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1">
-            ⚠️ Faltantes
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 animate-pulse" />
+              Líneas Sin Costo
+            </span>
+            {kpiCounts.sinPrecio > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                Pendiente $
+              </span>
+            )}
+          </div>
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-black text-amber-300 font-mono">{kpiCounts.sinPrecio}</span>
+            <span className="text-xs text-slate-400">comprobantes a valorizar ($0)</span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {kpiFilter === 'sin_precio' ? '✓ Filtro activo (Clic para desactivar)' : 'Clic para filtrar solo líneas sin precio'}
           </p>
-          <p className="text-xl font-extrabold text-orange-300 mt-1">{kpiCounts.sinPrecio + kpiCounts.sinOt}</p>
-          <span className="text-[10px] text-slate-500">Sin $ o Sin OT</span>
         </button>
 
-        {/* Total USD */}
-        <div className="p-3.5 rounded-2xl border bg-gradient-to-br from-slate-900 to-cyan-950/40 border-cyan-800/60 text-left">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1">
-            <DollarSign className="w-3 h-3 text-cyan-400" /> Total USD
+        {/* Alerta 2: Sin OT */}
+        <button
+          type="button"
+          onClick={() => setKpiFilter(kpiFilter === 'sin_ot' ? 'todos' : 'sin_ot')}
+          className={`flex-1 min-w-[240px] p-4 rounded-2xl border transition-all cursor-pointer text-left shadow-sm ${
+            kpiFilter === 'sin_ot'
+              ? 'bg-rose-950/80 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.25)] ring-2 ring-rose-400'
+              : 'bg-slate-900/70 border-slate-800 hover:border-rose-500/50 hover:bg-slate-800/60'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 text-rose-400 animate-pulse" />
+              Líneas Sin OT Asignada
+            </span>
+            {kpiCounts.sinOt > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-400/20 text-rose-300 font-bold border border-rose-400/30">
+                Sin C.C.
+              </span>
+            )}
+          </div>
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-black text-rose-300 font-mono">{kpiCounts.sinOt}</span>
+            <span className="text-xs text-slate-400">trabajos sin orden vinculada</span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {kpiFilter === 'sin_ot' ? '✓ Filtro activo (Clic para desactivar)' : 'Clic para filtrar solo líneas sin OT'}
           </p>
-          <p className="text-lg font-extrabold text-white mt-1">
-            ${kpiCounts.totalUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <span className="text-[10px] text-cyan-400/80">Valorizado Oficial</span>
-        </div>
+        </button>
+
+        {/* Botón de limpiar filtro de alerta si está activo */}
+        {kpiFilter !== 'todos' && (
+          <button
+            type="button"
+            onClick={() => setKpiFilter('todos')}
+            className="px-4 py-3 rounded-2xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer self-stretch justify-center"
+          >
+            <X className="w-4 h-4 text-slate-400" />
+            <span>Quitar filtro de alerta (Ver todos)</span>
+          </button>
+        )}
       </div>
 
       {/* BARRA DE FILTROS & BÚSQUEDA */}
@@ -1321,25 +1353,51 @@ export default function Terceros() {
           )}
         </div>
       ) : viewMode === 'filas' ? (
-        /* VISTA FILAS (TABLA DENSA) */
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/90 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-800">
+        /* VISTA FILAS (TABLA DENSA CON CABECERA CONGELADA Y STATUS BAR TIPO EXCEL) */
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl flex flex-col overflow-hidden">
+          {/* Contenedor scrolleable vertical con encabezado congelado tipo Excel */}
+          <div className="overflow-y-auto max-h-[calc(100vh-270px)] overflow-x-hidden">
+            <table className="w-full text-left text-xs border-collapse table-fixed">
+              <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-800 shadow-sm backdrop-blur-md">
                 <tr>
-                  <th className="py-3 px-3">Fecha</th>
-                  <th className="py-3 px-3">Barco / OT</th>
-                  <th className="py-3 px-3">Contratista / Rubro</th>
-                  <th className="py-3 px-3 text-right">Importe AR$</th>
-                  <th className="py-3 px-3 text-right">Dólar / US$</th>
-                  <th className="py-3 px-3">Comprobante</th>
-                  <th className="py-3 px-3">Nº Comprobante</th>
-                  <th className="py-3 px-3">Comentarios</th>
-                  <th className="py-3 px-3 text-right">Acciones</th>
+                  {/* Selector / Checkbox Maestro */}
+                  <th className="py-3 px-2 w-9 text-center bg-slate-950">
+                    <input
+                      type="checkbox"
+                      checked={filteredServices.length > 0 && selectedIds.size === filteredServices.length}
+                      ref={(input) => {
+                        if (input) {
+                          input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredServices.length
+                        }
+                      }}
+                      onChange={handleSelectAll}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30 cursor-pointer"
+                      title="Seleccionar o deseleccionar todas las filas visibles"
+                    />
+                  </th>
+                  {/* 1. Fecha */}
+                  <th className="py-3 px-2 w-[8%] bg-slate-950">Fecha</th>
+                  {/* 2. Barco / OT */}
+                  <th className="py-3 px-2 w-[15%] bg-slate-950">Barco / OT</th>
+                  {/* 3. Contratista / Rubro */}
+                  <th className="py-3 px-2 w-[16%] bg-slate-950">Contratista / Rubro</th>
+                  {/* 4. Importe AR$ */}
+                  <th className="py-3 px-2 w-[11%] text-right bg-slate-950">Importe AR$</th>
+                  {/* 5. Dólar / US$ */}
+                  <th className="py-3 px-2 w-[11%] text-right bg-slate-950">Dólar / US$</th>
+                  {/* 6. Comprobante */}
+                  <th className="py-3 px-2 w-[8%] text-center bg-slate-950">Comprobante</th>
+                  {/* 7. Nº Comprobante */}
+                  <th className="py-3 px-2 w-[13%] bg-slate-950">Nº Comprobante</th>
+                  {/* 8. Comentarios */}
+                  <th className="py-3 px-2 w-[12%] bg-slate-950">Comentarios</th>
+                  {/* 9. Acciones */}
+                  <th className="py-3 px-2 w-[6%] text-right bg-slate-950">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">
-                {filteredServices.map((srv) => {
+                {filteredServices.map((srv, index) => {
+                  const isSelected = selectedIds.has(srv.id)
                   const shipName = shipMap.get(srv.ship_id)?.name || 'Sin Buque'
                   const ot = otMap.get(srv.work_order_id)
                   const voucherConfig = VOUCHER_TYPES.find((v) => v.code === srv.voucher_type) || VOUCHER_TYPES[0]
@@ -1355,9 +1413,27 @@ export default function Terceros() {
                   const hasAnyVoucherNumber = Boolean(fcrNumber || prcNumber || remitoAloncar || supplierRemito)
 
                   return (
-                    <tr key={srv.id} className="hover:bg-slate-800/40 transition-colors">
+                    <tr
+                      key={srv.id}
+                      onClick={(e) => handleRowClick(srv.id, index, e)}
+                      className={`transition-colors cursor-pointer select-none ${
+                        isSelected
+                          ? 'bg-cyan-950/60 hover:bg-cyan-950/80 text-cyan-50 border-l-2 border-l-cyan-400'
+                          : 'hover:bg-slate-800/40 text-slate-200'
+                      }`}
+                    >
+                      {/* Checkbox individual */}
+                      <td className="py-2.5 px-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => handleCheckboxToggle(srv.id, index, e)}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30 cursor-pointer"
+                        />
+                      </td>
+
                       {/* 1. Fecha (dd/mm/aaaa) */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-2.5 px-2 whitespace-nowrap">
                         <div className="font-semibold text-slate-200">
                           {formatDate(srv.service_date || srv.entry_date)}
                         </div>
@@ -1369,33 +1445,33 @@ export default function Terceros() {
                       </td>
 
                       {/* 2. Barco / OT */}
-                      <td className="py-3 px-3 font-sans">
-                        <div className="font-bold text-white flex items-center gap-1.5">
+                      <td className="py-2.5 px-2 font-sans truncate">
+                        <div className="font-bold text-white flex items-center gap-1.5 truncate" title={shipName}>
                           <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                          <span>{shipName}</span>
+                          <span className="truncate">{shipName}</span>
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 truncate">
                           {ot ? (
-                            <span className="font-mono text-cyan-300 font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50">
+                            <span className="font-mono text-cyan-300 font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50 shrink-0">
                               {ot.ot_number}
                             </span>
                           ) : (
-                            <span className="text-amber-400 text-[10px]">⚠️ Sin OT asignada</span>
+                            <span className="text-amber-400 text-[10px] shrink-0">⚠️ Sin OT</span>
                           )}
-                          <span className="truncate max-w-[140px] text-[10px] text-slate-500" title={ot?.title}>
+                          <span className="truncate text-[10px] text-slate-500" title={ot?.title}>
                             {ot?.title || ''}
                           </span>
                         </div>
                       </td>
 
                       {/* 3. Contratista y Rubro */}
-                      <td className="py-3 px-3 font-sans">
-                        <div className="font-bold text-slate-100 uppercase tracking-wide truncate max-w-[180px]" title={srv.contractor_name}>
+                      <td className="py-2.5 px-2 font-sans truncate">
+                        <div className="font-bold text-slate-100 uppercase tracking-wide truncate" title={srv.contractor_name}>
                           {srv.contractor_name}
                         </div>
-                        <div className="mt-0.5">
+                        <div className="mt-0.5 truncate">
                           {effectiveTrade ? (
-                            <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono">
+                            <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono truncate max-w-full">
                               {effectiveTrade}
                             </span>
                           ) : (
@@ -1405,7 +1481,7 @@ export default function Terceros() {
                       </td>
 
                       {/* 4. Importe AR$ */}
-                      <td className="py-3 px-3 text-right whitespace-nowrap font-mono font-semibold text-slate-100">
+                      <td className="py-2.5 px-2 text-right whitespace-nowrap font-mono font-semibold text-slate-100">
                         {Number(srv.amount_ars) > 0 ? (
                           <span>${Number(srv.amount_ars).toLocaleString('es-AR')}</span>
                         ) : (
@@ -1414,7 +1490,7 @@ export default function Terceros() {
                       </td>
 
                       {/* 5. Dólar / US$ */}
-                      <td className="py-3 px-3 text-right whitespace-nowrap">
+                      <td className="py-2.5 px-2 text-right whitespace-nowrap">
                         <div className="font-mono font-extrabold text-cyan-300">
                           ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
@@ -1424,55 +1500,47 @@ export default function Terceros() {
                       </td>
 
                       {/* 6. Comprobante (Tipo) */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-2.5 px-2 whitespace-nowrap text-center">
                         <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${voucherConfig.color}`}>
                           {srv.voucher_type}
                         </span>
                       </td>
 
-                      {/* 7. Nº Comprobante (Reemplaza a Remito Alon Car - Múltiples comprobantes) */}
-                      <td className="py-3 px-3 font-mono">
-                        <div className="space-y-1 min-w-[130px]">
-                          {/* Factura Fiscal FCR / FCA */}
+                      {/* 7. Nº Comprobante (Múltiples comprobantes agrupados) */}
+                      <td className="py-2.5 px-2 font-mono">
+                        <div className="space-y-0.5">
                           {fcrNumber && (
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-300">
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 shrink-0 font-sans">
-                                {['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(srv.voucher_type) ? srv.voucher_type : 'FCR'}
+                            <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 truncate" title={`Factura: ${fcrNumber}`}>
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 shrink-0 font-sans">
+                                FCR
                               </span>
                               <span className="truncate">{fcrNumber}</span>
                             </div>
                           )}
-
-                          {/* Presupuesto Interno PRC */}
                           {prcNumber && (
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-300">
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800 shrink-0 font-sans">
+                            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-300 truncate" title={`Presupuesto: ${prcNumber}`}>
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800 shrink-0 font-sans">
                                 PRC
                               </span>
                               <span className="truncate">{prcNumber}</span>
                             </div>
                           )}
-
-                          {/* Remito Aloncar (Cruce Pañol) */}
                           {remitoAloncar && (
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300">
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 shrink-0 font-sans">
-                                ALONCAR
+                            <div className="flex items-center gap-1 text-[10px] text-cyan-300 truncate" title={`Remito: #${remitoAloncar}`}>
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 shrink-0 font-sans">
+                                RMT
                               </span>
                               <span className="truncate">#{remitoAloncar}</span>
                             </div>
                           )}
-
-                          {/* Remito de Proveedor / Taller RMO / RPF */}
                           {supplierRemito && (
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-purple-300">
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800 shrink-0 font-sans">
-                                {['RMO', 'RPF'].includes(srv.voucher_type) ? srv.voucher_type : 'REMITO'}
+                            <div className="flex items-center gap-1 text-[10px] text-purple-300 truncate" title={`Remito Taller: ${supplierRemito}`}>
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800 shrink-0 font-sans">
+                                RMO
                               </span>
                               <span className="truncate">{supplierRemito}</span>
                             </div>
                           )}
-
                           {!hasAnyVoucherNumber && (
                             <span className="text-slate-600 text-[11px] italic font-sans">S/N</span>
                           )}
@@ -1480,30 +1548,34 @@ export default function Terceros() {
                       </td>
 
                       {/* 8. Comentarios (Observaciones Directas y Específicas) */}
-                      <td className="py-3 px-3 font-sans max-w-[220px]">
-                        {srv.direct_observations ? (
-                          <div className="text-xs text-slate-200 truncate font-medium" title={srv.direct_observations}>
-                            {srv.direct_observations}
-                          </div>
-                        ) : null}
-                        {srv.specific_observations ? (
-                          <div className="text-[10px] text-slate-400 italic truncate" title={srv.specific_observations}>
-                            {srv.specific_observations}
-                          </div>
-                        ) : null}
-                        {!srv.direct_observations && !srv.specific_observations && (
-                          <span className="text-slate-600 text-[11px] italic">Sin observaciones</span>
-                        )}
+                      <td className="py-2.5 px-2 font-sans">
+                        <div className="space-y-0.5">
+                          {srv.direct_observations ? (
+                            <p className="text-[11px] text-slate-300 line-clamp-2" title={srv.direct_observations}>
+                              {srv.direct_observations}
+                            </p>
+                          ) : (
+                            <span className="text-slate-600 text-[11px] italic">Sin observaciones</span>
+                          )}
+                          {srv.specific_observations && (
+                            <p className="text-[10px] text-slate-400 line-clamp-1 italic" title={srv.specific_observations}>
+                              Nota: {srv.specific_observations}
+                            </p>
+                          )}
+                        </div>
                       </td>
 
                       {/* 9. Acciones */}
-                      <td className="py-3 px-3 text-right whitespace-nowrap font-sans">
+                      <td className="py-2.5 px-2 text-right whitespace-nowrap font-sans">
                         <div className="flex items-center justify-end gap-1">
                           {/* Botón Evolucionar (RMO / RPF -> FCR) */}
                           {isEvolvable && activeRolePerspective !== 'direccion' && (
                             <button
                               type="button"
-                              onClick={() => handleOpenEvolutionModal(srv)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleOpenEvolutionModal(srv)
+                              }}
                               className="px-2 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500 hover:text-slate-950 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
                               title="Evolucionar comprobante a Factura oficial (FCR) o SDT"
                             >
@@ -1514,7 +1586,10 @@ export default function Terceros() {
                           {/* Historial */}
                           <button
                             type="button"
-                            onClick={() => setHistoryService(srv)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setHistoryService(srv)
+                            }}
                             className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                             title="Ver trazabilidad e historial"
                           >
@@ -1525,7 +1600,10 @@ export default function Terceros() {
                           {activeRolePerspective !== 'direccion' && (
                             <button
                               type="button"
-                              onClick={() => handleOpenEditModal(srv)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleOpenEditModal(srv)
+                              }}
                               className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer"
                               title="Editar comprobante"
                             >
@@ -1537,7 +1615,10 @@ export default function Terceros() {
                           {canEditAmounts && (
                             <button
                               type="button"
-                              onClick={() => handleDeleteService(srv)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteService(srv)
+                              }}
                               className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
                               title="Eliminar comprobante con auditoría"
                             >
@@ -1552,196 +1633,345 @@ export default function Terceros() {
               </tbody>
             </table>
           </div>
+
+          {/* BARRA DE TOTALES Y ESTADÍSTICAS REACTIVA (TIPO EXCEL / GOOGLE SHEETS) */}
+          <div className="bg-slate-950 border-t border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-inner shrink-0 z-20">
+            {/* Indicador de modo (Selección manual vs Todo lo filtrado) */}
+            <div className="flex items-center gap-3">
+              {stats.isCustomSelection ? (
+                <div className="flex items-center gap-2 bg-cyan-950/80 border border-cyan-500/60 px-2.5 py-1 rounded-lg text-cyan-300 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                  <span>📌 Selección Manual: {stats.count} de {stats.totalVisible} filas</span>
+                  <button
+                    type="button"
+                    onClick={handleClearSelection}
+                    className="ml-1 text-cyan-400 hover:text-white transition-colors cursor-pointer text-xs underline"
+                    title="Deseleccionar todas las filas"
+                  >
+                    ✕ Limpiar
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 bg-slate-900 border border-slate-700/80 px-2.5 py-1 rounded-lg text-slate-300 font-medium">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>🌐 Todo el filtro: {stats.count} filas</span>
+                  <span className="text-[10px] text-slate-500 italic hidden sm:inline">(Clic o Ctrl+Clic en filas para seleccionar y sumar a tu antojo)</span>
+                </div>
+              )}
+            </div>
+
+            {/* Métricas calculadas en vivo */}
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-mono">
+              {/* Suma AR$ */}
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Σ AR$:</span>
+                <span className="text-sm font-extrabold text-white">
+                  ${stats.sumArs.toLocaleString('es-AR')}
+                </span>
+              </div>
+
+              {/* Suma US$ */}
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] uppercase font-bold text-cyan-400">Σ US$:</span>
+                <span className="text-sm font-extrabold text-cyan-300">
+                  ${stats.sumUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* Promedio AR$ */}
+              <div className="flex items-baseline gap-1.5 hidden md:flex">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Ø AR$:</span>
+                <span className="text-xs font-semibold text-slate-300">
+                  ${stats.avgArs.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                </span>
+              </div>
+
+              {/* Promedio US$ */}
+              <div className="flex items-baseline gap-1.5 hidden md:flex">
+                <span className="text-[10px] uppercase font-bold text-cyan-400">Ø US$:</span>
+                <span className="text-xs font-semibold text-cyan-200">
+                  ${stats.avgUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* Cotización Promedio */}
+              <div className="flex items-baseline gap-1.5 hidden lg:flex">
+                <span className="text-[10px] uppercase font-bold text-slate-500">Cotiz. Ø:</span>
+                <span className="text-xs font-semibold text-slate-400">
+                  ${stats.avgRate.toLocaleString('es-AR', { maximumFractionDigits: 1 })}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
-        /* VISTA FICHAS (TARJETAS MODERNAS) */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredServices.map((srv) => {
-            const shipName = shipMap.get(srv.ship_id)?.name || 'Sin Buque'
-            const ot = otMap.get(srv.work_order_id)
-            const voucherConfig = VOUCHER_TYPES.find((v) => v.code === srv.voucher_type) || VOUCHER_TYPES[0]
-            const isEvolvable = srv.voucher_type === 'RMO' || srv.voucher_type === 'RPF'
+        /* VISTA FICHAS (TARJETAS MODERNAS CON SOPORTE DE SELECCIÓN Y STATUS BAR) */
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredServices.map((srv, index) => {
+              const shipName = shipMap.get(srv.ship_id)?.name || 'Sin Buque'
+              const ot = otMap.get(srv.work_order_id)
+              const voucherConfig = VOUCHER_TYPES.find((v) => v.code === srv.voucher_type) || VOUCHER_TYPES[0]
+              const isEvolvable = srv.voucher_type === 'RMO' || srv.voucher_type === 'RPF'
+              const contractorObj = contractorMap.get(srv.contractor_name?.toUpperCase()?.trim())
+              const effectiveTrade = srv.trade || (contractorObj?.trade && contractorObj.trade !== 'MANUAL' ? contractorObj.trade : null)
+              const isSelected = selectedIds.has(srv.id)
 
-            return (
-              <div
-                key={srv.id}
-                className={`bg-slate-900/90 border rounded-2xl p-5 space-y-4 flex flex-col justify-between shadow-lg transition-all hover:border-slate-700 ${
-                  srv.voucher_type === 'RPF'
-                    ? 'border-amber-500/40 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20'
-                    : 'border-slate-800'
-                }`}
-              >
-                {/* Header de la tarjeta */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${voucherConfig.color}`}>
-                      {srv.voucher_type} - {voucherConfig.label.split(' - ')[1] || srv.voucher_type}
-                    </span>
-                    <span className="text-xs text-slate-400 font-mono">
-                      {formatDate(srv.service_date || srv.entry_date)}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h3 className="font-extrabold text-base text-white tracking-wide uppercase truncate" title={srv.contractor_name}>
-                      {srv.contractor_name}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                      {effectiveTrade ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono">
-                          {effectiveTrade}
+              return (
+                <div
+                  key={srv.id}
+                  onClick={(e) => handleRowClick(srv.id, index, e)}
+                  className={`border rounded-2xl p-5 space-y-4 flex flex-col justify-between shadow-lg transition-all cursor-pointer select-none ${
+                    isSelected
+                      ? 'border-cyan-400 bg-cyan-950/40 ring-1 ring-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
+                      : srv.voucher_type === 'RPF'
+                      ? 'border-amber-500/40 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20'
+                      : 'border-slate-800 bg-slate-900/90 hover:border-slate-700'
+                  }`}
+                >
+                  {/* Header de la tarjeta */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => handleCheckboxToggle(srv.id, index, e)}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30 cursor-pointer"
+                        />
+                        <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${voucherConfig.color}`}>
+                          {srv.voucher_type} - {voucherConfig.label.split(' - ')[1] || srv.voucher_type}
                         </span>
-                      ) : (
-                        <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro</span>
+                      </div>
+                      <span className="text-xs text-slate-400 font-mono">
+                        {formatDate(srv.service_date || srv.entry_date)}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="font-extrabold text-base text-white tracking-wide uppercase truncate" title={srv.contractor_name}>
+                        {srv.contractor_name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        {effectiveTrade ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono">
+                            {effectiveTrade}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Números de Comprobantes Asociados */}
+                    <div className="bg-slate-950/70 p-2 rounded-xl border border-slate-800/80 space-y-1 font-mono text-xs">
+                      {/* Factura Fiscal FCR / FCA */}
+                      {(srv.invoice_number || (['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(srv.voucher_type) && srv.voucher_number)) && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-emerald-400 font-bold">FACTURA:</span>
+                          <span className="text-emerald-300 font-bold">{srv.invoice_number || srv.voucher_number}</span>
+                        </div>
+                      )}
+
+                      {/* Presupuesto Interno PRC */}
+                      {(srv.budget_number || (srv.voucher_type === 'PRC' && srv.voucher_number)) && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-amber-400 font-bold">PRESUPUESTO:</span>
+                          <span className="text-amber-300 font-bold">{srv.budget_number || srv.voucher_number}</span>
+                        </div>
+                      )}
+
+                      {/* Remito Aloncar */}
+                      {srv.internal_remito_number && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-cyan-400 font-bold">REMITO ALONCAR:</span>
+                          <span className="text-cyan-300 font-bold">#{srv.internal_remito_number}</span>
+                        </div>
+                      )}
+
+                      {/* Remito Proveedor */}
+                      {(srv.supplier_remito_number || (['RMO', 'RPF'].includes(srv.voucher_type) && srv.voucher_number)) && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-purple-400 font-bold">REMITO PROV:</span>
+                          <span className="text-purple-300 font-bold">{srv.supplier_remito_number || srv.voucher_number}</span>
+                        </div>
+                      )}
+
+                      {!srv.invoice_number && !srv.budget_number && !srv.internal_remito_number && !srv.supplier_remito_number && !srv.voucher_number && (
+                        <span className="text-slate-600 italic text-[11px] block text-center font-sans">Sin comprobante numerado</span>
                       )}
                     </div>
                   </div>
 
-                  {/* Números de Comprobantes Asociados */}
-                  <div className="bg-slate-950/70 p-2 rounded-xl border border-slate-800/80 space-y-1 font-mono text-xs">
-                    {/* Factura Fiscal FCR / FCA */}
-                    {(srv.invoice_number || (['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(srv.voucher_type) && srv.voucher_number)) && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-emerald-400 font-bold">FACTURA:</span>
-                        <span className="text-emerald-300 font-bold">{srv.invoice_number || srv.voucher_number}</span>
-                      </div>
-                    )}
-
-                    {/* Presupuesto Interno PRC */}
-                    {(srv.budget_number || (srv.voucher_type === 'PRC' && srv.voucher_number)) && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-amber-400 font-bold">PRESUPUESTO:</span>
-                        <span className="text-amber-300 font-bold">{srv.budget_number || srv.voucher_number}</span>
-                      </div>
-                    )}
-
-                    {/* Remito Aloncar */}
-                    {srv.internal_remito_number && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-cyan-400 font-bold">REMITO ALONCAR:</span>
-                        <span className="text-cyan-300 font-bold">#{srv.internal_remito_number}</span>
-                      </div>
-                    )}
-
-                    {/* Remito Proveedor */}
-                    {(srv.supplier_remito_number || (['RMO', 'RPF'].includes(srv.voucher_type) && srv.voucher_number)) && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-purple-400 font-bold">REMITO PROV:</span>
-                        <span className="text-purple-300 font-bold">{srv.supplier_remito_number || srv.voucher_number}</span>
-                      </div>
-                    )}
-
-                    {!srv.invoice_number && !srv.budget_number && !srv.internal_remito_number && !srv.supplier_remito_number && !srv.voucher_number && (
-                      <span className="text-slate-600 italic text-[11px] block text-center font-sans">Sin comprobante numerado</span>
-                    )}
+                  {/* Buque y OT */}
+                  <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                      <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span>{shipName}</span>
+                    </div>
+                    <div className="text-xs text-slate-400 flex items-center gap-1.5">
+                      {ot ? (
+                        <>
+                          <span className="font-mono text-cyan-300 font-bold bg-cyan-950/80 px-1 rounded border border-cyan-800/60">
+                            {ot.ot_number}
+                          </span>
+                          <span className="truncate text-slate-300 text-[11px]">{ot.title}</span>
+                        </>
+                      ) : (
+                        <span className="text-amber-400 text-xs">⚠️ Sin Orden de Trabajo asignada</span>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* Buque y OT */}
-                <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                    <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                    <span>{shipName}</span>
-                  </div>
-                  <div className="text-xs text-slate-400 flex items-center gap-1.5">
-                    {ot ? (
-                      <>
-                        <span className="font-mono text-cyan-300 font-bold bg-cyan-950/80 px-1 rounded border border-cyan-800/60">
-                          {ot.ot_number}
-                        </span>
-                        <span className="truncate text-slate-300 text-[11px]">{ot.title}</span>
-                      </>
-                    ) : (
-                      <span className="text-amber-400 text-xs">⚠️ Sin Orden de Trabajo asignada</span>
-                    )}
-                  </div>
-                </div>
+                  {/* Observaciones Directas y Específicas */}
+                  {(srv.direct_observations || srv.specific_observations) && (
+                    <div className="space-y-1 text-xs text-slate-400">
+                      {srv.direct_observations && (
+                        <div className="line-clamp-2" title={srv.direct_observations}>
+                          <span className="font-semibold text-slate-300">Tarea:</span> {srv.direct_observations}
+                        </div>
+                      )}
+                      {srv.specific_observations && (
+                        <div className="line-clamp-2 text-slate-500 italic" title={srv.specific_observations}>
+                          <span className="font-semibold text-slate-400 font-sans not-italic">Obs:</span> {srv.specific_observations}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                {/* Observaciones Directas y Específicas */}
-                {(srv.direct_observations || srv.specific_observations) && (
-                  <div className="space-y-1 text-xs text-slate-400">
-                    {srv.direct_observations && (
-                      <div className="line-clamp-2" title={srv.direct_observations}>
-                        <span className="font-semibold text-slate-300">Tarea:</span> {srv.direct_observations}
-                      </div>
-                    )}
-                    {srv.specific_observations && (
-                      <div className="line-clamp-2 text-slate-500 italic" title={srv.specific_observations}>
-                        <span className="font-semibold text-slate-400 font-sans not-italic">Obs:</span> {srv.specific_observations}
-                      </div>
-                    )}
+                  {/* Importe y Cotización */}
+                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase font-bold block">Importe AR$</span>
+                      <span className="font-mono font-bold text-slate-200 text-sm">
+                        ${Number(srv.amount_ars).toLocaleString('es-AR')}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-cyan-400 uppercase font-bold block">Costo Total US$</span>
+                      <span className="font-mono font-extrabold text-cyan-300 text-lg">
+                        ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
                   </div>
-                )}
 
-                {/* Importe y Cotización */}
-                <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Importe AR$</span>
-                    <span className="font-mono font-bold text-slate-200 text-sm">
-                      ${Number(srv.amount_ars).toLocaleString('es-AR')}
+                  {/* Footer de Tarjeta con Acciones */}
+                  <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Cotiz: ${Number(srv.usd_rate || 0).toLocaleString('es-AR')}
                     </span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-cyan-400 uppercase font-bold block">Costo Total US$</span>
-                    <span className="font-mono font-extrabold text-cyan-300 text-lg">
-                      ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
+
+                    <div className="flex items-center gap-1">
+                      {isEvolvable && activeRolePerspective !== 'direccion' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleOpenEvolutionModal(srv)
+                          }}
+                          className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500 hover:text-slate-950 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                          title="Evolucionar a Factura oficial (FCR)"
+                        >
+                          <span>⚡ Factura</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setHistoryService(srv)
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                        title="Ver trazabilidad"
+                      >
+                        <History className="w-4 h-4" />
+                      </button>
+
+                      {activeRolePerspective !== 'direccion' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleOpenEditModal(srv)
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer"
+                          title="Editar"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      {canEditAmounts && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteService(srv)
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
+              )
+            })}
+          </div>
 
-                {/* Footer de Tarjeta con Acciones */}
-                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    Cotiz: ${Number(srv.usd_rate || 0).toLocaleString('es-AR')}
-                  </span>
-
-                  <div className="flex items-center gap-1">
-                    {isEvolvable && activeRolePerspective !== 'direccion' && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEvolutionModal(srv)}
-                        className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500 hover:text-slate-950 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
-                        title="Evolucionar a Factura oficial (FCR)"
-                      >
-                        <span>⚡ Factura</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setHistoryService(srv)}
-                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                      title="Ver trazabilidad"
-                    >
-                      <History className="w-4 h-4" />
-                    </button>
-
-                    {activeRolePerspective !== 'direccion' && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditModal(srv)}
-                        className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Editar"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    {canEditAmounts && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteService(srv)}
-                        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+          {/* BARRA DE TOTALES Y ESTADÍSTICAS REACTIVA (MODO FICHAS) */}
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xl">
+            <div className="flex items-center gap-3">
+              {stats.isCustomSelection ? (
+                <div className="flex items-center gap-2 bg-cyan-950/80 border border-cyan-500/60 px-2.5 py-1 rounded-lg text-cyan-300 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                  <span>📌 Selección Manual: {stats.count} de {stats.totalVisible} fichas</span>
+                  <button
+                    type="button"
+                    onClick={handleClearSelection}
+                    className="ml-1 text-cyan-400 hover:text-white transition-colors cursor-pointer text-xs underline"
+                  >
+                    ✕ Limpiar
+                  </button>
                 </div>
+              ) : (
+                <div className="flex items-center gap-2 bg-slate-900 border border-slate-700/80 px-2.5 py-1 rounded-lg text-slate-300 font-medium">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>🌐 Todo el filtro: {stats.count} fichas</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-mono">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Σ AR$:</span>
+                <span className="text-sm font-extrabold text-white">
+                  ${stats.sumArs.toLocaleString('es-AR')}
+                </span>
               </div>
-            )
-          })}
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] uppercase font-bold text-cyan-400">Σ US$:</span>
+                <span className="text-sm font-extrabold text-cyan-300">
+                  ${stats.sumUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-1.5 hidden md:flex">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Ø AR$:</span>
+                <span className="text-xs font-semibold text-slate-300">
+                  ${stats.avgArs.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-1.5 hidden md:flex">
+                <span className="text-[10px] uppercase font-bold text-cyan-400">Ø US$:</span>
+                <span className="text-xs font-semibold text-cyan-200">
+                  ${stats.avgUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
