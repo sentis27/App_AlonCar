@@ -1,4 +1,4 @@
-🗺️ Índice Central - App_AlonCar
+﻿🗺️ Índice Central - App_AlonCar
 
 Este es tu mapa. Úsalo antes de cualquier tarea para localizar la información exacta.
 Para Agentes IA (Antigravity): Consultá este índice para navegación general. Para auditorías de cierre de sesión, usá `INDICE_METADATOS.md` (tabla máquina con tipos, comportamientos y dependencias).
@@ -32,6 +32,7 @@ Diseño de los 6 módulos del ERP.
 | :--- | :--- | :--- |
 | `docs/03_negocio/README.md` | Índice de la lógica de negocio | 🔜 Próximamente |
 | `docs/03_negocio/proyecto_perfil_puesto_y_matriz_responsabilidades.md` | Metodología de relevamiento, perfiles laborales y Matriz RACI (Módulo 2 Recursos) | ✅ Activo |
+| docs/MATRIZ_RESPONSABILIDAD_DATOS.md | Matriz de Responsabilidad de Datos y Motor de Alertas Proactivas (Evolution API WhatsApp + In-App) | 🟢 Documento Vivo Activo |
 | `modulos/` | Especificaciones de cada módulo | 🔜 Próximamente |
 
 📖 Sección 4: Skills de Antigravity (Estructura Modular)

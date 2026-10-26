@@ -27,10 +27,11 @@ Instrucciones para agentes de IA (Claude Code, Antigravity) trabajando en App_Al
 - Usar placeholders (ej. `TU_API_KEY_AQUI`) en ejemplos y documentación.
 - Ver `docs/01_infraestructura/03_seguridad_credenciales.md` para el detalle de la política.
 
-## Protocolo de cierre de sesión
+## Protocolo de cierre de sesión y actualización de repositorios
 
 - Al final de cada sesión de trabajo: actualizar `workflows/_meta/INDEX.md` y `TAREAS_PENDIENTES.md` con lo que se hizo.
-- No cerrar una sesión con cambios sin reflejar en esos dos archivos.
+- **Matriz de Responsabilidad de Datos (Documento Vivo):** Cada vez que el usuario pida actualizar repositorios o al cierre de sesión, se debe revisar la conversación y actualizar `docs/MATRIZ_RESPONSABILIDAD_DATOS.md` con las nuevas reglas, roles y responsables definidos (priorizando `trigger`, `persona responsable`, `name`, `module`, `field_key`, `responsible_role`). Asimismo, en cada sesión se deben recordar los datos y disparadores que van faltando definir.
+- No cerrar una sesión con cambios sin reflejar en estos archivos.
 
 ## Mantenimiento de índices
 
