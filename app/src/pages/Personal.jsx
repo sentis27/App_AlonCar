@@ -2719,19 +2719,19 @@ export default function Personal() {
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+            <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-3">Quincena</th>
-                    <th className="py-2.5 px-3">Categoría / Contratista</th>
-                    <th className="py-2.5 px-3 text-right">Oficial AR$</th>
-                    <th className="py-2.5 px-3 text-center text-emerald-400">Oficial U$</th>
-                    <th className="py-2.5 px-3 text-right">Ayudante AR$</th>
-                    <th className="py-2.5 px-3 text-center text-amber-400">Ayudante U$</th>
-                    <th className="py-2.5 px-3 text-center">Dólar</th>
-                    <th className="py-2.5 px-3 text-center">Centro</th>
-                    <th className="py-2.5 px-3 text-right">Acción</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Quincena</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Categoría / Contratista</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Oficial AR$</th>
+                    <th className="py-2.5 px-3 text-center text-emerald-400 bg-slate-950">Oficial U$</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Ayudante AR$</th>
+                    <th className="py-2.5 px-3 text-center text-amber-400 bg-slate-950">Ayudante U$</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Dólar</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Centro</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -3167,22 +3167,22 @@ export default function Personal() {
             </div>
 
             {/* TABLA MAESTRA */}
-            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+            <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-3">Nombre y Apellido</th>
-                    <th className="py-2.5 px-3 text-center">Categoría</th>
-                    <th className="py-2.5 px-3">Rubro</th>
-                    <th className="py-2.5 px-3 text-right">AR$/Hora</th>
-                    <th className="py-2.5 px-2 text-center text-emerald-400">U$/Hora</th>
-                    <th className="py-2.5 px-3">Grupo de Trabajo</th>
-                    <th className="py-2.5 px-2.5">Centro Admin</th>
-                    <th className="py-2.5 px-2 text-center">Estado</th>
-                    <th className="py-2.5 px-2.5">Consumibles</th>
-                    <th className="py-2.5 px-2.5">Elem. Seg.</th>
-                    <th className="py-2.5 px-2 text-center">Permisos</th>
-                    <th className="py-2.5 px-3 text-right">Acciones</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Nombre y Apellido</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Categoría</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Rubro</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">AR$/Hora</th>
+                    <th className="py-2.5 px-2 text-center text-emerald-400 bg-slate-950">U$/Hora</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Grupo de Trabajo</th>
+                    <th className="py-2.5 px-2.5 bg-slate-950">Centro Admin</th>
+                    <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
+                    <th className="py-2.5 px-2.5 bg-slate-950">Consumibles</th>
+                    <th className="py-2.5 px-2.5 bg-slate-950">Elem. Seg.</th>
+                    <th className="py-2.5 px-2 text-center bg-slate-950">Permisos</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">

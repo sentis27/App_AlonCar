@@ -1415,8 +1415,72 @@ export default function LaborLogs() {
     return matchWorker && matchDate && matchShip
   })
 
+  // Métricas reactivas estilo Sheets / Excel para Horas (Suma y promedio de filas seleccionadas o visibles)
+  const hoursStats = useMemo(() => {
+    const isCustomSelection = selectedLogIds.size > 0
+    let targetLogs = []
+
+    if (isCustomSelection) {
+      targetLogs = recentLogs.filter(l => selectedLogIds.has(l.id))
+    } else {
+      if (activeTab === 'control_diario') {
+        targetLogs = recentLogs.filter(l => l.date_logged === auditDate)
+      } else if (activeTab === 'sabana_quincenal') {
+        targetLogs = recentLogs.filter(log => {
+          if (!log.date_logged) return false
+          const parts = log.date_logged.split('-')
+          const logYear = parts[0]
+          const logMonth = parts[1]
+          const logDay = parseInt(parts[2], 10)
+          if (logYear !== selectedYear || logMonth !== selectedMonth.padStart(2, '0')) return false
+          if (selectedQuincena === '1' && (logDay < 1 || logDay > 15)) return false
+          if (selectedQuincena === '2' && logDay < 16) return false
+          if (selectedQuincenaWorker && log.worker_name !== selectedQuincenaWorker) return false
+          return true
+        })
+      } else {
+        targetLogs = filteredLogs
+      }
+    }
+
+    const count = targetLogs.length
+    let sumNorm = 0
+    let sum50 = 0
+    let sum100 = 0
+    let sumTotalHours = 0
+    let sumCostArs = 0
+    let sumCostUsd = 0
+
+    targetLogs.forEach(l => {
+      const norm = Number(l.hours_normal) || 0
+      const h50 = Number(l.hours_extra_50 || l.hours_50) || 0
+      const h100 = Number(l.hours_extra_100 || l.hours_100) || 0
+      const total = norm + h50 + h100
+      sumNorm += norm
+      sum50 += h50
+      sum100 += h100
+      sumTotalHours += total
+      sumCostArs += Number(l.calculated_cost_ars) || 0
+      sumCostUsd += Number(l.calculated_cost_usd) || 0
+    })
+
+    const avgHours = count > 0 ? (sumTotalHours / count) : 0
+
+    return {
+      isCustomSelection,
+      count,
+      sumNorm,
+      sum50,
+      sum100,
+      sumTotalHours,
+      sumCostArs,
+      sumCostUsd,
+      avgHours
+    }
+  }, [selectedLogIds, recentLogs, activeTab, auditDate, selectedYear, selectedMonth, selectedQuincena, selectedQuincenaWorker, filteredLogs])
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+    <div className="space-y-6 w-full pb-28">
       {/* CABECERA & NAVEGACIÓN DE PESTAÑAS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
         <div>
@@ -2507,25 +2571,53 @@ export default function LaborLogs() {
                 No hay registros que coincidan con los filtros.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
                 <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-950/80 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                  <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                     <tr>
-                      <th className="py-2 px-3">Fecha</th>
-                      <th className="py-2 px-3">Barco / OT</th>
-                      <th className="py-2 px-3">Operario / Tipo</th>
-                      <th className="py-2 px-3">Rubro</th>
-                      <th className="py-2 px-2 text-center">Norm</th>
-                      <th className="py-2 px-2 text-center text-cyan-400">50%</th>
-                      <th className="py-2 px-2 text-center text-amber-400">100%</th>
-                      <th className="py-2 px-3 text-center text-primary font-bold">Total</th>
-                      <th className="py-2 px-2 text-center">Estado</th>
-                      <th className="py-2 px-3 text-right">Acciones</th>
+                      <th className="py-2.5 px-2 text-center w-8 bg-slate-950">
+                        <input
+                          type="checkbox"
+                          checked={filteredLogs.length > 0 && filteredLogs.every(l => selectedLogIds.has(l.id))}
+                          onChange={() => toggleSelectAllLogs(filteredLogs.map(l => l.id))}
+                          className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                          title="Seleccionar todas las imputaciones visibles"
+                        />
+                      </th>
+                      <th className="py-2.5 px-3 bg-slate-950">Fecha</th>
+                      <th className="py-2.5 px-3 bg-slate-950">Barco / OT</th>
+                      <th className="py-2.5 px-3 bg-slate-950">Operario / Tipo</th>
+                      <th className="py-2.5 px-3 bg-slate-950">Rubro</th>
+                      <th className="py-2.5 px-2 text-center bg-slate-950">Norm</th>
+                      <th className="py-2.5 px-2 text-center text-cyan-400 bg-slate-950">50%</th>
+                      <th className="py-2.5 px-2 text-center text-amber-400 bg-slate-950">100%</th>
+                      <th className="py-2.5 px-3 text-center text-primary font-bold bg-slate-950">Total</th>
+                      <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {filteredLogs.map(log => (
-                      <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
+                    {filteredLogs.map(log => {
+                      const isSelected = selectedLogIds.has(log.id)
+                      return (
+                      <tr 
+                        key={log.id} 
+                        onClick={(e) => {
+                          if (e.target.closest('button') || e.target.closest('select') || e.target.tagName === 'INPUT') return
+                          toggleSelectLog(log.id)
+                        }}
+                        className={`transition-colors cursor-pointer select-none ${
+                          isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'
+                        }`}
+                      >
+                        <td className="py-2 px-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectLog(log.id)}
+                            className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                          />
+                        </td>
                         <td className="py-2 px-3 font-mono text-slate-400">{log.date_logged}</td>
                         <td className="py-2 px-3">
                           <span className="font-semibold text-white block">{log.work_orders?.ships?.name || 'Barco'}</span>
@@ -2622,7 +2714,7 @@ export default function LaborLogs() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
@@ -2877,11 +2969,11 @@ export default function LaborLogs() {
             </div>
 
             {/* TABLA DE AUDITORÍA */}
-            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+            <div className="overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-2 text-center w-8">
+                    <th className="py-2.5 px-2 text-center w-8 bg-slate-950">
                       <input
                         type="checkbox"
                         checked={allAuditDateLogIds.length > 0 && allAuditDateLogIds.every(id => selectedLogIds.has(id))}
@@ -2891,17 +2983,17 @@ export default function LaborLogs() {
                         title="Seleccionar todas las imputaciones del día"
                       />
                     </th>
-                    <th className="py-2.5 px-2 min-w-[95px]">Aprobación</th>
-                    <th className="py-2.5 px-3">Estado / Semáforo</th>
-                    <th className="py-2.5 px-3">Operario / Taller</th>
-                    <th className="py-2.5 px-2">Tipo</th>
-                    <th className="py-2.5 px-3">Imputación (Barco & OT)</th>
-                    <th className="py-2.5 px-3">Rubro(s)</th>
-                    <th className="py-2.5 px-2 text-center">Norm</th>
-                    <th className="py-2.5 px-2 text-center text-cyan-400">50%</th>
-                    <th className="py-2.5 px-2 text-center text-amber-400">100%</th>
-                    <th className="py-2.5 px-3 text-center text-primary font-bold">Total Día</th>
-                    <th className="py-2.5 px-3 text-right">Acciones</th>
+                    <th className="py-2.5 px-2 min-w-[95px] bg-slate-950">Aprobación</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Estado / Semáforo</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Operario / Taller</th>
+                    <th className="py-2.5 px-2 bg-slate-950">Tipo</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Imputación (Barco & OT)</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Rubro(s)</th>
+                    <th className="py-2.5 px-2 text-center bg-slate-950">Norm</th>
+                    <th className="py-2.5 px-2 text-center text-cyan-400 bg-slate-950">50%</th>
+                    <th className="py-2.5 px-2 text-center text-amber-400 bg-slate-950">100%</th>
+                    <th className="py-2.5 px-3 text-center text-primary font-bold bg-slate-950">Total Día</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -2918,12 +3010,21 @@ export default function LaborLogs() {
                       const isIncompleta = item.status === 'incompleta'
                       const isCompleta = item.status === 'completa'
                       const isExtras = item.status === 'extras'
+                      const isSelected = item.logs.length > 0 && item.logs.every(l => selectedLogIds.has(l.id))
 
                       return (
                         <tr 
                           key={`${item.worker.name}-${item.type}`} 
-                          className={`hover:bg-slate-800/30 transition-colors ${
-                            isSinCarga ? 'bg-rose-950/10' : isIncompleta ? 'bg-amber-950/10' : ''
+                          onClick={(e) => {
+                            if (e.target.closest('button') || e.target.closest('select') || e.target.tagName === 'INPUT') return
+                            if (item.logs && item.logs.length > 0) {
+                              toggleSelectAllLogs(item.logs.map(l => l.id))
+                            }
+                          }}
+                          className={`transition-colors cursor-pointer select-none ${
+                            isSelected 
+                              ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' 
+                              : isSinCarga ? 'bg-rose-950/10 hover:bg-rose-950/20' : isIncompleta ? 'bg-amber-950/10 hover:bg-amber-950/20' : 'hover:bg-slate-800/30'
                           }`}
                         >
                           {/* Checkbox Selección */}
@@ -3260,11 +3361,11 @@ export default function LaborLogs() {
           </div>
 
           {/* MATRIZ TIPO SHEETS */}
-          <div className="overflow-x-auto border border-slate-800 rounded-xl">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
             <table className="w-full text-center text-xs border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-20 bg-slate-950 shadow-sm">
                 <tr className="bg-slate-950 text-slate-300 font-bold border-b border-slate-800">
-                  <th className="py-3 px-4 text-left border-r border-slate-800 sticky left-0 bg-slate-950 z-10 min-w-[180px]">
+                  <th className="py-3 px-4 text-left border-r border-slate-800 sticky left-0 top-0 bg-slate-950 z-30 min-w-[180px]">
                     Operario / Contratista
                   </th>
                   {daysInQuincena.map(day => (
@@ -3520,26 +3621,54 @@ export default function LaborLogs() {
               }
 
               return (
-                <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                <div className="overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
                   <table className="w-full text-left text-xs text-slate-300">
-                    <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                    <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                       <tr>
-                        <th className="py-2.5 px-3">Fecha</th>
-                        <th className="py-2.5 px-3">Operario</th>
-                        <th className="py-2.5 px-2">Tipo</th>
-                        <th className="py-2.5 px-3">Barco & OT</th>
-                        <th className="py-2.5 px-3">Rubro</th>
-                        <th className="py-2.5 px-2 text-center">Norm</th>
-                        <th className="py-2.5 px-2 text-center text-cyan-400">50%</th>
-                        <th className="py-2.5 px-2 text-center text-amber-400">100%</th>
-                        <th className="py-2.5 px-3 text-center text-primary font-bold">Total</th>
-                        <th className="py-2.5 px-2 text-center">Estado</th>
-                        <th className="py-2.5 px-3 text-right">Acciones</th>
+                        <th className="py-2.5 px-2 text-center w-8 bg-slate-950">
+                          <input
+                            type="checkbox"
+                            checked={quincenaLogs.length > 0 && quincenaLogs.every(l => selectedLogIds.has(l.id))}
+                            onChange={() => toggleSelectAllLogs(quincenaLogs.map(l => l.id))}
+                            className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                            title="Seleccionar todas las imputaciones visibles"
+                          />
+                        </th>
+                        <th className="py-2.5 px-3 bg-slate-950">Fecha</th>
+                        <th className="py-2.5 px-3 bg-slate-950">Operario</th>
+                        <th className="py-2.5 px-2 bg-slate-950">Tipo</th>
+                        <th className="py-2.5 px-3 bg-slate-950">Barco & OT</th>
+                        <th className="py-2.5 px-3 bg-slate-950">Rubro</th>
+                        <th className="py-2.5 px-2 text-center bg-slate-950">Norm</th>
+                        <th className="py-2.5 px-2 text-center text-cyan-400 bg-slate-950">50%</th>
+                        <th className="py-2.5 px-2 text-center text-amber-400 bg-slate-950">100%</th>
+                        <th className="py-2.5 px-3 text-center text-primary font-bold bg-slate-950">Total</th>
+                        <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
+                        <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
-                      {quincenaLogs.map(log => (
-                        <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
+                      {quincenaLogs.map(log => {
+                        const isSelected = selectedLogIds.has(log.id)
+                        return (
+                        <tr 
+                          key={log.id} 
+                          onClick={(e) => {
+                            if (e.target.closest('button') || e.target.closest('select') || e.target.tagName === 'INPUT') return
+                            toggleSelectLog(log.id)
+                          }}
+                          className={`transition-colors cursor-pointer select-none ${
+                            isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'
+                          }`}
+                        >
+                          <td className="py-2 px-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelectLog(log.id)}
+                              className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                            />
+                          </td>
                           <td className="py-2 px-3 font-mono text-slate-400">{log.date_logged}</td>
                           <td className="py-2 px-3 font-bold text-white">{log.worker_name}</td>
                           <td className="py-2 px-2">
@@ -3638,7 +3767,7 @@ export default function LaborLogs() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -4163,77 +4292,127 @@ export default function LaborLogs() {
       )}
 
       {/* ========================================================= */}
-      {/* BARRA FLOTANTE DE ACCIONES MASIVAS (SELECCIÓN MÚLTIPLE)   */}
+      {/* BARRA DE TOTALES Y ESTADÍSTICAS REACTIVA (TIPO EXCEL / SHEETS) */}
       {/* ========================================================= */}
-      {selectedLogIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-cyan-500/50 rounded-2xl shadow-2xl px-5 py-3 backdrop-blur-md flex flex-wrap items-center gap-4 text-xs animate-in slide-in-from-bottom duration-200">
-          <div className="flex items-center gap-2 text-white font-bold">
-            <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-            <span>{selectedLogIds.size} imputación(es) seleccionada(s)</span>
+      <div className="fixed bottom-4 left-4 right-4 md:left-64 z-40 bg-slate-950/95 border border-slate-800 rounded-2xl shadow-2xl px-4 py-2.5 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-200">
+        {/* Indicador de modo (Selección manual vs Todo lo filtrado) */}
+        <div className="flex items-center gap-3">
+          {hoursStats.isCustomSelection ? (
+            <div className="flex items-center gap-2 bg-cyan-950/80 border border-cyan-500/60 px-2.5 py-1 rounded-lg text-cyan-300 font-bold">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+              <span>📌 Selección Manual: {hoursStats.count} imputaciones</span>
+              <button
+                type="button"
+                onClick={() => setSelectedLogIds(new Set())}
+                className="ml-1 text-cyan-400 hover:text-white transition-colors cursor-pointer text-xs underline"
+                title="Deseleccionar todas las filas"
+              >
+                ✕ Limpiar
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-700/80 px-2.5 py-1 rounded-lg text-slate-300 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>🌐 Todo el filtro: {hoursStats.count} imputaciones</span>
+              <span className="text-[10px] text-slate-500 italic hidden sm:inline">(Clic en filas o casillas para sumar a tu antojo)</span>
+            </div>
+          )}
+        </div>
+
+        {/* Métricas calculadas en vivo */}
+        <div className="flex flex-wrap items-center gap-3 sm:gap-5 font-mono">
+          <div className="flex items-baseline gap-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400">Norm:</span>
+            <span className="text-xs font-bold text-white">{hoursStats.sumNorm}h</span>
           </div>
 
-          <div className="h-4 w-px bg-slate-700 hidden sm:block"></div>
+          <div className="flex items-baseline gap-1">
+            <span className="text-[10px] uppercase font-bold text-cyan-400">50%:</span>
+            <span className="text-xs font-bold text-cyan-300">{hoursStats.sum50}h</span>
+          </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-slate-400 font-semibold mr-1">Cambiar estado a:</span>
+          <div className="flex items-baseline gap-1">
+            <span className="text-[10px] uppercase font-bold text-amber-400">100%:</span>
+            <span className="text-xs font-bold text-amber-300">{hoursStats.sum100}h</span>
+          </div>
+
+          <div className="flex items-baseline gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+            <span className="text-[10px] uppercase font-bold text-slate-400">Total:</span>
+            <span className="text-sm font-extrabold text-primary">{hoursStats.sumTotalHours} hs</span>
+          </div>
+
+          <div className="flex items-baseline gap-1 hidden md:flex">
+            <span className="text-[10px] uppercase font-bold text-slate-500">Ø:</span>
+            <span className="text-xs font-semibold text-slate-300">{hoursStats.avgHours.toFixed(1)}h</span>
+          </div>
+
+          {hoursStats.sumCostArs > 0 && (
+            <div className="flex items-baseline gap-1 hidden lg:flex">
+              <span className="text-[10px] uppercase font-bold text-slate-400">Σ AR$:</span>
+              <span className="text-xs font-bold text-white">${hoursStats.sumCostArs.toLocaleString('es-AR')}</span>
+            </div>
+          )}
+
+          {hoursStats.sumCostUsd > 0 && (
+            <div className="flex items-baseline gap-1 hidden xl:flex">
+              <span className="text-[10px] uppercase font-bold text-cyan-400">Σ US$:</span>
+              <span className="text-xs font-bold text-cyan-300">${hoursStats.sumCostUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Acciones masivas de aprobación si hay filas seleccionadas */}
+        {selectedLogIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-l border-slate-800 pl-3">
+            <span className="text-[10px] text-slate-400 font-semibold hidden sm:inline">Estado:</span>
             <button
               type="button"
               disabled={bulkUpdating}
               onClick={() => handleUpdateApprovalStatus(Array.from(selectedLogIds), 'S')}
-              className="px-2.5 py-1 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700 rounded font-bold transition-all cursor-pointer disabled:opacity-50"
-              title="Aprobar seleccionadas"
+              className="px-2 py-0.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700 rounded font-bold transition-all cursor-pointer text-[10px] disabled:opacity-50"
+              title="Aprobar seleccionadas (S)"
             >
-              S (Aprobar)
+              S
             </button>
             <button
               type="button"
               disabled={bulkUpdating}
               onClick={() => handleUpdateApprovalStatus(Array.from(selectedLogIds), 'R')}
-              className="px-2.5 py-1 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-600 rounded font-bold transition-all cursor-pointer disabled:opacity-50"
-              title="Marcar como Requiere Revisión"
+              className="px-2 py-0.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-600 rounded font-bold transition-all cursor-pointer text-[10px] disabled:opacity-50"
+              title="Requiere Revisión (R)"
             >
-              R (Observar)
+              R
             </button>
             <button
               type="button"
               disabled={bulkUpdating}
               onClick={() => handleUpdateApprovalStatus(Array.from(selectedLogIds), 'RR')}
-              className="px-2.5 py-1 bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-600 rounded font-bold transition-all cursor-pointer disabled:opacity-50"
-              title="Marcar como Corregidas por Operario"
+              className="px-2 py-0.5 bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-600 rounded font-bold transition-all cursor-pointer text-[10px] disabled:opacity-50"
+              title="Corregidas por Operario (RR)"
             >
-              RR (Corregidas)
+              RR
             </button>
             <button
               type="button"
               disabled={bulkUpdating}
               onClick={() => handleUpdateApprovalStatus(Array.from(selectedLogIds), 'RRR')}
-              className="px-2.5 py-1 bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-600 rounded font-bold transition-all cursor-pointer disabled:opacity-50"
-              title="Aprobación Definitiva Supervisor"
+              className="px-2 py-0.5 bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-600 rounded font-bold transition-all cursor-pointer text-[10px] disabled:opacity-50"
+              title="Aprobado Final Supervisor (RRR)"
             >
-              RRR (Aprobado Final)
+              RRR
             </button>
             <button
               type="button"
               disabled={bulkUpdating}
               onClick={() => handleUpdateApprovalStatus(Array.from(selectedLogIds), '')}
-              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 rounded font-medium transition-all cursor-pointer disabled:opacity-50"
-              title="Limpiar estado a vacío"
+              className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 rounded font-medium transition-all cursor-pointer text-[10px] disabled:opacity-50"
+              title="Vaciar estado"
             >
               Vaciar
             </button>
           </div>
-
-          <div className="h-4 w-px bg-slate-700 hidden sm:block"></div>
-
-          <button
-            type="button"
-            onClick={() => setSelectedLogIds(new Set())}
-            className="text-slate-400 hover:text-white text-xs underline cursor-pointer"
-          >
-            Deseleccionar
-          </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ========================================================= */}
       {/* MODAL 3: BANDEJA DE HORAS QUE REQUIEREN REVISIÓN          */}

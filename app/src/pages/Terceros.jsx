@@ -1568,7 +1568,7 @@ export default function Terceros() {
                       {/* 9. Acciones */}
                       <td className="py-2.5 px-2 text-right font-sans">
                         <div className="flex items-center justify-end gap-1 shrink-0">
-                          {/* Botón Evolucionar (RMO / RPF -> FCR) */}
+                          {/* Botón Evolucionar (RMO / RPF -> FCR): Solo ícono de estrella con tooltip */}
                           {isEvolvable && activeRolePerspective !== 'direccion' && (
                             <button
                               type="button"
@@ -1576,11 +1576,10 @@ export default function Terceros() {
                                 e.stopPropagation()
                                 handleOpenEvolutionModal(srv)
                               }}
-                              className="px-2 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500 hover:text-slate-950 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
-                              title="Evolucionar comprobante a Factura oficial (FCR) o SDT"
+                              className="p-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-400 hover:text-slate-950 rounded-lg transition-all cursor-pointer shrink-0 shadow-sm"
+                              title="Evolucionar a Factura oficial (FCR) o SDT"
                             >
-                              <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
-                              <span>+ Factura</span>
+                              <Sparkles className="w-3.5 h-3.5" />
                             </button>
                           )}
 

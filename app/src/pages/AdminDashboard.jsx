@@ -1131,17 +1131,17 @@ export default function AdminDashboard() {
             )}
 
             {/* TABLA MAESTRA CON MATRIZ VISUAL INTERACTIVA (OPCIÓN A) */}
-            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+            <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-3">Puesto / Función Técnica</th>
-                    <th className="py-2.5 px-3">Persona a Cargo</th>
-                    <th className="py-2.5 px-2 text-center">Nivel</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Puesto / Función Técnica</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Persona a Cargo</th>
+                    <th className="py-2.5 px-2 text-center bg-slate-950">Nivel</th>
                     {SYSTEM_MODULES.map(mod => {
                       const Icon = mod.icon
                       return (
-                        <th key={mod.key} className="py-2.5 px-1.5 text-center">
+                        <th key={mod.key} className="py-2.5 px-1.5 text-center bg-slate-950">
                           <div className="flex items-center justify-center gap-1" title={`Módulo: ${mod.label}`}>
                             <Icon className={`w-3 h-3 ${mod.color}`} />
                             <span>{mod.label}</span>
@@ -1149,8 +1149,8 @@ export default function AdminDashboard() {
                         </th>
                       )
                     })}
-                    <th className="py-2.5 px-2 text-center">Estado</th>
-                    <th className="py-2.5 px-3 text-right">Acciones</th>
+                    <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -1421,17 +1421,17 @@ export default function AdminDashboard() {
               </span>
             </div>
 
-            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+            <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-3">Mes y Año</th>
-                    <th className="py-2.5 px-3 text-right">Dólar Referencia ($ / USD)</th>
-                    <th className="py-2.5 px-3 text-center">Inflación Mensual (%)</th>
-                    <th className="py-2.5 px-3 text-center">Quincenas que Rige</th>
-                    <th className="py-2.5 px-3">Registrado por</th>
-                    <th className="py-2.5 px-3 text-center">Fecha de Carga</th>
-                    <th className="py-2.5 px-3 text-right">Acciones</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Mes y Año</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Dólar Referencia ($ / USD)</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Inflación Mensual (%)</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Quincenas que Rige</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Registrado por</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Fecha de Carga</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -1539,11 +1539,11 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+            <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-3 w-10 text-center">
+                    <th className="py-2.5 px-3 w-10 text-center bg-slate-950">
                       <input
                         type="checkbox"
                         checked={ratePeriods.length > 0 && selectedPeriods.size === ratePeriods.length}
@@ -1552,13 +1552,13 @@ export default function AdminDashboard() {
                         title="Seleccionar todas las quincenas"
                       />
                     </th>
-                    <th className="py-2.5 px-3">Quincena (Período)</th>
-                    <th className="py-2.5 px-3 text-right">Dólar Quincenal (AR$/USD)</th>
-                    <th className="py-2.5 px-3 text-center">Inflación Mensual</th>
-                    <th className="py-2.5 px-3 text-center">Tarifario de Mano de Obra</th>
-                    <th className="py-2.5 px-3 text-center">Estado del Período</th>
-                    <th className="py-2.5 px-3 text-right">Control de Cierre</th>
-                    <th className="py-2.5 px-3 text-right">Acción</th>
+                    <th className="py-2.5 px-3 bg-slate-950">Quincena (Período)</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Dólar Quincenal (AR$/USD)</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Inflación Mensual</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Tarifario de Mano de Obra</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-950">Estado del Período</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Control de Cierre</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-950">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">

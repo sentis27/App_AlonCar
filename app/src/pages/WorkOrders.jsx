@@ -2209,20 +2209,20 @@ export default function WorkOrders() {
           <p className="text-sm font-semibold">Cargando trabajos y órdenes de trabajo...</p>
         </div>
       ) : activeMainTab === 'unificado' ? (
-        <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/90 shadow-xl">
+        <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-2xl bg-slate-900/90 shadow-xl">
           <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+            <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
               <tr>
-                <th className="py-3 px-3">Barco</th>
-                <th className="py-3 px-3">Orden de Trabajo (Estado Calculado)</th>
-                <th className="py-3 px-3 min-w-[155px]">Fechas OT (Creac. / Inicio / Fin)</th>
-                <th className="py-3 px-3 min-w-[240px]">Descripción del Trabajo</th>
-                <th className="py-3 px-3">Contratista(s) / Permiso 3ros</th>
-                <th className="py-3 px-3">Jefe de Obra</th>
-                <th className="py-3 px-2.5">Tipo / Facturación</th>
-                <th className="py-3 px-3 text-center">Estado del Trabajo</th>
-                <th className="py-3 px-2.5 text-center">Alertas / 3ros</th>
-                <th className="py-3 px-3 text-right">Acciones</th>
+                <th className="py-3 px-3 bg-slate-950">Barco</th>
+                <th className="py-3 px-3 bg-slate-950">Orden de Trabajo (Estado Calculado)</th>
+                <th className="py-3 px-3 min-w-[155px] bg-slate-950">Fechas OT (Creac. / Inicio / Fin)</th>
+                <th className="py-3 px-3 min-w-[240px] bg-slate-950">Descripción del Trabajo</th>
+                <th className="py-3 px-3 bg-slate-950">Contratista(s) / Permiso 3ros</th>
+                <th className="py-3 px-3 bg-slate-950">Jefe de Obra</th>
+                <th className="py-3 px-2.5 bg-slate-950">Tipo / Facturación</th>
+                <th className="py-3 px-3 text-center bg-slate-950">Estado del Trabajo</th>
+                <th className="py-3 px-2.5 text-center bg-slate-950">Alertas / 3ros</th>
+                <th className="py-3 px-3 text-right bg-slate-950">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -2697,18 +2697,18 @@ export default function WorkOrders() {
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-slate-800 rounded-xl">
+          <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
             <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+              <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                 <tr>
-                  <th className="py-3 px-3">Fecha</th>
-                  <th className="py-3 px-3">Barco & OT</th>
-                  <th className="py-3 px-3">Proveedor / Contratista [3ros]</th>
-                  <th className="py-3 px-3 text-center">Estado / Comprobante</th>
-                  <th className="py-3 px-3 text-right">Importe AR$</th>
-                  <th className="py-3 px-3 min-w-[220px] text-cyan-300">Observaciones Directas (Desde OT)</th>
-                  <th className="py-3 px-3 min-w-[220px] text-purple-300">Observaciones Específicas (Módulo Terceros)</th>
-                  <th className="py-3 px-3 text-right">Acciones</th>
+                  <th className="py-3 px-3 bg-slate-950">Fecha</th>
+                  <th className="py-3 px-3 bg-slate-950">Barco & OT</th>
+                  <th className="py-3 px-3 bg-slate-950">Proveedor / Contratista [3ros]</th>
+                  <th className="py-3 px-3 text-center bg-slate-950">Estado / Comprobante</th>
+                  <th className="py-3 px-3 text-right bg-slate-950">Importe AR$</th>
+                  <th className="py-3 px-3 min-w-[220px] text-cyan-300 bg-slate-950">Observaciones Directas (Desde OT)</th>
+                  <th className="py-3 px-3 min-w-[220px] text-purple-300 bg-slate-950">Observaciones Específicas (Módulo Terceros)</th>
+                  <th className="py-3 px-3 text-right bg-slate-950">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-medium">

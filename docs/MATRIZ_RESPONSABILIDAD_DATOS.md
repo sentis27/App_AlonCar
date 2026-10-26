@@ -119,7 +119,33 @@ Para las próximas sesiones, conforme se sigan construyendo los módulos, se deb
   * ¿Se agrega una columna `lead_foreman_id` (Jefe de Obra a cargo) en la tabla `ships` o en cada `ship_stays` para saber exactamente a cuál de los 3 jefes de obra mandarle la alerta de anguilera de ese barco específico?
 - [ ] **Módulo de OTs (Horas y Mano de Obra):**
   * ¿Qué disparador se exigirá al cerrar una OT? (ej: Conformidad técnica firmada, rendición de horas).
-- [ ] **Módulo de Pañol / Materiales:**
+- [ ] **Módulo de Pañol / Materiales y Compras:**
   * ¿Qué alerta se dispara si un contratista retira materiales sin registrar horas imputadas a esa OT?
+  * Responsable de compras cuando un ítem de pañol entra en stock crítico (< stock mínimo).
 - [ ] **Endpoint y Credenciales de Evolution API:**
   * Registrar la URL base del servidor Evolution API y la API Key de la instancia para los envíos automatizados.
+
+---
+
+## 5. Estándares Mandatorios de UX/UI para Futuros Módulos (Pañol, Materiales y Compras)
+
+Por directiva de arquitectura y experiencia de usuario establecida con el usuario en la sesión del 26-10-2026, **todos los nuevos módulos y tablas operativas del sistema (con foco primordial e inexcusable en Pañol, Materiales y Compras)** deben implementar de base los siguientes 2 componentes estándar tipo Hoja de Cálculo:
+
+### 📊 Estándar 1: Selección Libre de Filas a tu Antojo + Barra Reactiva de Totales y Estadísticas (Tipo Sheets / Excel)
+1. **Selección Flexible e Intuitiva:**
+   - La tabla debe contar con una columna inicial de selección por fila (`input[type="checkbox"]`), además de un selector maestro en la cabecera para seleccionar/deseleccionar todas las filas visibles.
+   - Posibilidad de seleccionar filas haciendo clic directo sobre la fila (sin que interfieran los botones de acción).
+2. **Barra de Totales y Estadísticas Reactiva:**
+   - Ubicada al pie de la tabla o flotante en pantalla, siempre visible o reactiva al scroll.
+   - **Modo General:** Cuando no hay filas seleccionadas, calcula y resume en vivo todas las filas visibles según los filtros activos (cantidades, sumatorias de costos en AR$ y USD, promedios, etc.).
+   - **Modo Selección Manual:** En cuanto el usuario marca 1 o más filas, la barra pasa inmediatamente a color de acento (`cyan`), mostrando `📌 Selección Manual: X de N filas`, recalculando en milisegundos sumas, promedios, valores totales y proveyendo un botón de `✕ Limpiar selección`.
+   - **Acciones Rápidas Masivas:** Si el módulo lo requiere (aprobaciones, cambio de estados, solicitudes de compra, pase a pañol), los botones de acción en lote se integran directamente en esta barra.
+
+### 📌 Estándar 2: Inmovilizar Títulos de Columnas (Sticky Header Tipo Excel)
+1. **Visibilidad Continua al Scrollear:**
+   - Ninguna planilla de la aplicación puede perder la cabecera al bajar por cientos o miles de registros.
+   - El contenedor debe poseer `overflow-y-auto max-h-[calc(100vh-280px)]` (o altura calculada según la página).
+   - La etiqueta `<thead>` debe llevar las clases `sticky top-0 z-20 bg-slate-950 shadow-sm backdrop-blur-md` y cada celda `<th>` debe poseer `bg-slate-950` para garantizar que el texto scrolleable pase perfectamente por debajo sin superposiciones ni transparencias anómalas.
+2. **Prohibición de Desplazamiento Horizontal Innecesario:**
+   - Todo el ancho de pantalla disponible debe ser aprovechado. La información principal debe permanecer siempre a la vista sin requerir scroll de costado en monitores de escritorio.
+

@@ -1319,18 +1319,18 @@ export default function Ships() {
           {/* VISTA FILAS / TABLA (Estilo Órdenes de Trabajo) */}
           {viewModeShips === 'tabla' && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
+              <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-950/90 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3 px-3">Buque</th>
-                      <th className="py-3 px-3">Tipo</th>
-                      <th className="py-3 px-3">Locación</th>
-                      <th className="py-3 px-3">Dimensiones</th>
-                      <th className="py-3 px-3">OTs Activas</th>
-                      <th className="py-3 px-3">Armador / Empresa</th>
-                      <th className="py-3 px-3">Estado / Solicitud</th>
-                      <th className="py-3 px-3 text-right">Acciones</th>
+                  <thead className="sticky top-0 z-20 bg-slate-950 shadow-sm backdrop-blur-md">
+                    <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-3 bg-slate-950">Buque</th>
+                      <th className="py-3 px-3 bg-slate-950">Tipo</th>
+                      <th className="py-3 px-3 bg-slate-950">Locación</th>
+                      <th className="py-3 px-3 bg-slate-950">Dimensiones</th>
+                      <th className="py-3 px-3 bg-slate-950">OTs Activas</th>
+                      <th className="py-3 px-3 bg-slate-950">Armador / Empresa</th>
+                      <th className="py-3 px-3 bg-slate-950">Estado / Solicitud</th>
+                      <th className="py-3 px-3 text-right bg-slate-950">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -1785,16 +1785,16 @@ export default function Ships() {
           {/* VISTA FILAS / TABLA (ESTADÍAS) */}
           {viewModeStays === 'tabla' && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
+              <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead>
+                  <thead className="sticky top-0 z-20 bg-slate-950 shadow-sm backdrop-blur-md">
                     <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3 px-4">Locación</th>
-                      <th className="py-3 px-4">Buque</th>
-                      <th className="py-3 px-4 text-center">Comienzo</th>
-                      <th className="py-3 px-4 text-center">Fin</th>
-                      <th className="py-3 px-4 text-center text-cyan-300">Días de Estadía</th>
-                      <th className="py-3 px-4 text-center">Acciones</th>
+                      <th className="py-3 px-4 bg-slate-950">Locación</th>
+                      <th className="py-3 px-4 bg-slate-950">Buque</th>
+                      <th className="py-3 px-4 text-center bg-slate-950">Comienzo</th>
+                      <th className="py-3 px-4 text-center bg-slate-950">Fin</th>
+                      <th className="py-3 px-4 text-center text-cyan-300 bg-slate-950">Días de Estadía</th>
+                      <th className="py-3 px-4 text-center bg-slate-950">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
@@ -1990,16 +1990,16 @@ export default function Ships() {
           {/* VISTA FILAS / TABLA (ARMADORES) */}
           {viewModeOwners === 'tabla' && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
+              <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead>
+                  <thead className="sticky top-0 z-20 bg-slate-950 shadow-sm backdrop-blur-md">
                     <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3 px-4">Empresa / Razón Social</th>
-                      <th className="py-3 px-4">Nombre del Armador</th>
-                      <th className="py-3 px-4">Teléfono Directo</th>
-                      <th className="py-3 px-4">Correos (Principal / Facturación)</th>
-                      <th className="py-3 px-4">Flota Vinculada</th>
-                      <th className="py-3 px-4 text-right">Acciones</th>
+                      <th className="py-3 px-4 bg-slate-950">Empresa / Razón Social</th>
+                      <th className="py-3 px-4 bg-slate-950">Nombre del Armador</th>
+                      <th className="py-3 px-4 bg-slate-950">Teléfono Directo</th>
+                      <th className="py-3 px-4 bg-slate-950">Correos (Principal / Facturación)</th>
+                      <th className="py-3 px-4 bg-slate-950">Flota Vinculada</th>
+                      <th className="py-3 px-4 text-right bg-slate-950">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
