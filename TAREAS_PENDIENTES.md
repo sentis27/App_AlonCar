@@ -88,6 +88,15 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - **Doble Observación Vinculada en Terceros:** `direct_observations` (sincronizada automáticamente desde la Descripción del trabajo en la OT) y `specific_observations` (editable de forma independiente desde Terceros).
   - **Cierre Comercial & Data Locking (`DEC-011`) y Bitácora Técnica ("Ampliar"):** Bloqueo de costos para OTs cerradas/facturadas y registro de consultas técnicas.
 
+- [x] **5. Inmovilización de Encabezados (Sticky Header tipo Excel) en Todas las Tablas:**
+  - Encabezados congelados/fijos en scroll vertical (sticky top-0 z-20 bg-slate-950) en Personal y Tarifas, Horas, OTs, Barcos y Panel Administrador.
+
+- [x] **6. Horas — Selección Libre de Filas + Barra Reactiva de Totales (LaborLogs.jsx):**
+  - Checkboxes y selección libre en Cuadrilla, Control Diario y Sábana Quincenal con sumas instantáneas de hs normales, 50%, 100%, total, promedio y acciones masivas S/R/RR/RRR.
+
+- [x] **7. Terceros — Botón de Evolución Compacto (Terceros.jsx):**
+  - Icono exclusivo de estrella sin texto visible para evitar solapamientos.
+
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
   - Ficha técnica naval de buques, historial de varadas y estados de puesta en seco.
