@@ -1378,21 +1378,21 @@ export default function Terceros() {
                   {/* 1. Fecha */}
                   <th className="py-3 px-2 w-[8%] bg-slate-950">Fecha</th>
                   {/* 2. Barco / OT */}
-                  <th className="py-3 px-2 w-[15%] bg-slate-950">Barco / OT</th>
+                  <th className="py-3 px-2 w-[14%] bg-slate-950">Barco / OT</th>
                   {/* 3. Contratista / Rubro */}
-                  <th className="py-3 px-2 w-[16%] bg-slate-950">Contratista / Rubro</th>
+                  <th className="py-3 px-2 w-[15%] bg-slate-950">Contratista / Rubro</th>
                   {/* 4. Importe AR$ */}
                   <th className="py-3 px-2 w-[11%] text-right bg-slate-950">Importe AR$</th>
                   {/* 5. Dólar / US$ */}
-                  <th className="py-3 px-2 w-[11%] text-right bg-slate-950">Dólar / US$</th>
+                  <th className="py-3 px-2 w-[10%] text-right bg-slate-950">Dólar / US$</th>
                   {/* 6. Comprobante */}
-                  <th className="py-3 px-2 w-[8%] text-center bg-slate-950">Comprobante</th>
+                  <th className="py-3 px-2 w-[7%] text-center bg-slate-950">Comprobante</th>
                   {/* 7. Nº Comprobante */}
-                  <th className="py-3 px-2 w-[13%] bg-slate-950">Nº Comprobante</th>
+                  <th className="py-3 px-2 w-[12%] bg-slate-950">Nº Comprobante</th>
                   {/* 8. Comentarios */}
-                  <th className="py-3 px-2 w-[12%] bg-slate-950">Comentarios</th>
+                  <th className="py-3 px-2 w-[13%] bg-slate-950">Comentarios</th>
                   {/* 9. Acciones */}
-                  <th className="py-3 px-2 w-[6%] text-right bg-slate-950">Acciones</th>
+                  <th className="py-3 px-2 w-[10%] text-right bg-slate-950">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -1548,8 +1548,8 @@ export default function Terceros() {
                       </td>
 
                       {/* 8. Comentarios (Observaciones Directas y Específicas) */}
-                      <td className="py-2.5 px-2 font-sans">
-                        <div className="space-y-0.5">
+                      <td className="py-2.5 px-2 font-sans overflow-hidden">
+                        <div className="space-y-0.5 truncate max-w-full">
                           {srv.direct_observations ? (
                             <p className="text-[11px] text-slate-300 line-clamp-2" title={srv.direct_observations}>
                               {srv.direct_observations}
@@ -1558,7 +1558,7 @@ export default function Terceros() {
                             <span className="text-slate-600 text-[11px] italic">Sin observaciones</span>
                           )}
                           {srv.specific_observations && (
-                            <p className="text-[10px] text-slate-400 line-clamp-1 italic" title={srv.specific_observations}>
+                            <p className="text-[10px] text-slate-400 line-clamp-1 italic truncate" title={srv.specific_observations}>
                               Nota: {srv.specific_observations}
                             </p>
                           )}
@@ -1566,8 +1566,8 @@ export default function Terceros() {
                       </td>
 
                       {/* 9. Acciones */}
-                      <td className="py-2.5 px-2 text-right whitespace-nowrap font-sans">
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="py-2.5 px-2 text-right font-sans">
+                        <div className="flex items-center justify-end gap-1 shrink-0">
                           {/* Botón Evolucionar (RMO / RPF -> FCR) */}
                           {isEvolvable && activeRolePerspective !== 'direccion' && (
                             <button
@@ -1576,10 +1576,11 @@ export default function Terceros() {
                                 e.stopPropagation()
                                 handleOpenEvolutionModal(srv)
                               }}
-                              className="px-2 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500 hover:text-slate-950 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                              className="px-2 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500 hover:text-slate-950 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
                               title="Evolucionar comprobante a Factura oficial (FCR) o SDT"
                             >
-                              <span>⚡ Evolucionar</span>
+                              <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                              <span>+ Factura</span>
                             </button>
                           )}
 
@@ -1590,7 +1591,7 @@ export default function Terceros() {
                               e.stopPropagation()
                               setHistoryService(srv)
                             }}
-                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shrink-0"
                             title="Ver trazabilidad e historial"
                           >
                             <History className="w-3.5 h-3.5" />
@@ -1604,7 +1605,7 @@ export default function Terceros() {
                                 e.stopPropagation()
                                 handleOpenEditModal(srv)
                               }}
-                              className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
                               title="Editar comprobante"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
@@ -1619,7 +1620,7 @@ export default function Terceros() {
                                 e.stopPropagation()
                                 handleDeleteService(srv)
                               }}
-                              className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
                               title="Eliminar comprobante con auditoría"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
