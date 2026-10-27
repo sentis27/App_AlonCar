@@ -106,6 +106,10 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - **Proveedores Dinámicos de Compras (`suppliers`):** Integración no hardcodeada que alimenta a Pañol desde Compras. Altas iniciales: Air Liquide, Praxair Linde, Ferremat (emergencias) y Propios Astillero Alon Car.
   - **3 Operaciones de Envases en Submenú de Pañol:** `Primera Entrega` (+1 deuda contratista, -1 lleno pañol), `Recambio 1x1` (saldo neto contratista sin cambio, +1 vacío de marca A, -1 lleno de marca B) y `Devolución Final` (-1 deuda contratista, +1 vacío pañol).
   - **Dashboard del Pañolero Digital:** KPIs de vacíos por marca listos para reposición (evitando inspección física en patio), matriz de contratistas tipo Sheets con Sticky Headers y botón de reposición 1-clic.
+  - **Circuitos Operativos y Contactos (Regla P-02):**
+    - **Air Liquide:** Semanal. Pedido martes antes de las 12:00 hs al **0810-222-5272** (Nº Cliente **2234867**), entrega miércoles.
+    - **Praxair Linde:** Quincenal (1 lunes c/15 días vía portal web o comercial), entrega martes.
+    - **Ferremat:** A demanda ante emergencias o quiebres de stock.
 
 - [ ] **3. Módulo M4: Pañol y Materiales (y Módulo de Terceros):**
   - Catálogo de consumibles y aceros/chapas navales.
