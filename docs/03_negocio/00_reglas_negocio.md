@@ -65,6 +65,25 @@ El formulario de Pañol permite seleccionar la OT una sola vez y agregar una gri
 4. **Transición de Estado:** Las solicitudes seleccionadas cambian su estado de `PEDIR` a `PEDIDO`.
 5. **Trazabilidad de Auditoría:** El log del sistema registra si el pedido fue realizado por la automatización (`created_by_automation = true`) o manualmente por un operario.
 
+### 4.3. Destinos de Compra: La Regla de Oro (Stock vs Carga Directa vs Cliente)
+- **Reposición de Stock / Pañol (`VIA_PANOL`):** Buque fijado en `ASTILLERO` y OT en `STOCK`. Al recibirse (`RECIBIDO`), incrementa automáticamente el inventario físico en `materials.current_stock`.
+- **Carga Directa para Obra (`DIRECT`):** Asignada a un Buque y OT real. Al recibirse (`RECIB.COMP.DIRECT`), **no toca stock de pañol** e impacta de inmediato en el costo vivo de la OT.
+- **Material Aportado por Cliente (`RECIBIDO 2`):** Suministrado por el armador; no computa costo ni stock para el astillero.
+
+### 4.4. Conciliación de Facturas ("Línea Morada")
+- Cada compra cuenta con un estado de conciliación (`is_reconciled`).
+- Mediante la acción *"✅ Conciliar hasta aquí"* por proveedor, el supervisor ingresa el número de factura/remito y marca en bloque esa compra y todas las anteriores pendientes de ese proveedor.
+- Visualmente se traza una línea divisoria morada gruesa con el sello de auditoría (fecha, usuario y número de factura).
+- El filtro *"🟣 Ocultar Conciliados"* permite mantener la vista despejada para la operativa diaria.
+
+### 4.5. Alta Formal de Materiales Nuevos (🔒 Solo Supervisor)
+- Si un operario carga un material que no existe en la base de datos maestra, el sistema lo acepta como texto libre y lo marca como `is_new_material = true` (insignia `⚠️ Alta`).
+- El supervisor cuenta con un modal de alta rápida con validación de nomenclaturas técnicas normalizadas (`BULON`, `CAÑO`, `CHAPA`, `ELECTRODO`) para categorizarlo, asignar precio base e ingresarlo formalmente a `public.materials`.
+
+### 4.6. Despacho por WhatsApp Web y Conversión Quincenal
+- El botón de acción en lote *"🛒 Pedir Agrupado"* agrupa los materiales por proveedor y abre directamente un chat de WhatsApp Web con el texto estructurado del pedido formal en español.
+- Las sumatorias en dólares (US$) de la barra flotante reactiva utilizan la cotización quincenal oficial configurada en `macro_variables` para ese período.
+
 ---
 
 ## 5. Estándar de Idioma de la Plataforma (UI / UX)
