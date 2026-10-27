@@ -101,6 +101,12 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
   - Ficha técnica naval de buques, historial de varadas y estados de puesta en seco.
   - Vinculación a propietarios y clientes.
+- [x] **3.x. Diseño y Especificación Técnica: Submódulo de Control de Gases y Cilindros Prestados (Listo para Implementar):**
+  - **Especificación Oficial:** Registrada en `docs/03_negocio/00_reglas_negocio.md` (Sección 8.9) y `docs/MATRIZ_RESPONSABILIDAD_DATOS.md` (Sección 3 Reglas P-01/P-02 y Sección 6).
+  - **Proveedores Dinámicos de Compras (`suppliers`):** Integración no hardcodeada que alimenta a Pañol desde Compras. Altas iniciales: Air Liquide, Praxair Linde, Ferremat (emergencias) y Propios Astillero Alon Car.
+  - **3 Operaciones de Envases en Submenú de Pañol:** `Primera Entrega` (+1 deuda contratista, -1 lleno pañol), `Recambio 1x1` (saldo neto contratista sin cambio, +1 vacío de marca A, -1 lleno de marca B) y `Devolución Final` (-1 deuda contratista, +1 vacío pañol).
+  - **Dashboard del Pañolero Digital:** KPIs de vacíos por marca listos para reposición (evitando inspección física en patio), matriz de contratistas tipo Sheets con Sticky Headers y botón de reposición 1-clic.
+
 - [ ] **3. Módulo M4: Pañol y Materiales (y Módulo de Terceros):**
   - Catálogo de consumibles y aceros/chapas navales.
   - Vales de retiro de pañol vinculados a OTs (`inventory_transactions.work_order_id` y `work_item_id`).

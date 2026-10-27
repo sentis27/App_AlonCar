@@ -364,3 +364,29 @@ Durante la implementación y prueba real en **Carga de Horas** con el buque `NON
 - **Alta In-Situ de Jefe de Obra (`+ Crear nuevo Jefe de Obra...`):** Al final del selector *"Jefe de Obra (Desde Padrón) \*"*, el usuario dispone de la opción **`+ Crear nuevo Jefe de Obra...`**, que despliega una caja rápida sin salir del modal de OT. Al confirmar, da de alta o actualiza a la persona en `public.workers` (`is_foreman = true`, `admin_center = 'ASTILLERO'`, `status = 'ACTIVO'`) y sincroniza su puesto en `public.organization_roles` (`department = 'Operaciones'`, `security_level = 'SUPERVISOR'`), dejándolo inmediatamente seleccionado en la OT.
 - **Limpieza de Campos en Modal OT:** El campo de comentario se denomina limpiamente **`"Comentario Auxiliar"`** (sin referencias a columnas de Excel) y se elimina el campo redundante de *Nº Comprobante / Remito* de la creación de OT (gestionado exclusivamente en su circuito administrativo correspondiente).
 
+
+
+### 8.9. Submódulo de Control de Gases y Cilindros Prestados (M4 Pañol y Compras)
+- **Objetivo Operativo:** Controlar la entrega, devolución y canje de tubos de gases (Oxígeno, Baterías, CO2, Argón, Tubo Gas 45kg, Garrafas) con contratistas, talleres y proveedores, eliminando la necesidad de inspección física en patio para saber de qué proveedor es cada tubo vacío a reponer.
+- **Proveedores Dinámicos desde Compras (`suppliers`):**
+  - La lista de proveedores no es estática. Se alimenta dinámicamente del catálogo de Compras (`public.suppliers`), precargando los 3 proveedores reales actuales:
+    1. `Air Liquide` (Proveedor Habitual)
+    2. `Praxair Linde` (Proveedor Habitual)
+    3. `Ferremat` (Proveedor de Emergencias)
+    4. `Propios Astillero Alon Car` (Envases propiedad de la empresa)
+  - Cualquier nuevo proveedor dado de alta en Compras queda disponible de forma automática para el pañolero.
+- **Las 3 Operaciones de Trazabilidad de Envases (Submenú de Gases en Pañol):**
+  - Cuando en el formulario de Pañol se selecciona un material perteneciente a la categoría/rubro `"GASES"`, el sistema despliega el submenú de trazabilidad con 3 botones de operación:
+    1. **`[ Primera Entrega ]` (Nueva salida a obra sin devolución):**
+       - Requiere: Proveedor del tubo lleno que se entrega (`supplier_delivered_id`).
+       - Impacto: Suma `+1` tubo a la deuda acumulada del contratista y resta `-1` tubo lleno del stock en pañol de ese proveedor.
+    2. **`[ Recambio (1 x 1) ]` (Mano a mano con soporte de cruce de marcas):**
+       - Requiere: Proveedor del tubo vacío devuelto (`supplier_returned_id`) y Proveedor del tubo lleno entregado (`supplier_delivered_id`).
+       - Impacto en Contratista: **Saldo total sin cambio (`0`)**, el contratista sigue debiendo la misma cantidad de envases, pero se actualiza la tenencia de la marca en su poder.
+       - Impacto en Pañol: Suma `+1` tubo vacío al patio del proveedor entrante (listo para canje) y resta `-1` tubo lleno del stock del proveedor saliente.
+    3. **`[ Devolución Final ]` (Reingreso de vacío por fin de trabajo):**
+       - Requiere: Proveedor del envase devuelto (`supplier_returned_id`).
+       - Impacto: Resta `-1` de la deuda del contratista y suma `+1` tubo vacío al patio de ese proveedor.
+- **Dashboard del Pañolero ("DETALLE DE TUBOS CONTRATISTAS" Digital):**
+  - **KPIs Superiores de Reposición por Proveedor:** Muestra en tiempo real los tubos vacíos acumulados por cada proveedor activo en Compras (ej: `Air Liquide: 10 vacíos`, `Praxair Linde: 4 vacíos`, `Ferremat: 2 vacíos`) con botón de acción directa `[ Generar Pedido de Reposición (N) ]`.
+  - **Matriz de Saldos por Contratista (Tipo Sheets con Sticky Headers):** Rejilla con inmovilización vertical de encabezados (`sticky top-0 z-20 bg-slate-950`) que desglosa por fila a cada contratista y por columna a cada gas, con acceso a su bitácora histórica de retiros y devoluciones en 1 clic.

@@ -103,6 +103,34 @@ Cada registro en el Catálogo de Requisitos (`data_requirements`) y en la cola d
 
 ---
 
+### 📦 Módulo 3: Pañol, Materiales y Control de Gases Navales
+
+#### Regla P-01: Reclamo de Cilindros con Retención Prolongada (>15 días)
+* **Código:** `REQ_PANOL_CILINDRO_RETENCION_PROLONGADA`
+* **Módulo:** `panol`
+* **Campo Clave:** `gas_cylinder_movements.movement_date` (acumulado por contratista)
+* **Trigger:** Contratista o taller retiene tubos en su poder por más de 15 días consecutivos sin registrar recambio ni devolución.
+* **Rol Responsable:** `panolero` / `supervisor_varadero`
+* **Parámetros de Alerta:**
+  * Horario de aviso: `10:30 hs`
+  * Frecuencia: `SEMANAL` (Martes)
+  * Límite de intentos: `3 intentos` (luego escala a Administración para imputar costo de envase a liquidación).
+* **Mensaje Tipo WhatsApp:**
+  > *"Astillero Alon Car - Pañol: Hola [Nombre Contratista], figuran en su poder [N] cilindros de [Tipo Gas] desde hace más de 15 días imputados a la obra [Barco]. Por favor, acerque los envases vacíos a pañol para su recambio o devolución."*
+
+#### Regla P-02: Alerta de Reposición por Stock Crítico de Tubos Vacíos
+* **Código:** `REQ_PANOL_REPOSICION_TUBOS_VACIOS`
+* **Módulo:** `compras` / `panol`
+* **Campo Clave:** `gas_cylinder_stock.empty_cylinders_count` (por proveedor)
+* **Trigger:** La cantidad de envases vacíos acumulados en patio para un proveedor supera el umbral de pedido (ej: >= 5 tubos de Air Liquide, >= 5 de Praxair Linde o >= 3 de Ferremat).
+* **Rol Responsable:** `encargado_compras` / `panolero`
+* **Parámetros de Alerta:**
+  * Horario: `08:30 hs` | Frecuencia: `DIARIO` (mientras persista el stock vacío) | Límite: `4 intentos`.
+* **Mensaje Tipo WhatsApp:**
+  > *"Astillero Alon Car - Stock: Hay [N] tubos vacíos de [Proveedor] listos en pañol para canje. Ingrese a la app para emitir la orden de reposición con 1 clic."*
+
+---
+
 ## 4. Datos y Reglas Pendientes de Definir (Recordatorio por Sesión)
 
 Para las próximas sesiones, conforme se sigan construyendo los módulos, se debe definir con el usuario:
@@ -149,3 +177,33 @@ Por directiva de arquitectura y experiencia de usuario establecida con el usuari
 2. **Prohibición de Desplazamiento Horizontal Innecesario:**
    - Todo el ancho de pantalla disponible debe ser aprovechado. La información principal debe permanecer siempre a la vista sin requerir scroll de costado en monitores de escritorio.
 
+
+
+---
+
+## 6. Arquitectura Operativa: Submódulo de Control de Gases y Cilindros Prestados
+
+### 6.1. Proveedores Dinámicos desde Compras (`suppliers`)
+- La lista de proveedores de gases no está fija en código; se vincula directamente a la tabla `public.suppliers` del módulo de Compras.
+- **Proveedores Iniciales Registrados:**
+  1. `Air Liquide` (Habitual)
+  2. `Praxair Linde` (Habitual)
+  3. `Ferremat` (Emergencias)
+  4. `Propios Astillero Alon Car` (Cilindros y garrafas propiedad de la empresa)
+- Al incorporar un nuevo proveedor en Compras, queda inmediatamente disponible en los selectores de Pañol.
+
+### 6.2. Modelo de Trazabilidad: Las 3 Operaciones de Envases
+Al seleccionar cualquier material del rubro `GASES` en el formulario de retiro de Pañol, el pañolero cuenta con 3 operaciones estandarizadas:
+1. **`Primera Entrega` (Nueva salida a obra):**
+   - Registra: Proveedor del tubo lleno entregado (`supplier_delivered_id`).
+   - Impacto: Suma `+1` tubo a la deuda del contratista; resta `-1` tubo lleno en pañol de ese proveedor.
+2. **`Recambio (1 x 1)` (Mano a mano con cruce de marcas):**
+   - Registra: Proveedor del tubo devuelto vacío (`supplier_returned_id`) y Proveedor del tubo lleno retirado (`supplier_delivered_id`).
+   - Impacto: **Saldo neto del contratista sin variación (`0`)**; el Pañol suma `+1` vacío del proveedor entrante (listo para reponer) y resta `-1` lleno del proveedor saliente.
+3. **`Devolución Final` (Desafectación de obra):**
+   - Registra: Proveedor del envase devuelto vacío (`supplier_returned_id`).
+   - Impacto: Resta `-1` de la deuda del contratista; suma `+1` tubo vacío en pañol de ese proveedor.
+
+### 6.3. Dashboard del Pañolero (DETALLE DE TUBOS DIGITAL)
+- **Panel Superior de Reposición:** Tarjetas en tiempo real por proveedor activo (`Air Liquide: X vacíos`, `Praxair Linde: Y vacíos`, `Ferremat: Z vacíos`) con botón `[ Pedir Reposición (N) ]` para solicitar canje sin tener que salir al patio a inspeccionar.
+- **Matriz de Saldos por Contratista:** Visualización tipo Sheets con Sticky Headers (`sticky top-0 z-20 bg-slate-950`), selector de filas a tu antojo y barra inferior reactiva de totales, con apertura de bitácora histórica por contratista en 1 clic.
