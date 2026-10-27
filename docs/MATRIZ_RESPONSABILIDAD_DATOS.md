@@ -118,16 +118,42 @@ Cada registro en el Catálogo de Requisitos (`data_requirements`) y en la cola d
 * **Mensaje Tipo WhatsApp:**
   > *"Astillero Alon Car - Pañol: Hola [Nombre Contratista], figuran en su poder [N] cilindros de [Tipo Gas] desde hace más de 15 días imputados a la obra [Barco]. Por favor, acerque los envases vacíos a pañol para su recambio o devolución."*
 
-#### Regla P-02: Alerta de Reposición por Stock Crítico de Tubos Vacíos
-* **Código:** `REQ_PANOL_REPOSICION_TUBOS_VACIOS`
+#### Regla P-02: Reposición de Tubos y Canje de Vacíos por Proveedor
+
+##### Regla P-02.A: Reposición Semanal Air Liquide
+* **Código:** `REQ_PANOL_REPOSICION_AIRLIQUIDE`
 * **Módulo:** `compras` / `panol`
-* **Campo Clave:** `gas_cylinder_stock.empty_cylinders_count` (por proveedor)
-* **Trigger:** La cantidad de envases vacíos acumulados en patio para un proveedor supera el umbral de pedido (ej: >= 5 tubos de Air Liquide, >= 5 de Praxair Linde o >= 3 de Ferremat).
-* **Rol Responsable:** `encargado_compras` / `panolero`
-* **Parámetros de Alerta:**
-  * Horario: `08:30 hs` | Frecuencia: `DIARIO` (mientras persista el stock vacío) | Límite: `4 intentos`.
+* **Proveedor:** `Air Liquide`
+* **Frecuencia del Ciclo:** `SEMANAL`
+* **Día y Horario Límite de Pedido:** **Martes antes de las 12:00 hs** (Mediodía).
+* **Día de Entrega / Recepción:** **Miércoles**.
+* **Canal de Pedido:** Llamado telefónico a Central de Pedidos: **`0810-222-5272`**.
+* **Nº de Cliente Alon Car:** **`2234867`**.
+* **Trigger de Alerta:** Martes a las **09:00 hs** si hay $\ge 1$ tubo vacío de Air Liquide en patio.
+* **Rol Responsable:** `encargado_compras` / `panolero`.
 * **Mensaje Tipo WhatsApp:**
-  > *"Astillero Alon Car - Stock: Hay [N] tubos vacíos de [Proveedor] listos en pañol para canje. Ingrese a la app para emitir la orden de reposición con 1 clic."*
+  > *"Astillero Alon Car: Hoy es MARTES DE PEDIDO AIR LIQUIDE. Hay [N] tubos vacíos en patio listos para canjear (reciben mañana miércoles). Recordá llamar antes de las 12:00 hs al 0810-222-5272 indicando el Nº de Cliente 2234867."*
+
+##### Regla P-02.B: Reposición Quincenal Praxair Linde
+* **Código:** `REQ_PANOL_REPOSICION_PRAXAIR`
+* **Módulo:** `compras` / `panol`
+* **Proveedor:** `Praxair Linde`
+* **Frecuencia del Ciclo:** `QUINCENAL` (1 lunes cada 15 días).
+* **Día de Pedido:** **Lunes de la quincena correspondiente**.
+* **Día de Entrega / Recepción:** **Martes**.
+* **Canal de Pedido:** Portal Web de Clientes o llamado al representante comercial *(datos de contacto pendientes de confirmar)*.
+* **Trigger de Alerta:** Lunes de quincena a las **09:00 hs** si hay $\ge 1$ tubo vacío de Praxair Linde.
+* **Rol Responsable:** `encargado_compras` / `panolero`.
+* **Mensaje Tipo WhatsApp:**
+  > *"Astillero Alon Car: Hoy es LUNES DE PEDIDO PRAXAIR LINDE. Hay [N] tubos vacíos en patio para canjear (reciben mañana martes). Ingresá al portal web o contactá al representante comercial para emitir la orden."*
+
+##### Regla P-02.C: Reposición de Emergencias Ferremat
+* **Código:** `REQ_PANOL_REPOSICION_FERREMAT`
+* **Módulo:** `compras` / `panol`
+* **Proveedor:** `Ferremat`
+* **Frecuencia del Ciclo:** `A DEMANDA / EMERGENCIAS` (sin día fijo programado).
+* **Trigger de Alerta:** Stock de seguridad crítico en obra que no puede esperar al ciclo semanal/quincenal.
+* **Rol Responsable:** `panolero` / `encargado_compras`.
 
 ---
 
@@ -150,6 +176,7 @@ Para las próximas sesiones, conforme se sigan construyendo los módulos, se deb
 - [ ] **Módulo de Pañol / Materiales y Compras:**
   * ¿Qué alerta se dispara si un contratista retira materiales sin registrar horas imputadas a esa OT?
   * Responsable de compras cuando un ítem de pañol entra en stock crítico (< stock mínimo).
+- [ ] **Datos de Contacto Praxair Linde:** Confirmar portal web, usuario y teléfono/contacto comercial.
 - [ ] **Endpoint y Credenciales de Evolution API:**
   * Registrar la URL base del servidor Evolution API y la API Key de la instancia para los envíos automatizados.
 
@@ -186,8 +213,8 @@ Por directiva de arquitectura y experiencia de usuario establecida con el usuari
 ### 6.1. Proveedores Dinámicos desde Compras (`suppliers`)
 - La lista de proveedores de gases no está fija en código; se vincula directamente a la tabla `public.suppliers` del módulo de Compras.
 - **Proveedores Iniciales Registrados:**
-  1. `Air Liquide` (Habitual)
-  2. `Praxair Linde` (Habitual)
+  1. `Air Liquide` (Habitual - Ciclo semanal: pedido martes <12hs tel 0810-222-5272, cliente 2234867, entrega miércoles)
+  2. `Praxair Linde` (Habitual - Ciclo quincenal: pedido 1 lunes c/15 días vía web/comercial, entrega martes)
   3. `Ferremat` (Emergencias)
   4. `Propios Astillero Alon Car` (Cilindros y garrafas propiedad de la empresa)
 - Al incorporar un nuevo proveedor en Compras, queda inmediatamente disponible en los selectores de Pañol.

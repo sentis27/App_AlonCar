@@ -369,11 +369,19 @@ Durante la implementación y prueba real en **Carga de Horas** con el buque `NON
 ### 8.9. Submódulo de Control de Gases y Cilindros Prestados (M4 Pañol y Compras)
 - **Objetivo Operativo:** Controlar la entrega, devolución y canje de tubos de gases (Oxígeno, Baterías, CO2, Argón, Tubo Gas 45kg, Garrafas) con contratistas, talleres y proveedores, eliminando la necesidad de inspección física en patio para saber de qué proveedor es cada tubo vacío a reponer.
 - **Proveedores Dinámicos desde Compras (`suppliers`):**
-  - La lista de proveedores no es estática. Se alimenta dinámicamente del catálogo de Compras (`public.suppliers`), precargando los 3 proveedores reales actuales:
-    1. `Air Liquide` (Proveedor Habitual)
-    2. `Praxair Linde` (Proveedor Habitual)
-    3. `Ferremat` (Proveedor de Emergencias)
-    4. `Propios Astillero Alon Car` (Envases propiedad de la empresa)
+  - La lista de proveedores no es estática. Se alimenta dinámicamente del catálogo de Compras (`public.suppliers`), precargando los 3 proveedores reales actuales y sus circuitos operativos:
+    1. `Air Liquide` (Habitual):
+       - Ciclo: **Semanal**.
+       - Pedido: **Martes antes de las 12:00 hs** (Mediodía). Teléfono Central: **`0810-222-5272`**, Nº Cliente Alon Car: **`2234867`**.
+       - Entrega / Recepción en Astillero: **Miércoles**.
+    2. `Praxair Linde` (Habitual):
+       - Ciclo: **Quincenal** (1 lunes cada 15 días).
+       - Pedido: **Lunes**. Vía Portal Web o llamado al representante comercial *(datos pendientes de confirmación)*.
+       - Entrega / Recepción en Astillero: **Martes**.
+    3. `Ferremat` (Emergencias):
+       - Ciclo: **A demanda** cuando se quiebra el stock de seguridad antes de los días de entrega programada.
+    4. `Propios Astillero Alon Car`:
+       - Envases y garrafas propiedad fija del astillero.
   - Cualquier nuevo proveedor dado de alta en Compras queda disponible de forma automática para el pañolero.
 - **Las 3 Operaciones de Trazabilidad de Envases (Submenú de Gases en Pañol):**
   - Cuando en el formulario de Pañol se selecciona un material perteneciente a la categoría/rubro `"GASES"`, el sistema despliega el submenú de trazabilidad con 3 botones de operación:
