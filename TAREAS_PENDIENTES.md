@@ -97,6 +97,19 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [x] **7. Terceros — Botón de Evolución Compacto (Terceros.jsx):**
   - Icono exclusivo de estrella sin texto visible para evitar solapamientos.
 
+- [x] **8. Módulo de Compras M4b (Compras.jsx + Migración 0024):**
+  - **Reemplazo Integral de GS-006:** Depuración de 32 a 24 columnas operativas.
+  - **Catálogo Unificado de Proveedores (`public.suppliers`):** 13 proveedores iniciales precargados con datos de CUIT, rubro, contacto, teléfono WhatsApp y parámetros de la Regla P-02 para Gases (Air Liquide cliente 2234867, pedidos martes <12hs al 0810-222-5272; Praxair Linde quincenal; Ferremat contingencia).
+  - **Registro de Compras (`public.purchase_orders`):** Carga directa para buques y OTs (`RECIB.COMP.DIRECT`) vs reposición de Pañol (`RECIBIDO`), con autocompletado desde `materials` y alerta de materiales nuevos sin registro.
+  - **Inmovilización de Encabezados (Sticky Header tipo Excel):** `sticky top-0 z-20 bg-slate-950` congelado en pantalla.
+  - **Selección Libre + Barra Flotante Reactiva de Totales:** Modo dual (Manual vs Todo el filtro), sumatorias en vivo en AR$, US$ (cotización quincenal oficial de `macro_variables`), promedios, y acciones en lote:
+    - `[ 🛒 Pedir Agrupado ]`: Abre directamente chat de WhatsApp Web con texto formal preformateado y cambia estado a `PEDIDO`.
+    - `[ ✅ Recibir ]`: Actualiza estado a `RECIBIDO` o `RECIB.COMP.DIRECT`.
+  - **Línea Morada de Conciliación de Facturas:** Acción "✅ Conciliar hasta aquí" por proveedor con separación visual y registro de número de comprobante/factura.
+  - **Gestor Documental 1-Clic (`public.purchase_documents`):** Bucket `compras` en Supabase Storage con almacenamiento estructurado por año y rubro.
+  - **Alta Formal de Materiales (🔒 Solo Supervisor):** Asistente guiado de nomenclatura técnica estándar (bulones, caños, chapas) y categorización para alimentar la base maestra.
+
+
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
   - Ficha técnica naval de buques, historial de varadas y estados de puesta en seco.
