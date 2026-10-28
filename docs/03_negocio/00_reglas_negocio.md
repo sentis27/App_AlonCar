@@ -57,12 +57,20 @@ El formulario de Pañol permite seleccionar la OT una sola vez y agregar una gri
 ### 4.1. Visibilidad y Doble Modo de Interfaz
 - **Modo Solicitud Simple (Personal de Pañol / Obra):** Formulario y grilla operativos. Para facilitar el cotejo en el portón al recibir el camión con el remito físico, el pañolero **visualiza la columna PROVEEDOR** y dispone de filtro por proveedor. El selector de **ESTADO ES EDITABLE** con las opciones de recepción física: `PEDIR`, `RECIBIDO` (ingreso a pañol), `RECIB.COMP.DIRECT` (entrega directa al buque), `PEDIDO INCOMPLETO` (recepción parcial), `RECIBIDO 2` (material provisto por armador), `CANCELADOS` y `SE COMPRA?`. Se ocultan datos comerciales sensibles como cotizaciones del sistema y comparadores económicos.
 - **Modo Gestión Completa (Encargado de Compras y Supervisión):** Despliega la totalidad de columnas analíticas, proveedores, cotizaciones comparadas, fechas estimadas de entrega, botones de WhatsApp Web y acciones de recepción masiva.
-- **KPIs Superiores Interactivos (Filtros en 1 Clic por Grupos y Subgrupos):** Seis tarjetas conmutables con sub-botones independientes: 🟡 *Por Emitir* (`PEDIR` / `SOLICITUD`), 🟣 *Cotizaciones* (`COTIZAR`, `COTIZA.SOLICITUD`, `COTIZACION`, `COTIZA.APROBADA`), 🔵 *En Proveedor* (`PEDIDO` y `PEDIDO INCOMPLETO`), ❓ *SE COMPRA?*, 🟢 *Recibidos* (Pañol / Obra / Facturados) y 🚨 *Gases P-02*.
+- **Estética de Colores por Estado:** La columna de Estado mantiene siempre un fondo oscuro neutro (`bg-slate-950`) sin teñir la celda completa, coloreando únicamente el texto del nombre de cada estado para una lectura limpia y ejecutiva.
+- **KPIs Superiores Interactivos (7 Tarjetas de Filtro en 1 Clic con Subgrupos):**
+  1. 🟡 **1. Por Emitir:** `PEDIR` / `SOLICITUD`.
+  2. 🟣 **2. Cotizaciones:** `COTIZAR`, `COTIZA.SOLICITUD`, `COTIZACION`, `COTIZA.APROBADA`.
+  3. 🔵 **3. En Proveedor:** `PEDIDO` y `PEDIDO INCOMPLETO` (funcional tanto en Vista Simple como en Vista Completa).
+  4. ❓ **4. SE COMPRA?:** Consultas de autorización gerencial pendientes.
+  5. 🆕 **5. Alta Catálogo:** Materiales solicitados con texto libre (`!material_id && !no_catalog_required`) pendientes de catalogación formal, con opción de descarte individual (`[ ] No requiere alta en catálogo`) o descarte masivo en barra flotante (`[ 🚫 Omitir Alta Catálogo (N) ]`).
+  6. 🟢 **6. Recibidos:** `RECIBIDO`, `RECIB.COMP.DIRECT`, `RECIBIDO 2`, `COMP.FACTURADA`.
+  7. 🚨 **7. Gases P-02:** Reposición crítica de cilindros (Air Liquide / Praxair Linde).
 
-### 4.2. Edición Rápida en Celda por Doble Clic (Estilo Excel / Sheets)
+### 4.2. Edición Rápida en Celda por Doble Clic con Buscador de Proveedores (Estilo Excel / Sheets)
 Para evitar la lentitud de abrir modales en tareas rutinarias con muchos datos:
 - **$/U Proveedor:** Doble clic $\rightarrow$ celda se convierte en input numérico in-situ $\rightarrow$ `Enter` o `Blur` guarda inmediatamente en Supabase y actualiza totales.
-- **Proveedor:** Doble clic $\rightarrow$ menú select desplegable de proveedores $\rightarrow$ selección guarda al instante.
+- **Proveedor (Buscador Reactivo para +300 Proveedores):** Doble clic $\rightarrow$ despliega el selector flotante `InlineSupplierPicker` con campo de búsqueda instantánea por iniciales, rubro o CUIT $\rightarrow$ clic o `Enter` guarda al instante.
 - **Cantidad:** Doble clic $\rightarrow$ input numérico $\rightarrow$ `Enter` guarda.
 - **Solicita:** Doble clic $\rightarrow$ input de texto $\rightarrow$ `Enter` guarda.
 - **Urgencia:** Un solo clic conmuta cíclicamente: `Sin Apuro` $\rightarrow$ `Urgente` $\rightarrow$ `Próxima Salida`.
@@ -104,6 +112,15 @@ Al marcar un ítem en duda técnica/financiera con el estado `SE COMPRA?`:
 - **KPIs de Proveedores:** Filtros rápidos en 1 clic para detectar proveedores sin teléfono, sin email, sin rubro asignado o proveedores de gases bajo Regla P-02.
 - **Multirubro (`trades TEXT[]`):** Admite asociar múltiples especialidades a un mismo proveedor mediante selector interactivo con etiquetas (chips) y creación in-situ de nuevos rubros.
 
+### 4.10. Alta Formal de Material en B.D. Maestra (`NewMaterialModal`) y Homologación de Rubros
+Cuando Compras decide incorporar un insumo nuevo al catálogo maestro (`public.materials`):
+- **Descarte de Falsos Positivos:** Casilla `[ ] No requiere alta en catálogo` para pedidos eventuales con nombres genéricos que no deben ensuciar el padrón ni hacer ruido en el KPI 5.
+- **3 Únicas Categorías Oficiales:** `MATERIALES`, `CONSUMIBLES` y `ELEM.SEGURIDAD` (sin opciones ambiguas adicionales).
+- **Unidad de Medida Desplegable:** Selector oficial (`unidad`, `m2`, `metro lineal`, `kg`, `m3`, `litro`, `rollo`, `caja`, `par`), pre-cargado por deducción automática pero elegible por el usuario.
+- **% de Seguridad (Factor de Merma / Desperdicio Naval):** Selector desplegable con opciones `2%`, **`6%` (por defecto — factor `1.06`)**, `10%`, `15%`, `20%` y `30%`.
+- **Fotografía del Material (`image_url`):** Subida opcional de foto de referencia técnica a Supabase Storage (`compras/catalogo_materiales/`).
+- **Solicitud de Apertura de Nuevo Rubro y Alerta al Administrador:** Si el rubro no existe en el desplegable, el comprador activa `[ ] Solicitar apertura de nuevo rubro` y escribe su sugerencia (`suggested_rubro`). El material se da de alta inmediatamente con `rubro_status = 'PENDIENTE_HOMOLOGACION'` y dispara una alerta en el **Dashboard del Administrador (`/admin` $\rightarrow$ Pestaña Alertas)** para que el Administrador homologue el rubro oficial en 1 clic.
+
 ---
 
 ## 5. Estándar de Idioma de la Plataforma (UI / UX)
@@ -124,12 +141,13 @@ El operario de compras no necesita organizar carpetas externas ni copiar links. 
 5. `FICHA_TECNICA`: Manuales o fichas técnicas de especificación naval.
 6. `IMAGEN_MUESTRA`: Fotografías de piezas dañadas, croquis o muestras para cotización.
 
-### 6.2. Ciclo de Vida Documental Completo (`DocActionModal`)
-Cada archivo cuenta con 4 acciones operativas directas:
-- **👁️ Ver / Descargar:** Acceso seguro al binario en Supabase Storage.
-- **✏️ Modificar Metadatos:** Edición de descripción, tipo de documento y confidencialidad.
-- **🔄 Reemplazar Archivo:** Sustitución del archivo físico en el bucket conservando el registro relacional.
-- **🗑️ Eliminar:** Borrado sincronizado en Storage y en la tabla `purchase_documents`.
+### 6.2. Carga Dinámica Multi-Adjunto (`+ Agregar otro adjunto`) y Ciclo de Vida Documental
+- **Filas Dinámicas de Carga Múltiple:** Tanto en el gestor de documentos de una orden (`OrderAttachmentsModal`) como en el cargador general (`UploadDocModal`), el botón **`[ ➕ Agregar otro adjunto ]`** añade nuevas filas de carga independientes. Cada fila posee su propio selector de **Tipo de Documento** (ej. subir en simultáneo una `COTIZACION_MATERIAL` y una `FICHA_TECNICA`), selector de archivo y descripción opcional, sin reemplazar los archivos ya cargados.
+- **Acciones por Documento Individual:**
+  - **👁️ Ver / Descargar:** Acceso seguro al binario en Supabase Storage.
+  - **✏️ Modificar Metadatos:** Edición de descripción, tipo de documento y confidencialidad.
+  - **🔄 Reemplazar Archivo:** Sustitución del archivo físico en el bucket conservando el registro relacional.
+  - **🗑️ Eliminar:** Borrado sincronizado en Storage y en la tabla `purchase_documents`.
 
 ### 6.3. Nomenclatura y Almacenamiento Automático
 - **Renombrado Automático:** El sistema renombra el archivo subido sin intervención humana utilizando la fórmula: `{descripcion}-{proveedor}.{extension}`.
@@ -304,11 +322,12 @@ El **Dashboard del Administrador** (`/admin`) centraliza la gobernanza operativa
      - Una quincena bloqueada (`is_locked = TRUE`) queda inmutable contra modificaciones retroactivas de horas, retiros de materiales o tarifas pactadas.
      - Solo un rol con jerarquía `ADMINISTRADOR` puede desbloquearla para ajustes excepcionales debidamente auditados.
 
-3. **Radar Operativo de Consistencia y Desvíos:**
-   - Monitoreo en tiempo real de 3 disparadores clave:
+3. **Radar Operativo de Consistencia, Desvíos y Homologación de Rubros:**
+   - Monitoreo en tiempo real de 4 disparadores clave en `/admin` (Pestaña **Alertas**):
      1. **Prestadores en Semáforo Rojo:** Contratistas cuya tarifa horaria superó en >5% la pauta de Astillero o cuya tarifa en US$ subió >10%.
      2. **Retiros de Pañol sin Horas Imputadas:** Personal o contratistas que retiraron insumos/consumibles de pañol en el período pero no registraron horas de trabajo.
      3. **Partes de Horas Observados:** Horas quincenales en estado pendiente de auditoría o rectificación por supervisión.
+     4. **Nuevos Rubros de Materiales Pendientes de Homologación:** Materiales dados de alta desde Compras con solicitud de apertura de nuevo rubro (`rubro_status = 'PENDIENTE_HOMOLOGACION'`), permitiendo al Administrador editar o confirmar el nombre del rubro oficial en 1 clic.
 
 4. **Perfiles de Puesto, Misiones y Vinculaciones Inter-Departamentales:**
    - La tabla `organization_roles` documenta para cada función directiva y administrativa:

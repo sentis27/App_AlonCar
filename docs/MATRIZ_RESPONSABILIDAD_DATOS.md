@@ -1,6 +1,6 @@
 ---
-version: 1.0
-last_updated: 2026-10-26
+version: 1.2
+last_updated: 2026-10-28
 status: DOCUMENTO_VIVO_ACTIVO
 evolution_api_status: CONECTADO_LISTO
 ---
@@ -157,6 +157,39 @@ Cada registro en el Catálogo de Requisitos (`data_requirements`) y en la cola d
 
 ---
 
+### 🛒 Módulo 4b: Compras, Alta de Materiales y Reclamos de Entrega
+
+#### Regla C-01: Alerta Gerencial "SE COMPRA?" (Decisión Técnica / Presupuestaria)
+* **Código:** `REQ_COMPRAS_DECISION_GERENCIAL`
+* **Módulo:** `compras`
+* **Campo Clave:** `purchase_orders.status = 'SE COMPRA?'`
+* **Trigger:** Una orden de compra se etiqueta con el estado `SE COMPRA?` por duda técnica o presupuestaria.
+* **Roles y Personas Responsables (Configurables en `/admin`):**
+  1. **Hugo Sentis** (Gerente General)
+  2. **Martín Sentis** (Gerente de Operaciones)
+  3. **Jefe de Obra asignado a la OT** del buque correspondiente.
+* **Acción Obligatoria:** Autorizar la adquisición (pasando a `PEDIR` / `COTIZAR`) o desestimarla (`CANCELADOS`).
+
+#### Regla C-02: Recepción Parcial en Pañol y Reclamo Formal de "PEDIDO INCOMPLETO"
+* **Código:** `REQ_COMPRAS_RECLAMO_INCOMPLETO`
+* **Módulo:** `compras` / `panol`
+* **Campos Clave:** `purchase_orders.remito_number`, `received_quantity`, `missing_quantity`, `parent_order_id` y foto de evidencia en `purchase_documents`.
+* **Trigger:** El proveedor entrega una cantidad inferior a la solicitada (ej. se pidieron 20 unidades y llegan 18).
+* **Circuito de Responsabilidad Compartida:**
+  1. **Responsabilidad del Pañolero (Recepción en Portón/Pañol):** Marca `PEDIDO INCOMPLETO`, carga la cantidad recibida física (`18`), registra obligatoriamente el **Nº de Remito** y sube la foto del remito/mercadería. El sistema bifurca automáticamente el registro: las `18` recibidas pasan a `RECIBIDO` (ingresando al stock) y crea una orden hija por las `2` faltantes en estado `PEDIDO INCOMPLETO`.
+  2. **Responsabilidad de Compras (Jorge Sentis / Andrés):** Gestiona el reclamo seleccionando el ítem y pulsando *"Pedir Agrupado"*, lo que abre WhatsApp Web con el reclamo formal precargado:
+     > *"Estimados [Proveedor], acusamos recibo de la entrega para Astillero Alon Car correspondiente a la orden de compra del dia [Fecha Pedido] según Remito N° [Remito]. Sobre el pedido de 20 unidades de [Material], se recibieron físicamente 18 unidades. Quedan pendientes de entrega 2 unidades. Agradecemos nos confirmen la fecha estimada de despacho del saldo faltante. Atte. Departamento de Compras Alon Car S.A."*
+
+#### Regla C-03: Homologación de Nuevo Rubro en Catálogo Maestro de Materiales
+* **Código:** `REQ_CATALOGO_NUEVO_RUBRO`
+* **Módulo:** `compras` / `admin` / `panol`
+* **Campos Clave:** `materials.rubro_status = 'PENDIENTE_HOMOLOGACION'`, `materials.suggested_rubro`
+* **Trigger:** Al dar de alta un nuevo material en la B.D. Maestra desde Compras, el supervisor marca `[x] Solicitar apertura de nuevo rubro` e ingresa un rubro propuesto que aún no existe en la lista oficial.
+* **Rol Responsable:** `admin` (Administrador Central en `/admin` -> Pestaña **Alertas**).
+* **Acción Obligatoria:** Revisar en la bandeja de alertas del Dashboard del Administrador el rubro propuesto, ajustarlo si corresponde y aprobarlo en 1 clic.
+
+---
+
 ## 4. Datos y Reglas Pendientes de Definir (Recordatorio por Sesión)
 
 Para las próximas sesiones, conforme se sigan construyendo los módulos, se debe definir con el usuario:
@@ -203,6 +236,24 @@ Por directiva de arquitectura y experiencia de usuario establecida con el usuari
    - La etiqueta `<thead>` debe llevar las clases `sticky top-0 z-20 bg-slate-950 shadow-sm backdrop-blur-md` y cada celda `<th>` debe poseer `bg-slate-950` para garantizar que el texto scrolleable pase perfectamente por debajo sin superposiciones ni transparencias anómalas.
 2. **Prohibición de Desplazamiento Horizontal Innecesario:**
    - Todo el ancho de pantalla disponible debe ser aprovechado. La información principal debe permanecer siempre a la vista sin requerir scroll de costado en monitores de escritorio.
+
+### ⚡ Estándar 3: Edición In-Situ por Doble Clic con Buscador por Iniciales y Colores Limpios
+1. **Edición Rápida en Celda (Estilo Excel / Sheets):**
+   - Los campos de ajuste frecuente (`$/U Proveedor`, `Proveedor`, `Cantidad`, `Solicita`) se editan directamente con doble clic sobre la celda sin abrir modales.
+   - En selectores con cientos de registros (ej. 300+ proveedores), el doble clic despliega un buscador reactivo por iniciales con soporte de teclado (`Flechas + Enter`).
+2. **Colores por Estado sin Teñir Toda la Celda:**
+   - Los selectores de estado en las tablas mantienen un fondo oscuro neutro (`bg-slate-950`), aplicando el color semántico exclusivamente al texto del nombre del estado.
+3. **Alerta de Filtros Activos y Botón Global de Limpieza:**
+   - Toda vista filtrada exhibe un aviso de alto contraste en la barra flotante inferior y superior con el botón `[ ✕ Limpiar Todo ]` para restablecer la vista completa en 1 clic.
+
+### ⚡ Estándar 3: Edición In-Situ por Doble Clic con Buscador por Iniciales y Colores Limpios
+1. **Edición Rápida en Celda (Estilo Excel / Sheets):**
+   - Los campos de ajuste frecuente (`$/U Proveedor`, `Proveedor`, `Cantidad`, `Solicita`) se editan directamente con doble clic sobre la celda sin abrir modales.
+   - En selectores con cientos de registros (ej. 300+ proveedores), el doble clic despliega un buscador reactivo por iniciales con soporte de teclado (`Flechas + Enter`).
+2. **Colores por Estado sin Teñir Toda la Celda:**
+   - Los selectores de estado en las tablas mantienen un fondo oscuro neutro (`bg-slate-950`), aplicando el color semántico exclusivamente al texto del nombre del estado.
+3. **Alerta de Filtros Activos y Botón Global de Limpieza:**
+   - Toda vista filtrada exhibe un aviso de alto contraste en la barra flotante inferior y superior con el botón `[ ✕ Limpiar Todo ]` para restablecer la vista completa en 1 clic.
 
 
 

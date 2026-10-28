@@ -115,7 +115,9 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - **Doble Modo de Interfaz y Permisos de Pañol:** Modo *"Vista Simple de Solicitud / Recepción"* (expone columna y filtro de Proveedor para cotejar remitos, y selector editable de estados de recepción operativa) vs *"Vista Completa de Compras"*.
   - **KPIs Interactivos Agrupados:** 6 grupos de tarjetas (`Por Emitir`, `Cotizaciones`, `En Proveedor`, `SE COMPRA?`, `Recibidos`, `Gases P-02`) con sub-pills para cada estado operativo individual.
   - **Barra Flotante de Acciones Masivas y Filtros Activos:** Diseño de alto contraste con badge de alerta de filtros activos, botón `[ ✕ Limpiar Filtros ]` (replicado en barra de búsqueda) y asignación masiva de proveedor en 1 clic (`[ 🏢 Asignar Proveedor (N) ]`).
-  - **Catálogo de Proveedores con Doble Vista y Multirubro:** Vista lista con sticky header vs tarjetas/cards, KPIs interactivos (Total, Sin Teléfono, Sin Email, Sin Rubro, Gases P-02) y combobox multirubro (`trades TEXT[]`).
+  - **Catálogo de Proveedores con Doble Vista y Multirubro:** Vista lista con sticky header vs tarjetas/cards, KPIs interactivos (Total, Sin Teléfono, Sin Email, Sin Rubro, Gases P-02), combobox multirubro (`trades TEXT[]`) y buscador rápido in-situ `InlineSupplierPicker` por iniciales para +300 proveedores.
+  - **Alta Formal de Material en B.D. Maestra (`NewMaterialModal`) y KPI 5 "Alta Catálogo":** 3 únicas categorías (`MATERIALES`, `CONSUMIBLES`, `ELEM.SEGURIDAD`), unidad de medida desplegable, % de seguridad desplegable (6% por defecto), subida de foto a Storage, descarte individual/masivo (`no_catalog_required`) y solicitud de apertura de nuevo rubro con alerta y homologación 1-clic en `/admin`.
+  - **Carga Multi-Adjunto Dinámica (`+ Agregar otro adjunto`):** Filas independientes con su propio selector de Tipo de Documento, archivo y descripción en `OrderAttachmentsModal` y `UploadDocModal`.
 
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
@@ -432,5 +434,5 @@ Cuando cambies una prioridad:
 markdown- [ ] **AHORA CRÍTICA** — Descripción (era Media)
 Responsable: Tú + Antigravity (colaborativo)
 
-Última actualización: 2026-10-22
+Última actualización: 2026-10-28
 Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales
