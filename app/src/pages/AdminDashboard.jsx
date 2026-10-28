@@ -267,8 +267,10 @@ export default function AdminDashboard() {
   const [alertSummary, setAlertSummary] = useState({
     redContractorsCount: 0,
     panolWithoutHoursCount: 0,
-    auditedHoursCount: 0
+    auditedHoursCount: 0,
+    pendingRubroCount: 0
   })
+  const [pendingRubroMaterials, setPendingRubroMaterials] = useState([])
 
   useEffect(() => {
     loadRoles()
@@ -894,17 +896,39 @@ export default function AdminDashboard() {
   // =============================================================
   async function loadAlertSummary() {
     try {
-      const [rateCardsRes] = await Promise.all([
-        supabase.from('rate_cards').select('rate_oficial_ars, admin_center, entity_name, period').limit(200)
+      const [rateCardsRes, pendingMatsRes] = await Promise.all([
+        supabase.from('rate_cards').select('rate_oficial_ars, admin_center, entity_name, period').limit(200),
+        supabase.from('materials').select('*').eq('rubro_status', 'PENDIENTE_HOMOLOGACION').order('created_at', { ascending: false })
       ])
+      const pendingMats = pendingMatsRes.data || []
+      setPendingRubroMaterials(pendingMats)
       // Cálculo básico de alertas
       setAlertSummary({
         redContractorsCount: 2, // Alertas activas según semáforo
         panolWithoutHoursCount: 1, // Casos de retiro de pañol sin horas
-        auditedHoursCount: 4 // Horas observadas en auditoría
+        auditedHoursCount: 4, // Horas observadas en auditoría
+        pendingRubroCount: pendingMats.length
       })
     } catch (err) {
       console.error('Error cargando alertas:', err)
+    }
+  }
+
+  async function handleApproveMaterialRubro(materialId, finalRubro) {
+    if (!finalRubro || !finalRubro.trim()) return alert('Debe indicar el rubro definitivo.')
+    try {
+      const { error } = await supabase
+        .from('materials')
+        .update({
+          rubro: finalRubro.trim().toUpperCase(),
+          rubro_status: 'APROBADO'
+        })
+        .eq('id', materialId)
+      if (error) throw error
+      setPendingRubroMaterials((prev) => prev.filter((m) => m.id !== materialId))
+      setAlertSummary((prev) => ({ ...prev, pendingRubroCount: Math.max(0, (prev.pendingRubroCount || 1) - 1) }))
+    } catch (err) {
+      alert('Error homologando rubro: ' + err.message)
     }
   }
 
@@ -1743,7 +1767,7 @@ export default function AdminDashboard() {
       {/* ========================================================================= */}
       {activeTab === 'alertas' && (
         <div className="space-y-5 animate-in fade-in duration-150">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-slate-900/90 border border-rose-900/40 rounded-2xl p-5 shadow-xl space-y-2">
               <div className="flex items-center justify-between text-xs text-rose-400 font-bold uppercase">
                 <span>Contratistas en Zona Roja</span>
@@ -1782,6 +1806,93 @@ export default function AdminDashboard() {
                 Registros diarios marcados con códigos R, RR o RRR pendientes de resolución técnica.
               </p>
             </div>
+
+            <div className="bg-slate-900/90 border border-purple-900/50 rounded-2xl p-5 shadow-xl space-y-2">
+              <div className="flex items-center justify-between text-xs text-purple-400 font-bold uppercase">
+                <span>Nuevos Rubros de Materiales</span>
+                <Package className="w-4 h-4 text-purple-400" />
+              </div>
+              <div className="text-3xl font-black text-purple-400 font-mono">
+                {pendingRubroMaterials.length}
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Materiales dados de alta en Compras con solicitud de apertura de nuevo rubro para Pañol.
+              </p>
+            </div>
+          </div>
+
+          {/* BANDEJA DE RESOLUCIÓN: SOLICITUDES DE NUEVO RUBRO DE MATERIALES */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                  <Package className="w-4 h-4 text-purple-400" />
+                  Solicitudes de Apertura / Ajuste de Rubro en Catálogo de Materiales
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Cuando Compras da de alta un material cuyo rubro no existe, queda registrado aquí para que el Administrador valide o ajuste el nombre del rubro definitivo.
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-purple-950 border border-purple-800 text-purple-300 text-xs font-bold">
+                {pendingRubroMaterials.length} pendiente(s)
+              </span>
+            </div>
+
+            {pendingRubroMaterials.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl bg-slate-950/40">
+                No hay solicitudes pendientes de apertura de rubro en el catálogo maestro de materiales.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[10px]">
+                      <th className="py-2.5 px-3">Material Creado</th>
+                      <th className="py-2.5 px-3">Categoría</th>
+                      <th className="py-2.5 px-3">Unidad / % Seg.</th>
+                      <th className="py-2.5 px-3">Rubro Propuesto (Editable)</th>
+                      <th className="py-2.5 px-3 text-center">Acción Administrador</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {pendingRubroMaterials.map((mat) => (
+                      <tr key={mat.id} className="hover:bg-slate-800/40">
+                        <td className="py-2.5 px-3 font-bold text-white">{mat.name}</td>
+                        <td className="py-2.5 px-3">
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-semibold text-[10px]">
+                            {mat.category}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-300 font-mono">
+                          {mat.unit_measure} • {Math.round(((Number(mat.security_factor) || 1.06) - 1) * 100)}%
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="text"
+                            defaultValue={mat.suggested_rubro || ''}
+                            id={`rubro-input-${mat.id}`}
+                            className="bg-slate-950 border border-purple-500/50 rounded-lg px-2.5 py-1 text-xs text-purple-200 font-bold uppercase focus:outline-none focus:border-purple-400"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const inputEl = document.getElementById(`rubro-input-${mat.id}`)
+                              const val = inputEl ? inputEl.value : mat.suggested_rubro
+                              handleApproveMaterialRubro(mat.id, val)
+                            }}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs cursor-pointer transition-colors"
+                          >
+                            ✓ Aprobar y Asignar Rubro
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

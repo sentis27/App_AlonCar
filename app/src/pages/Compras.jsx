@@ -54,24 +54,24 @@ import {
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
-// Estados válidos según GS-006
+// Estados válidos según GS-006 (Colores de texto puros sin teñir fondo completo)
 const STATUS_OPTIONS = [
-  { value: 'TODOS', label: 'Todos los Estados' },
-  { value: 'PEDIR', label: 'PEDIR (Por Emitir)', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
-  { value: 'SOLICITUD', label: 'SOLICITUD (Pedido Inicial)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
-  { value: 'PEDIDO', label: 'PEDIDO (Emitido a Prov.)', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
-  { value: 'COTIZACION', label: 'COTIZACION (En Evaluación)', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
-  { value: 'COTIZAR', label: 'COTIZAR (A Pedir Precio)', color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40' },
-  { value: 'COTIZA.SOLICITUD', label: 'COTIZA.SOLICITUD (Esperando)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
-  { value: 'COTIZA.APROBADA', label: 'COTIZA.APROBADA (Aprobada)', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
-  { value: 'COTIZA.RECHAZADA', label: 'COTIZA.RECHAZADA (Rechazada)', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
-  { value: 'RECIBIDO', label: 'RECIBIDO (Ingresó a Pañol)', color: 'bg-emerald-500/30 text-emerald-200 border-emerald-400/50' },
-  { value: 'RECIB.COMP.DIRECT', label: 'RECIB.COMP.DIRECT (Imputado a Buque)', color: 'bg-cyan-500/30 text-cyan-200 border-cyan-400/50' },
-  { value: 'RECIBIDO 2', label: 'RECIBIDO 2 (Material de Cliente)', color: 'bg-slate-500/20 text-slate-300 border-slate-500/40' },
-  { value: 'PEDIDO INCOMPLETO', label: 'PEDIDO INCOMPLETO (Parcial)', color: 'bg-orange-500/20 text-orange-300 border-orange-500/40' },
-  { value: 'SE COMPRA?', label: 'SE COMPRA? (Duda)', color: 'bg-pink-500/20 text-pink-300 border-pink-500/40' },
-  { value: 'CANCELADOS', label: 'CANCELADOS', color: 'bg-red-500/20 text-red-400 border-red-500/40' },
-  { value: 'NO VENDEN', label: 'NO VENDEN', color: 'bg-slate-700/50 text-slate-400 border-slate-600' }
+  { value: 'TODOS', label: 'Todos los Estados', textColor: 'text-slate-300' },
+  { value: 'PEDIR', label: 'PEDIR (Por Emitir)', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40', textColor: 'text-amber-400' },
+  { value: 'SOLICITUD', label: 'SOLICITUD (Pedido Inicial)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', textColor: 'text-yellow-400' },
+  { value: 'PEDIDO', label: 'PEDIDO (Emitido a Prov.)', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40', textColor: 'text-blue-400' },
+  { value: 'COTIZACION', label: 'COTIZACION (En Evaluación)', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40', textColor: 'text-purple-400' },
+  { value: 'COTIZAR', label: 'COTIZAR (A Pedir Precio)', color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40', textColor: 'text-indigo-400' },
+  { value: 'COTIZA.SOLICITUD', label: 'COTIZA.SOLICITUD (Esperando)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', textColor: 'text-yellow-300' },
+  { value: 'COTIZA.APROBADA', label: 'COTIZA.APROBADA (Aprobada)', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', textColor: 'text-emerald-400' },
+  { value: 'COTIZA.RECHAZADA', label: 'COTIZA.RECHAZADA (Rechazada)', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', textColor: 'text-rose-400' },
+  { value: 'RECIBIDO', label: 'RECIBIDO (Ingresó a Pañol)', color: 'bg-emerald-500/30 text-emerald-200 border-emerald-400/50', textColor: 'text-emerald-400' },
+  { value: 'RECIB.COMP.DIRECT', label: 'RECIB.COMP.DIRECT (Imputado a Buque)', color: 'bg-cyan-500/30 text-cyan-200 border-cyan-400/50', textColor: 'text-cyan-400' },
+  { value: 'RECIBIDO 2', label: 'RECIBIDO 2 (Material de Cliente)', color: 'bg-slate-500/20 text-slate-300 border-slate-500/40', textColor: 'text-slate-300' },
+  { value: 'PEDIDO INCOMPLETO', label: 'PEDIDO INCOMPLETO (Parcial)', color: 'bg-orange-500/20 text-orange-300 border-orange-500/40', textColor: 'text-orange-400' },
+  { value: 'SE COMPRA?', label: 'SE COMPRA? (Duda)', color: 'bg-pink-500/20 text-pink-300 border-pink-500/40', textColor: 'text-pink-400' },
+  { value: 'CANCELADOS', label: 'CANCELADOS', color: 'bg-red-500/20 text-red-400 border-red-500/40', textColor: 'text-rose-500' },
+  { value: 'NO VENDEN', label: 'NO VENDEN', color: 'bg-slate-700/50 text-slate-400 border-slate-600', textColor: 'text-slate-500' }
 ]
 
 // Lista estándar de rubros de proveedores para combobox
@@ -91,6 +91,86 @@ const STANDARD_TRADES = [
   'MECANICA',
   'SEGURIDAD',
   'LUBRICANTES'
+]
+
+// Lista oficial de Rubros de Materiales para B.D. Maestra (Se vinculará a tabla de rubros en Módulo Pañol)
+const CATALOG_RUBROS = [
+  'ABRAZADERA',
+  'ACC. ALBAÑILERIA',
+  'ACC. CINTAS PESCA',
+  'ACC. HIDRAULICA',
+  'ACC. PINTURA',
+  'ACCESORIOS',
+  'ACEITES',
+  'ACOPLE/ADAPTADOR',
+  'ALBAÑILERIA',
+  'ANGULOS',
+  'ARANDELAS',
+  'BOMBAS',
+  'BRIDAS',
+  'BRONCE',
+  'BUJE',
+  'BULONES',
+  'BURLETES',
+  'CADENAS',
+  'CAÑO',
+  'CAÑO COBRE',
+  'CAÑO INOX',
+  'CAÑO PVC',
+  'CHAPAS',
+  'ELECTRICIDAD',
+  'ELECTRODOS',
+  'ELEM. SEGURIDAD',
+  'EQUIPO ESPECIAL',
+  'FABRICACION',
+  'GASES',
+  'GRIFERIA',
+  'HERRAJES',
+  'HERRAMIENTAS',
+  'INS.MECANICA',
+  'JUNTAS',
+  'LIMPIEZA',
+  'MACIZO',
+  'MADERA',
+  'MATERIALES',
+  'MOTOR',
+  'OTROS',
+  'PEGAMENTO',
+  'PERFILES ALUMINIO',
+  'PINTURA',
+  'REDUCCION',
+  'RODAMIENTOS',
+  'SOLDADURA',
+  'TERMOFUSION',
+  'TORNERIA',
+  'VIDRIOS'
+]
+
+// Unidades de medida oficiales del sistema
+const OFFICIAL_UNITS = [
+  { value: 'unidad', label: 'Unidad (un.)' },
+  { value: 'm2', label: 'm2 (Lado x Lado / Área)' },
+  { value: 'metro lineal', label: 'Metro Lineal (m)' },
+  { value: 'kg', label: 'Kilogramos (kg)' },
+  { value: 'm3', label: 'Metros Cúbicos (m3)' },
+  { value: 'Litros', label: 'Litros (L)' },
+  { value: 'Caja', label: 'Caja' },
+  { value: 'Bolsón', label: 'Bolsón' },
+  { value: 'Rollo', label: 'Rollo' },
+  { value: 'Barra', label: 'Barra' },
+  { value: 'Chapa', label: 'Chapa' },
+  { value: 'Tubo', label: 'Tubo' },
+  { value: 'Pieza', label: 'Pieza' }
+]
+
+// Porcentajes de seguridad (Merma / Buffer Naval según módulo Pañol)
+const SECURITY_FACTORS = [
+  { value: 1.02, label: '2% (Factor 1.02)' },
+  { value: 1.06, label: '6% — Predeterminado (Factor 1.06)' },
+  { value: 1.10, label: '10% (Factor 1.10)' },
+  { value: 1.15, label: '15% (Factor 1.15)' },
+  { value: 1.20, label: '20% (Factor 1.20)' },
+  { value: 1.30, label: '30% (Factor 1.30)' }
 ]
 
 // Función obligatoria de deducción estricta de unidad de medida por texto
@@ -309,7 +389,7 @@ export default function Compras() {
     const now = new Date()
 
     purchaseOrders.forEach((po) => {
-      if (po.is_new_material) newMaterialsCount++
+      if (po.is_new_material && !po.no_catalog_required) newMaterialsCount++
       if (po.is_reconciled) countConciliados++
 
       if (po.status === 'PEDIR') countPedir++
@@ -344,6 +424,7 @@ export default function Compras() {
       countCotizacion,
       countCotizaAprob,
       expiredQuotes,
+      enProveedorTotal: countPedido + countPedidoIncompleto,
       countPedido,
       countPedidoIncompleto,
       countSeCompra,
@@ -387,17 +468,12 @@ export default function Compras() {
       setFilterSupplier('TODOS')
     } else {
       setActiveKpiFilter(filterKey)
-      if (filterKey === 'por_emitir') {
+      if (['por_emitir', 'cotizaciones', 'pedidos', 'recibidos', 'conciliados', 'alta_materiales'].includes(filterKey)) {
         setFilterStatus('TODOS')
+        setFilterSupplier('TODOS')
       } else if (['PEDIR', 'SOLICITUD', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA', 'PEDIDO', 'PEDIDO INCOMPLETO', 'SE COMPRA?'].includes(filterKey)) {
         setFilterStatus(filterKey)
         setFilterSupplier('TODOS')
-      } else if (filterKey === 'cotizaciones') {
-        setFilterStatus('TODOS')
-      } else if (filterKey === 'recibidos') {
-        setFilterStatus('TODOS')
-      } else if (filterKey === 'conciliados') {
-        setFilterStatus('TODOS')
       } else if (filterKey === 'gases') {
         const gasSup = suppliers.find((s) => s.is_gas_supplier)
         if (gasSup) setFilterSupplier(gasSup.id)
@@ -428,10 +504,14 @@ export default function Compras() {
         if (!['PEDIR', 'SOLICITUD'].includes(po.status)) return false
       } else if (activeKpiFilter === 'cotizaciones') {
         if (!['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)) return false
+      } else if (activeKpiFilter === 'pedidos') {
+        if (!['PEDIDO', 'PEDIDO INCOMPLETO'].includes(po.status)) return false
       } else if (activeKpiFilter === 'recibidos') {
         if (!['RECIBIDO', 'RECIB.COMP.DIRECT'].includes(po.status)) return false
       } else if (activeKpiFilter === 'conciliados') {
         if (!po.is_reconciled) return false
+      } else if (activeKpiFilter === 'alta_materiales') {
+        if (!po.is_new_material || po.no_catalog_required) return false
       } else if (activeKpiFilter === 'gases') {
         const sup = suppliers.find((s) => s.id === po.supplier_id)
         if (!sup?.is_gas_supplier) return false
@@ -450,7 +530,7 @@ export default function Compras() {
       if (filterChargeType !== 'TODOS' && po.charge_type !== filterChargeType) return false
 
       // Solo nuevos sin registro
-      if (filterNewOnly && !po.is_new_material) return false
+      if (filterNewOnly && (!po.is_new_material || po.no_catalog_required)) return false
 
       // Ocultar conciliados
       if (hideReconciled && po.is_reconciled) return false
@@ -484,6 +564,28 @@ export default function Compras() {
       setPurchaseOrders((prev) =>
         prev.map((p) => (p.id === orderId ? targetOrder : p))
       )
+    }
+  }
+
+  // Omitir / Descartar en bloque la necesidad de "Alta en Catálogo" para ítems seleccionados
+  async function handleBatchDismissCatalogAlta() {
+    if (selectedOrderIds.size === 0) return
+    try {
+      const idsArray = Array.from(selectedOrderIds)
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update({ no_catalog_required: true, updated_at: new Date().toISOString() })
+        .in('id', idsArray)
+      if (error) throw error
+
+      setPurchaseOrders((prev) =>
+        prev.map((p) => (selectedOrderIds.has(p.id) ? { ...p, no_catalog_required: true } : p))
+      )
+      showFeedbackMsg('success', `Se descartó el aviso de Alta en Catálogo para ${idsArray.length} pedido(s).`)
+      setSelectedOrderIds(new Set())
+    } catch (err) {
+      console.error('Error omitiendo alta en lote:', err)
+      showFeedbackMsg('error', 'Error al omitir alta: ' + err.message)
     }
   }
 
@@ -780,7 +882,7 @@ export default function Compras() {
       {activeTab === 'compras' && (
         <>
           {/* TARJETAS DE KPIs SUPERIORES (GRUPOS Y SUBGRUPOS INTERACTIVOS 1-CLIC) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
             {/* KPI 1: Por Emitir (PEDIR + SOLICITUD) */}
             <div
               onClick={() => toggleKpiFilter('por_emitir')}
@@ -884,17 +986,25 @@ export default function Compras() {
             <div
               onClick={() => toggleKpiFilter('pedidos')}
               className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'pedidos' || activeKpiFilter === 'PEDIDO INCOMPLETO'
+                activeKpiFilter === 'pedidos' || activeKpiFilter === 'PEDIDO' || activeKpiFilter === 'PEDIDO INCOMPLETO'
                   ? 'bg-blue-950/70 border-blue-400 shadow-lg shadow-blue-500/20'
                   : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
               }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold text-blue-300 tracking-wider">3. En Proveedor</span>
-                <span className="text-xl font-black text-blue-400">{kpis.countPedido}</span>
+                <span className="text-xl font-black text-blue-400">{kpis.enProveedorTotal}</span>
               </div>
               <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-800/80">
-                <span className="text-[10px] text-slate-400">PEDIDO: {kpis.countPedido}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIDO'); }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                    activeKpiFilter === 'PEDIDO' ? 'bg-blue-500 text-slate-950 font-black' : 'bg-blue-500/10 text-blue-300 hover:bg-blue-500/20'
+                  }`}
+                >
+                  PEDIDO: {kpis.countPedido}
+                </button>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIDO INCOMPLETO'); }}
@@ -907,7 +1017,7 @@ export default function Compras() {
                   }`}
                   title="Recepción parcial / Saldo faltante a reclamar"
                 >
-                  <span>Incompletos:</span>
+                  <span>Incomp.:</span>
                   <span className="font-mono">{kpis.countPedidoIncompleto}</span>
                 </button>
               </div>
@@ -929,12 +1039,33 @@ export default function Compras() {
                 </span>
               </div>
               <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
-                <span>Alerta Gerencial Hugo & Martín</span>
+                <span>Alerta Hugo & Martín</span>
                 <span className="text-pink-400 font-bold underline">Filtrar</span>
               </div>
             </div>
 
-            {/* KPI 5: Recibidos & Conciliados */}
+            {/* KPI 5: Alta en Catálogo (Materiales sin Registro) */}
+            <div
+              onClick={() => toggleKpiFilter('alta_materiales')}
+              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'alta_materiales'
+                  ? 'bg-rose-950/80 border-rose-400 shadow-lg shadow-rose-500/20'
+                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-rose-300 tracking-wider">5. Alta Catálogo</span>
+                <span className={`text-xl font-black ${kpis.newMaterialsCount > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                  {kpis.newMaterialsCount}
+                </span>
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
+                <span>Sin alta en B.D.</span>
+                <span className="text-rose-400 font-bold underline">Filtrar</span>
+              </div>
+            </div>
+
+            {/* KPI 6: Recibidos & Conciliados */}
             <div
               onClick={() => toggleKpiFilter('recibidos')}
               className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
@@ -944,7 +1075,7 @@ export default function Compras() {
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-emerald-300 tracking-wider">5. Recibidos</span>
+                <span className="text-[10px] uppercase font-bold text-emerald-300 tracking-wider">6. Recibidos</span>
                 <span className="text-xl font-black text-emerald-400">{kpis.recibidosTotal}</span>
               </div>
               <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-800/80 text-[9px] font-mono">
@@ -961,7 +1092,7 @@ export default function Compras() {
               </div>
             </div>
 
-            {/* KPI 6: Regla P-02 Alertas de Gases (Air Liquide y Praxair) */}
+            {/* KPI 7: Regla P-02 Alertas de Gases (Air Liquide y Praxair) */}
             <div
               onClick={() => toggleKpiFilter('gases')}
               className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
@@ -973,7 +1104,7 @@ export default function Compras() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Flame className="w-3.5 h-3.5 text-cyan-400" />
-                  <span className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">6. Gases P-02</span>
+                  <span className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">7. Gases P-02</span>
                 </div>
                 <span className="text-[10px] text-cyan-400 underline font-semibold">Filtrar</span>
               </div>
@@ -1254,14 +1385,14 @@ export default function Compras() {
                           <td className="py-2 px-3">
                             <div className="flex items-center gap-1.5">
                               <span className="font-medium text-white">{po.material_name_raw}</span>
-                              {po.is_new_material && isSupervisorOrAdmin && (
+                              {po.is_new_material && !po.no_catalog_required && isSupervisorOrAdmin && (
                                 <button
                                   onClick={() => {
                                     setPendingMaterialOrder(po)
                                     setShowNewMaterialModal(true)
                                   }}
                                   className="px-1.5 py-0.2 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer"
-                                  title="Material sin registro. Clic para formalizar alta."
+                                  title="Material sin registro. Clic para formalizar alta o descartar."
                                 >
                                   <AlertTriangle className="w-2.5 h-2.5" />
                                   <span>Alta</span>
@@ -1354,70 +1485,66 @@ export default function Compras() {
                             </>
                           )}
 
-                          {/* 10. Proveedor (Visible en Ambos Modos y Editable con Doble Clic) */}
-                          <td className="py-2 px-3">
+                          {/* 10. Proveedor (Visible en Ambos Modos y Editable con Doble Clic + Buscador por Iniciales) */}
+                          <td className="py-2 px-3 relative">
                             {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_id' ? (
-                              <select
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => {
-                                  setInlineEdit({ ...inlineEdit, value: e.target.value })
-                                  saveInlineEdit(po.id, 'supplier_id', e.target.value)
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
-                                }}
-                                onBlur={() => saveInlineEdit(po.id, 'supplier_id', inlineEdit.value)}
-                                className="w-36 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
-                              >
-                                <option value="">-- Sin Proveedor --</option>
-                                {suppliers.map((s) => (
-                                  <option key={s.id} value={s.id}>{s.name}</option>
-                                ))}
-                              </select>
+                              <InlineSupplierPicker
+                                suppliers={suppliers}
+                                currentSupplierId={po.supplier_id}
+                                onSelect={(selectedSupId) => saveInlineEdit(po.id, 'supplier_id', selectedSupId)}
+                                onCancel={() => setInlineEdit({ orderId: null, field: null, value: '' })}
+                              />
                             ) : (
                               <div
                                 onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_id', value: po.supplier_id || '' })}
                                 className="cursor-pointer hover:bg-slate-800/80 px-1.5 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[140px]"
-                                title="Doble clic para cambiar proveedor"
+                                title="Doble clic para buscar y asignar proveedor por iniciales"
                               >
                                 <span className="font-semibold text-slate-200">{sup?.name || <span className="text-slate-600 italic">Asignar...</span>}</span>
                               </div>
                             )}
                           </td>
 
-                          {/* 11. Estado (Editable en Ambos Modos) */}
+                          {/* 11. Estado (Editable en Ambos Modos — Solo teñir los nombres, fondo neutro) */}
                           <td className="py-2 px-3 whitespace-nowrap">
                             <select
                               value={po.status}
                               onChange={(e) => handleQuickStatusChange(po.id, e.target.value)}
-                              className={`bg-slate-950 border rounded px-1.5 py-0.5 text-[11px] font-semibold focus:outline-none transition-colors cursor-pointer ${
+                              className={`bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-cyan-500 rounded px-1.5 py-0.5 text-[11px] font-bold focus:outline-none transition-colors cursor-pointer ${
                                 po.status === 'SE COMPRA?'
-                                  ? 'border-pink-500 text-pink-300 bg-pink-950/60 animate-pulse'
+                                  ? 'text-pink-400'
                                   : po.status === 'PEDIDO INCOMPLETO'
-                                  ? 'border-orange-500 text-orange-300 bg-orange-950/60'
-                                  : po.status === 'RECIBIDO' || po.status === 'RECIB.COMP.DIRECT'
-                                  ? 'border-emerald-500/60 text-emerald-300 bg-emerald-950/40'
+                                  ? 'text-orange-400'
+                                  : po.status === 'RECIBIDO'
+                                  ? 'text-emerald-400'
+                                  : po.status === 'RECIB.COMP.DIRECT'
+                                  ? 'text-cyan-400'
                                   : po.status === 'PEDIDO'
-                                  ? 'border-blue-500/60 text-blue-300 bg-blue-950/40'
-                                  : 'border-slate-800 text-slate-300'
+                                  ? 'text-blue-400'
+                                  : po.status === 'PEDIR' || po.status === 'SOLICITUD'
+                                  ? 'text-amber-400'
+                                  : ['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)
+                                  ? 'text-purple-400'
+                                  : po.status === 'CANCELADOS' || po.status === 'COTIZA.RECHAZADA'
+                                  ? 'text-rose-400'
+                                  : 'text-slate-300'
                               }`}
                             >
                               {viewMode === 'completa' ? (
                                 STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
-                                  <option key={st.value} value={st.value}>
+                                  <option key={st.value} value={st.value} className={`bg-slate-950 font-semibold ${st.textColor || 'text-slate-200'}`}>
                                     {st.label}
                                   </option>
                                 ))
                               ) : (
                                 <>
-                                  <option value="PEDIR">PEDIR (Por Emitir)</option>
-                                  <option value="RECIBIDO">✅ RECIBIDO (A Pañol / Stock)</option>
-                                  <option value="RECIB.COMP.DIRECT">🚢 RECIB.COMP.DIRECT (A Buque)</option>
-                                  <option value="PEDIDO INCOMPLETO">⚠️ PEDIDO INCOMPLETO (Recepción Parcial)</option>
-                                  <option value="RECIBIDO 2">📦 RECIBIDO 2 (Mat. de Cliente)</option>
-                                  <option value="CANCELADOS">❌ CANCELADOS</option>
-                                  <option value="SE COMPRA?">❓ SE COMPRA? (Duda Técnica)</option>
+                                  <option value="PEDIR" className="bg-slate-950 text-amber-400 font-semibold">PEDIR (Por Emitir)</option>
+                                  <option value="RECIBIDO" className="bg-slate-950 text-emerald-400 font-semibold">✅ RECIBIDO (A Pañol / Stock)</option>
+                                  <option value="RECIB.COMP.DIRECT" className="bg-slate-950 text-cyan-400 font-semibold">🚢 RECIB.COMP.DIRECT (A Buque)</option>
+                                  <option value="PEDIDO INCOMPLETO" className="bg-slate-950 text-orange-400 font-semibold">⚠️ PEDIDO INCOMPLETO (Recepción Parcial)</option>
+                                  <option value="RECIBIDO 2" className="bg-slate-950 text-slate-300 font-semibold">📦 RECIBIDO 2 (Mat. de Cliente)</option>
+                                  <option value="CANCELADOS" className="bg-slate-950 text-rose-400 font-semibold">❌ CANCELADOS</option>
+                                  <option value="SE COMPRA?" className="bg-slate-950 text-pink-400 font-semibold">❓ SE COMPRA? (Duda Técnica)</option>
                                 </>
                               )}
                             </select>
@@ -1602,7 +1729,7 @@ export default function Compras() {
 
             {/* Botones de acción masiva */}
             {selectedOrderIds.size > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {viewMode === 'completa' && (
                   <>
                     <button
@@ -1623,6 +1750,16 @@ export default function Compras() {
                     >
                       <Building2 className="w-3.5 h-3.5 text-cyan-400" />
                       <span>Asignar Proveedor ({selectedOrderIds.size})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleBatchDismissCatalogAlta}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-rose-950/70 border border-rose-500/40 text-rose-300 font-bold rounded-lg text-xs shadow-md transition-all cursor-pointer"
+                      title="Marcar que los materiales seleccionados NO requieren alta en catálogo maestro"
+                    >
+                      <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Omitir Alta Catálogo ({selectedOrderIds.size})</span>
                     </button>
                   </>
                 )}
@@ -2057,6 +2194,14 @@ export default function Compras() {
             setShowNewMaterialModal(false)
             setPendingMaterialOrder(null)
           }}
+          onDismissed={async (orderId) => {
+            setPurchaseOrders((prev) =>
+              prev.map((p) => (p.id === orderId ? { ...p, no_catalog_required: true } : p))
+            )
+            showFeedbackMsg('success', 'Se descartó la solicitud de alta en catálogo para este pedido.')
+            setShowNewMaterialModal(false)
+            setPendingMaterialOrder(null)
+          }}
           onSuccess={async (newMaterial) => {
             setMaterials((prev) => [...prev, newMaterial])
             await supabase
@@ -2084,7 +2229,10 @@ export default function Compras() {
               )
             )
 
-            showFeedbackMsg('success', `Material "${newMaterial.name}" dado de alta formalmente en catálogo.`)
+            const rubroNotice = newMaterial.rubro_status === 'PENDIENTE_HOMOLOGACION'
+              ? ' (Se envió alerta al Administrador para homologar el nuevo rubro).'
+              : '.'
+            showFeedbackMsg('success', `Material "${newMaterial.name}" dado de alta en catálogo${rubroNotice}`)
             setShowNewMaterialModal(false)
             setPendingMaterialOrder(null)
           }}
@@ -2092,7 +2240,7 @@ export default function Compras() {
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 3: ADJUNTAR COTIZACIÓN / FICHA TÉCNICA (1-CLIC) */}
+      {/* MODAL 3: ADJUNTAR COTIZACIÓN / FICHA TÉCNICA (MULTI-ADJUNTO) */}
       {/* ========================================================= */}
       {showDocModal && docTargetOrder && (
         <UploadDocModal
@@ -2102,9 +2250,10 @@ export default function Compras() {
             setShowDocModal(false)
             setDocTargetOrder(null)
           }}
-          onSuccess={(newDoc) => {
-            setDocuments((prev) => [newDoc, ...prev])
-            showFeedbackMsg('success', 'Documento adjuntado y clasificado con éxito.')
+          onSuccess={(newDocs) => {
+            const addedArray = Array.isArray(newDocs) ? newDocs : [newDocs]
+            setDocuments((prev) => [...addedArray, ...prev])
+            showFeedbackMsg('success', `Se adjuntaron ${addedArray.length} documento(s) con éxito.`)
             setShowDocModal(false)
             setDocTargetOrder(null)
           }}
@@ -2779,33 +2928,80 @@ function OrderFormModal({
 }
 
 // MODAL 2: ALTA FORMAL DE MATERIAL EN CATÁLOGO (SUPERVISOR)
-function NewMaterialModal({ order, onClose, onSuccess }) {
+function NewMaterialModal({ order, onClose, onDismissed, onSuccess }) {
+  const [noCatalogRequired, setNoCatalogRequired] = useState(false)
   const [name, setName] = useState(order.material_name_raw)
-  const [category, setCategory] = useState('Consumibles')
+  const [category, setCategory] = useState('MATERIALES')
   const [rubro, setRubro] = useState('MATERIALES')
+  const [requestNewRubro, setRequestNewRubro] = useState(false)
+  const [suggestedRubro, setSuggestedRubro] = useState('')
   const [unitMeasure, setUnitMeasure] = useState(order.unit_measure || deduceUnitMeasure(order.material_name_raw))
+  const [securityFactor, setSecurityFactor] = useState(1.06)
   const [costArs, setCostArs] = useState(order.supplier_quoted_price || 0)
   const [minimumStock, setMinimumStock] = useState(0)
+  const [imageFile, setImageFile] = useState(null)
   const [saving, setSaving] = useState(false)
 
   function applyNamingPattern(prefix) {
-    setName(`${prefix} ${name}`)
+    const updated = `${prefix} ${name}`
+    setName(updated)
+    setUnitMeasure(deduceUnitMeasure(updated))
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
+
+    // Si el usuario tildó la casilla para descartar alta en catálogo
+    if (noCatalogRequired) {
+      setSaving(true)
+      try {
+        const { error } = await supabase
+          .from('purchase_orders')
+          .update({ no_catalog_required: true, updated_at: new Date().toISOString() })
+          .eq('id', order.id)
+        if (error) throw error
+        if (onDismissed) onDismissed(order.id)
+        else onClose()
+      } catch (err) {
+        console.error('Error descartando alta:', err)
+        alert('Error al descartar alta: ' + err.message)
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
     if (!name.trim()) return alert('Debe ingresar el nombre normalizado.')
+    if (requestNewRubro && !suggestedRubro.trim()) {
+      return alert('Por favor ingrese el nombre del nuevo rubro sugerido para el Administrador.')
+    }
+
     setSaving(true)
     try {
+      let imageUrl = null
+      if (imageFile) {
+        const ext = imageFile.name.split('.').pop()
+        const safeName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
+        const storagePath = `catalogo_materiales/${Date.now()}_${safeName}.${ext}`
+        const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, imageFile)
+        if (uploadError) throw uploadError
+        const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+        imageUrl = urlData.publicUrl
+      }
+
       const payload = {
         name: name.trim(),
-        category,
-        rubro,
+        category, // Exclusivamente MATERIALES, CONSUMIBLES, ELEM.SEGURIDAD
+        rubro: requestNewRubro ? null : rubro,
+        rubro_status: requestNewRubro ? 'PENDIENTE_HOMOLOGACION' : 'APROBADO',
+        suggested_rubro: requestNewRubro ? suggestedRubro.trim().toUpperCase() : null,
         unit_measure: unitMeasure,
+        security_factor: Number(securityFactor) || 1.06,
         cost_ars: Number(costArs),
         cost_usd: Number(costArs) / 1500,
         current_stock: 0,
-        minimum_stock: Number(minimumStock)
+        minimum_stock: Number(minimumStock),
+        image_url: imageUrl
       }
 
       const { data, error } = await supabase.from('materials').insert([payload]).select().single()
@@ -2820,107 +3016,201 @@ function NewMaterialModal({ order, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[92vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <ShieldAlert className="w-5 h-5 text-amber-400" />
               Alta Formal de Material en B.D. Maestra
             </h3>
-            <p className="text-xs text-slate-400">Normalización técnica y asignación de rubro (Solo Supervisor).</p>
+            <p className="text-xs text-slate-400">Normalización técnica, categoría, % seguridad y rubro (Solo Supervisor).</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-base">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Nombre Normalizado</label>
+          {/* Casilla para Desactivar / Omitir el Alta si es un material puntual */}
+          <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/40 flex items-start gap-2.5">
             <input
-              type="text"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value)
-                setUnitMeasure(deduceUnitMeasure(e.target.value))
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-cyan-500"
-              required
+              id="no-catalog-check"
+              type="checkbox"
+              checked={noCatalogRequired}
+              onChange={(e) => setNoCatalogRequired(e.target.checked)}
+              className="mt-0.5 rounded bg-slate-900 border-rose-500 text-rose-500 focus:ring-0 cursor-pointer"
             />
-            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              <span className="text-[10px] text-slate-500">Prefijos:</span>
-              <button type="button" onClick={() => applyNamingPattern('BULON ZINCADO')} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">BULON</button>
-              <button type="button" onClick={() => applyNamingPattern('CAÑO INOX')} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">CAÑO</button>
-              <button type="button" onClick={() => applyNamingPattern('CHAPA NAVAL')} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">CHAPA</button>
-              <button type="button" onClick={() => applyNamingPattern('ELECTRODO')} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">ELECTRODO</button>
-            </div>
+            <label htmlFor="no-catalog-check" className="cursor-pointer select-none">
+              <span className="font-bold text-rose-300 block">
+                No requiere alta en catálogo (Desactivar aviso para este pedido)
+              </span>
+              <span className="text-[11px] text-slate-400 block mt-0.5">
+                Tilda esta casilla si es un material descartable o de compra única que no debe agregarse a la base de datos maestra.
+              </span>
+            </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Rubro</label>
-              <select
-                value={rubro}
-                onChange={(e) => setRubro(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              >
-                <option value="BULONES">BULONES</option>
-                <option value="CAÑO">CAÑERÍA</option>
-                <option value="CHAPAS">CHAPAS</option>
-                <option value="ELECTRICIDAD">ELECTRICIDAD</option>
-                <option value="GASES">GASES</option>
-                <option value="HERRAMIENTAS">HERRAMIENTAS</option>
-                <option value="SOLDADURA">SOLDADURA</option>
-                <option value="TORNERIA">TORNERIA</option>
-                <option value="PINTURA">PINTURA</option>
-                <option value="MATERIALES">MATERIALES VARIOS</option>
-              </select>
-            </div>
+          {!noCatalogRequired && (
+            <>
+              {/* 1. Nombre Normalizado */}
+              <div>
+                <label className="block text-slate-300 mb-1 font-semibold">Nombre Normalizado en Catálogo</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value)
+                    setUnitMeasure(deduceUnitMeasure(e.target.value))
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-cyan-500"
+                  required
+                />
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <span className="text-[10px] text-slate-500">Prefijos rápidos:</span>
+                  <button type="button" onClick={() => applyNamingPattern('BULON ZINCADO')} className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 cursor-pointer">BULON</button>
+                  <button type="button" onClick={() => applyNamingPattern('CAÑO INOX')} className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 cursor-pointer">CAÑO</button>
+                  <button type="button" onClick={() => applyNamingPattern('CHAPA NAVAL')} className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 cursor-pointer">CHAPA</button>
+                  <button type="button" onClick={() => applyNamingPattern('ELECTRODO')} className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 cursor-pointer">ELECTRODO</button>
+                </div>
+              </div>
 
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Categoría</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              >
-                <option value="Consumibles">Consumibles</option>
-                <option value="Metales">Metales</option>
-                <option value="Fijaciones">Fijaciones</option>
-                <option value="Repuestos">Repuestos</option>
-                <option value="Gases">Gases</option>
-                <option value="Pintura">Pintura</option>
-              </select>
-            </div>
-          </div>
+              {/* 2. Categoría Estricta (Solo 3) y Unidad de Medida (Desplegable) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 mb-1 font-semibold">Categoría Oficial (Únicas 3)</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-bold focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="MATERIALES">MATERIALES</option>
+                    <option value="CONSUMIBLES">CONSUMIBLES</option>
+                    <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
+                  </select>
+                </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Precio Base AR$</label>
-              <input
-                type="number"
-                step="any"
-                value={costArs}
-                onChange={(e) => setCostArs(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
-                required
-              />
-            </div>
+                <div>
+                  <label className="block text-slate-300 mb-1 font-semibold">Unidad de Medida</label>
+                  <select
+                    value={unitMeasure}
+                    onChange={(e) => setUnitMeasure(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-cyan-300 font-bold focus:outline-none focus:border-cyan-500"
+                  >
+                    {OFFICIAL_UNITS.map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Unidad de Medida</label>
-              <input
-                type="text"
-                value={unitMeasure}
-                onChange={(e) => setUnitMeasure(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 uppercase"
-              />
-            </div>
-          </div>
+              {/* 3. Rubro & Solicitud de Apertura de Nuevo Rubro */}
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-300 font-semibold">Rubro Técnico (Vinculado a Pañol)</label>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer select-none text-amber-300 font-bold text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={requestNewRubro}
+                      onChange={(e) => setRequestNewRubro(e.target.checked)}
+                      className="rounded bg-slate-900 border-amber-500 text-amber-500 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Solicitar apertura de nuevo rubro</span>
+                  </label>
+                </div>
+
+                {!requestNewRubro ? (
+                  <select
+                    value={rubro}
+                    onChange={(e) => setRubro(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    {CATALOG_RUBROS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="space-y-1.5">
+                    <input
+                      type="text"
+                      placeholder="Escribe el nuevo rubro propuesto (ej: FIBRA OPTICA, COMPOSITES...)"
+                      value={suggestedRubro}
+                      onChange={(e) => setSuggestedRubro(e.target.value)}
+                      className="w-full bg-amber-950/30 border border-amber-500/60 rounded-lg p-2 text-amber-200 placeholder-amber-400/50 font-semibold focus:outline-none focus:border-amber-400 uppercase"
+                      required
+                    />
+                    <p className="text-[10px] text-amber-300/90">
+                      ⚠️ El material se creará con todos sus datos técnicos y enviará una alerta al Dashboard del Administrador para homologar y asignar el nuevo rubro.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Precio Base AR$ y % de Seguridad (Por defecto 6%) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 mb-1 font-semibold">Precio Base AR$</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={costArs}
+                    onChange={(e) => setCostArs(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 mb-1 font-semibold">% Seguridad (Merma / Buffer Pañol)</label>
+                  <select
+                    value={securityFactor}
+                    onChange={(e) => setSecurityFactor(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-emerald-300 font-bold focus:outline-none focus:border-cyan-500"
+                  >
+                    {SECURITY_FACTORS.map((sf) => (
+                      <option key={sf.value} value={sf.value}>
+                        {sf.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 5. Fotografía / Imagen para B.D. Materiales */}
+              <div>
+                <label className="block text-slate-300 mb-1 font-semibold">
+                  Fotografía / Imagen del Material (Opcional — Para Ficha Visual de Pañol)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setImageFile(e.target.files[0] || null)}
+                  className="w-full text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-950 file:text-cyan-400 hover:file:bg-cyan-900 cursor-pointer bg-slate-950 border border-slate-800 rounded-lg p-1.5"
+                />
+              </div>
+            </>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancelar</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg">
-              {saving ? 'Registrando...' : 'Aprobar Alta en Catálogo'}
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg cursor-pointer">
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className={`px-4 py-2 font-bold rounded-lg cursor-pointer transition-all ${
+                noCatalogRequired
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20'
+              }`}
+            >
+              {saving
+                ? 'Procesando...'
+                : noCatalogRequired
+                ? 'Confirmar: Omitir Alta en Catálogo'
+                : 'Aprobar Alta en Catálogo'}
             </button>
           </div>
         </form>
@@ -2929,65 +3219,87 @@ function NewMaterialModal({ order, onClose, onSuccess }) {
   )
 }
 
-// MODAL 3: ADJUNTAR COTIZACIÓN / FICHA TÉCNICA (1-CLIC)
+// MODAL 3: ADJUNTAR DOCUMENTOS MULTI-ARCHIVO (+ AGREGAR OTRO ADJUNTO)
 function UploadDocModal({ order, supplier, onClose, onSuccess }) {
-  const [file, setFile] = useState(null)
-  const [description, setDescription] = useState('')
-  const [docType, setDocType] = useState('COTIZACION_MATERIAL')
+  const [pendingDocs, setPendingDocs] = useState([
+    { id: 1, docType: 'COTIZACION_MATERIAL', file: null, description: '' }
+  ])
   const [uploading, setUploading] = useState(false)
+
+  function handleAddRow() {
+    setPendingDocs((prev) => [
+      ...prev,
+      { id: Date.now() + Math.random(), docType: 'FICHA_TECNICA', file: null, description: '' }
+    ])
+  }
+
+  function handleRemoveRow(id) {
+    if (pendingDocs.length <= 1) return
+    setPendingDocs((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  function handleChangeRow(id, field, value) {
+    setPendingDocs((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)))
+  }
 
   async function handleUpload(e) {
     e.preventDefault()
-    if (!file) return alert('Por favor selecciona un archivo.')
+    const validRows = pendingDocs.filter((r) => r.file !== null)
+    if (validRows.length === 0) return alert('Por favor selecciona al menos un archivo para subir.')
 
     setUploading(true)
     try {
       const year = new Date().getFullYear()
       const rubro = order.work_type || 'General'
-      const ext = file.name.split('.').pop()
-      const safeDesc = (description || 'Doc').replace(/[^a-zA-Z0-9_-]/g, '_')
       const safeProv = (supplier?.name || 'Proveedor').replace(/[^a-zA-Z0-9_-]/g, '_')
-      const normalizedName = `${safeDesc}_${safeProv}.${ext}`
-      const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${normalizedName}`
+      const createdDocs = []
 
-      const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, file)
-      if (uploadError) throw uploadError
+      for (const row of validRows) {
+        const ext = row.file.name.split('.').pop()
+        const safeDesc = (row.description || 'Doc').replace(/[^a-zA-Z0-9_-]/g, '_')
+        const normalizedName = `${safeDesc}_${safeProv}.${ext}`
+        const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${normalizedName}`
 
-      const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+        const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, row.file)
+        if (uploadError) throw uploadError
 
-      const docPayload = {
-        purchase_order_id: order.id,
-        supplier_id: supplier?.id || null,
-        original_filename: file.name,
-        normalized_filename: normalizedName,
-        storage_path: urlData.publicUrl,
-        category: rubro,
-        description: description || 'Documento adjunto',
-        year,
-        file_size_bytes: file.size,
-        doc_type: docType,
-        is_confidential_labor: docType === 'COTIZACION_MANO_OBRA'
+        const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+
+        const docPayload = {
+          purchase_order_id: order.id,
+          supplier_id: supplier?.id || null,
+          original_filename: row.file.name,
+          normalized_filename: normalizedName,
+          storage_path: urlData.publicUrl,
+          category: rubro,
+          description: row.description || 'Documento adjunto',
+          year,
+          file_size_bytes: row.file.size,
+          doc_type: row.docType,
+          is_confidential_labor: row.docType === 'COTIZACION_MANO_OBRA'
+        }
+
+        const { data: newDoc, error: dbError } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
+        if (dbError) throw dbError
+        createdDocs.push(newDoc)
       }
 
-      const { data: newDoc, error: dbError } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
-      if (dbError) throw dbError
-
-      onSuccess(newDoc)
+      onSuccess(createdDocs)
     } catch (err) {
-      console.error('Error subiendo documento:', err)
-      alert('Error subiendo archivo: ' + err.message)
+      console.error('Error subiendo documentos:', err)
+      alert('Error subiendo archivos: ' + err.message)
     } finally {
       setUploading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <Paperclip className="w-5 h-5 text-cyan-400" />
-            Adjuntar Documento a Compra
+            Adjuntar Documento(s) a Compra
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
@@ -2998,46 +3310,82 @@ function UploadDocModal({ order, supplier, onClose, onSuccess }) {
             <p className="text-[10px] text-slate-400">Proveedor: {supplier?.name || 'S/D'}</p>
           </div>
 
-          <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Tipo de Documento</label>
-            <select
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-semibold"
+          <div className="space-y-3">
+            {pendingDocs.map((row, idx) => (
+              <div key={row.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3 relative">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400">
+                    Adjunto #{idx + 1}
+                  </span>
+                  {pendingDocs.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRow(row.id)}
+                      className="text-rose-400 hover:text-rose-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      ✕ Quitar
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1 font-semibold">Tipo de Documento</label>
+                  <select
+                    value={row.docType}
+                    onChange={(e) => handleChangeRow(row.id, 'docType', e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-semibold"
+                  >
+                    <option value="COTIZACION_MATERIAL">📄 Cotización de Material (Visible en Compras)</option>
+                    <option value="COTIZACION_MANO_OBRA">🔒 Cotización de Mano de Obra (Confidencial Supervisor)</option>
+                    <option value="FICHA_TECNICA">📐 Ficha Técnica / Especificación de Fabricante</option>
+                    <option value="IMAGEN_MUESTRA">📸 Imagen / Fotografía de Muestra o Rotura</option>
+                    <option value="REMITO">🧾 Remito de Entrega</option>
+                    <option value="FACTURA">💳 Factura Comercial</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1 font-semibold">Seleccionar Archivo (PDF, DOCX, JPG, PNG)</label>
+                  <input
+                    type="file"
+                    onChange={(e) => handleChangeRow(row.id, 'file', e.target.files[0] || null)}
+                    className="w-full text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-950 file:text-cyan-400 hover:file:bg-cyan-900 cursor-pointer"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1 font-semibold">Descripción Breve</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Presupuesto Tubos, Ficha Acero Naval..."
+                    value={row.description}
+                    onChange={(e) => handleChangeRow(row.id, 'description', e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={handleAddRow}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 text-xs font-extrabold transition-all cursor-pointer shadow-sm"
             >
-              <option value="COTIZACION_MATERIAL">📄 Cotización de Material (Visible en Compras)</option>
-              <option value="COTIZACION_MANO_OBRA">🔒 Cotización de Mano de Obra (Confidencial Supervisor)</option>
-              <option value="FICHA_TECNICA">📐 Ficha Técnica / Especificación de Fabricante</option>
-              <option value="IMAGEN_MUESTRA">📸 Imagen / Fotografía de Muestra o Rotura</option>
-              <option value="REMITO_FACTURA">🧾 Remito o Factura</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Seleccionar Archivo (PDF, DOCX, JPG, PNG)</label>
-            <input
-              type="file"
-              onChange={(e) => setFile(e.target.files[0])}
-              className="w-full text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-950 file:text-cyan-400 hover:file:bg-cyan-900 cursor-pointer"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Descripción Breve</label>
-            <input
-              type="text"
-              placeholder="Ej: Presupuesto Tubos, Ficha Acero Naval..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-            />
+              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+              <span>+ Agregar otro adjunto</span>
+            </button>
+            <span className="text-[10px] text-slate-500">{pendingDocs.length} archivo(s) a subir</span>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancelar</button>
-            <button type="submit" disabled={uploading} className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-bold rounded-lg">
-              {uploading ? 'Subiendo y clasificando...' : 'Subir Documento'}
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg cursor-pointer">
+              Cancelar
+            </button>
+            <button type="submit" disabled={uploading} className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-extrabold rounded-lg cursor-pointer">
+              {uploading ? 'Subiendo y clasificando...' : `Subir ${pendingDocs.length > 1 ? `${pendingDocs.length} Documentos` : 'Documento'}`}
             </button>
           </div>
         </form>
@@ -3803,54 +4151,70 @@ function OrderAttachmentsModal({ order, documents, suppliers, ships, workOrders,
   const wo = workOrders.find((w) => w.id === order.work_order_id)
 
   const [uploading, setUploading] = useState(false)
-  const [file, setFile] = useState(null)
-  const [docType, setDocType] = useState('COTIZACION_MATERIAL')
-  const [description, setDescription] = useState('')
-  const [isConfidential, setIsConfidential] = useState(false)
+  const [pendingDocs, setPendingDocs] = useState([
+    { id: 1, docType: 'COTIZACION_MATERIAL', file: null, description: '' }
+  ])
   const [showDocAction, setShowDocAction] = useState(null)
+
+  function handleAddRow() {
+    setPendingDocs((prev) => [
+      ...prev,
+      { id: Date.now() + Math.random(), docType: 'FICHA_TECNICA', file: null, description: '' }
+    ])
+  }
+
+  function handleRemoveRow(id) {
+    if (pendingDocs.length <= 1) return
+    setPendingDocs((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  function handleChangeRow(id, field, value) {
+    setPendingDocs((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)))
+  }
 
   async function handleAddDoc(e) {
     e.preventDefault()
-    if (!file) return alert('Por favor selecciona un archivo.')
+    const validRows = pendingDocs.filter((r) => r.file !== null)
+    if (validRows.length === 0) return alert('Por favor selecciona al menos un archivo para subir.')
 
     setUploading(true)
     try {
       const year = new Date().getFullYear()
       const rubro = order.work_type || 'General'
-      const ext = file.name.split('.').pop()
-      const safeDesc = (description || 'Doc').replace(/[^a-zA-Z0-9_-]/g, '_')
       const safeProv = (sup?.name || 'Proveedor').replace(/[^a-zA-Z0-9_-]/g, '_')
-      const normalizedName = `${safeDesc}_${safeProv}.${ext}`
-      const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${normalizedName}`
 
-      const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, file)
-      if (uploadError) throw uploadError
+      for (const row of validRows) {
+        const ext = row.file.name.split('.').pop()
+        const safeDesc = (row.description || 'Doc').replace(/[^a-zA-Z0-9_-]/g, '_')
+        const normalizedName = `${safeDesc}_${safeProv}.${ext}`
+        const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${normalizedName}`
 
-      const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+        const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, row.file)
+        if (uploadError) throw uploadError
 
-      const docPayload = {
-        purchase_order_id: order.id,
-        supplier_id: order.supplier_id || null,
-        original_filename: file.name,
-        normalized_filename: normalizedName,
-        storage_path: urlData.publicUrl,
-        category: rubro,
-        description: description || 'Documento adjunto',
-        year,
-        file_size_bytes: file.size,
-        doc_type: docType,
-        is_confidential_labor: docType === 'COTIZACION_MANO_OBRA' || isConfidential
+        const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+
+        const docPayload = {
+          purchase_order_id: order.id,
+          supplier_id: order.supplier_id || null,
+          original_filename: row.file.name,
+          normalized_filename: normalizedName,
+          storage_path: urlData.publicUrl,
+          category: rubro,
+          description: row.description || 'Documento adjunto',
+          year,
+          file_size_bytes: row.file.size,
+          doc_type: row.docType,
+          is_confidential_labor: row.docType === 'COTIZACION_MANO_OBRA'
+        }
+
+        const { data: newDoc, error: dbError } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
+        if (dbError) throw dbError
+
+        onDocAdded(newDoc)
       }
 
-      const { data: newDoc, error: dbError } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
-      if (dbError) throw dbError
-
-      onDocAdded(newDoc)
-      setFile(null)
-      setDescription('')
-      // Reset file input
-      const fileInput = document.getElementById('order-doc-file-input')
-      if (fileInput) fileInput.value = ''
+      setPendingDocs([{ id: Date.now(), docType: 'COTIZACION_MATERIAL', file: null, description: '' }])
     } catch (err) {
       console.error('Error subiendo documento:', err)
       alert('Error al subir archivo: ' + err.message)
@@ -3870,13 +4234,13 @@ function OrderAttachmentsModal({ order, documents, suppliers, ships, workOrders,
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
-                Documentos Adjuntos de la Orden
+                Adjuntar Documento a Compra
                 <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-bold">
-                  {lineDocs.length} archivo{lineDocs.length === 1 ? '' : 's'}
+                  {lineDocs.length} adjunto{lineDocs.length === 1 ? '' : 's'}
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                {order.material_name_raw} ({order.quantity} {order.unit_measure || 'un.'}) — Buque: {shp?.name || 'ASTILLERO'} | OT: {wo?.title || 'Stock'}
+                {order.material_name_raw} ({order.quantity} {order.unit_measure || 'un.'}) — Proveedor: {sup?.name || 'S/D'} | Buque: {shp?.name || 'ASTILLERO'}
               </p>
             </div>
           </div>
@@ -3884,144 +4248,186 @@ function OrderAttachmentsModal({ order, documents, suppliers, ships, workOrders,
         </div>
 
         {/* Listado de Documentos Existentes */}
-        <div className="space-y-2">
-          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Archivos actualmente adjuntos a esta orden:
-          </h4>
-          {lineDocs.length === 0 ? (
-            <div className="p-4 rounded-xl border border-dashed border-slate-800 text-center text-xs text-slate-500 bg-slate-950/40">
-              Esta orden aún no tiene comprobantes, fichas técnicas ni cotizaciones adjuntas.
-            </div>
-          ) : (
+        {lineDocs.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Archivos actualmente guardados en esta compra:
+            </h4>
             <div className="space-y-2">
-              {lineDocs.map((doc) => {
-                const isConfidentialLabor = doc.is_confidential_labor || doc.doc_type === 'COTIZACION_MANO_OBRA'
-                return (
-                  <div
-                    key={doc.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-white text-xs truncate max-w-[280px]" title={doc.original_filename}>
-                            {doc.original_filename}
-                          </p>
-                          <span
-                            className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
-                              doc.doc_type === 'COTIZACION_MANO_OBRA'
-                                ? 'bg-rose-950/80 text-rose-300 border-rose-800'
-                                : doc.doc_type === 'FICHA_TECNICA'
-                                ? 'bg-blue-950/80 text-blue-300 border-blue-800'
-                                : doc.doc_type === 'IMAGEN_MUESTRA'
-                                ? 'bg-amber-950/80 text-amber-300 border-amber-800'
-                                : doc.doc_type === 'REMITO' || doc.doc_type === 'REMITO_FACTURA'
-                                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
-                                : 'bg-purple-950/80 text-purple-300 border-purple-800'
-                            }`}
-                          >
-                            {doc.doc_type === 'COTIZACION_MATERIAL' ? '📄 Cotiz. Material'
-                              : doc.doc_type === 'COTIZACION_MANO_OBRA' ? '🔒 Mano de Obra'
-                              : doc.doc_type === 'FICHA_TECNICA' ? '📐 Ficha Técnica'
-                              : doc.doc_type === 'IMAGEN_MUESTRA' ? '📸 Muestra / Foto'
-                              : doc.doc_type === 'REMITO' ? '🧾 Remito'
-                              : doc.doc_type}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                          {doc.description || 'Sin notas'} • {(doc.file_size_bytes / 1024).toFixed(1)} KB • {new Date(doc.created_at).toLocaleDateString('es-AR')}
-                        </p>
-                      </div>
+              {lineDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                      <FileText className="w-4 h-4" />
                     </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <a
-                        href={doc.storage_path}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2.5 py-1 bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        <span>Ver</span>
-                      </a>
-                      <button
-                        onClick={() => setShowDocAction(doc)}
-                        className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-                        title="Opciones avanzadas (modificar, reemplazar, eliminar)"
-                      >
-                        <SlidersHorizontal className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-white text-xs truncate max-w-[280px]" title={doc.original_filename}>
+                          {doc.original_filename}
+                        </p>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                            doc.doc_type === 'COTIZACION_MANO_OBRA'
+                              ? 'bg-rose-950/80 text-rose-300 border-rose-800'
+                              : doc.doc_type === 'FICHA_TECNICA'
+                              ? 'bg-blue-950/80 text-blue-300 border-blue-800'
+                              : doc.doc_type === 'IMAGEN_MUESTRA'
+                              ? 'bg-amber-950/80 text-amber-300 border-amber-800'
+                              : doc.doc_type === 'REMITO' || doc.doc_type === 'REMITO_FACTURA'
+                              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+                              : 'bg-purple-950/80 text-purple-300 border-purple-800'
+                          }`}
+                        >
+                          {doc.doc_type === 'COTIZACION_MATERIAL' ? '📄 Cotiz. Material'
+                            : doc.doc_type === 'COTIZACION_MANO_OBRA' ? '🔒 Mano de Obra'
+                            : doc.doc_type === 'FICHA_TECNICA' ? '📐 Ficha Técnica'
+                            : doc.doc_type === 'IMAGEN_MUESTRA' ? '📸 Muestra / Foto'
+                            : doc.doc_type === 'REMITO' ? '🧾 Remito'
+                            : doc.doc_type}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                        {doc.description || 'Sin notas'} • {(doc.file_size_bytes / 1024).toFixed(1)} KB • {new Date(doc.created_at).toLocaleDateString('es-AR')}
+                      </p>
                     </div>
                   </div>
-                )
-              })}
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <a
+                      href={doc.storage_path}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-2.5 py-1 bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Ver</span>
+                    </a>
+                    <button
+                      onClick={() => setShowDocAction(doc)}
+                      className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Opciones avanzadas (modificar, reemplazar, eliminar)"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Zona para Adjuntar Nuevo Documento Adicional */}
-        <div className="pt-3 border-t border-slate-800 space-y-3">
-          <h4 className="text-xs font-bold text-white flex items-center gap-2">
-            <Plus className="w-4 h-4 text-cyan-400" />
-            Adjuntar Otro Documento a esta Orden (Ficha Técnica, Cotización, Remito, Foto)
-          </h4>
+        {/* Zona Dinámica para Adjuntar 1 o Más Documentos (+ Agregar otro adjunto) */}
+        <div className="pt-2 border-t border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-white flex items-center gap-2">
+              <Plus className="w-4 h-4 text-cyan-400" />
+              Subir Nuevo(s) Documento(s) a esta Orden
+            </h4>
+            <button
+              type="button"
+              onClick={handleAddRow}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/70 text-emerald-300 text-xs font-extrabold transition-all cursor-pointer shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+              <span>+ Agregar otro adjunto</span>
+            </button>
+          </div>
 
-          <form onSubmit={handleAddDoc} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1 font-semibold">Tipo de Comprobante / Archivo</label>
-                <select
-                  value={docType}
-                  onChange={(e) => setDocType(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-semibold"
-                >
-                  <option value="COTIZACION_MATERIAL">📄 Cotización de Material (General Compras)</option>
-                  <option value="COTIZACION_MANO_OBRA">🔒 Cotización Mano de Obra (Confidencial)</option>
-                  <option value="FICHA_TECNICA">📐 Ficha Técnica / Manual Naval</option>
-                  <option value="IMAGEN_MUESTRA">📸 Fotografía de Muestra / Rotura</option>
-                  <option value="REMITO">🧾 Remito de Entrega</option>
-                  <option value="FACTURA">💳 Factura Comercial</option>
-                </select>
-              </div>
+          <form onSubmit={handleAddDoc} className="space-y-3 text-xs">
+            <div className="space-y-3">
+              {pendingDocs.map((row, index) => (
+                <div key={row.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3 relative">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400">
+                      Nuevo Adjunto #{index + 1}
+                    </span>
+                    {pendingDocs.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRow(row.id)}
+                        className="text-rose-400 hover:text-rose-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        ✕ Quitar fila
+                      </button>
+                    )}
+                  </div>
 
-              <div>
-                <label className="block text-slate-400 mb-1 font-semibold">Descripción o Referencia Breve</label>
-                <input
-                  type="text"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Ej: Ficha técnica espesores chapa"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-                />
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-semibold">Tipo de Documento</label>
+                      <select
+                        value={row.docType}
+                        onChange={(e) => handleChangeRow(row.id, 'docType', e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-semibold"
+                      >
+                        <option value="COTIZACION_MATERIAL">📄 Cotización de Material (Visible en Compras)</option>
+                        <option value="COTIZACION_MANO_OBRA">🔒 Cotización de Mano de Obra (Confidencial)</option>
+                        <option value="FICHA_TECNICA">📐 Ficha Técnica / Manual Naval</option>
+                        <option value="IMAGEN_MUESTRA">📸 Fotografía de Muestra / Rotura</option>
+                        <option value="REMITO">🧾 Remito de Entrega</option>
+                        <option value="FACTURA">💳 Factura Comercial</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-semibold">Descripción Breve</label>
+                      <input
+                        type="text"
+                        value={row.description}
+                        onChange={(e) => handleChangeRow(row.id, 'description', e.target.value)}
+                        placeholder="Ej: Presupuesto Tubos, Ficha Acero Naval..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-semibold">Seleccionar Archivo (PDF, DOCX, JPG, PNG)</label>
+                    <input
+                      type="file"
+                      onChange={(e) => handleChangeRow(row.id, 'file', e.target.files[0] || null)}
+                      className="w-full text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-950 file:text-cyan-400 hover:file:bg-cyan-900 cursor-pointer"
+                      required
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Seleccionar Archivo (PDF, DOCX, JPG, PNG)</label>
-              <input
-                id="order-doc-file-input"
-                type="file"
-                onChange={(e) => setFile(e.target.files[0])}
-                className="w-full text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-950 file:text-cyan-400 hover:file:bg-cyan-900 cursor-pointer"
-                required
-              />
-            </div>
-
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[10px] text-slate-500">
-                Se guardará vinculado a esta orden de compra sin sobreescribir los archivos anteriores.
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
               <button
-                type="submit"
-                disabled={uploading}
-                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-lg text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                type="button"
+                onClick={handleAddRow}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 text-xs font-bold transition-all cursor-pointer"
               >
-                {uploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 stroke-[2.5]" />}
-                <span>{uploading ? 'Subiendo...' : 'Subir y Adjuntar'}</span>
+                <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                <span>+ Agregar otro adjunto</span>
               </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg cursor-pointer"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold rounded-lg text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {uploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 stroke-[2.5]" />}
+                  <span>
+                    {uploading
+                      ? 'Subiendo...'
+                      : `Subir ${pendingDocs.length > 1 ? `${pendingDocs.length} Documentos` : 'Documento'}`}
+                  </span>
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -4422,11 +4828,22 @@ function SeCompraAlertModal({ order, alertSettings, ships, workOrders, onClose }
 }
 
 // ==============================================================================
-// MODAL 10: ASIGNAR PROVEEDOR EN LOTE
+// MODAL 10: ASIGNAR PROVEEDOR EN LOTE (CON BUSCADOR POR INICIALES)
 // ==============================================================================
 function AssignSupplierModal({ selectedOrderIds, suppliers, onClose, onSuccess }) {
+  const [searchText, setSearchText] = useState('')
   const [selectedSupplierId, setSelectedSupplierId] = useState(suppliers[0]?.id || '')
   const [saving, setSaving] = useState(false)
+
+  const filteredSuppliers = useMemo(() => {
+    const q = searchText.trim().toLowerCase()
+    if (!q) return suppliers
+    return suppliers.filter((s) => {
+      const nameMatch = (s.name || '').toLowerCase().includes(q)
+      const tradeMatch = (s.trade || '').toLowerCase().includes(q) || (s.trades || []).some((t) => t.toLowerCase().includes(q))
+      return nameMatch || tradeMatch
+    })
+  }, [suppliers, searchText])
 
   async function handleAssign(e) {
     e.preventDefault()
@@ -4476,7 +4893,24 @@ function AssignSupplierModal({ selectedOrderIds, suppliers, onClose, onSuccess }
         <form onSubmit={handleAssign} className="space-y-4 text-xs">
           <div>
             <label className="block text-slate-300 font-semibold mb-1">
-              Seleccionar Proveedor
+              Filtrar Proveedor por Nombre o Rubro
+            </label>
+            <input
+              type="text"
+              autoFocus
+              value={searchText}
+              onChange={(e) => {
+                setSearchText(e.target.value)
+                const q = e.target.value.trim().toLowerCase()
+                const firstMatch = suppliers.find((s) => (s.name || '').toLowerCase().includes(q))
+                if (firstMatch) setSelectedSupplierId(firstMatch.id)
+              }}
+              placeholder="Escribir iniciales (ej: FER, AIR, PRAX...)"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white mb-2 focus:outline-none focus:border-cyan-500"
+            />
+
+            <label className="block text-slate-400 font-semibold mb-1 text-[11px]">
+              Resultados ({filteredSuppliers.length}):
             </label>
             <select
               value={selectedSupplierId}
@@ -4484,7 +4918,7 @@ function AssignSupplierModal({ selectedOrderIds, suppliers, onClose, onSuccess }
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white font-semibold focus:outline-none focus:border-cyan-500"
               required
             >
-              {suppliers.map((s) => (
+              {filteredSuppliers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name} ({s.trade || (s.trades && s.trades.join(', ')) || 'General'})
                 </option>
@@ -4510,6 +4944,103 @@ function AssignSupplierModal({ selectedOrderIds, suppliers, onClose, onSuccess }
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ==============================================================================
+// COMPONENTE AUXILIAR: BUSCADOR / AUTOCOMPLETE IN-SITU DE PROVEEDOR (300+ PROVEEDORES)
+// ==============================================================================
+function InlineSupplierPicker({ suppliers, currentSupplierId, onSelect, onCancel }) {
+  const currentSup = suppliers.find((s) => s.id === currentSupplierId)
+  const [query, setQuery] = useState('')
+  const [highlightIdx, setHighlightIdx] = useState(0)
+  const containerRef = useRef(null)
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return suppliers.slice(0, 50)
+    return suppliers.filter((s) => {
+      const nameMatch = (s.name || '').toLowerCase().includes(q)
+      const tradeMatch = (s.trade || '').toLowerCase().includes(q) || (s.trades || []).some((t) => t.toLowerCase().includes(q))
+      return nameMatch || tradeMatch
+    })
+  }, [suppliers, query])
+
+  useEffect(() => {
+    setHighlightIdx(0)
+  }, [query])
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        onCancel()
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onCancel])
+
+  function handleKeyDown(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onCancel()
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlightIdx((prev) => Math.min(prev + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightIdx((prev) => Math.max(prev - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (filtered[highlightIdx]) {
+        onSelect(filtered[highlightIdx].id)
+      }
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="relative z-50 min-w-[200px]">
+      <input
+        type="text"
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={currentSup ? `Actual: ${currentSup.name} (filtrar...)` : 'Escribir iniciales...'}
+        className="w-full bg-slate-950 border-2 border-cyan-400 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-400 focus:outline-none shadow-lg"
+      />
+      <div className="absolute left-0 top-full mt-1 w-64 max-h-56 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 divide-y divide-slate-800/80 text-xs">
+        <button
+          type="button"
+          onClick={() => onSelect(null)}
+          className="w-full text-left px-3 py-1.5 text-slate-400 hover:bg-slate-800 hover:text-rose-300 text-[11px] italic cursor-pointer"
+        >
+          -- Sin Proveedor (Quitar asignación) --
+        </button>
+        {filtered.length === 0 ? (
+          <div className="px-3 py-2.5 text-slate-500 text-center text-[11px]">
+            Sin coincidencias para "{query}"
+          </div>
+        ) : (
+          filtered.map((s, idx) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onSelect(s.id)}
+              onMouseEnter={() => setHighlightIdx(idx)}
+              className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                idx === highlightIdx ? 'bg-cyan-950 text-cyan-200 font-bold' : 'text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <span className="truncate">{s.name}</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 shrink-0">
+                {s.trade || (s.trades && s.trades[0]) || 'Gral'}
+              </span>
+            </button>
+          ))
+        )}
       </div>
     </div>
   )

@@ -97,7 +97,7 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [x] **7. Terceros — Botón de Evolución Compacto (Terceros.jsx):**
   - Icono exclusivo de estrella sin texto visible para evitar solapamientos.
 
-- [x] **8. Módulo de Compras M4b (Compras.jsx + Migraciones 0024, 0025 y 0026):**
+- [x] **8. Módulo de Compras M4b (Compras.jsx + Migraciones 0024, 0025, 0026 y 0027):**
   - **Reemplazo Integral de GS-006:** Depuración de 32 a 24 columnas operativas.
   - **Secuencia de Columnas Reordenada:** `[ ] | Destino | Fecha / Quincena | Buque / OT | Solicita | Material Solicitado | Cant. | $/U Proveedor | $/U Sistema | Proveedor | Estado | Urgencia | Doc | Conciliado | Acciones`.
   - **Edición In-Situ Doble Clic (Estilo Excel/Sheets):** Modificación ágil en celda con doble clic de `$/U Proveedor`, `Proveedor`, `Cantidad` y `Solicita` (guardado instantáneo con Enter/Blur en Supabase sin abrir modales) y alternancia rápida de Urgencia con 1 clic.
@@ -132,7 +132,8 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
     - **Ferremat:** A demanda ante emergencias o quiebres de stock.
 
 - [ ] **3. Módulo M4: Pañol y Materiales (y Módulo de Terceros):**
-  - Catálogo de consumibles y aceros/chapas navales.
+  - Catálogo de consumibles y aceros/chapas navales (3 únicas categorías: MATERIALES, CONSUMIBLES, ELEM.SEGURIDAD).
+  - 🗂️ **Base de Datos de Rubros de Pañol (material_rubros) y Vinculación con Compras:** Al construir el módulo de Pañol, crear la tabla maestra de rubros técnicos y vincular el desplegable de rubros del modal Alta Formal de Material en Compras y el homologador en /admin contra esta tabla.
   - 📏 **Deducción y Edición de Unidad de Medida con Alerta de Impacto en Stock:** Al dar de alta o editar materiales en Pañol, la unidad de medida se deducirá automáticamente a partir del nombre (`lado x lado` $\rightarrow$ `m2`, `x metro` $\rightarrow$ `metro lineal`, `x kg` $\rightarrow$ `kg`, `x m3` $\rightarrow$ `m3`, defecto `unidad`), pero será editable para corregir inconsistencias de origen. **Alerta obligatoria:** Si el material pertenece a la lista de control de stock y se modifica su unidad de medida, el sistema emitirá un aviso visual de confirmación informando que la modificación alterará el recuento y control de stock acumulado.
   - Vales de retiro de pañol vinculados a OTs (`inventory_transactions.work_order_id` y `work_item_id`).
   - Control de stock y alertas automáticas de reposición mínima.
