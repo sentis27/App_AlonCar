@@ -1,5 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import {
+  XCircle,
+  Split,
+  Camera,
+  CornerDownRight,
+  Bell,
   ShoppingCart,
   Package,
   Plus,
@@ -53,6 +58,7 @@ import { useAuth } from '../context/AuthContext'
 const STATUS_OPTIONS = [
   { value: 'TODOS', label: 'Todos los Estados' },
   { value: 'PEDIR', label: 'PEDIR (Por Emitir)', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+  { value: 'SOLICITUD', label: 'SOLICITUD (Pedido Inicial)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
   { value: 'PEDIDO', label: 'PEDIDO (Emitido a Prov.)', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
   { value: 'COTIZACION', label: 'COTIZACION (En Evaluación)', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
   { value: 'COTIZAR', label: 'COTIZAR (A Pedir Precio)', color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40' },
@@ -172,7 +178,16 @@ export default function Compras() {
   const [docTargetOrder, setDocTargetOrder] = useState(null)
 
   const [showDocActionModal, setShowDocActionModal] = useState(false)
-  const [selectedDocAction, setSelectedDocAction] = useState(null) // Para editar/reemplazar/eliminar doc
+  const [selectedDocAction, setSelectedDocAction] = useState(null)
+  const [inlineEdit, setInlineEdit] = useState({ orderId: null, field: null, value: '' })
+  const [showOrderDocsModal, setShowOrderDocsModal] = useState(false)
+  const [selectedOrderForDocs, setSelectedOrderForDocs] = useState(null)
+  const [showPartialModal, setShowPartialModal] = useState(false)
+  const [partialDeliveryOrder, setPartialDeliveryOrder] = useState(null)
+  const [showSeCompraModal, setShowSeCompraModal] = useState(false)
+  const [seCompraAlertOrder, setSeCompraAlertOrder] = useState(null)
+  const [showAssignSupplierModal, setShowAssignSupplierModal] = useState(false)
+  const [seCompraAlertSettings, setSeCompraAlertSettings] = useState(null) // Para editar/reemplazar/eliminar doc
 
   const [showReconcileModal, setShowReconcileModal] = useState(false)
   const [reconcileTarget, setReconcileTarget] = useState(null)
@@ -273,40 +288,98 @@ export default function Compras() {
     return Array.from(set).sort().reverse()
   }, [purchaseOrders, currentFortnight])
 
-  // KPIs superiores
+  // KPIs superiores agrupados con soporte de sub-estados
   const kpis = useMemo(() => {
-    let pendingQuotes = 0
+    let countPedir = 0
+    let countSolicitud = 0
+    let countCotizar = 0
+    let countCotizaSol = 0
+    let countCotizacion = 0
+    let countCotizaAprob = 0
+    let countCotizacionesTotal = 0
+    let countPedido = 0
+    let countPedidoIncompleto = 0
+    let countSeCompra = 0
+    let countRecibido = 0
+    let countRecibidoDirecto = 0
+    let countConciliados = 0
     let expiredQuotes = 0
-    let pendingOrders = 0
-    let pendingReceives = 0
     let newMaterialsCount = 0
 
     const now = new Date()
 
     purchaseOrders.forEach((po) => {
       if (po.is_new_material) newMaterialsCount++
+      if (po.is_reconciled) countConciliados++
 
-      if (['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD'].includes(po.status)) {
-        pendingQuotes++
+      if (po.status === 'PEDIR') countPedir++
+      if (po.status === 'SOLICITUD') countSolicitud++
+
+      if (['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)) {
+        countCotizacionesTotal++
+        if (po.status === 'COTIZAR') countCotizar++
+        if (po.status === 'COTIZA.SOLICITUD') countCotizaSol++
+        if (po.status === 'COTIZACION') countCotizacion++
+        if (po.status === 'COTIZA.APROBADA') countCotizaAprob++
+
         const orderDate = new Date(po.order_date)
         const diffDays = Math.floor((now - orderDate) / (1000 * 60 * 60 * 24))
         if (diffDays > 7) expiredQuotes++
       }
 
-      if (po.status === 'PEDIDO') pendingOrders++
-      if (['PEDIDO', 'COTIZA.APROBADA', 'PEDIDO INCOMPLETO'].includes(po.status)) pendingReceives++
+      if (po.status === 'PEDIDO') countPedido++
+      if (po.status === 'PEDIDO INCOMPLETO') countPedidoIncompleto++
+      if (po.status === 'SE COMPRA?') countSeCompra++
+      if (po.status === 'RECIBIDO') countRecibido++
+      if (po.status === 'RECIB.COMP.DIRECT') countRecibidoDirecto++
     })
 
     return {
-      pendingQuotes,
+      porEmitirTotal: countPedir + countSolicitud,
+      countPedir,
+      countSolicitud,
+      countCotizacionesTotal,
+      countCotizar,
+      countCotizaSol,
+      countCotizacion,
+      countCotizaAprob,
       expiredQuotes,
-      pendingOrders,
-      pendingReceives,
+      countPedido,
+      countPedidoIncompleto,
+      countSeCompra,
+      recibidosTotal: countRecibido + countRecibidoDirecto,
+      countRecibido,
+      countRecibidoDirecto,
+      countConciliados,
       newMaterialsCount
     }
   }, [purchaseOrders])
 
-  // Toggle interactivo de KPI como filtro
+  // Limpiar todos los filtros (Botón Global)
+  function clearAllFilters() {
+    setSearchQuery('')
+    setFilterSupplier('TODOS')
+    setFilterStatus('TODOS')
+    setFilterFortnight('TODAS')
+    setFilterChargeType('TODOS')
+    setFilterNewOnly(false)
+    setHideReconciled(false)
+    setActiveKpiFilter(null)
+  }
+
+  // Comprobar si hay filtros activos para alerta visual
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() ||
+    filterSupplier !== 'TODOS' ||
+    filterStatus !== 'TODOS' ||
+    filterFortnight !== 'TODAS' ||
+    filterChargeType !== 'TODOS' ||
+    filterNewOnly ||
+    hideReconciled ||
+    activeKpiFilter !== null
+  )
+
+  // Toggle interactivo de KPI como filtro (Grupos y Subgrupos)
   function toggleKpiFilter(filterKey) {
     if (activeKpiFilter === filterKey) {
       setActiveKpiFilter(null)
@@ -314,15 +387,17 @@ export default function Compras() {
       setFilterSupplier('TODOS')
     } else {
       setActiveKpiFilter(filterKey)
-      if (filterKey === 'pedidos') {
-        setFilterStatus('PEDIDO')
+      if (filterKey === 'por_emitir') {
+        setFilterStatus('TODOS')
+      } else if (['PEDIR', 'SOLICITUD', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA', 'PEDIDO', 'PEDIDO INCOMPLETO', 'SE COMPRA?'].includes(filterKey)) {
+        setFilterStatus(filterKey)
         setFilterSupplier('TODOS')
       } else if (filterKey === 'cotizaciones') {
-        setFilterStatus('COTIZACION')
-        setFilterSupplier('TODOS')
-      } else if (filterKey === 'sin_recibir') {
         setFilterStatus('TODOS')
-        setFilterSupplier('TODOS')
+      } else if (filterKey === 'recibidos') {
+        setFilterStatus('TODOS')
+      } else if (filterKey === 'conciliados') {
+        setFilterStatus('TODOS')
       } else if (filterKey === 'gases') {
         const gasSup = suppliers.find((s) => s.is_gas_supplier)
         if (gasSup) setFilterSupplier(gasSup.id)
@@ -331,7 +406,7 @@ export default function Compras() {
     }
   }
 
-  // Filtrado de pedidos
+  // Filtrado reactivo de pedidos
   const filteredOrders = useMemo(() => {
     return purchaseOrders.filter((po) => {
       // Texto de búsqueda
@@ -341,15 +416,25 @@ export default function Compras() {
         const obs = (po.observations || '').toLowerCase()
         const req = (po.requested_by_name || '').toLowerCase()
         const inv = (po.invoice_number || '').toLowerCase()
+        const rem = (po.remito_number || '').toLowerCase()
         const sup = suppliers.find((s) => s.id === po.supplier_id)?.name.toLowerCase() || ''
         const shp = ships.find((s) => s.id === po.ship_id)?.name.toLowerCase() || ''
-        const matches = mat.includes(q) || obs.includes(q) || req.includes(q) || inv.includes(q) || sup.includes(q) || shp.includes(q)
+        const matches = mat.includes(q) || obs.includes(q) || req.includes(q) || inv.includes(q) || rem.includes(q) || sup.includes(q) || shp.includes(q)
         if (!matches) return false
       }
 
-      // Filtro KPI interactivo especial
-      if (activeKpiFilter === 'sin_recibir') {
-        if (!['PEDIDO', 'COTIZA.APROBADA', 'PEDIDO INCOMPLETO'].includes(po.status)) return false
+      // Filtro KPI interactivo de Grupo
+      if (activeKpiFilter === 'por_emitir') {
+        if (!['PEDIR', 'SOLICITUD'].includes(po.status)) return false
+      } else if (activeKpiFilter === 'cotizaciones') {
+        if (!['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)) return false
+      } else if (activeKpiFilter === 'recibidos') {
+        if (!['RECIBIDO', 'RECIB.COMP.DIRECT'].includes(po.status)) return false
+      } else if (activeKpiFilter === 'conciliados') {
+        if (!po.is_reconciled) return false
+      } else if (activeKpiFilter === 'gases') {
+        const sup = suppliers.find((s) => s.id === po.supplier_id)
+        if (!sup?.is_gas_supplier) return false
       }
 
       // Filtro proveedor
@@ -373,6 +458,45 @@ export default function Compras() {
       return true
     })
   }, [purchaseOrders, searchQuery, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter, suppliers, ships])
+
+  // Guardar edición rápida inline (Doble Clic estilo Excel/Sheets)
+  async function saveInlineEdit(orderId, field, newValue) {
+    setInlineEdit({ orderId: null, field: null, value: '' })
+    const targetOrder = purchaseOrders.find((p) => p.id === orderId)
+    if (!targetOrder || targetOrder[field] === newValue) return
+
+    // Optimistic update
+    setPurchaseOrders((prev) =>
+      prev.map((p) => (p.id === orderId ? { ...p, [field]: newValue } : p))
+    )
+
+    try {
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update({ [field]: newValue, updated_at: new Date().toISOString() })
+        .eq('id', orderId)
+      if (error) throw error
+      showFeedbackMsg('success', 'Campo actualizado correctamente.')
+    } catch (err) {
+      console.error('Error guardando edición rápida:', err)
+      showFeedbackMsg('error', 'Error al guardar: ' + err.message)
+      // Rollback
+      setPurchaseOrders((prev) =>
+        prev.map((p) => (p.id === orderId ? targetOrder : p))
+      )
+    }
+  }
+
+  // Toggle rápido de urgencia
+  async function handleCycleUrgency(orderId, currentUrgency) {
+    const cycle = {
+      'SIN_APURO': 'URGENTE',
+      'URGENTE': 'PROXIMA_SALIDA',
+      'PROXIMA_SALIDA': 'SIN_APURO'
+    }
+    const nextUrgency = cycle[currentUrgency] || 'SIN_APURO'
+    await saveInlineEdit(orderId, 'urgency', nextUrgency)
+  }
 
   // KPIs específicos de la pestaña Proveedores
   const supplierKpis = useMemo(() => {
@@ -464,11 +588,29 @@ export default function Compras() {
     setSelectedOrderIds(next)
   }
 
-  // Cambio rápido de estado
+  // Cambio rápido de estado con soporte para PEDIDO INCOMPLETO y SE COMPRA?
   async function handleQuickStatusChange(orderId, newStatus) {
     try {
       const order = purchaseOrders.find((p) => p.id === orderId)
       if (!order) return
+
+      // Interceptor para PEDIDO INCOMPLETO -> Abre modal de recepción parcial
+      if (newStatus === 'PEDIDO INCOMPLETO') {
+        setPartialDeliveryOrder(order)
+        setShowPartialModal(true)
+        return
+      }
+
+      // Interceptor para SE COMPRA? -> Abre panel de alerta gerencial
+      if (newStatus === 'SE COMPRA?') {
+        const updates = { status: 'SE COMPRA?', updated_at: new Date().toISOString() }
+        await supabase.from('purchase_orders').update(updates).eq('id', orderId)
+        setPurchaseOrders((prev) => prev.map((p) => (p.id === orderId ? { ...p, ...updates } : p)))
+        setSeCompraAlertOrder({ ...order, status: 'SE COMPRA?' })
+        setShowSeCompraModal(true)
+        showFeedbackMsg('success', 'Marcado como "SE COMPRA?". Abriendo panel de alerta gerencial...')
+        return
+      }
 
       const updates = {
         status: newStatus,
@@ -637,90 +779,208 @@ export default function Compras() {
       {/* ========================================================= */}
       {activeTab === 'compras' && (
         <>
-          {/* TARJETAS DE KPIs SUPERIORES (FILTROS INTERACTIVOS CON 1 CLIC) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* KPI 1: Pedidos Emitidos / En curso */}
+          {/* TARJETAS DE KPIs SUPERIORES (GRUPOS Y SUBGRUPOS INTERACTIVOS 1-CLIC) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
+            {/* KPI 1: Por Emitir (PEDIR + SOLICITUD) */}
             <div
-              onClick={() => toggleKpiFilter('pedidos')}
-              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'pedidos'
-                  ? 'bg-blue-950/60 border-blue-500 shadow-lg shadow-blue-500/20'
-                  : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+              onClick={() => toggleKpiFilter('por_emitir')}
+              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'por_emitir' || activeKpiFilter === 'PEDIR' || activeKpiFilter === 'SOLICITUD'
+                  ? 'bg-amber-950/70 border-amber-400 shadow-lg shadow-amber-500/20'
+                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
               }`}
             >
-              <div>
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pedidos en Proveedor</p>
-                <p className="text-2xl font-black text-blue-400 mt-1">{kpis.pendingOrders}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Clic para filtrar estado PEDIDO</p>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-amber-300 tracking-wider">1. Por Emitir</span>
+                <span className="text-xl font-black text-amber-400">{kpis.porEmitirTotal}</span>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                <Truck className="w-5 h-5" />
+              <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIR'); }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                    activeKpiFilter === 'PEDIR' ? 'bg-amber-500 text-slate-950 font-black' : 'bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                  }`}
+                >
+                  PEDIR: {kpis.countPedir}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('SOLICITUD'); }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                    activeKpiFilter === 'SOLICITUD' ? 'bg-yellow-500 text-slate-950 font-black' : 'bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20'
+                  }`}
+                >
+                  SOLICITUD: {kpis.countSolicitud}
+                </button>
               </div>
             </div>
 
-            {/* KPI 2: Cotizaciones Pendientes */}
+            {/* KPI 2: Grupo Cotizaciones (Total + Subgrupos) */}
             <div
               onClick={() => toggleKpiFilter('cotizaciones')}
-              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'cotizaciones'
-                  ? 'bg-purple-950/60 border-purple-500 shadow-lg shadow-purple-500/20'
-                  : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'cotizaciones' || ['COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA'].includes(activeKpiFilter)
+                  ? 'bg-purple-950/70 border-purple-400 shadow-lg shadow-purple-500/20'
+                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
               }`}
             >
-              <div>
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Cotizaciones en Curso</p>
+                  <span className="text-[10px] uppercase font-bold text-purple-300 tracking-wider">2. Cotizaciones</span>
                   {kpis.expiredQuotes > 0 && (
                     <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
-                      {kpis.expiredQuotes} vencida{kpis.expiredQuotes > 1 ? 's' : ''}
+                      {kpis.expiredQuotes} venc.
                     </span>
                   )}
                 </div>
-                <p className="text-2xl font-black text-purple-400 mt-1">{kpis.pendingQuotes}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Clic para filtrar cotizaciones</p>
+                <span className="text-xl font-black text-purple-400">{kpis.countCotizacionesTotal}</span>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-                <FileText className="w-5 h-5" />
+              <div className="flex flex-wrap items-center gap-1 mt-2 pt-2 border-t border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZAR'); }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                    activeKpiFilter === 'COTIZAR' ? 'bg-indigo-500 text-white font-bold' : 'bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
+                  }`}
+                  title="A pedir precio"
+                >
+                  COTIZAR: {kpis.countCotizar}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZA.SOLICITUD'); }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                    activeKpiFilter === 'COTIZA.SOLICITUD' ? 'bg-yellow-500 text-slate-950 font-bold' : 'bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20'
+                  }`}
+                  title="Esperando proveedor"
+                >
+                  SOLIC.: {kpis.countCotizaSol}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZACION'); }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                    activeKpiFilter === 'COTIZACION' ? 'bg-purple-500 text-white font-bold' : 'bg-purple-500/10 text-purple-300 hover:bg-purple-500/20'
+                  }`}
+                  title="En análisis"
+                >
+                  EVAL.: {kpis.countCotizacion}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZA.APROBADA'); }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                    activeKpiFilter === 'COTIZA.APROBADA' ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                  }`}
+                  title="Aprobada"
+                >
+                  APROB.: {kpis.countCotizaAprob}
+                </button>
               </div>
             </div>
 
-            {/* KPI 3: Sin Recibir en Astillero */}
+            {/* KPI 3: En Proveedor & Tránsito (PEDIDO + PEDIDO INCOMPLETO) */}
             <div
-              onClick={() => toggleKpiFilter('sin_recibir')}
-              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'sin_recibir'
-                  ? 'bg-amber-950/60 border-amber-500 shadow-lg shadow-amber-500/20'
-                  : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+              onClick={() => toggleKpiFilter('pedidos')}
+              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'pedidos' || activeKpiFilter === 'PEDIDO INCOMPLETO'
+                  ? 'bg-blue-950/70 border-blue-400 shadow-lg shadow-blue-500/20'
+                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
               }`}
             >
-              <div>
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Compras sin Recibir</p>
-                <p className="text-2xl font-black text-amber-400 mt-1">{kpis.pendingReceives}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Clic para filtrar pendientes de entrega</p>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-blue-300 tracking-wider">3. En Proveedor</span>
+                <span className="text-xl font-black text-blue-400">{kpis.countPedido}</span>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                <Clock className="w-5 h-5" />
+              <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-800/80">
+                <span className="text-[10px] text-slate-400">PEDIDO: {kpis.countPedido}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIDO INCOMPLETO'); }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-colors ${
+                    activeKpiFilter === 'PEDIDO INCOMPLETO'
+                      ? 'bg-orange-500 text-slate-950 font-black'
+                      : kpis.countPedidoIncompleto > 0
+                      ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40 animate-pulse'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                  title="Recepción parcial / Saldo faltante a reclamar"
+                >
+                  <span>Incompletos:</span>
+                  <span className="font-mono">{kpis.countPedidoIncompleto}</span>
+                </button>
               </div>
             </div>
 
-            {/* KPI 4: Regla P-02 Alertas de Gases (Air Liquide y Praxair) */}
+            {/* KPI 4: En Decisión Técnica (SE COMPRA?) */}
+            <div
+              onClick={() => toggleKpiFilter('SE COMPRA?')}
+              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'SE COMPRA?'
+                  ? 'bg-pink-950/80 border-pink-400 shadow-lg shadow-pink-500/20'
+                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-pink-300 tracking-wider">4. SE COMPRA?</span>
+                <span className={`text-xl font-black ${kpis.countSeCompra > 0 ? 'text-pink-400 animate-pulse' : 'text-slate-500'}`}>
+                  {kpis.countSeCompra}
+                </span>
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
+                <span>Alerta Gerencial Hugo & Martín</span>
+                <span className="text-pink-400 font-bold underline">Filtrar</span>
+              </div>
+            </div>
+
+            {/* KPI 5: Recibidos & Conciliados */}
+            <div
+              onClick={() => toggleKpiFilter('recibidos')}
+              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'recibidos' || activeKpiFilter === 'conciliados'
+                  ? 'bg-emerald-950/70 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-emerald-300 tracking-wider">5. Recibidos</span>
+                <span className="text-xl font-black text-emerald-400">{kpis.recibidosTotal}</span>
+              </div>
+              <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-800/80 text-[9px] font-mono">
+                <span className="text-slate-400">Pañol: {kpis.countRecibido} | Obra: {kpis.countRecibidoDirecto}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('conciliados'); }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    activeKpiFilter === 'conciliados' ? 'bg-purple-500 text-white' : 'bg-purple-950 text-purple-300 hover:bg-purple-900'
+                  }`}
+                >
+                  Fact.: {kpis.countConciliados}
+                </button>
+              </div>
+            </div>
+
+            {/* KPI 6: Regla P-02 Alertas de Gases (Air Liquide y Praxair) */}
             <div
               onClick={() => toggleKpiFilter('gases')}
-              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
                 activeKpiFilter === 'gases'
-                  ? 'bg-cyan-950/80 border-cyan-400 shadow-lg shadow-cyan-500/20'
-                  : 'bg-gradient-to-br from-cyan-950/40 to-slate-900/90 border-cyan-800/40 hover:border-cyan-700'
+                  ? 'bg-cyan-950/90 border-cyan-400 shadow-lg shadow-cyan-500/20'
+                  : 'bg-gradient-to-br from-cyan-950/30 to-slate-900/90 border-cyan-800/40 hover:border-cyan-700'
               }`}
             >
-              <div className="min-w-0">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Flame className="w-3.5 h-3.5 text-cyan-400" />
-                  <p className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">Reposición Gases (P-02)</p>
+                  <span className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">6. Gases P-02</span>
                 </div>
-                <p className="text-xs font-bold text-white mt-1 truncate">Air Liquide: Martes &lt;12hs</p>
-                <p className="text-[10px] text-slate-400 truncate">Cliente N° 2234867 | Tel: 0810-222-5272</p>
+                <span className="text-[10px] text-cyan-400 underline font-semibold">Filtrar</span>
               </div>
-              <span className="text-[10px] text-cyan-400 underline font-semibold">Filtrar</span>
+              <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px]">
+                <p className="font-bold text-white truncate">Air Liquide: Martes &lt;12hs</p>
+                <p className="text-slate-400 text-[9px] truncate">Cliente 2234867 | 0810-222-5272</p>
+              </div>
             </div>
           </div>
 
@@ -832,37 +1092,41 @@ export default function Compras() {
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
             <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
               <table className="w-full text-left text-xs border-collapse">
-                {/* STICKY HEADER TIPO EXCEL */}
+                {/* STICKY HEADER TIPO EXCEL (NUEVO ORDEN SOLICITADO) */}
                 <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm">
                   <tr>
                     <th className="py-2.5 px-3 w-10 text-center">
                       <button
                         type="button"
                         onClick={toggleSelectAll}
-                        className="text-slate-400 hover:text-cyan-400 transition-colors"
+                        className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
                         title={isAllFilteredSelected ? 'Deseleccionar todo' : 'Seleccionar todo'}
                       >
                         {isAllFilteredSelected ? <CheckSquare className="w-4 h-4 text-cyan-400" /> : <Square className="w-4 h-4" />}
                       </button>
                     </th>
-                    <th className="py-2.5 px-3">Fecha / Quincena</th>
-                    <th className="py-2.5 px-3">Urgencia</th>
                     <th className="py-2.5 px-3">Destino</th>
+                    <th className="py-2.5 px-3">Fecha / Quincena</th>
                     <th className="py-2.5 px-3">Buque / OT</th>
                     <th className="py-2.5 px-3">Solicita</th>
                     <th className="py-2.5 px-3">Material Solicitado</th>
                     <th className="py-2.5 px-3 text-right">Cant.</th>
 
-                    {/* Columnas solo visibles en Modo Completo */}
+                    {/* Columnas financieras visibles solo en Modo Completo */}
                     {viewMode === 'completa' && (
                       <>
                         <th className="py-2.5 px-3 text-right">$/U Proveedor</th>
                         <th className="py-2.5 px-3 text-right">$/U Sistema</th>
-                        <th className="py-2.5 px-3">Proveedor</th>
                       </>
                     )}
 
+                    {/* Proveedor visible en AMBOS MODOS (esencial para recepción en pañol) */}
+                    <th className="py-2.5 px-3">Proveedor</th>
+
+                    {/* Estado con selector editable en ambos modos */}
                     <th className="py-2.5 px-3">Estado</th>
+
+                    <th className="py-2.5 px-3">Urgencia</th>
                     <th className="py-2.5 px-3 text-center">Doc</th>
 
                     {viewMode === 'completa' && (
@@ -876,26 +1140,26 @@ export default function Compras() {
                 <tbody className="divide-y divide-slate-800/60 font-sans">
                   {loading ? (
                     <tr>
-                      <td colSpan={viewMode === 'completa' ? 14 : 10} className="text-center py-12 text-slate-500">
+                      <td colSpan={viewMode === 'completa' ? 15 : 12} className="text-center py-12 text-slate-500">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-cyan-400" />
                         Cargando registro de compras...
                       </td>
                     </tr>
                   ) : filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={viewMode === 'completa' ? 14 : 10} className="text-center py-12 text-slate-500">
+                      <td colSpan={viewMode === 'completa' ? 15 : 12} className="text-center py-12 text-slate-500">
                         No se encontraron registros de compra con los filtros seleccionados.
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((po, index) => {
+                    filteredOrders.map((po) => {
                       const isSelected = selectedOrderIds.has(po.id)
                       const sup = suppliers.find((s) => s.id === po.supplier_id)
                       const shp = ships.find((s) => s.id === po.ship_id)
                       const wo = workOrders.find((w) => w.id === po.work_order_id)
-                      const doc = documents.find((d) => d.purchase_order_id === po.id)
+                      const lineDocs = documents.filter((d) => d.purchase_order_id === po.id)
 
-                      // Cálculo de diferencia de precio proveedor vs sistema
+                      // Diferencia de precio proveedor vs sistema
                       const quoted = Number(po.supplier_quoted_price) || 0
                       const system = Number(po.system_unit_price) || 0
                       let deltaPct = null
@@ -903,7 +1167,6 @@ export default function Compras() {
                         deltaPct = Math.round(((quoted - system) / system) * 100)
                       }
 
-                      // Badge de Urgencia
                       const urgency = po.urgency || 'SIN_APURO'
 
                       return (
@@ -922,36 +1185,13 @@ export default function Compras() {
                             <button
                               type="button"
                               onClick={() => toggleSelectRow(po.id)}
-                              className="text-slate-500 hover:text-cyan-400 transition-colors"
+                              className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
                             >
                               {isSelected ? <CheckSquare className="w-4 h-4 text-cyan-400" /> : <Square className="w-4 h-4" />}
                             </button>
                           </td>
 
-                          {/* 2. Fecha / Quincena */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            <div className="font-mono text-slate-200">{po.order_date}</div>
-                            <div className="text-[10px] text-slate-500 font-mono">{po.fortnight_period}</div>
-                          </td>
-
-                          {/* 3. Urgencia */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            {urgency === 'URGENTE' ? (
-                              <span className="inline-block px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 font-extrabold text-[10px] animate-pulse">
-                                URGENTE
-                              </span>
-                            ) : urgency === 'PROXIMA_SALIDA' ? (
-                              <span className="inline-block px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[10px]">
-                                PRÓX. SALIDA
-                              </span>
-                            ) : (
-                              <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">
-                                Sin Apuro
-                              </span>
-                            )}
-                          </td>
-
-                          {/* 4. Destino */}
+                          {/* 2. Destino */}
                           <td className="py-2 px-3 whitespace-nowrap">
                             {po.charge_type === 'DIRECT' ? (
                               <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-bold text-[10px]">
@@ -968,20 +1208,49 @@ export default function Compras() {
                             )}
                           </td>
 
-                          {/* 5. Buque / OT */}
+                          {/* 3. Fecha / Quincena */}
+                          <td className="py-2 px-3 whitespace-nowrap font-mono">
+                            <div className="text-slate-200">{po.order_date}</div>
+                            <div className="text-[10px] text-slate-500">{po.fortnight_period}</div>
+                          </td>
+
+                          {/* 4. Buque / OT */}
                           <td className="py-2 px-3">
-                            <div className="font-semibold text-slate-200 truncate max-w-[140px]" title={shp?.name || 'ASTILLERO'}>
+                            <div className="font-semibold text-slate-200 truncate max-w-[130px]" title={shp?.name || 'ASTILLERO'}>
                               {shp?.name || 'ASTILLERO'}
                             </div>
-                            <div className="text-[10px] text-slate-400 truncate max-w-[140px]" title={wo?.title || 'STOCK'}>
+                            <div className="text-[10px] text-slate-400 truncate max-w-[130px]" title={wo?.title || 'STOCK'}>
                               {wo?.title || 'STOCK GENERAL'}
                             </div>
                           </td>
 
-                          {/* 6. Solicita */}
-                          <td className="py-2 px-3 text-slate-300 whitespace-nowrap">{po.requested_by_name || 'PAÑOL'}</td>
+                          {/* 5. Solicita (Editable con Doble Clic) */}
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            {inlineEdit.orderId === po.id && inlineEdit.field === 'requested_by_name' ? (
+                              <input
+                                type="text"
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)
+                                  if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                }}
+                                onBlur={() => saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)}
+                                className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                              />
+                            ) : (
+                              <div
+                                onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'requested_by_name', value: po.requested_by_name || 'PAÑOL' })}
+                                className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all"
+                                title="Doble clic para editar solicitante"
+                              >
+                                {po.requested_by_name || 'PAÑOL'}
+                              </div>
+                            )}
+                          </td>
 
-                          {/* 7. Material */}
+                          {/* 6. Material Solicitado */}
                           <td className="py-2 px-3">
                             <div className="flex items-center gap-1.5">
                               <span className="font-medium text-white">{po.material_name_raw}</span>
@@ -1006,25 +1275,67 @@ export default function Compras() {
                             )}
                           </td>
 
-                          {/* 8. Cantidad */}
+                          {/* 7. Cantidad (Editable con Doble Clic) */}
                           <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
-                            <span className="font-bold text-white">{po.quantity}</span>{' '}
-                            <span className="text-[10px] text-slate-500">{po.unit_measure || 'unidad'}</span>
+                            {inlineEdit.orderId === po.id && inlineEdit.field === 'quantity' ? (
+                              <input
+                                type="number"
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1)
+                                  if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                }}
+                                onBlur={() => saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1)}
+                                className="w-20 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
+                              />
+                            ) : (
+                              <div
+                                onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'quantity', value: po.quantity || 1 })}
+                                className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all font-mono inline-block text-right"
+                                title="Doble clic para editar cantidad"
+                              >
+                                <span className="font-bold text-white">{po.quantity}</span>{' '}
+                                <span className="text-[10px] text-slate-500">{po.unit_measure || 'unidad'}</span>
+                              </div>
+                            )}
                           </td>
 
-                          {/* Columnas solo de Modo Completo */}
+                          {/* Columnas Financieras (Solo Modo Completo) */}
                           {viewMode === 'completa' && (
                             <>
-                              {/* 9. $/U Proveedor */}
+                              {/* 8. $/U Proveedor (Editable con Doble Clic) */}
                               <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
-                                {po.supplier_quoted_price ? (
-                                  <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span>
+                                {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_quoted_price' ? (
+                                  <input
+                                    type="number"
+                                    autoFocus
+                                    value={inlineEdit.value}
+                                    onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0)
+                                      if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                    }}
+                                    onBlur={() => saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0)}
+                                    className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
+                                  />
                                 ) : (
-                                  <span className="text-slate-600">—</span>
+                                  <div
+                                    onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_quoted_price', value: po.supplier_quoted_price || '' })}
+                                    className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right"
+                                    title="Doble clic para editar $/U cotizado"
+                                  >
+                                    {po.supplier_quoted_price ? (
+                                      <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span>
+                                    ) : (
+                                      <span className="text-slate-600">—</span>
+                                    )}
+                                  </div>
                                 )}
                               </td>
 
-                              {/* 10. $/U Sistema + Semáforo */}
+                              {/* 9. $/U Sistema + Semáforo */}
                               <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
                                 <div className="text-slate-400">
                                   {po.system_unit_price ? `$${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}
@@ -1040,85 +1351,123 @@ export default function Compras() {
                                   </div>
                                 )}
                               </td>
-
-                              {/* 11. Proveedor */}
-                              <td className="py-2 px-3">
-                                <div className="flex items-center justify-between gap-1 max-w-[140px]">
-                                  <span className="truncate font-semibold text-slate-200" title={sup?.name || 'S/D'}>
-                                    {sup?.name || 'S/D'}
-                                  </span>
-                                </div>
-                              </td>
                             </>
                           )}
 
-                          {/* Estado */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            {viewMode === 'completa' ? (
+                          {/* 10. Proveedor (Visible en Ambos Modos y Editable con Doble Clic) */}
+                          <td className="py-2 px-3">
+                            {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_id' ? (
                               <select
-                                value={po.status}
-                                onChange={(e) => handleQuickStatusChange(po.id, e.target.value)}
-                                className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-300 focus:outline-none focus:border-cyan-500"
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => {
+                                  setInlineEdit({ ...inlineEdit, value: e.target.value })
+                                  saveInlineEdit(po.id, 'supplier_id', e.target.value)
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                }}
+                                onBlur={() => saveInlineEdit(po.id, 'supplier_id', inlineEdit.value)}
+                                className="w-36 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
                               >
-                                {STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
-                                  <option key={st.value} value={st.value}>
-                                    {st.label}
-                                  </option>
+                                <option value="">-- Sin Proveedor --</option>
+                                {suppliers.map((s) => (
+                                  <option key={s.id} value={s.id}>{s.name}</option>
                                 ))}
                               </select>
                             ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
-                                {po.status === 'RECIBIDO' || po.status === 'RECIB.COMP.DIRECT'
-                                  ? '✅ Recibido'
-                                  : po.status === 'PEDIDO'
-                                  ? '🚚 En Gestión'
-                                  : '⏳ Solicitado'}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Doc Gestor Documental */}
-                          <td className="py-2 px-3 text-center whitespace-nowrap">
-                            {doc ? (
-                              <div className="flex items-center justify-center gap-1">
-                                <a
-                                  href={doc.storage_path}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded text-[10px] font-bold hover:bg-cyan-900 transition-colors"
-                                  title={`Ver: ${doc.original_filename}`}
-                                >
-                                  <FileText className="w-3 h-3" />
-                                  <span>Ver</span>
-                                </a>
-                                {viewMode === 'completa' && (
-                                  <button
-                                    onClick={() => {
-                                      setSelectedDocAction(doc)
-                                      setShowDocActionModal(true)
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800"
-                                    title="Opciones de archivo (editar, reemplazar, eliminar)"
-                                  >
-                                    <SlidersHorizontal className="w-3 h-3" />
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setDocTargetOrder(po)
-                                  setShowDocModal(true)
-                                }}
-                                className="text-slate-500 hover:text-cyan-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
-                                title="Adjuntar cotización, ficha técnica o foto"
+                              <div
+                                onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_id', value: po.supplier_id || '' })}
+                                className="cursor-pointer hover:bg-slate-800/80 px-1.5 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[140px]"
+                                title="Doble clic para cambiar proveedor"
                               >
-                                <Paperclip className="w-3.5 h-3.5" />
-                              </button>
+                                <span className="font-semibold text-slate-200">{sup?.name || <span className="text-slate-600 italic">Asignar...</span>}</span>
+                              </div>
                             )}
                           </td>
 
-                          {/* Conciliado (Solo Modo Completo) */}
+                          {/* 11. Estado (Editable en Ambos Modos) */}
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            <select
+                              value={po.status}
+                              onChange={(e) => handleQuickStatusChange(po.id, e.target.value)}
+                              className={`bg-slate-950 border rounded px-1.5 py-0.5 text-[11px] font-semibold focus:outline-none transition-colors cursor-pointer ${
+                                po.status === 'SE COMPRA?'
+                                  ? 'border-pink-500 text-pink-300 bg-pink-950/60 animate-pulse'
+                                  : po.status === 'PEDIDO INCOMPLETO'
+                                  ? 'border-orange-500 text-orange-300 bg-orange-950/60'
+                                  : po.status === 'RECIBIDO' || po.status === 'RECIB.COMP.DIRECT'
+                                  ? 'border-emerald-500/60 text-emerald-300 bg-emerald-950/40'
+                                  : po.status === 'PEDIDO'
+                                  ? 'border-blue-500/60 text-blue-300 bg-blue-950/40'
+                                  : 'border-slate-800 text-slate-300'
+                              }`}
+                            >
+                              {viewMode === 'completa' ? (
+                                STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
+                                  <option key={st.value} value={st.value}>
+                                    {st.label}
+                                  </option>
+                                ))
+                              ) : (
+                                <>
+                                  <option value="PEDIR">PEDIR (Por Emitir)</option>
+                                  <option value="RECIBIDO">✅ RECIBIDO (A Pañol / Stock)</option>
+                                  <option value="RECIB.COMP.DIRECT">🚢 RECIB.COMP.DIRECT (A Buque)</option>
+                                  <option value="PEDIDO INCOMPLETO">⚠️ PEDIDO INCOMPLETO (Recepción Parcial)</option>
+                                  <option value="RECIBIDO 2">📦 RECIBIDO 2 (Mat. de Cliente)</option>
+                                  <option value="CANCELADOS">❌ CANCELADOS</option>
+                                  <option value="SE COMPRA?">❓ SE COMPRA? (Duda Técnica)</option>
+                                </>
+                              )}
+                            </select>
+                          </td>
+
+                          {/* 12. Urgencia (Conmutable en 1 Clic / Doble Clic) */}
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleCycleUrgency(po.id, urgency)}
+                              className="cursor-pointer transition-transform hover:scale-105"
+                              title="Clic para cambiar urgencia (Sin Apuro -> Urgente -> Próx. Salida)"
+                            >
+                              {urgency === 'URGENTE' ? (
+                                <span className="inline-block px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 font-extrabold text-[10px] animate-pulse">
+                                  URGENTE
+                                </span>
+                              ) : urgency === 'PROXIMA_SALIDA' ? (
+                                <span className="inline-block px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[10px]">
+                                  PRÓX. SALIDA
+                                </span>
+                              ) : (
+                                <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] hover:border-slate-600">
+                                  Sin Apuro
+                                </span>
+                              )}
+                            </button>
+                          </td>
+
+                          {/* 13. Doc (Gestor Multidocumento con Contador) */}
+                          <td className="py-2 px-3 text-center whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedOrderForDocs(po)
+                                setShowOrderDocsModal(true)
+                              }}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                lineDocs.length > 0
+                                  ? 'bg-cyan-950 border border-cyan-500/60 text-cyan-300 hover:bg-cyan-900 shadow-sm'
+                                  : 'text-slate-500 hover:text-cyan-400 hover:bg-slate-800/80 border border-transparent'
+                              }`}
+                              title={lineDocs.length > 0 ? `${lineDocs.length} archivo(s) adjunto(s). Clic para ver / agregar más.` : 'Adjuntar cotización, ficha técnica o fotos'}
+                            >
+                              <Paperclip className="w-3 h-3" />
+                              <span>{lineDocs.length > 0 ? `${lineDocs.length} arch.` : 'Adjuntar'}</span>
+                            </button>
+                          </td>
+
+                          {/* 14. Conciliado (Solo Modo Completo) */}
                           {viewMode === 'completa' && (
                             <td className="py-2 px-3 text-center whitespace-nowrap">
                               {po.is_reconciled ? (
@@ -1149,7 +1498,7 @@ export default function Compras() {
                             </td>
                           )}
 
-                          {/* Acciones */}
+                          {/* 15. Acciones */}
                           <td className="py-2 px-3 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-1">
                               <button
@@ -1158,7 +1507,7 @@ export default function Compras() {
                                   setShowOrderModal(true)
                                 }}
                                 className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors cursor-pointer"
-                                title="Editar pedido"
+                                title="Editar pedido completo"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
@@ -1181,13 +1530,13 @@ export default function Compras() {
           </div>
 
           {/* ========================================================= */}
-          {/* BARRA DE TOTALES Y ESTADÍSTICAS REACTIVA (TIPO SHEETS / EXCEL) */}
+          {/* BARRA DE TOTALES FLOTANTE DE ALTO CONTRASTE */}
           {/* ========================================================= */}
-          <div className="fixed bottom-4 left-4 right-4 md:left-64 z-40 bg-slate-950/95 border border-slate-800 rounded-2xl shadow-2xl px-4 py-2.5 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-200">
-            {/* Indicador de modo */}
-            <div className="flex items-center gap-3">
+          <div className="fixed bottom-4 left-4 right-4 md:left-64 z-40 bg-slate-900/98 border-2 border-cyan-400 shadow-2xl shadow-cyan-500/30 rounded-2xl px-4 py-2.5 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-200">
+            {/* Indicador de selección y Alerta de Filtro Activo */}
+            <div className="flex flex-wrap items-center gap-2">
               {stats.isCustomSelection ? (
-                <div className="flex items-center gap-2 bg-cyan-950/80 border border-cyan-500/60 px-2.5 py-1 rounded-lg text-cyan-300 font-bold">
+                <div className="flex items-center gap-2 bg-cyan-950 border border-cyan-400 px-2.5 py-1 rounded-lg text-cyan-300 font-extrabold shadow-sm">
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
                   <span>📌 Selección Manual: {stats.count} pedidos</span>
                   <button
@@ -1200,16 +1549,30 @@ export default function Compras() {
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 bg-slate-900 border border-slate-700/80 px-2.5 py-1 rounded-lg text-slate-300 font-medium">
+                <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 font-medium">
                   <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                   <span>🌐 Todo el filtro: {stats.count} pedidos</span>
-                  <span className="text-[10px] text-slate-500 italic hidden sm:inline">(Clic en casillas para sumar a tu antojo)</span>
+                </div>
+              )}
+
+              {/* ALERTA VISUAL DE FILTRO ACTIVO */}
+              {hasActiveFilters && (
+                <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-400/80 px-2.5 py-1 rounded-lg text-amber-300 font-bold text-xs shadow-md">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Filtro Activo ({filteredOrders.length} de {purchaseOrders.length})</span>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="ml-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[10px] shadow transition-all cursor-pointer"
+                  >
+                    ✕ Limpiar Todo
+                  </button>
                 </div>
               )}
             </div>
 
             {/* Métricas calculadas en vivo */}
-            <div className="flex flex-wrap items-center gap-3 sm:gap-5 font-mono">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 font-mono">
               <div className="flex items-baseline gap-1">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Σ Cant:</span>
                 <span className="text-xs font-bold text-white">{stats.sumQty}</span>
@@ -1217,7 +1580,7 @@ export default function Compras() {
 
               {viewMode === 'completa' && (
                 <>
-                  <div className="flex items-baseline gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                  <div className="flex items-baseline gap-1 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
                     <span className="text-[10px] uppercase font-bold text-slate-400">Σ AR$:</span>
                     <span className="text-sm font-extrabold text-cyan-300">${stats.sumCostArs.toLocaleString('es-AR')}</span>
                   </div>
@@ -1241,21 +1604,33 @@ export default function Compras() {
             {selectedOrderIds.size > 0 && (
               <div className="flex items-center gap-2">
                 {viewMode === 'completa' && (
-                  <button
-                    type="button"
-                    onClick={() => setShowBatchOrderModal(true)}
-                    className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold rounded-lg text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer"
-                    title="Abrir WhatsApp agrupado por proveedor"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Pedir Agrupado ({selectedOrderIds.size})</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowBatchOrderModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold rounded-lg text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+                      title="Abrir WhatsApp agrupado por proveedor"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>Pedir Agrupado ({selectedOrderIds.size})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowAssignSupplierModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-cyan-500/50 text-cyan-300 font-bold rounded-lg text-xs shadow-md transition-all cursor-pointer"
+                      title="Asignar rápidamente un proveedor a los pedidos seleccionados"
+                    >
+                      <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Asignar Proveedor ({selectedOrderIds.size})</span>
+                    </button>
+                  </>
                 )}
 
                 <button
                   type="button"
                   onClick={handleBatchReceive}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
                   title="Marcar seleccionados como recibidos"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1266,6 +1641,8 @@ export default function Compras() {
           </div>
         </>
       )}
+
+      
 
       {/* ========================================================= */}
       {/* VISTA 2: CATÁLOGO UNIFICADO DE PROVEEDORES (MULTI-RUBRO & KPIS) */}
@@ -1826,9 +2203,99 @@ export default function Compras() {
           }}
         />
       )}
+{/* ========================================================= */}
+      {/* MODAL 7: GESTOR DE ADJUNTOS DE LA LÍNEA (MULTIDOCUMENTO) */}
+      {/* ========================================================= */}
+      {showOrderDocsModal && selectedOrderForDocs && (
+        <OrderAttachmentsModal
+          order={selectedOrderForDocs}
+          documents={documents}
+          suppliers={suppliers}
+          ships={ships}
+          workOrders={workOrders}
+          onClose={() => {
+            setShowOrderDocsModal(false)
+            setSelectedOrderForDocs(null)
+          }}
+          onDocAdded={(newDoc) => {
+            setDocuments((prev) => [newDoc, ...prev])
+            showFeedbackMsg('success', 'Documento adjuntado correctamente a la orden.')
+          }}
+          onDocUpdated={(updatedDoc) => {
+            setDocuments((prev) => prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d)))
+            showFeedbackMsg('success', 'Documento actualizado correctamente.')
+          }}
+          onDocDeleted={(deletedId) => {
+            setDocuments((prev) => prev.filter((d) => d.id !== deletedId))
+            showFeedbackMsg('success', 'Documento eliminado correctamente.')
+          }}
+        />
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 8: RECEPCIÓN PARCIAL / PEDIDO INCOMPLETO */}
+      {/* ========================================================= */}
+      {showPartialModal && partialDeliveryOrder && (
+        <PartialDeliveryModal
+          order={partialDeliveryOrder}
+          suppliers={suppliers}
+          ships={ships}
+          workOrders={workOrders}
+          onClose={() => {
+            setShowPartialModal(false)
+            setPartialDeliveryOrder(null)
+          }}
+          onSuccess={({ originalOrder, childOrder, newDocs }) => {
+            setPurchaseOrders((prev) => [childOrder, ...prev.map((p) => (p.id === originalOrder.id ? originalOrder : p))])
+            if (newDocs && newDocs.length > 0) {
+              setDocuments((prev) => [...newDocs, ...prev])
+            }
+            setShowPartialModal(false)
+            setPartialDeliveryOrder(null)
+            showFeedbackMsg('success', `Recepción parcial registrada: ${originalOrder.quantity} unidades ingresadas, ${childOrder.quantity} en reclamo pendiente.`)
+          }}
+        />
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 9: ALERTA SE COMPRA? (GERENCIA & JEFE DE OBRA) */}
+      {/* ========================================================= */}
+      {showSeCompraModal && seCompraAlertOrder && (
+        <SeCompraAlertModal
+          order={seCompraAlertOrder}
+          alertSettings={seCompraAlertSettings}
+          ships={ships}
+          workOrders={workOrders}
+          onClose={() => {
+            setShowSeCompraModal(false)
+            setSeCompraAlertOrder(null)
+          }}
+        />
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 10: ASIGNAR PROVEEDOR EN LOTE */}
+      {/* ========================================================= */}
+      {showAssignSupplierModal && (
+        <AssignSupplierModal
+          selectedOrderIds={selectedOrderIds}
+          suppliers={suppliers}
+          onClose={() => setShowAssignSupplierModal(false)}
+          onSuccess={(supplierId) => {
+            setPurchaseOrders((prev) =>
+              prev.map((p) => (selectedOrderIds.has(p.id) ? { ...p, supplier_id: supplierId } : p))
+            )
+            const supName = suppliers.find((s) => s.id === supplierId)?.name || 'Proveedor'
+            showFeedbackMsg('success', `Proveedor "${supName}" asignado a ${selectedOrderIds.size} pedidos.`)
+            setSelectedOrderIds(new Set())
+            setShowAssignSupplierModal(false)
+          }}
+        />
+      )}
     </div>
   )
 }
+
 
 // =========================================================================
 // SUBCOMPONENTES MODALES
@@ -3143,6 +3610,26 @@ function BatchOrderWhatsAppModal({ selectedOrderIds, purchaseOrders, suppliers, 
   }, [selectedOrderIds, purchaseOrders, suppliers])
 
   function buildWhatsAppText(supplierName, items) {
+    const hasIncompleto = items.some((i) => i.status === 'PEDIDO INCOMPLETO')
+
+    if (hasIncompleto) {
+      let text = `Estimados ${supplierName},\n`
+      items.forEach((item) => {
+        const orderDateFormatted = item.order_date || 'reciente'
+        const remitoText = item.remito_number ? `según Remito N° ${item.remito_number}` : ''
+        const origQty = (Number(item.quantity) || 0) + (Number(item.missing_quantity) || 0)
+        const recQty = Number(item.received_quantity) || (origQty > item.quantity ? origQty - item.quantity : 0)
+        const missQty = Number(item.quantity) || Number(item.missing_quantity) || 0
+
+        text += `Acusamos recibo de la entrega para Astillero Alon Car correspondiente a la orden de compra del día ${orderDateFormatted} ${remitoText}.\n`
+        text += `Sobre el pedido de ${origQty} ${item.unit_measure || 'unidades'} de ${item.material_name_raw}, se recibieron físicamente ${recQty} ${item.unit_measure || 'unidades'}.\n`
+        text += `Quedan pendientes de entrega ${missQty} ${item.unit_measure || 'unidades'}.\n`
+      })
+      text += `Agradecemos nos confirmen la fecha estimada de despacho del saldo faltante.\n\n`
+      text += `Atte. Departamento de Compras Alon Car S.A.`
+      return encodeURIComponent(text)
+    }
+
     let text = `*SOLICITUD DE COMPRA - ALON CAR S.A.*\n`
     text += `Estimados *${supplierName}*,\n`
     text += `Por medio de la presente solicitamos cotización/entrega de los siguientes materiales:\n\n`
@@ -3300,6 +3787,729 @@ function BatchOrderWhatsAppModal({ selectedOrderIds, purchaseOrders, suppliers, 
             Cerrar
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ==============================================================================
+// MODAL 7: GESTOR DE ADJUNTOS DE LA LÍNEA (MULTIDOCUMENTO: COTIZACIONES, FICHAS, FOTOS)
+// ==============================================================================
+function OrderAttachmentsModal({ order, documents, suppliers, ships, workOrders, onClose, onDocAdded, onDocUpdated, onDocDeleted }) {
+  const lineDocs = documents.filter((d) => d.purchase_order_id === order.id)
+  const sup = suppliers.find((s) => s.id === order.supplier_id)
+  const shp = ships.find((s) => s.id === order.ship_id)
+  const wo = workOrders.find((w) => w.id === order.work_order_id)
+
+  const [uploading, setUploading] = useState(false)
+  const [file, setFile] = useState(null)
+  const [docType, setDocType] = useState('COTIZACION_MATERIAL')
+  const [description, setDescription] = useState('')
+  const [isConfidential, setIsConfidential] = useState(false)
+  const [showDocAction, setShowDocAction] = useState(null)
+
+  async function handleAddDoc(e) {
+    e.preventDefault()
+    if (!file) return alert('Por favor selecciona un archivo.')
+
+    setUploading(true)
+    try {
+      const year = new Date().getFullYear()
+      const rubro = order.work_type || 'General'
+      const ext = file.name.split('.').pop()
+      const safeDesc = (description || 'Doc').replace(/[^a-zA-Z0-9_-]/g, '_')
+      const safeProv = (sup?.name || 'Proveedor').replace(/[^a-zA-Z0-9_-]/g, '_')
+      const normalizedName = `${safeDesc}_${safeProv}.${ext}`
+      const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${normalizedName}`
+
+      const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, file)
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+
+      const docPayload = {
+        purchase_order_id: order.id,
+        supplier_id: order.supplier_id || null,
+        original_filename: file.name,
+        normalized_filename: normalizedName,
+        storage_path: urlData.publicUrl,
+        category: rubro,
+        description: description || 'Documento adjunto',
+        year,
+        file_size_bytes: file.size,
+        doc_type: docType,
+        is_confidential_labor: docType === 'COTIZACION_MANO_OBRA' || isConfidential
+      }
+
+      const { data: newDoc, error: dbError } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
+      if (dbError) throw dbError
+
+      onDocAdded(newDoc)
+      setFile(null)
+      setDescription('')
+      // Reset file input
+      const fileInput = document.getElementById('order-doc-file-input')
+      if (fileInput) fileInput.value = ''
+    } catch (err) {
+      console.error('Error subiendo documento:', err)
+      alert('Error al subir archivo: ' + err.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
+        {/* Cabecera */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
+              <Paperclip className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                Documentos Adjuntos de la Orden
+                <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-bold">
+                  {lineDocs.length} archivo{lineDocs.length === 1 ? '' : 's'}
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                {order.material_name_raw} ({order.quantity} {order.unit_measure || 'un.'}) — Buque: {shp?.name || 'ASTILLERO'} | OT: {wo?.title || 'Stock'}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-base">✕</button>
+        </div>
+
+        {/* Listado de Documentos Existentes */}
+        <div className="space-y-2">
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            Archivos actualmente adjuntos a esta orden:
+          </h4>
+          {lineDocs.length === 0 ? (
+            <div className="p-4 rounded-xl border border-dashed border-slate-800 text-center text-xs text-slate-500 bg-slate-950/40">
+              Esta orden aún no tiene comprobantes, fichas técnicas ni cotizaciones adjuntas.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {lineDocs.map((doc) => {
+                const isConfidentialLabor = doc.is_confidential_labor || doc.doc_type === 'COTIZACION_MANO_OBRA'
+                return (
+                  <div
+                    key={doc.id}
+                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-white text-xs truncate max-w-[280px]" title={doc.original_filename}>
+                            {doc.original_filename}
+                          </p>
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                              doc.doc_type === 'COTIZACION_MANO_OBRA'
+                                ? 'bg-rose-950/80 text-rose-300 border-rose-800'
+                                : doc.doc_type === 'FICHA_TECNICA'
+                                ? 'bg-blue-950/80 text-blue-300 border-blue-800'
+                                : doc.doc_type === 'IMAGEN_MUESTRA'
+                                ? 'bg-amber-950/80 text-amber-300 border-amber-800'
+                                : doc.doc_type === 'REMITO' || doc.doc_type === 'REMITO_FACTURA'
+                                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+                                : 'bg-purple-950/80 text-purple-300 border-purple-800'
+                            }`}
+                          >
+                            {doc.doc_type === 'COTIZACION_MATERIAL' ? '📄 Cotiz. Material'
+                              : doc.doc_type === 'COTIZACION_MANO_OBRA' ? '🔒 Mano de Obra'
+                              : doc.doc_type === 'FICHA_TECNICA' ? '📐 Ficha Técnica'
+                              : doc.doc_type === 'IMAGEN_MUESTRA' ? '📸 Muestra / Foto'
+                              : doc.doc_type === 'REMITO' ? '🧾 Remito'
+                              : doc.doc_type}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                          {doc.description || 'Sin notas'} • {(doc.file_size_bytes / 1024).toFixed(1)} KB • {new Date(doc.created_at).toLocaleDateString('es-AR')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <a
+                        href={doc.storage_path}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Ver</span>
+                      </a>
+                      <button
+                        onClick={() => setShowDocAction(doc)}
+                        className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                        title="Opciones avanzadas (modificar, reemplazar, eliminar)"
+                      >
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Zona para Adjuntar Nuevo Documento Adicional */}
+        <div className="pt-3 border-t border-slate-800 space-y-3">
+          <h4 className="text-xs font-bold text-white flex items-center gap-2">
+            <Plus className="w-4 h-4 text-cyan-400" />
+            Adjuntar Otro Documento a esta Orden (Ficha Técnica, Cotización, Remito, Foto)
+          </h4>
+
+          <form onSubmit={handleAddDoc} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">Tipo de Comprobante / Archivo</label>
+                <select
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-semibold"
+                >
+                  <option value="COTIZACION_MATERIAL">📄 Cotización de Material (General Compras)</option>
+                  <option value="COTIZACION_MANO_OBRA">🔒 Cotización Mano de Obra (Confidencial)</option>
+                  <option value="FICHA_TECNICA">📐 Ficha Técnica / Manual Naval</option>
+                  <option value="IMAGEN_MUESTRA">📸 Fotografía de Muestra / Rotura</option>
+                  <option value="REMITO">🧾 Remito de Entrega</option>
+                  <option value="FACTURA">💳 Factura Comercial</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">Descripción o Referencia Breve</label>
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Ej: Ficha técnica espesores chapa"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1 font-semibold">Seleccionar Archivo (PDF, DOCX, JPG, PNG)</label>
+              <input
+                id="order-doc-file-input"
+                type="file"
+                onChange={(e) => setFile(e.target.files[0])}
+                className="w-full text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-950 file:text-cyan-400 hover:file:bg-cyan-900 cursor-pointer"
+                required
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[10px] text-slate-500">
+                Se guardará vinculado a esta orden de compra sin sobreescribir los archivos anteriores.
+              </span>
+              <button
+                type="submit"
+                disabled={uploading}
+                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-lg text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {uploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 stroke-[2.5]" />}
+                <span>{uploading ? 'Subiendo...' : 'Subir y Adjuntar'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Modal de Acción sobre un Archivo Individual */}
+        {showDocAction && (
+          <DocActionModal
+            doc={showDocAction}
+            onClose={() => setShowDocAction(null)}
+            onSuccess={({ action, updatedDoc, deletedId }) => {
+              if (action === 'delete') {
+                onDocDeleted(deletedId)
+              } else {
+                onDocUpdated(updatedDoc)
+              }
+              setShowDocAction(null)
+            }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ==============================================================================
+// MODAL 8: RECEPCIÓN PARCIAL / PEDIDO INCOMPLETO (DIVISIÓN LIMPIA & RECLAMO)
+// ==============================================================================
+function PartialDeliveryModal({ order, suppliers, ships, workOrders, onClose, onSuccess }) {
+  const sup = suppliers.find((s) => s.id === order.supplier_id)
+  const shp = ships.find((s) => s.id === order.ship_id)
+  const wo = workOrders.find((w) => w.id === order.work_order_id)
+
+  const originalQty = Number(order.quantity) || 1
+  const [receivedQty, setReceivedQty] = useState(Math.max(1, Math.floor(originalQty * 0.8)))
+  const [remitoNumber, setRemitoNumber] = useState('')
+  const [notes, setNotes] = useState('')
+  const [evidenceFiles, setEvidenceFiles] = useState([])
+  const [processing, setProcessing] = useState(false)
+
+  const missingQty = Math.max(0, originalQty - Number(receivedQty))
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (Number(receivedQty) <= 0) return alert('La cantidad recibida debe ser mayor a 0.')
+    if (Number(receivedQty) >= originalQty) return alert('Para una recepción completa de todas las unidades, usa el estado "RECIBIDO".')
+    if (!remitoNumber.trim()) return alert('Por favor indica el Número de Remito de la entrega.')
+
+    setProcessing(true)
+    try {
+      // 1. Actualizar orden original a la cantidad recibida y estado RECIBIDO
+      const receivedStatus = order.charge_type === 'DIRECT' ? 'RECIB.COMP.DIRECT' : 'RECIBIDO'
+      const originalUpdates = {
+        quantity: Number(receivedQty),
+        received_quantity: Number(receivedQty),
+        missing_quantity: missingQty,
+        remito_number: remitoNumber.trim(),
+        status: receivedStatus,
+        notes: (order.notes ? order.notes + ' | ' : '') + `Recepción parcial (${receivedQty}/${originalQty}) s/Remito ${remitoNumber}. ${notes}`,
+        updated_at: new Date().toISOString()
+      }
+
+      // Si es pañol, sumar al stock
+      if (order.charge_type === 'VIA_PANOL' && order.material_id) {
+        const { data: matData } = await supabase.from('materials').select('current_stock').eq('id', order.material_id).single()
+        if (matData) {
+          const newStock = (matData.current_stock || 0) + Number(receivedQty)
+          await supabase.from('materials').update({ current_stock: newStock }).eq('id', order.material_id)
+        }
+      }
+
+      const { data: updatedOriginal, error: errOrig } = await supabase
+        .from('purchase_orders')
+        .update(originalUpdates)
+        .eq('id', order.id)
+        .select()
+        .single()
+      if (errOrig) throw errOrig
+
+      // 2. Crear orden hija con la cantidad faltante en estado PEDIDO INCOMPLETO
+      const childPayload = {
+        charge_type: order.charge_type,
+        order_date: order.order_date,
+        ship_id: order.ship_id,
+        work_order_id: order.work_order_id,
+        requested_by_name: order.requested_by_name,
+        work_type: order.work_type,
+        material_id: order.material_id,
+        material_name_raw: order.material_name_raw,
+        is_new_material: order.is_new_material,
+        quantity: missingQty,
+        missing_quantity: missingQty,
+        received_quantity: 0,
+        unit_measure: order.unit_measure,
+        supplier_id: order.supplier_id,
+        supplier_quoted_price: order.supplier_quoted_price,
+        system_unit_price: order.system_unit_price,
+        currency: order.currency || 'ARS',
+        status: 'PEDIDO INCOMPLETO',
+        urgency: order.urgency || 'URGENTE',
+        parent_order_id: order.id,
+        remito_number: remitoNumber.trim(),
+        fortnight_period: order.fortnight_period,
+        notes: `Saldo faltante de orden anterior. Remito parcial: ${remitoNumber}. ${notes}`
+      }
+
+      const { data: childOrder, error: errChild } = await supabase
+        .from('purchase_orders')
+        .insert([childPayload])
+        .select()
+        .single()
+      if (errChild) throw errChild
+
+      // 3. Subir archivos de evidencia si se seleccionaron
+      const newDocs = []
+      if (evidenceFiles.length > 0) {
+        const year = new Date().getFullYear()
+        for (const f of evidenceFiles) {
+          const ext = f.name.split('.').pop()
+          const storagePath = `cotizaciones/${year}/remitos/${Date.now()}_remito_${remitoNumber.replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`
+          const { error: upErr } = await supabase.storage.from('compras').upload(storagePath, f)
+          if (!upErr) {
+            const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+            const docPayload = {
+              purchase_order_id: order.id,
+              supplier_id: order.supplier_id || null,
+              original_filename: f.name,
+              normalized_filename: `Remito_${remitoNumber}.${ext}`,
+              storage_path: urlData.publicUrl,
+              category: 'REMITO',
+              description: `Remito de entrega parcial ${remitoNumber} (${receivedQty}/${originalQty})`,
+              year,
+              file_size_bytes: f.size,
+              doc_type: 'REMITO',
+              is_confidential_labor: false
+            }
+            const { data: docRes } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
+            if (docRes) newDocs.push(docRes)
+          }
+        }
+      }
+
+      onSuccess({ originalOrder: updatedOriginal, childOrder, newDocs })
+    } catch (err) {
+      console.error('Error procesando recepción parcial:', err)
+      alert('Error: ' + err.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-orange-950 border border-orange-800 flex items-center justify-center text-orange-400">
+              <Split className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                Recepción Parcial de Mercadería
+                <span className="text-[10px] px-2 py-0.5 rounded bg-orange-950 border border-orange-800 text-orange-300 font-bold">
+                  PEDIDO INCOMPLETO
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Registra las unidades que llegaron y separa automáticamente el saldo faltante para reclamo.
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          {/* Resumen del Material */}
+          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+            <p className="font-bold text-white text-sm">{order.material_name_raw}</p>
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 font-mono">
+              <span>Cantidad Original: <strong className="text-white">{originalQty} {order.unit_measure || 'un.'}</strong></span>
+              <span>Buque: <strong className="text-cyan-300">{shp?.name || 'ASTILLERO'}</strong></span>
+              <span>Proveedor: <strong className="text-slate-200">{sup?.name || 'S/D'}</strong></span>
+            </div>
+          </div>
+
+          {/* Desglose de Cantidades */}
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
+            <div>
+              <label className="block text-emerald-400 font-bold mb-1">
+                ✅ Cantidad Recibida Físicamente
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0.01"
+                max={originalQty - 0.01}
+                value={receivedQty}
+                onChange={(e) => setReceivedQty(e.target.value)}
+                className="w-full bg-slate-900 border border-emerald-500/50 rounded-lg p-2.5 text-white font-mono font-bold text-sm focus:outline-none focus:border-emerald-400"
+                required
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                Ingresan a Pañol / Obra
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-orange-400 font-bold mb-1">
+                ⚠️ Cantidad Faltante a Reclamar
+              </label>
+              <div className="w-full bg-slate-900 border border-orange-500/40 rounded-lg p-2.5 text-orange-300 font-mono font-extrabold text-sm flex items-center justify-between">
+                <span>{missingQty}</span>
+                <span className="text-xs text-slate-400 font-normal">{order.unit_measure || 'un.'}</span>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                Pasa a estado PEDIDO INCOMPLETO
+              </span>
+            </div>
+          </div>
+
+          {/* Número de Remito Obligatorio */}
+          <div>
+            <label className="block text-slate-300 font-bold mb-1">
+              Nº de Remito del Proveedor <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={remitoNumber}
+              onChange={(e) => setRemitoNumber(e.target.value)}
+              placeholder="Ej: R-0004-00012345"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
+              required
+            />
+          </div>
+
+          {/* Subir Evidencia (Remito / Fotos) */}
+          <div>
+            <label className="block text-slate-300 font-bold mb-1">
+              Fotos del Remito y Mercadería (Evidencia para el Reclamo)
+            </label>
+            <input
+              type="file"
+              multiple
+              onChange={(e) => setEvidenceFiles(Array.from(e.target.files))}
+              className="w-full text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-950 file:text-cyan-400 hover:file:bg-cyan-900 cursor-pointer"
+            />
+            <span className="text-[10px] text-slate-500 mt-1 block">
+              Se adjuntará automáticamente a la orden para respaldo de compras.
+            </span>
+          </div>
+
+          {/* Observaciones */}
+          <div>
+            <label className="block text-slate-400 font-semibold mb-1">
+              Observaciones del Pañolero / Motivo informado por el chofer
+            </label>
+            <textarea
+              rows="2"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Ej: Chofer informa que no había stock suficiente, entregan el saldo la próxima semana..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={processing}
+              className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-slate-950 font-extrabold rounded-lg shadow-md shadow-orange-500/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {processing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Split className="w-4 h-4 stroke-[2.5]" />}
+              <span>{processing ? 'Procesando...' : 'Confirmar Recepción y Separar Faltante'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ==============================================================================
+// MODAL 9: ALERTA SE COMPRA? (GERENCIA & JEFE DE OBRA)
+// ==============================================================================
+function SeCompraAlertModal({ order, alertSettings, ships, workOrders, onClose }) {
+  const shp = ships.find((s) => s.id === order.ship_id)
+  const wo = workOrders.find((w) => w.id === order.work_order_id)
+
+  const hugo = alertSettings?.hugo || { name: 'Hugo Sentis', phone: '+5492235000001', email: 'hugo@aloncar.com', enabled: true }
+  const martin = alertSettings?.martin || { name: 'Martín Sentis', phone: '+5492235000002', email: 'martin@aloncar.com', enabled: true }
+
+  const shipName = shp?.name || 'ASTILLERO'
+  const otTitle = wo?.title || 'Stock'
+
+  const messageText = `Alerta Alon Car - Compra 'SE COMPRA?':\nMaterial: ${order.material_name_raw} (${order.quantity} ${order.unit_measure || 'un.'})\nBuque: ${shipName} | OT: ${otTitle}\nSolicita: ${order.requested_by_name || 'PAÑOL'}\nPor favor confirmar si se procede con la adquisición.`
+
+  function handleSendWhatsApp(phone) {
+    const clean = phone.replace(/[^0-9]/g, '')
+    const url = `https://web.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(messageText)}`
+    window.open(url, '_blank')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-pink-950 border border-pink-800 flex items-center justify-center text-pink-400">
+              <Bell className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                Alerta Gerencial: "SE COMPRA?"
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                La compra requiere evaluación y confirmación de jefatura antes de emitirse.
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1 text-xs">
+          <p className="font-bold text-white text-sm">{order.material_name_raw}</p>
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 font-mono">
+            <span>Cantidad: <strong className="text-white">{order.quantity} {order.unit_measure || 'un.'}</strong></span>
+            <span>Buque: <strong className="text-cyan-300">{shipName}</strong></span>
+            <span>OT: <strong className="text-slate-200">{otTitle}</strong></span>
+          </div>
+        </div>
+
+        <div className="space-y-2 text-xs">
+          <p className="font-bold text-slate-300">Destinatarios Notificados:</p>
+
+          {hugo.enabled && (
+            <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-white">{hugo.name} (Gerente General)</p>
+                <p className="text-[10px] text-slate-500 font-mono">{hugo.phone}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSendWhatsApp(hugo.phone)}
+                className="px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+              >
+                <MessageSquare className="w-3 h-3" />
+                <span>WhatsApp</span>
+              </button>
+            </div>
+          )}
+
+          {martin.enabled && (
+            <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-white">{martin.name} (Gerente Operaciones)</p>
+                <p className="text-[10px] text-slate-500 font-mono">{martin.phone}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSendWhatsApp(martin.phone)}
+                className="px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+              >
+                <MessageSquare className="w-3 h-3" />
+                <span>WhatsApp</span>
+              </button>
+            </div>
+          )}
+
+          <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-white">Jefe de Obra OT</p>
+              <p className="text-[10px] text-slate-500">Asignado al buque {shipName}</p>
+            </div>
+            <span className="text-[10px] text-cyan-400 font-bold bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800">
+              Notificado
+            </span>
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-slate-800 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold rounded-lg text-xs cursor-pointer shadow-md"
+          >
+            Entendido / Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ==============================================================================
+// MODAL 10: ASIGNAR PROVEEDOR EN LOTE
+// ==============================================================================
+function AssignSupplierModal({ selectedOrderIds, suppliers, onClose, onSuccess }) {
+  const [selectedSupplierId, setSelectedSupplierId] = useState(suppliers[0]?.id || '')
+  const [saving, setSaving] = useState(false)
+
+  async function handleAssign(e) {
+    e.preventDefault()
+    if (!selectedSupplierId) return alert('Por favor selecciona un proveedor.')
+
+    setSaving(true)
+    try {
+      const idsArray = Array.from(selectedOrderIds)
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update({
+          supplier_id: selectedSupplierId,
+          updated_at: new Date().toISOString()
+        })
+        .in('id', idsArray)
+
+      if (error) throw error
+      onSuccess(selectedSupplierId)
+    } catch (err) {
+      console.error('Error asignando proveedor en lote:', err)
+      alert('Error: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                Asignar Proveedor en Bloque
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Se aplicará el proveedor elegido a los {selectedOrderIds.size} pedidos seleccionados.
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <form onSubmit={handleAssign} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">
+              Seleccionar Proveedor
+            </label>
+            <select
+              value={selectedSupplierId}
+              onChange={(e) => setSelectedSupplierId(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white font-semibold focus:outline-none focus:border-cyan-500"
+              required
+            >
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.trade || (s.trades && s.trades.join(', ')) || 'General'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold rounded-lg shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5 stroke-[2.5]" />}
+              <span>{saving ? 'Asignando...' : `Asignar a ${selectedOrderIds.size} Pedidos`}</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

@@ -97,17 +97,25 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [x] **7. Terceros — Botón de Evolución Compacto (Terceros.jsx):**
   - Icono exclusivo de estrella sin texto visible para evitar solapamientos.
 
-- [x] **8. Módulo de Compras M4b (Compras.jsx + Migraciones 0024 y 0025):**
+- [x] **8. Módulo de Compras M4b (Compras.jsx + Migraciones 0024, 0025 y 0026):**
   - **Reemplazo Integral de GS-006:** Depuración de 32 a 24 columnas operativas.
+  - **Secuencia de Columnas Reordenada:** `[ ] | Destino | Fecha / Quincena | Buque / OT | Solicita | Material Solicitado | Cant. | $/U Proveedor | $/U Sistema | Proveedor | Estado | Urgencia | Doc | Conciliado | Acciones`.
+  - **Edición In-Situ Doble Clic (Estilo Excel/Sheets):** Modificación ágil en celda con doble clic de `$/U Proveedor`, `Proveedor`, `Cantidad` y `Solicita` (guardado instantáneo con Enter/Blur en Supabase sin abrir modales) y alternancia rápida de Urgencia con 1 clic.
   - **Carga Multi-Material:** Modal unificado con cabecera de OT (descripción completa visible, barco, fecha con doble clic nativo `showPicker()`, solicitante por defecto "PAÑOL" o lista de operarios habilitados `can_withdraw_materials = true`, selector de urgencia `SIN_APURO`, `URGENTE`, `PROXIMA_SALIDA`) y líneas de insumos dinámicas con `[ ➕ Agregar Material ]`.
   - **Deducción Automática Forzada de Unidad de Medida:** Reglas estrictas por nombre (`lado x lado` $\rightarrow$ `m2`, `x metro` $\rightarrow$ `metro lineal`, `x kg` $\rightarrow$ `kg`, `x m3` $\rightarrow$ `m3`, defecto `unidad`) con edición manual bloqueada para blindar stock.
   - **Soporte de 2 Compradores WhatsApp y Configuración en Admin:**
-    - Panel `/admin` con pestaña *"Config. Compras & WhatsApp"* para gestionar nombres y celulares de Jorge Sentis y Andrés, almacenados en `public.system_settings`.
+    - Panel `/admin` con pestaña *"Config. Compras & WhatsApp"* para gestionar nombres y celulares de Jorge Sentis y Andrés, y teléfonos directos de alerta directiva (`se_compra_alertas`), almacenados en `public.system_settings`.
     - Selector de comprador en despacho agrupado, normalización argentina (`549...`) y botón de llamada directa para números fijos / 0810 (Air Liquide `0810-222-5272`, Cliente `2234867`).
-  - **Doble Modo de Interfaz:** Modo *"Vista Simple de Solicitud"* (oculta costos, proveedores, fechas y WhatsApp) vs *"Vista Completa de Compras"*.
-  - **KPIs Interactivos con Filtro 1-Clic:** Total, Pedir, Pedidos, Recibidos, Conciliados y Urgentes conmutables como filtro instantáneo.
+  - **Circuito de "PEDIDO INCOMPLETO" (Recepción Parcial y Reclamo Automático):**
+    - Modal de recepción para pañoleros que calcula entregadas vs faltantes, exige número de remito obligatorio y foto de evidencia física (`REMITO` en storage).
+    - Desglose automático de la orden: actualiza la orden original a `RECIBIDO` (con ingreso a stock si va a pañol) y crea automáticamente una orden hija por el saldo faltante en estado `PEDIDO INCOMPLETO`.
+    - Generación automática en Compras del mensaje WhatsApp de reclamo formal con plantilla oficial Alon Car S.A.
+  - **Alerta Gerencial "SE COMPRA?":** Notificación directiva rápida a Hugo Sentis (Gerente General), Martín Sentis (Gerente de Operaciones) y Jefe de Obra asignado a la OT con enlaces directos para resolver aprobaciones de compra.
+  - **Gestor Multi-Documento por Orden (`OrderAttachmentsModal`):** Permite subir y visualizar múltiples archivos para una misma orden (Cotización de Material, Cotización de Mano de Obra confidencial, Ficha Técnica, Remito, Factura, Fotos de Muestra) con opciones individuales de ver, editar metadatos y eliminar.
+  - **Doble Modo de Interfaz y Permisos de Pañol:** Modo *"Vista Simple de Solicitud / Recepción"* (expone columna y filtro de Proveedor para cotejar remitos, y selector editable de estados de recepción operativa) vs *"Vista Completa de Compras"*.
+  - **KPIs Interactivos Agrupados:** 6 grupos de tarjetas (`Por Emitir`, `Cotizaciones`, `En Proveedor`, `SE COMPRA?`, `Recibidos`, `Gases P-02`) con sub-pills para cada estado operativo individual.
+  - **Barra Flotante de Acciones Masivas y Filtros Activos:** Diseño de alto contraste con badge de alerta de filtros activos, botón `[ ✕ Limpiar Filtros ]` (replicado en barra de búsqueda) y asignación masiva de proveedor en 1 clic (`[ 🏢 Asignar Proveedor (N) ]`).
   - **Catálogo de Proveedores con Doble Vista y Multirubro:** Vista lista con sticky header vs tarjetas/cards, KPIs interactivos (Total, Sin Teléfono, Sin Email, Sin Rubro, Gases P-02) y combobox multirubro (`trades TEXT[]`).
-  - **Gestor Documental y Privacidad:** Soporte de Facturas, Remitos, Cotizaciones de Material, Cotizaciones de Mano de Obra (confidenciales para supervisión), Fichas Técnicas e Imágenes de Muestra; con modal de acciones completas: Ver, Modificar Metadatos, Reemplazar Archivo Físico y Eliminar.
 
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**

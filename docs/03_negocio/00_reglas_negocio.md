@@ -55,50 +55,51 @@ El formulario de Pañol permite seleccionar la OT una sola vez y agregar una gri
 ## 4. Flujo de Compras y Automatización de Pedidos a Proveedores (M4b Compras)
 
 ### 4.1. Visibilidad y Doble Modo de Interfaz
-- **Modo Solicitud Simple (Personal Ajeno a Compras / Pañol):** Formulario y vista simplificados donde el solicitante solo visualiza Buque, OT, Solicitante, Urgencia, Material y Cantidad. Se ocultan datos comerciales sensibles como Proveedor, $/U Cotizado AR$, $/U Sistema AR$, Fecha de Entrega y acciones de WhatsApp.
-- **Modo Gestión Completa (Encargado de Compras y Supervisión):** Despliega la totalidad de columnas analíticas, proveedores, cotizaciones, fechas de entrega, botones de WhatsApp Web y acciones de recepción.
-- **KPIs Superiores Interactivos (Filtros en 1 Clic):** Al igual que en Terceros y Personal, hacer clic en cualquier KPI superior (Total, Pedir, Pedidos, Recibidos, Conciliados, Urgentes) filtra inmediatamente la tabla en tiempo real.
+- **Modo Solicitud Simple (Personal de Pañol / Obra):** Formulario y grilla operativos. Para facilitar el cotejo en el portón al recibir el camión con el remito físico, el pañolero **visualiza la columna PROVEEDOR** y dispone de filtro por proveedor. El selector de **ESTADO ES EDITABLE** con las opciones de recepción física: `PEDIR`, `RECIBIDO` (ingreso a pañol), `RECIB.COMP.DIRECT` (entrega directa al buque), `PEDIDO INCOMPLETO` (recepción parcial), `RECIBIDO 2` (material provisto por armador), `CANCELADOS` y `SE COMPRA?`. Se ocultan datos comerciales sensibles como cotizaciones del sistema y comparadores económicos.
+- **Modo Gestión Completa (Encargado de Compras y Supervisión):** Despliega la totalidad de columnas analíticas, proveedores, cotizaciones comparadas, fechas estimadas de entrega, botones de WhatsApp Web y acciones de recepción masiva.
+- **KPIs Superiores Interactivos (Filtros en 1 Clic por Grupos y Subgrupos):** Seis tarjetas conmutables con sub-botones independientes: 🟡 *Por Emitir* (`PEDIR` / `SOLICITUD`), 🟣 *Cotizaciones* (`COTIZAR`, `COTIZA.SOLICITUD`, `COTIZACION`, `COTIZA.APROBADA`), 🔵 *En Proveedor* (`PEDIDO` y `PEDIDO INCOMPLETO`), ❓ *SE COMPRA?*, 🟢 *Recibidos* (Pañol / Obra / Facturados) y 🚨 *Gases P-02*.
 
-### 4.2. Carga de Pedidos Multi-Material
-- **Cabecera Compartida:** Selección única de Buque, Orden de Trabajo (OT), Fecha de Pedido, Solicitante y Nivel de Urgencia.
-- **Descripción Completa de la OT:** Al seleccionar la OT, la interfaz exhibe la descripción técnica detallada del trabajo para garantizar una imputación certera.
-- **Selector de Fecha con Doble Clic:** Todos los campos de fecha permiten hacer doble clic para desplegar directamente el selector de calendario nativo del navegador (`showPicker()`).
-- **Persona Solicitante:** Por defecto se asigna `"PAÑOL"`. Permite seleccionar cualquier operario o contratista habilitado para retirar materiales (`can_withdraw_materials = true`) o ingresar texto libre.
-- **Casilla de Urgencia:**
-  - `SIN_APURO` (Valor por defecto): Reposición y compras estándar programadas.
-  - `URGENTE`: Insumos críticos para obras en dique o varadero.
-  - `PROXIMA_SALIDA`: Materiales que deben instalarse antes de la zarpada del buque.
-- **Múltiples Materiales:** Permite agregar N filas de materiales con `[ ➕ Agregar Material ]` bajo la misma cabecera de OT y barco.
+### 4.2. Edición Rápida en Celda por Doble Clic (Estilo Excel / Sheets)
+Para evitar la lentitud de abrir modales en tareas rutinarias con muchos datos:
+- **$/U Proveedor:** Doble clic $\rightarrow$ celda se convierte en input numérico in-situ $\rightarrow$ `Enter` o `Blur` guarda inmediatamente en Supabase y actualiza totales.
+- **Proveedor:** Doble clic $\rightarrow$ menú select desplegable de proveedores $\rightarrow$ selección guarda al instante.
+- **Cantidad:** Doble clic $\rightarrow$ input numérico $\rightarrow$ `Enter` guarda.
+- **Solicita:** Doble clic $\rightarrow$ input de texto $\rightarrow$ `Enter` guarda.
+- **Urgencia:** Un solo clic conmuta cíclicamente: `Sin Apuro` $\rightarrow$ `Urgente` $\rightarrow$ `Próxima Salida`.
 
-### 4.3. Regla de Deducción Automática y Forzada de la Unidad de Medida
-Para salvaguardar la consistencia con el inventario y stock físico, en la solicitud de compras la unidad de medida no es de selección manual libre, sino que se deduce y bloquea automáticamente analizando el nombre del material:
-- `lado x lado` o `m2` $\rightarrow$ `m2` (Área)
-- `x metro lineal`, `x metro` o `x mt` $\rightarrow$ `metro lineal`
-- `x kilo` o `x kg` $\rightarrow$ `kg`
-- `x m3` o `metro cubico` $\rightarrow$ `m3`
-- Sin patrón reconocible $\rightarrow$ `unidad` (Por defecto)
+### 4.3. Carga de Pedidos Multi-Material
+- **Cabecera Compartida:** Selección única de Buque, Orden de Trabajo (OT con descripción técnica completa visible), Fecha de Pedido (doble clic abre calendario nativo `showPicker()`), Solicitante (por defecto "PAÑOL" u operario con permiso de retiro) y Nivel de Urgencia.
+- **Líneas Dinámicas:** Botón `[ ➕ Agregar Material ]` para cargar múltiples ítems bajo la misma OT en un solo envío.
 
+### 4.4. Deducción Automática y Forzada de la Unidad de Medida
+Inferencia estricta por texto en compras (`lado x lado` $\rightarrow$ `m2`, `x metro` $\rightarrow$ `metro lineal`, `x kg` $\rightarrow$ `kg`, `x m3` $\rightarrow$ `m3`, resto $\rightarrow$ `unidad`) con edición manual bloqueada en la orden para garantizar consistencia con stock.
 > [!IMPORTANT]
-> **Regla Futura para el Módulo Pañol y Alta de Nuevos Materiales:** En la gestión de Pañol y alta de materiales, la unidad de medida inicial se deducirá automáticamente según el nombre, pero será editable por el pañolero/supervisor para corregir errores de origen. Si se modifica la unidad de un material que pertenece a la lista de control de stock, el sistema emitirá obligatoriamente una advertencia: *"Atención: Modificar la unidad de medida impactará el recuento y control de stock acumulado de este material"*.
+> **Regla Futura para el Módulo Pañol:** En la gestión de Pañol y alta de nuevos insumos, la unidad de medida se deducirá automáticamente pero será editable por el supervisor para subsanar errores de origen, con **alerta obligatoria** si el material posee control de stock activo.
 
-### 4.4. Destinos de Compra: La Regla de Oro (Stock vs Carga Directa vs Cliente)
-- **Reposición de Stock / Pañol (`VIA_PANOL`):** Buque fijado en `ASTILLERO` y OT en `STOCK`. Al recibirse (`RECIBIDO`), incrementa automáticamente el inventario físico en `materials.current_stock`.
-- **Carga Directa para Obra (`DIRECT`):** Asignada a un Buque y OT real. Al recibirse (`RECIB.COMP.DIRECT`), **no toca stock de pañol** e impacta de inmediato en el costo vivo de la OT.
-- **Material Aportado por Cliente (`RECIBIDO 2`):** Suministrado por el armador; no computa costo ni stock para el astillero.
+### 4.5. Circuito de Pedido Incompleto (Split & Reclamo)
+Cuando el pañolero recibe una cantidad inferior a la solicitada (ej. llegan 18 de 20):
+1. Selecciona el estado **`PEDIDO INCOMPLETO`** en la fila.
+2. Se abre el modal de recepción parcial donde ingresa las unidades recibidas (`18`), el sistema calcula el faltante (`2`), se exige el **Nº de Remito** y se permite adjuntar fotos de la entrega y el remito.
+3. **Bifurcación Limpia (Split):**
+   - El registro original pasa a cantidad `18` en estado `RECIBIDO` (o `RECIB.COMP.DIRECT`), sumando stock al pañol o imputando costo a la obra.
+   - Se crea automáticamente una orden hija por las `2` unidades con estado `PEDIDO INCOMPLETO` y referencia al remito.
+4. **Reclamo en Compras:** Al presionar pedir agrupado sobre órdenes incompletas, se redacta automáticamente el reclamo oficial para WhatsApp solicitando fecha de despacho del saldo faltante.
 
-### 4.5. Configuración de Compradores y Despacho WhatsApp Web
-- **Dos Compradores Oficiales (Configurables desde `/admin`):** Los números de teléfono móvil de los compradores (Jorge Sentis y Andrés) se gestionan desde el Panel de Administrador (`system_settings` $\rightarrow$ `compras_whatsapp`). Son líneas de WhatsApp directas para abrir WhatsApp Web y son independientes del bot de Evolution API.
-- **Despacho Agrupado:** El botón *"🛒 Pedir Agrupado"* agrupa los materiales seleccionados por proveedor, solicita elegir el comprador emisor y abre WhatsApp Web con el pedido redactado formalmente en español, pasando el estado a `PEDIDO`.
-- **Normalización Argentina:** Los celulares locales se normalizan automáticamente a formato internacional `549...`.
-- **Fallback para Líneas Fijas / 0810:** Si el proveedor posee un número no compatible con WhatsApp (ej. Air Liquide `0810-222-5272`), el modal ofrece un botón de llamada directa telefónica (`tel:08102225272`) y exhibe el Número de Cliente oficial (`2234867`).
+### 4.6. Alerta y Notificación Gerencial "SE COMPRA?"
+Al marcar un ítem en duda técnica/financiera con el estado `SE COMPRA?`:
+- El sistema alerta a los destinatarios configurados en Administración: **Hugo Sentis** (Gerente General), **Martín Sentis** (Gerente de Operaciones) y al **Jefe de Obra** asignado a la OT.
+- Permite disparar la consulta por WhatsApp con los datos del material, buque y costo estimado para autorizar o desestimar la compra.
 
-### 4.6. Conciliación de Facturas ("Línea Morada")
+### 4.7. Configuración de Compradores y Despacho WhatsApp Web
+- **Dos Compradores Oficiales (Configurables desde `/admin`):** Teléfonos móviles de Jorge Sentis y Andrés gestionados centralizadamente en `system_settings`.
+- **Normalización Argentina:** Celulares convertidos automáticamente a formato internacional `549...`.
+- **Fallback para Líneas Fijas / 0810 (Air Liquide):** Detección automática y renderizado de botón de llamada telefónica directa (`tel:08102225272`) exhibiendo el Nº de Cliente (`2234867`).
+
+### 4.8. Conciliación de Facturas ("Línea Morada")
 - Cada compra cuenta con un estado de conciliación (`is_reconciled`).
-- Mediante la acción *"✅ Conciliar hasta aquí"* por proveedor, el supervisor ingresa el número de factura/remito y marca en bloque esa compra y todas las anteriores pendientes de ese proveedor.
-- Visualmente se traza una línea divisoria morada gruesa con el sello de auditoría (fecha, usuario y número de factura).
-- El filtro *"🟣 Ocultar Conciliados"* permite mantener la vista despejada para la operativa diaria.
+- Mediante la acción *"✅ Conciliar hasta aquí"* por proveedor, el supervisor ingresa el número de factura/remito y marca en bloque esa compra y todas las anteriores pendientes de ese proveedor con línea divisoria morada y sello de auditoría.
 
-### 4.7. Proveedores: Doble Vista y Multirubro
+### 4.9. Proveedores: Doble Vista y Multirubro
 - **Doble Vista:** Tabla con encabezado inmovilizado (`sticky top-0 z-20 bg-slate-950`) vs Fichas ejecutivas (Cards).
 - **KPIs de Proveedores:** Filtros rápidos en 1 clic para detectar proveedores sin teléfono, sin email, sin rubro asignado o proveedores de gases bajo Regla P-02.
 - **Multirubro (`trades TEXT[]`):** Admite asociar múltiples especialidades a un mismo proveedor mediante selector interactivo con etiquetas (chips) y creación in-situ de nuevos rubros.
