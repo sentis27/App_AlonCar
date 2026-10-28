@@ -97,18 +97,17 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 - [x] **7. Terceros — Botón de Evolución Compacto (Terceros.jsx):**
   - Icono exclusivo de estrella sin texto visible para evitar solapamientos.
 
-- [x] **8. Módulo de Compras M4b (Compras.jsx + Migración 0024):**
+- [x] **8. Módulo de Compras M4b (Compras.jsx + Migraciones 0024 y 0025):**
   - **Reemplazo Integral de GS-006:** Depuración de 32 a 24 columnas operativas.
-  - **Catálogo Unificado de Proveedores (`public.suppliers`):** 13 proveedores iniciales precargados con datos de CUIT, rubro, contacto, teléfono WhatsApp y parámetros de la Regla P-02 para Gases (Air Liquide cliente 2234867, pedidos martes <12hs al 0810-222-5272; Praxair Linde quincenal; Ferremat contingencia).
-  - **Registro de Compras (`public.purchase_orders`):** Carga directa para buques y OTs (`RECIB.COMP.DIRECT`) vs reposición de Pañol (`RECIBIDO`), con autocompletado desde `materials` y alerta de materiales nuevos sin registro.
-  - **Inmovilización de Encabezados (Sticky Header tipo Excel):** `sticky top-0 z-20 bg-slate-950` congelado en pantalla.
-  - **Selección Libre + Barra Flotante Reactiva de Totales:** Modo dual (Manual vs Todo el filtro), sumatorias en vivo en AR$, US$ (cotización quincenal oficial de `macro_variables`), promedios, y acciones en lote:
-    - `[ 🛒 Pedir Agrupado ]`: Abre directamente chat de WhatsApp Web con texto formal preformateado y cambia estado a `PEDIDO`.
-    - `[ ✅ Recibir ]`: Actualiza estado a `RECIBIDO` o `RECIB.COMP.DIRECT`.
-  - **Línea Morada de Conciliación de Facturas:** Acción "✅ Conciliar hasta aquí" por proveedor con separación visual y registro de número de comprobante/factura.
-  - **Gestor Documental 1-Clic (`public.purchase_documents`):** Bucket `compras` en Supabase Storage con almacenamiento estructurado por año y rubro.
-  - **Alta Formal de Materiales (🔒 Solo Supervisor):** Asistente guiado de nomenclatura técnica estándar (bulones, caños, chapas) y categorización para alimentar la base maestra.
-
+  - **Carga Multi-Material:** Modal unificado con cabecera de OT (descripción completa visible, barco, fecha con doble clic nativo `showPicker()`, solicitante por defecto "PAÑOL" o lista de operarios habilitados `can_withdraw_materials = true`, selector de urgencia `SIN_APURO`, `URGENTE`, `PROXIMA_SALIDA`) y líneas de insumos dinámicas con `[ ➕ Agregar Material ]`.
+  - **Deducción Automática Forzada de Unidad de Medida:** Reglas estrictas por nombre (`lado x lado` $\rightarrow$ `m2`, `x metro` $\rightarrow$ `metro lineal`, `x kg` $\rightarrow$ `kg`, `x m3` $\rightarrow$ `m3`, defecto `unidad`) con edición manual bloqueada para blindar stock.
+  - **Soporte de 2 Compradores WhatsApp y Configuración en Admin:**
+    - Panel `/admin` con pestaña *"Config. Compras & WhatsApp"* para gestionar nombres y celulares de Jorge Sentis y Andrés, almacenados en `public.system_settings`.
+    - Selector de comprador en despacho agrupado, normalización argentina (`549...`) y botón de llamada directa para números fijos / 0810 (Air Liquide `0810-222-5272`, Cliente `2234867`).
+  - **Doble Modo de Interfaz:** Modo *"Vista Simple de Solicitud"* (oculta costos, proveedores, fechas y WhatsApp) vs *"Vista Completa de Compras"*.
+  - **KPIs Interactivos con Filtro 1-Clic:** Total, Pedir, Pedidos, Recibidos, Conciliados y Urgentes conmutables como filtro instantáneo.
+  - **Catálogo de Proveedores con Doble Vista y Multirubro:** Vista lista con sticky header vs tarjetas/cards, KPIs interactivos (Total, Sin Teléfono, Sin Email, Sin Rubro, Gases P-02) y combobox multirubro (`trades TEXT[]`).
+  - **Gestor Documental y Privacidad:** Soporte de Facturas, Remitos, Cotizaciones de Material, Cotizaciones de Mano de Obra (confidenciales para supervisión), Fichas Técnicas e Imágenes de Muestra; con modal de acciones completas: Ver, Modificar Metadatos, Reemplazar Archivo Físico y Eliminar.
 
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
@@ -126,6 +125,7 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 
 - [ ] **3. Módulo M4: Pañol y Materiales (y Módulo de Terceros):**
   - Catálogo de consumibles y aceros/chapas navales.
+  - 📏 **Deducción y Edición de Unidad de Medida con Alerta de Impacto en Stock:** Al dar de alta o editar materiales en Pañol, la unidad de medida se deducirá automáticamente a partir del nombre (`lado x lado` $\rightarrow$ `m2`, `x metro` $\rightarrow$ `metro lineal`, `x kg` $\rightarrow$ `kg`, `x m3` $\rightarrow$ `m3`, defecto `unidad`), pero será editable para corregir inconsistencias de origen. **Alerta obligatoria:** Si el material pertenece a la lista de control de stock y se modifica su unidad de medida, el sistema emitirá un aviso visual de confirmación informando que la modificación alterará el recuento y control de stock acumulado.
   - Vales de retiro de pañol vinculados a OTs (`inventory_transactions.work_order_id` y `work_item_id`).
   - Control de stock y alertas automáticas de reposición mínima.
   - ⚠️ **INSTRUCCIÓN OBLIGATORIA (Replicar Bloqueo y Filtrado en Cascada de Horas en Materiales y Terceros — Ver Sección 8.7 de `docs/03_negocio/00_reglas_negocio.md`):**

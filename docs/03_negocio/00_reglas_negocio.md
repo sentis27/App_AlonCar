@@ -54,35 +54,54 @@ El formulario de Pañol permite seleccionar la OT una sola vez y agregar una gri
 
 ## 4. Flujo de Compras y Automatización de Pedidos a Proveedores (M4b Compras)
 
-### 4.1. Visibilidad por Nivel de Acceso
-- **Nivel Carga / Pañolero:** Solo visualiza el formulario de necesidad (Material, Cantidad solicitada, Solicitante). No ve estadísticas de precios ni datos de proveedores.
-- **Nivel Encargado de Compras:** Visualiza gráficos comparativos de precios, estadísticas históricas de compras por proveedor y estado de cotizaciones.
+### 4.1. Visibilidad y Doble Modo de Interfaz
+- **Modo Solicitud Simple (Personal Ajeno a Compras / Pañol):** Formulario y vista simplificados donde el solicitante solo visualiza Buque, OT, Solicitante, Urgencia, Material y Cantidad. Se ocultan datos comerciales sensibles como Proveedor, $/U Cotizado AR$, $/U Sistema AR$, Fecha de Entrega y acciones de WhatsApp.
+- **Modo Gestión Completa (Encargado de Compras y Supervisión):** Despliega la totalidad de columnas analíticas, proveedores, cotizaciones, fechas de entrega, botones de WhatsApp Web y acciones de recepción.
+- **KPIs Superiores Interactivos (Filtros en 1 Clic):** Al igual que en Terceros y Personal, hacer clic en cualquier KPI superior (Total, Pedir, Pedidos, Recibidos, Conciliados, Urgentes) filtra inmediatamente la tabla en tiempo real.
 
-### 4.2. Motor de Automatización de Envíos a Proveedores
-1. **Selección Múltiple:** El Encargado de Compras tilda los materiales en estado `PEDIR`.
-2. **Disparo de Algoritmo ("Pedir Materiales"):** El sistema agrupa automáticamente los materiales seleccionados según su proveedor asignado (ej. 3 materiales a *Cerremaq*, 2 a *Ferretería Florida*).
-3. **Generación de Mensaje:** Consulta el medio de contacto registrado en `suppliers` (Email o WhatsApp) y redacta un mensaje formal con el listado agrupado.
-4. **Transición de Estado:** Las solicitudes seleccionadas cambian su estado de `PEDIR` a `PEDIDO`.
-5. **Trazabilidad de Auditoría:** El log del sistema registra si el pedido fue realizado por la automatización (`created_by_automation = true`) o manualmente por un operario.
+### 4.2. Carga de Pedidos Multi-Material
+- **Cabecera Compartida:** Selección única de Buque, Orden de Trabajo (OT), Fecha de Pedido, Solicitante y Nivel de Urgencia.
+- **Descripción Completa de la OT:** Al seleccionar la OT, la interfaz exhibe la descripción técnica detallada del trabajo para garantizar una imputación certera.
+- **Selector de Fecha con Doble Clic:** Todos los campos de fecha permiten hacer doble clic para desplegar directamente el selector de calendario nativo del navegador (`showPicker()`).
+- **Persona Solicitante:** Por defecto se asigna `"PAÑOL"`. Permite seleccionar cualquier operario o contratista habilitado para retirar materiales (`can_withdraw_materials = true`) o ingresar texto libre.
+- **Casilla de Urgencia:**
+  - `SIN_APURO` (Valor por defecto): Reposición y compras estándar programadas.
+  - `URGENTE`: Insumos críticos para obras en dique o varadero.
+  - `PROXIMA_SALIDA`: Materiales que deben instalarse antes de la zarpada del buque.
+- **Múltiples Materiales:** Permite agregar N filas de materiales con `[ ➕ Agregar Material ]` bajo la misma cabecera de OT y barco.
 
-### 4.3. Destinos de Compra: La Regla de Oro (Stock vs Carga Directa vs Cliente)
+### 4.3. Regla de Deducción Automática y Forzada de la Unidad de Medida
+Para salvaguardar la consistencia con el inventario y stock físico, en la solicitud de compras la unidad de medida no es de selección manual libre, sino que se deduce y bloquea automáticamente analizando el nombre del material:
+- `lado x lado` o `m2` $\rightarrow$ `m2` (Área)
+- `x metro lineal`, `x metro` o `x mt` $\rightarrow$ `metro lineal`
+- `x kilo` o `x kg` $\rightarrow$ `kg`
+- `x m3` o `metro cubico` $\rightarrow$ `m3`
+- Sin patrón reconocible $\rightarrow$ `unidad` (Por defecto)
+
+> [!IMPORTANT]
+> **Regla Futura para el Módulo Pañol y Alta de Nuevos Materiales:** En la gestión de Pañol y alta de materiales, la unidad de medida inicial se deducirá automáticamente según el nombre, pero será editable por el pañolero/supervisor para corregir errores de origen. Si se modifica la unidad de un material que pertenece a la lista de control de stock, el sistema emitirá obligatoriamente una advertencia: *"Atención: Modificar la unidad de medida impactará el recuento y control de stock acumulado de este material"*.
+
+### 4.4. Destinos de Compra: La Regla de Oro (Stock vs Carga Directa vs Cliente)
 - **Reposición de Stock / Pañol (`VIA_PANOL`):** Buque fijado en `ASTILLERO` y OT en `STOCK`. Al recibirse (`RECIBIDO`), incrementa automáticamente el inventario físico en `materials.current_stock`.
 - **Carga Directa para Obra (`DIRECT`):** Asignada a un Buque y OT real. Al recibirse (`RECIB.COMP.DIRECT`), **no toca stock de pañol** e impacta de inmediato en el costo vivo de la OT.
 - **Material Aportado por Cliente (`RECIBIDO 2`):** Suministrado por el armador; no computa costo ni stock para el astillero.
 
-### 4.4. Conciliación de Facturas ("Línea Morada")
+### 4.5. Configuración de Compradores y Despacho WhatsApp Web
+- **Dos Compradores Oficiales (Configurables desde `/admin`):** Los números de teléfono móvil de los compradores (Jorge Sentis y Andrés) se gestionan desde el Panel de Administrador (`system_settings` $\rightarrow$ `compras_whatsapp`). Son líneas de WhatsApp directas para abrir WhatsApp Web y son independientes del bot de Evolution API.
+- **Despacho Agrupado:** El botón *"🛒 Pedir Agrupado"* agrupa los materiales seleccionados por proveedor, solicita elegir el comprador emisor y abre WhatsApp Web con el pedido redactado formalmente en español, pasando el estado a `PEDIDO`.
+- **Normalización Argentina:** Los celulares locales se normalizan automáticamente a formato internacional `549...`.
+- **Fallback para Líneas Fijas / 0810:** Si el proveedor posee un número no compatible con WhatsApp (ej. Air Liquide `0810-222-5272`), el modal ofrece un botón de llamada directa telefónica (`tel:08102225272`) y exhibe el Número de Cliente oficial (`2234867`).
+
+### 4.6. Conciliación de Facturas ("Línea Morada")
 - Cada compra cuenta con un estado de conciliación (`is_reconciled`).
 - Mediante la acción *"✅ Conciliar hasta aquí"* por proveedor, el supervisor ingresa el número de factura/remito y marca en bloque esa compra y todas las anteriores pendientes de ese proveedor.
 - Visualmente se traza una línea divisoria morada gruesa con el sello de auditoría (fecha, usuario y número de factura).
 - El filtro *"🟣 Ocultar Conciliados"* permite mantener la vista despejada para la operativa diaria.
 
-### 4.5. Alta Formal de Materiales Nuevos (🔒 Solo Supervisor)
-- Si un operario carga un material que no existe en la base de datos maestra, el sistema lo acepta como texto libre y lo marca como `is_new_material = true` (insignia `⚠️ Alta`).
-- El supervisor cuenta con un modal de alta rápida con validación de nomenclaturas técnicas normalizadas (`BULON`, `CAÑO`, `CHAPA`, `ELECTRODO`) para categorizarlo, asignar precio base e ingresarlo formalmente a `public.materials`.
-
-### 4.6. Despacho por WhatsApp Web y Conversión Quincenal
-- El botón de acción en lote *"🛒 Pedir Agrupado"* agrupa los materiales por proveedor y abre directamente un chat de WhatsApp Web con el texto estructurado del pedido formal en español.
-- Las sumatorias en dólares (US$) de la barra flotante reactiva utilizan la cotización quincenal oficial configurada en `macro_variables` para ese período.
+### 4.7. Proveedores: Doble Vista y Multirubro
+- **Doble Vista:** Tabla con encabezado inmovilizado (`sticky top-0 z-20 bg-slate-950`) vs Fichas ejecutivas (Cards).
+- **KPIs de Proveedores:** Filtros rápidos en 1 clic para detectar proveedores sin teléfono, sin email, sin rubro asignado o proveedores de gases bajo Regla P-02.
+- **Multirubro (`trades TEXT[]`):** Admite asociar múltiples especialidades a un mismo proveedor mediante selector interactivo con etiquetas (chips) y creación in-situ de nuevos rubros.
 
 ---
 
@@ -95,15 +114,25 @@ Toda la interfaz de usuario (UI), notificaciones, alertas, mensajes del asistent
 
 ## 6. Gestor Documental de Compras (M4c)
 
-### 6.1. Adjunto Inteligente (1 Clic)
-El operario de compras no necesita organizar carpetas externas ni copiar links. Debe disponer de un botón "Adjuntar Cotización" en cada línea de compra que permita subir un archivo (PDF, DOC, etc.) completando únicamente una descripción breve.
+### 6.1. Adjunto Inteligente y Clasificación Documental
+El operario de compras no necesita organizar carpetas externas ni copiar links. Desde la grilla o las tarjetas dispone de un botón para adjuntar o administrar comprobantes con clasificación tipificada:
+1. `FACTURA`: Factura fiscal comercial vinculada al pedido.
+2. `REMITO`: Remito oficial de entrega del transportista o pañol.
+3. `COTIZACION_MATERIAL`: Presupuesto de insumos (acceso público general en compras).
+4. `COTIZACION_MANO_OBRA`: Presupuesto de mano de obra y subcontratos (`is_confidential_labor = true`, visibilidad restringida exclusivamente a Supervisión y Gerencia).
+5. `FICHA_TECNICA`: Manuales o fichas técnicas de especificación naval.
+6. `IMAGEN_MUESTRA`: Fotografías de piezas dañadas, croquis o muestras para cotización.
 
-### 6.2. Nomenclatura y Almacenamiento Automático
+### 6.2. Ciclo de Vida Documental Completo (`DocActionModal`)
+Cada archivo cuenta con 4 acciones operativas directas:
+- **👁️ Ver / Descargar:** Acceso seguro al binario en Supabase Storage.
+- **✏️ Modificar Metadatos:** Edición de descripción, tipo de documento y confidencialidad.
+- **🔄 Reemplazar Archivo:** Sustitución del archivo físico en el bucket conservando el registro relacional.
+- **🗑️ Eliminar:** Borrado sincronizado en Storage y en la tabla `purchase_documents`.
+
+### 6.3. Nomenclatura y Almacenamiento Automático
 - **Renombrado Automático:** El sistema renombra el archivo subido sin intervención humana utilizando la fórmula: `{descripcion}-{proveedor}.{extension}`.
-- **Estructura de Carpetas:** El archivo se almacena en el sistema (Supabase Storage) simulando la estructura del Drive legacy: `cotizaciones/{año}/{rubro}/{archivo_normalizado}`. El año se toma automáticamente y el rubro hereda del módulo de materiales.
-
-### 6.3. Buscador Histórico Indexado
-Las cotizaciones no quedan huérfanas; se indexan en una base de datos relacional (`purchase_documents`), permitiendo búsquedas cruzadas por rubro, proveedor, año y descripción. Esto es fundamental para alimentar el Comparador de Precios (M4b).
+- **Estructura de Carpetas:** El archivo se almacena en Supabase Storage: `cotizaciones/{año}/{rubro}/{archivo_normalizado}`. El año se toma automáticamente y el rubro hereda del módulo de materiales.
 
 ---
 

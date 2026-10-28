@@ -38,7 +38,13 @@ import {
   HelpCircle,
   Truck,
   Flame,
-  ArrowRight
+  ArrowRight,
+  List,
+  LayoutGrid,
+  Image as ImageIcon,
+  Tag,
+  Lock,
+  UserCheck
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -62,16 +68,73 @@ const STATUS_OPTIONS = [
   { value: 'NO VENDEN', label: 'NO VENDEN', color: 'bg-slate-700/50 text-slate-400 border-slate-600' }
 ]
 
+// Lista estándar de rubros de proveedores para combobox
+const STANDARD_TRADES = [
+  'FERRETERIA',
+  'GASES',
+  'TORNERIA',
+  'PINTURA',
+  'METALES',
+  'CALDERERIA',
+  'ELECTRICIDAD',
+  'SERVICIOS',
+  'BULONERIA',
+  'MADERA',
+  'HIDRAULICA',
+  'CORTE/PLEGADO',
+  'MECANICA',
+  'SEGURIDAD',
+  'LUBRICANTES'
+]
+
+// Función obligatoria de deducción estricta de unidad de medida por texto
+export function deduceUnitMeasure(materialName = '') {
+  const text = materialName.toLowerCase()
+  if (text.includes('lado x lado')) return 'm2'
+  if (text.includes('x metro lineal') || text.includes('x metro') || text.includes('metro lineal')) return 'metro lineal'
+  if (text.includes('x kg') || text.includes('x kilo') || text.includes('kilo')) return 'kg'
+  if (text.includes('x m3') || text.includes('metro cubico')) return 'm3'
+  return 'unidad'
+}
+
+// Normalizador de teléfono argentino a formato WhatsApp internacional limpio (+54 9 [Área sin 0] [Número sin 15])
+export function formatArgPhoneForWhatsApp(phoneStr = '') {
+  if (!phoneStr) return ''
+  const digits = phoneStr.replace(/[^0-9]/g, '')
+  if (digits.startsWith('0810') || digits.startsWith('0800')) return digits // Línea fija no WhatsApp
+
+  if (digits.startsWith('549')) return digits
+  if (digits.startsWith('54')) {
+    // Si empieza con 54 pero le falta el 9 móvil
+    return '549' + digits.slice(2)
+  }
+  // Si empieza con 0 (ej 02234810922) -> quitar 0
+  let clean = digits.startsWith('0') ? digits.slice(1) : digits
+  // Si contiene 15 en medio después de código de área (ej 223 15 4810922) -> quitar 15
+  if (clean.length === 11 && clean.slice(3, 5) === '15') {
+    clean = clean.slice(0, 3) + clean.slice(5)
+  }
+  return '549' + clean
+}
+
 export default function Compras() {
   const { profile, user } = useAuth()
-  const isSupervisor = profile?.role === 'Supervisor' || profile?.role === 'Gerencia' || profile?.role === 'Admin'
+  const isSupervisorOrAdmin = profile?.role === 'Supervisor' || profile?.role === 'Gerencia' || profile?.role === 'Admin'
 
-  // Estados principales
+  // Modo de visualización: Simple (Solicitud Operativa) vs Completa (Gestión de Compras)
+  // Por defecto, si el usuario no es supervisor/admin, arranca en modo Simple
+  const [viewMode, setViewMode] = useState(isSupervisorOrAdmin ? 'completa' : 'simple')
+
+  // Pestañas
   const [activeTab, setActiveTab] = useState('compras') // 'compras', 'proveedores', 'documentos'
   const [loading, setLoading] = useState(true)
   const [feedback, setFeedback] = useState(null)
 
-  // Datos de base de datos
+  // Vistas alternativas dentro de pestañas
+  const [suppliersViewMode, setSuppliersViewMode] = useState('lista') // 'lista' | 'fichas'
+  const [docsViewMode, setDocsViewMode] = useState('lista') // 'lista' | 'fichas'
+
+  // Datos desde Supabase
   const [purchaseOrders, setPurchaseOrders] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [materials, setMaterials] = useState([])
@@ -80,6 +143,7 @@ export default function Compras() {
   const [workers, setWorkers] = useState([])
   const [macroVariables, setMacroVariables] = useState([])
   const [documents, setDocuments] = useState([])
+  const [systemSettings, setSystemSettings] = useState(null)
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState('')
@@ -89,6 +153,10 @@ export default function Compras() {
   const [filterChargeType, setFilterChargeType] = useState('TODOS') // 'TODOS', 'DIRECT', 'VIA_PANOL'
   const [filterNewOnly, setFilterNewOnly] = useState(false)
   const [hideReconciled, setHideReconciled] = useState(false)
+  const [activeKpiFilter, setActiveKpiFilter] = useState(null) // 'pedidos' | 'cotizaciones' | 'sin_recibir' | 'gases'
+
+  // Filtros propios de Proveedores
+  const [supplierKpiFilter, setSupplierKpiFilter] = useState('TODOS') // 'TODOS', 'NO_PHONE', 'NO_EMAIL', 'NO_TRADE', 'GASES'
 
   // Selección de filas (para totales y acciones en lote)
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set())
@@ -103,8 +171,11 @@ export default function Compras() {
   const [showDocModal, setShowDocModal] = useState(false)
   const [docTargetOrder, setDocTargetOrder] = useState(null)
 
+  const [showDocActionModal, setShowDocActionModal] = useState(false)
+  const [selectedDocAction, setSelectedDocAction] = useState(null) // Para editar/reemplazar/eliminar doc
+
   const [showReconcileModal, setShowReconcileModal] = useState(false)
-  const [reconcileTarget, setReconcileTarget] = useState(null) // { supplierId, orderId, orderDate }
+  const [reconcileTarget, setReconcileTarget] = useState(null)
 
   const [showSupplierModal, setShowSupplierModal] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState(null)
@@ -124,15 +195,16 @@ export default function Compras() {
   async function fetchData() {
     setLoading(true)
     try {
-      const [poRes, supRes, matRes, shpRes, woRes, wkrRes, mvRes, docRes] = await Promise.all([
+      const [poRes, supRes, matRes, shpRes, woRes, wkrRes, mvRes, docRes, setRes] = await Promise.all([
         supabase.from('purchase_orders').select('*').order('order_date', { ascending: false }).order('created_at', { ascending: false }),
         supabase.from('suppliers').select('*').order('name'),
         supabase.from('materials').select('*').order('name'),
         supabase.from('ships').select('id, name, vessel_type').order('name'),
-        supabase.from('work_orders').select('id, ot_number, title, ship_id').order('ot_number'),
-        supabase.from('workers').select('id, name, trade').order('name'),
+        supabase.from('work_orders').select('id, ot_number, title, description, ship_id').order('ot_number'),
+        supabase.from('workers').select('id, name, trade, can_withdraw_materials').order('name'),
         supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
-        supabase.from('purchase_documents').select('*').order('created_at', { ascending: false })
+        supabase.from('purchase_documents').select('*').order('created_at', { ascending: false }),
+        supabase.from('system_settings').select('*').eq('key', 'compras_whatsapp').maybeSingle()
       ])
 
       if (poRes.error) console.warn('Aviso purchase_orders:', poRes.error.message)
@@ -152,6 +224,7 @@ export default function Compras() {
       setWorkers(wkrRes.data || [])
       setMacroVariables(mvRes.data || [])
       setDocuments(docRes.data || [])
+      setSystemSettings(setRes.data?.value || null)
     } catch (err) {
       console.error('Error cargando Compras:', err)
       showFeedbackMsg('error', 'Error al sincronizar datos de Compras: ' + (err.message || err))
@@ -160,7 +233,7 @@ export default function Compras() {
     }
   }
 
-  // Cotización del dólar quincenal oficial según fecha
+  // Cotización del dólar quincenal oficial
   function getDollarRateForDate(dateStr) {
     if (!dateStr) return 1500
     const parts = dateStr.split('-')
@@ -213,7 +286,6 @@ export default function Compras() {
     purchaseOrders.forEach((po) => {
       if (po.is_new_material) newMaterialsCount++
 
-      // Cotizaciones
       if (['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD'].includes(po.status)) {
         pendingQuotes++
         const orderDate = new Date(po.order_date)
@@ -221,15 +293,8 @@ export default function Compras() {
         if (diffDays > 7) expiredQuotes++
       }
 
-      // Pedidos emitidos
-      if (po.status === 'PEDIDO') {
-        pendingOrders++
-      }
-
-      // Sin recibir
-      if (['PEDIDO', 'COTIZA.APROBADA', 'PEDIDO INCOMPLETO'].includes(po.status)) {
-        pendingReceives++
-      }
+      if (po.status === 'PEDIDO') pendingOrders++
+      if (['PEDIDO', 'COTIZA.APROBADA', 'PEDIDO INCOMPLETO'].includes(po.status)) pendingReceives++
     })
 
     return {
@@ -240,6 +305,31 @@ export default function Compras() {
       newMaterialsCount
     }
   }, [purchaseOrders])
+
+  // Toggle interactivo de KPI como filtro
+  function toggleKpiFilter(filterKey) {
+    if (activeKpiFilter === filterKey) {
+      setActiveKpiFilter(null)
+      setFilterStatus('TODOS')
+      setFilterSupplier('TODOS')
+    } else {
+      setActiveKpiFilter(filterKey)
+      if (filterKey === 'pedidos') {
+        setFilterStatus('PEDIDO')
+        setFilterSupplier('TODOS')
+      } else if (filterKey === 'cotizaciones') {
+        setFilterStatus('COTIZACION')
+        setFilterSupplier('TODOS')
+      } else if (filterKey === 'sin_recibir') {
+        setFilterStatus('TODOS')
+        setFilterSupplier('TODOS')
+      } else if (filterKey === 'gases') {
+        const gasSup = suppliers.find((s) => s.is_gas_supplier)
+        if (gasSup) setFilterSupplier(gasSup.id)
+        setFilterStatus('TODOS')
+      }
+    }
+  }
 
   // Filtrado de pedidos
   const filteredOrders = useMemo(() => {
@@ -255,6 +345,11 @@ export default function Compras() {
         const shp = ships.find((s) => s.id === po.ship_id)?.name.toLowerCase() || ''
         const matches = mat.includes(q) || obs.includes(q) || req.includes(q) || inv.includes(q) || sup.includes(q) || shp.includes(q)
         if (!matches) return false
+      }
+
+      // Filtro KPI interactivo especial
+      if (activeKpiFilter === 'sin_recibir') {
+        if (!['PEDIDO', 'COTIZA.APROBADA', 'PEDIDO INCOMPLETO'].includes(po.status)) return false
       }
 
       // Filtro proveedor
@@ -277,9 +372,43 @@ export default function Compras() {
 
       return true
     })
-  }, [purchaseOrders, searchQuery, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, suppliers, ships])
+  }, [purchaseOrders, searchQuery, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter, suppliers, ships])
 
-  // Estadísticas de la barra inferior (Selección manual vs Todo el filtro)
+  // KPIs específicos de la pestaña Proveedores
+  const supplierKpis = useMemo(() => {
+    let noPhone = 0
+    let noEmail = 0
+    let noTrade = 0
+    let gasesCount = 0
+
+    suppliers.forEach((s) => {
+      if (!s.phone || !s.phone.trim()) noPhone++
+      if (!s.email || !s.email.trim()) noEmail++
+      if ((!s.trades || s.trades.length === 0) && (!s.trade || !s.trade.trim())) noTrade++
+      if (s.is_gas_supplier) gasesCount++
+    })
+
+    return {
+      total: suppliers.length,
+      noPhone,
+      noEmail,
+      noTrade,
+      gasesCount
+    }
+  }, [suppliers])
+
+  // Filtrado de proveedores
+  const filteredSuppliers = useMemo(() => {
+    return suppliers.filter((s) => {
+      if (supplierKpiFilter === 'NO_PHONE' && s.phone && s.phone.trim()) return false
+      if (supplierKpiFilter === 'NO_EMAIL' && s.email && s.email.trim()) return false
+      if (supplierKpiFilter === 'NO_TRADE' && ((s.trades && s.trades.length > 0) || (s.trade && s.trade.trim()))) return false
+      if (supplierKpiFilter === 'GASES' && !s.is_gas_supplier) return false
+      return true
+    })
+  }, [suppliers, supplierKpiFilter])
+
+  // Estadísticas reactivas inferiores
   const stats = useMemo(() => {
     const isCustom = selectedOrderIds.size > 0
     const targetList = isCustom ? purchaseOrders.filter((p) => selectedOrderIds.has(p.id)) : filteredOrders
@@ -346,9 +475,7 @@ export default function Compras() {
         updated_at: new Date().toISOString()
       }
 
-      // Si pasa a RECIBIDO y es Pañol, podríamos incrementar stock
       if (newStatus === 'RECIBIDO' && order.charge_type === 'VIA_PANOL' && order.material_id) {
-        // Incremento en materials
         const mat = materials.find((m) => m.id === order.material_id)
         if (mat) {
           const newStock = (mat.current_stock || 0) + Number(order.quantity)
@@ -409,64 +536,10 @@ export default function Compras() {
     }
   }
 
-  // Acción masiva: Pedir por WhatsApp en lote (Agrupado por Proveedor)
-  const batchOrderData = useMemo(() => {
-    if (!showBatchOrderModal) return []
-    const selected = purchaseOrders.filter((p) => selectedOrderIds.has(p.id))
-
-    // Agrupar por proveedor
-    const map = new Map()
-    selected.forEach((po) => {
-      const sup = suppliers.find((s) => s.id === po.supplier_id) || { id: 'unknown', name: 'Sin Proveedor Asignado', phone: '' }
-      if (!map.has(sup.id)) {
-        map.set(sup.id, { supplier: sup, items: [] })
-      }
-      map.get(sup.id).items.push(po)
-    })
-
-    return Array.from(map.values())
-  }, [showBatchOrderModal, selectedOrderIds, purchaseOrders, suppliers])
-
-  function buildWhatsAppText(supplierName, items) {
-    let text = `*SOLICITUD DE COMPRA - ALON CAR S.A.*\n`
-    text += `Estimados *${supplierName}*,\n`
-    text += `Por medio de la presente solicitamos cotización/entrega de los siguientes materiales:\n\n`
-
-    items.forEach((item, idx) => {
-      text += `*${idx + 1}.* ${item.material_name_raw} — Cantidad: *${item.quantity} ${item.unit_measure || 'Unidades'}*`
-      if (item.observations) text += ` _(Nota: ${item.observations})_`
-      text += `\n`
-    })
-
-    text += `\n_Por favor confirmar disponibilidad, plazos de entrega y forma de facturación._\n`
-    text += `Muchas gracias.\n*Astillero & Metalúrgica Alon Car S.A.*`
-    return encodeURIComponent(text)
-  }
-
-  async function handleEmitBatchOrderWhatsApp(supplier, items) {
-    const rawPhone = (supplier.phone || '').replace(/[^0-9]/g, '')
-    const encodedText = buildWhatsAppText(supplier.name, items)
-    const url = rawPhone ? `https://api.whatsapp.com/send?phone=${rawPhone}&text=${encodedText}` : `https://api.whatsapp.com/send?text=${encodedText}`
-
-    // Marcar como PEDIDO
-    try {
-      const ids = items.map((i) => i.id)
-      for (const id of ids) {
-        await supabase.from('purchase_orders').update({ status: 'PEDIDO', updated_at: new Date().toISOString() }).eq('id', id)
-      }
-      setPurchaseOrders((prev) => prev.map((p) => (ids.includes(p.id) ? { ...p, status: 'PEDIDO' } : p)))
-      window.open(url, '_blank')
-      showFeedbackMsg('success', `Pedido abierto en WhatsApp y estado cambiado a PEDIDO para ${supplier.name}`)
-    } catch (err) {
-      console.error('Error emitiendo pedido:', err)
-      showFeedbackMsg('error', 'Error emitiendo pedido: ' + err.message)
-    }
-  }
-
   return (
     <div className="space-y-4 pb-24">
       {/* ========================================================= */}
-      {/* CABECERA PRINCIPAL Y PESTAÑAS */}
+      {/* CABECERA PRINCIPAL Y SELECTOR DE PESTAÑAS */}
       {/* ========================================================= */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800 backdrop-blur-md">
         <div className="flex items-center gap-3">
@@ -477,43 +550,60 @@ export default function Compras() {
             <h1 className="text-xl font-black text-white tracking-wide flex items-center gap-2">
               MÓDULO DE COMPRAS
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-400 uppercase">
-                M4b / GS-006
+                {viewMode === 'simple' ? 'Modo Solicitud Simple' : 'Gestión Completa M4b'}
               </span>
             </h1>
             <p className="text-xs text-slate-400">
-              Gestión de insumos, cotizaciones, compras directas de obra, reposición de pañol y conciliación con factura.
+              {viewMode === 'simple'
+                ? 'Panel simplificado para solicitud rápida de insumos de obra y pañol.'
+                : 'Gestión integral de cotizaciones, proveedores, carga directa, stock y conciliación.'}
             </p>
           </div>
         </div>
 
-        {/* Pestañas & Botón Cargar */}
+        {/* Conmutador de Modo + Pestañas & Botón Cargar */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex items-center text-xs">
+          {/* Conmutador de perfil/vista si es supervisor/admin */}
+          {isSupervisorOrAdmin && (
             <button
-              onClick={() => setActiveTab('compras')}
-              className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-                activeTab === 'compras' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
-              }`}
+              onClick={() => setViewMode(viewMode === 'simple' ? 'completa' : 'simple')}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Alternar entre Solicitud Simple y Gestión Completa"
             >
-              📋 Registro Compras
+              <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{viewMode === 'simple' ? 'Ver Modo Completo' : 'Ver Modo Simple'}</span>
             </button>
-            <button
-              onClick={() => setActiveTab('proveedores')}
-              className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-                activeTab === 'proveedores' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              🏢 Proveedores ({suppliers.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('documentos')}
-              className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-                activeTab === 'documentos' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              📎 Archivo Docs ({documents.length})
-            </button>
-          </div>
+          )}
+
+          {/* Pestañas solo visibles en modo completo */}
+          {viewMode === 'completa' && (
+            <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex items-center text-xs">
+              <button
+                onClick={() => setActiveTab('compras')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                  activeTab === 'compras' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📋 Registro
+              </button>
+              <button
+                onClick={() => setActiveTab('proveedores')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                  activeTab === 'proveedores' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🏢 Proveedores ({suppliers.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('documentos')}
+                className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                  activeTab === 'documentos' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📎 Archivo Docs ({documents.length})
+              </button>
+            </div>
+          )}
 
           <button
             onClick={() => {
@@ -523,7 +613,7 @@ export default function Compras() {
             className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-lg text-xs shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Cargar Pedido</span>
+            <span>{viewMode === 'simple' ? 'Nueva Solicitud' : 'Cargar Pedido'}</span>
           </button>
         </div>
       </div>
@@ -538,9 +628,7 @@ export default function Compras() {
           }`}
         >
           <span>{feedback.text}</span>
-          <button onClick={() => setFeedback(null)} className="text-slate-400 hover:text-white">
-            ✕
-          </button>
+          <button onClick={() => setFeedback(null)} className="text-slate-400 hover:text-white">✕</button>
         </div>
       )}
 
@@ -549,14 +637,21 @@ export default function Compras() {
       {/* ========================================================= */}
       {activeTab === 'compras' && (
         <>
-          {/* TARJETAS DE KPIs SUPERIORES */}
+          {/* TARJETAS DE KPIs SUPERIORES (FILTROS INTERACTIVOS CON 1 CLIC) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* KPI 1: Pedidos Emitidos / En curso */}
-            <div className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+            <div
+              onClick={() => toggleKpiFilter('pedidos')}
+              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'pedidos'
+                  ? 'bg-blue-950/60 border-blue-500 shadow-lg shadow-blue-500/20'
+                  : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+              }`}
+            >
               <div>
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pedidos en Proveedor</p>
                 <p className="text-2xl font-black text-blue-400 mt-1">{kpis.pendingOrders}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Órdenes activas en espera</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Clic para filtrar estado PEDIDO</p>
               </div>
               <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
                 <Truck className="w-5 h-5" />
@@ -564,7 +659,14 @@ export default function Compras() {
             </div>
 
             {/* KPI 2: Cotizaciones Pendientes */}
-            <div className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+            <div
+              onClick={() => toggleKpiFilter('cotizaciones')}
+              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'cotizaciones'
+                  ? 'bg-purple-950/60 border-purple-500 shadow-lg shadow-purple-500/20'
+                  : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+              }`}
+            >
               <div>
                 <div className="flex items-center gap-1.5">
                   <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Cotizaciones en Curso</p>
@@ -575,7 +677,7 @@ export default function Compras() {
                   )}
                 </div>
                 <p className="text-2xl font-black text-purple-400 mt-1">{kpis.pendingQuotes}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Evaluación de precios</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Clic para filtrar cotizaciones</p>
               </div>
               <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
                 <FileText className="w-5 h-5" />
@@ -583,11 +685,18 @@ export default function Compras() {
             </div>
 
             {/* KPI 3: Sin Recibir en Astillero */}
-            <div className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between">
+            <div
+              onClick={() => toggleKpiFilter('sin_recibir')}
+              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'sin_recibir'
+                  ? 'bg-amber-950/60 border-amber-500 shadow-lg shadow-amber-500/20'
+                  : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+              }`}
+            >
               <div>
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Compras sin Recibir</p>
                 <p className="text-2xl font-black text-amber-400 mt-1">{kpis.pendingReceives}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Pendientes de ingreso físico/obra</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Clic para filtrar pendientes de entrega</p>
               </div>
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
                 <Clock className="w-5 h-5" />
@@ -595,7 +704,14 @@ export default function Compras() {
             </div>
 
             {/* KPI 4: Regla P-02 Alertas de Gases (Air Liquide y Praxair) */}
-            <div className="bg-gradient-to-br from-cyan-950/40 to-slate-900/90 border border-cyan-800/40 p-3.5 rounded-xl flex items-center justify-between">
+            <div
+              onClick={() => toggleKpiFilter('gases')}
+              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'gases'
+                  ? 'bg-cyan-950/80 border-cyan-400 shadow-lg shadow-cyan-500/20'
+                  : 'bg-gradient-to-br from-cyan-950/40 to-slate-900/90 border-cyan-800/40 hover:border-cyan-700'
+              }`}
+            >
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <Flame className="w-3.5 h-3.5 text-cyan-400" />
@@ -604,16 +720,7 @@ export default function Compras() {
                 <p className="text-xs font-bold text-white mt-1 truncate">Air Liquide: Martes &lt;12hs</p>
                 <p className="text-[10px] text-slate-400 truncate">Cliente N° 2234867 | Tel: 0810-222-5272</p>
               </div>
-              <button
-                onClick={() => {
-                  setFilterSupplier(suppliers.find((s) => s.is_gas_supplier)?.id || 'TODOS')
-                  showFeedbackMsg('success', 'Filtro aplicado a proveedores de gases industriales.')
-                }}
-                className="px-2 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg text-[10px] font-bold shrink-0 transition-all cursor-pointer"
-                title="Filtrar compras de gases"
-              >
-                Ver Gases
-              </button>
+              <span className="text-[10px] text-cyan-400 underline font-semibold">Filtrar</span>
             </div>
           </div>
 
@@ -630,29 +737,27 @@ export default function Compras() {
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-500 hover:text-white">
-                  ✕
-                </button>
+                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-500 hover:text-white">✕</button>
               )}
             </div>
 
             {/* Selectores */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* Proveedor */}
-              <select
-                value={filterSupplier}
-                onChange={(e) => setFilterSupplier(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
-              >
-                <option value="TODOS">Todos los Proveedores</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} {s.is_gas_supplier ? '💨' : ''}
-                  </option>
-                ))}
-              </select>
+              {viewMode === 'completa' && (
+                <select
+                  value={filterSupplier}
+                  onChange={(e) => setFilterSupplier(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="TODOS">Todos los Proveedores</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.is_gas_supplier ? '💨' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
 
-              {/* Estado */}
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -665,7 +770,6 @@ export default function Compras() {
                 ))}
               </select>
 
-              {/* Quincena */}
               <select
                 value={filterFortnight}
                 onChange={(e) => setFilterFortnight(e.target.value)}
@@ -679,7 +783,6 @@ export default function Compras() {
                 ))}
               </select>
 
-              {/* Tipo de Carga */}
               <select
                 value={filterChargeType}
                 onChange={(e) => setFilterChargeType(e.target.value)}
@@ -707,17 +810,19 @@ export default function Compras() {
                 <span>Nuevos s/reg ({kpis.newMaterialsCount})</span>
               </button>
 
-              <button
-                onClick={() => setHideReconciled(!hideReconciled)}
-                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
-                  hideReconciled
-                    ? 'bg-purple-950 border border-purple-500 text-purple-300'
-                    : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
-                }`}
-                title="Ocultar las compras que ya fueron conciliadas con factura"
-              >
-                <span>🟣 Ocultar Conciliados</span>
-              </button>
+              {viewMode === 'completa' && (
+                <button
+                  onClick={() => setHideReconciled(!hideReconciled)}
+                  className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                    hideReconciled
+                      ? 'bg-purple-950 border border-purple-500 text-purple-300'
+                      : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                  title="Ocultar las compras que ya fueron conciliadas con factura"
+                >
+                  <span>🟣 Ocultar Conciliados</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -741,17 +846,29 @@ export default function Compras() {
                       </button>
                     </th>
                     <th className="py-2.5 px-3">Fecha / Quincena</th>
+                    <th className="py-2.5 px-3">Urgencia</th>
                     <th className="py-2.5 px-3">Destino</th>
                     <th className="py-2.5 px-3">Buque / OT</th>
                     <th className="py-2.5 px-3">Solicita</th>
                     <th className="py-2.5 px-3">Material Solicitado</th>
                     <th className="py-2.5 px-3 text-right">Cant.</th>
-                    <th className="py-2.5 px-3 text-right">$/U Proveedor</th>
-                    <th className="py-2.5 px-3 text-right">$/U Sistema</th>
-                    <th className="py-2.5 px-3">Proveedor</th>
+
+                    {/* Columnas solo visibles en Modo Completo */}
+                    {viewMode === 'completa' && (
+                      <>
+                        <th className="py-2.5 px-3 text-right">$/U Proveedor</th>
+                        <th className="py-2.5 px-3 text-right">$/U Sistema</th>
+                        <th className="py-2.5 px-3">Proveedor</th>
+                      </>
+                    )}
+
                     <th className="py-2.5 px-3">Estado</th>
                     <th className="py-2.5 px-3 text-center">Doc</th>
-                    <th className="py-2.5 px-3 text-center">Conciliado</th>
+
+                    {viewMode === 'completa' && (
+                      <th className="py-2.5 px-3 text-center">Conciliado</th>
+                    )}
+
                     <th className="py-2.5 px-3 text-center">Acciones</th>
                   </tr>
                 </thead>
@@ -759,14 +876,14 @@ export default function Compras() {
                 <tbody className="divide-y divide-slate-800/60 font-sans">
                   {loading ? (
                     <tr>
-                      <td colSpan="14" className="text-center py-12 text-slate-500">
+                      <td colSpan={viewMode === 'completa' ? 14 : 10} className="text-center py-12 text-slate-500">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-cyan-400" />
-                        Cargando registro maestro de compras...
+                        Cargando registro de compras...
                       </td>
                     </tr>
                   ) : filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan="14" className="text-center py-12 text-slate-500">
+                      <td colSpan={viewMode === 'completa' ? 14 : 10} className="text-center py-12 text-slate-500">
                         No se encontraron registros de compra con los filtros seleccionados.
                       </td>
                     </tr>
@@ -786,11 +903,8 @@ export default function Compras() {
                         deltaPct = Math.round(((quoted - system) / system) * 100)
                       }
 
-                      // Verificar si es la última fila conciliada de este proveedor para trazar la LÍNEA MORADA
-                      const nextOrder = filteredOrders[index + 1]
-                      const showPurpleLine =
-                        po.is_reconciled &&
-                        (!nextOrder || !nextOrder.is_reconciled || nextOrder.supplier_id !== po.supplier_id)
+                      // Badge de Urgencia
+                      const urgency = po.urgency || 'SIN_APURO'
 
                       return (
                         <tr
@@ -820,7 +934,24 @@ export default function Compras() {
                             <div className="text-[10px] text-slate-500 font-mono">{po.fortnight_period}</div>
                           </td>
 
-                          {/* 3. Destino */}
+                          {/* 3. Urgencia */}
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            {urgency === 'URGENTE' ? (
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 font-extrabold text-[10px] animate-pulse">
+                                URGENTE
+                              </span>
+                            ) : urgency === 'PROXIMA_SALIDA' ? (
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[10px]">
+                                PRÓX. SALIDA
+                              </span>
+                            ) : (
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">
+                                Sin Apuro
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 4. Destino */}
                           <td className="py-2 px-3 whitespace-nowrap">
                             {po.charge_type === 'DIRECT' ? (
                               <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-bold text-[10px]">
@@ -837,7 +968,7 @@ export default function Compras() {
                             )}
                           </td>
 
-                          {/* 4. Buque / OT */}
+                          {/* 5. Buque / OT */}
                           <td className="py-2 px-3">
                             <div className="font-semibold text-slate-200 truncate max-w-[140px]" title={shp?.name || 'ASTILLERO'}>
                               {shp?.name || 'ASTILLERO'}
@@ -847,14 +978,14 @@ export default function Compras() {
                             </div>
                           </td>
 
-                          {/* 5. Solicita */}
+                          {/* 6. Solicita */}
                           <td className="py-2 px-3 text-slate-300 whitespace-nowrap">{po.requested_by_name || 'PAÑOL'}</td>
 
-                          {/* 6. Material */}
+                          {/* 7. Material */}
                           <td className="py-2 px-3">
                             <div className="flex items-center gap-1.5">
                               <span className="font-medium text-white">{po.material_name_raw}</span>
-                              {po.is_new_material && (
+                              {po.is_new_material && isSupervisorOrAdmin && (
                                 <button
                                   onClick={() => {
                                     setPendingMaterialOrder(po)
@@ -875,85 +1006,104 @@ export default function Compras() {
                             )}
                           </td>
 
-                          {/* 7. Cantidad */}
+                          {/* 8. Cantidad */}
                           <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
                             <span className="font-bold text-white">{po.quantity}</span>{' '}
-                            <span className="text-[10px] text-slate-500">{po.unit_measure || 'u'}</span>
+                            <span className="text-[10px] text-slate-500">{po.unit_measure || 'unidad'}</span>
                           </td>
 
-                          {/* 8. $/U Proveedor */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
-                            {po.supplier_quoted_price ? (
-                              <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span>
-                            ) : (
-                              <span className="text-slate-600">—</span>
-                            )}
-                          </td>
+                          {/* Columnas solo de Modo Completo */}
+                          {viewMode === 'completa' && (
+                            <>
+                              {/* 9. $/U Proveedor */}
+                              <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
+                                {po.supplier_quoted_price ? (
+                                  <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span>
+                                ) : (
+                                  <span className="text-slate-600">—</span>
+                                )}
+                              </td>
 
-                          {/* 9. $/U Sistema + Semáforo */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
-                            <div className="text-slate-400">
-                              {po.system_unit_price ? `$${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}
-                            </div>
-                            {deltaPct !== null && (
-                              <div
-                                className={`text-[9px] font-bold flex items-center justify-end gap-0.5 ${
-                                  deltaPct > 0 ? 'text-rose-400' : 'text-emerald-400'
-                                }`}
-                              >
-                                {deltaPct > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                                <span>{deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`}</span>
-                              </div>
-                            )}
-                          </td>
+                              {/* 10. $/U Sistema + Semáforo */}
+                              <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
+                                <div className="text-slate-400">
+                                  {po.system_unit_price ? `$${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}
+                                </div>
+                                {deltaPct !== null && (
+                                  <div
+                                    className={`text-[9px] font-bold flex items-center justify-end gap-0.5 ${
+                                      deltaPct > 0 ? 'text-rose-400' : 'text-emerald-400'
+                                    }`}
+                                  >
+                                    {deltaPct > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                                    <span>{deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`}</span>
+                                  </div>
+                                )}
+                              </td>
 
-                          {/* 10. Proveedor */}
-                          <td className="py-2 px-3">
-                            <div className="flex items-center justify-between gap-1 max-w-[140px]">
-                              <span className="truncate font-semibold text-slate-200" title={sup?.name || 'S/D'}>
-                                {sup?.name || 'S/D'}
-                              </span>
-                              {sup?.phone && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleEmitBatchOrderWhatsApp(sup, [po])}
-                                  className="text-emerald-400 hover:text-emerald-300 p-0.5 transition-colors"
-                                  title={`Enviar pedido a WhatsApp de ${sup.name}`}
-                                >
-                                  <MessageSquare className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
+                              {/* 11. Proveedor */}
+                              <td className="py-2 px-3">
+                                <div className="flex items-center justify-between gap-1 max-w-[140px]">
+                                  <span className="truncate font-semibold text-slate-200" title={sup?.name || 'S/D'}>
+                                    {sup?.name || 'S/D'}
+                                  </span>
+                                </div>
+                              </td>
+                            </>
+                          )}
 
-                          {/* 11. Estado */}
+                          {/* Estado */}
                           <td className="py-2 px-3 whitespace-nowrap">
-                            <select
-                              value={po.status}
-                              onChange={(e) => handleQuickStatusChange(po.id, e.target.value)}
-                              className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-300 focus:outline-none focus:border-cyan-500"
-                            >
-                              {STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
-                                <option key={st.value} value={st.value}>
-                                  {st.label}
-                                </option>
-                              ))}
-                            </select>
+                            {viewMode === 'completa' ? (
+                              <select
+                                value={po.status}
+                                onChange={(e) => handleQuickStatusChange(po.id, e.target.value)}
+                                className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-300 focus:outline-none focus:border-cyan-500"
+                              >
+                                {STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
+                                  <option key={st.value} value={st.value}>
+                                    {st.label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
+                                {po.status === 'RECIBIDO' || po.status === 'RECIB.COMP.DIRECT'
+                                  ? '✅ Recibido'
+                                  : po.status === 'PEDIDO'
+                                  ? '🚚 En Gestión'
+                                  : '⏳ Solicitado'}
+                              </span>
+                            )}
                           </td>
 
-                          {/* 12. Doc Gestor Documental */}
+                          {/* Doc Gestor Documental */}
                           <td className="py-2 px-3 text-center whitespace-nowrap">
                             {doc ? (
-                              <a
-                                href={doc.storage_path}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded text-[10px] font-bold hover:bg-cyan-900 transition-colors"
-                                title={`Ver: ${doc.original_filename}`}
-                              >
-                                <FileText className="w-3 h-3" />
-                                <span>Ver</span>
-                              </a>
+                              <div className="flex items-center justify-center gap-1">
+                                <a
+                                  href={doc.storage_path}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded text-[10px] font-bold hover:bg-cyan-900 transition-colors"
+                                  title={`Ver: ${doc.original_filename}`}
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  <span>Ver</span>
+                                </a>
+                                {viewMode === 'completa' && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedDocAction(doc)
+                                      setShowDocActionModal(true)
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800"
+                                    title="Opciones de archivo (editar, reemplazar, eliminar)"
+                                  >
+                                    <SlidersHorizontal className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <button
                                 onClick={() => {
@@ -961,43 +1111,45 @@ export default function Compras() {
                                   setShowDocModal(true)
                                 }}
                                 className="text-slate-500 hover:text-cyan-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
-                                title="Adjuntar comprobante o cotización (1-Clic)"
+                                title="Adjuntar cotización, ficha técnica o foto"
                               >
                                 <Paperclip className="w-3.5 h-3.5" />
                               </button>
                             )}
                           </td>
 
-                          {/* 13. Conciliado */}
-                          <td className="py-2 px-3 text-center whitespace-nowrap">
-                            {po.is_reconciled ? (
-                              <span
-                                className="inline-flex items-center gap-1 text-purple-400 font-bold text-[10px] bg-purple-950/80 px-1.5 py-0.5 rounded border border-purple-800/50"
-                                title={`Factura: ${po.invoice_number || 'S/D'} (Conciliado por ${po.reconciled_by || 'Supervisor'})`}
-                              >
-                                <Check className="w-3 h-3 stroke-[3]" />
-                                <span>Facturado</span>
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setReconcileTarget({
-                                    supplierId: po.supplier_id,
-                                    orderId: po.id,
-                                    orderDate: po.order_date,
-                                    supplierName: sup?.name
-                                  })
-                                  setShowReconcileModal(true)
-                                }}
-                                className="text-slate-500 hover:text-purple-400 text-[10px] underline cursor-pointer"
-                                title="Conciliar hasta este pedido con factura"
-                              >
-                                Conciliar
-                              </button>
-                            )}
-                          </td>
+                          {/* Conciliado (Solo Modo Completo) */}
+                          {viewMode === 'completa' && (
+                            <td className="py-2 px-3 text-center whitespace-nowrap">
+                              {po.is_reconciled ? (
+                                <span
+                                  className="inline-flex items-center gap-1 text-purple-400 font-bold text-[10px] bg-purple-950/80 px-1.5 py-0.5 rounded border border-purple-800/50"
+                                  title={`Factura: ${po.invoice_number || 'S/D'} (Conciliado por ${po.reconciled_by || 'Supervisor'})`}
+                                >
+                                  <Check className="w-3 h-3 stroke-[3]" />
+                                  <span>Facturado</span>
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setReconcileTarget({
+                                      supplierId: po.supplier_id,
+                                      orderId: po.id,
+                                      orderDate: po.order_date,
+                                      supplierName: sup?.name
+                                    })
+                                    setShowReconcileModal(true)
+                                  }}
+                                  className="text-slate-500 hover:text-purple-400 text-[10px] underline cursor-pointer"
+                                  title="Conciliar hasta este pedido con factura"
+                                >
+                                  Conciliar
+                                </button>
+                              )}
+                            </td>
+                          )}
 
-                          {/* 14. Acciones */}
+                          {/* Acciones */}
                           <td className="py-2 px-3 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-1">
                               <button
@@ -1063,36 +1215,42 @@ export default function Compras() {
                 <span className="text-xs font-bold text-white">{stats.sumQty}</span>
               </div>
 
-              <div className="flex items-baseline gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Σ AR$:</span>
-                <span className="text-sm font-extrabold text-cyan-300">${stats.sumCostArs.toLocaleString('es-AR')}</span>
-              </div>
+              {viewMode === 'completa' && (
+                <>
+                  <div className="flex items-baseline gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Σ AR$:</span>
+                    <span className="text-sm font-extrabold text-cyan-300">${stats.sumCostArs.toLocaleString('es-AR')}</span>
+                  </div>
 
-              <div className="flex items-baseline gap-1">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Σ US$:</span>
-                <span className="text-xs font-bold text-white">
-                  ${stats.sumCostUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Σ US$:</span>
+                    <span className="text-xs font-bold text-white">
+                      ${stats.sumCostUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
 
-              <div className="flex items-baseline gap-1 hidden lg:flex">
-                <span className="text-[10px] uppercase font-bold text-slate-500">Ø:</span>
-                <span className="text-xs font-semibold text-slate-300">${Math.round(stats.avgPriceArs).toLocaleString('es-AR')}</span>
-              </div>
+                  <div className="flex items-baseline gap-1 hidden lg:flex">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Ø:</span>
+                    <span className="text-xs font-semibold text-slate-300">${Math.round(stats.avgPriceArs).toLocaleString('es-AR')}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Botones de acción masiva */}
             {selectedOrderIds.size > 0 && (
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowBatchOrderModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold rounded-lg text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer"
-                  title="Abrir WhatsApp agrupado por proveedor"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Pedir Agrupado ({selectedOrderIds.size})</span>
-                </button>
+                {viewMode === 'completa' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchOrderModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold rounded-lg text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+                    title="Abrir WhatsApp agrupado por proveedor"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Pedir Agrupado ({selectedOrderIds.size})</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1110,22 +1268,86 @@ export default function Compras() {
       )}
 
       {/* ========================================================= */}
-      {/* VISTA 2: CATÁLOGO UNIFICADO DE PROVEEDORES */}
+      {/* VISTA 2: CATÁLOGO UNIFICADO DE PROVEEDORES (MULTI-RUBRO & KPIS) */}
       {/* ========================================================= */}
       {activeTab === 'proveedores' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-            <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Catálogo Unificado de Proveedores
-                <span className="text-xs px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300">
-                  {suppliers.length} activos
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Alimenta Compras, Pañol (circuitos de gases P-02) y Talleres Tercerizados.
-              </p>
+          {/* KPIS PROPIOS DE PROVEEDORES */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div
+              onClick={() => setSupplierKpiFilter('TODOS')}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                supplierKpiFilter === 'TODOS' ? 'bg-cyan-950/60 border-cyan-500' : 'bg-slate-900 border-slate-800'
+              }`}
+            >
+              <p className="text-[10px] font-bold text-slate-400 uppercase">Total Activos</p>
+              <p className="text-xl font-black text-white mt-0.5">{supplierKpis.total}</p>
             </div>
+
+            <div
+              onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_PHONE' ? 'TODOS' : 'NO_PHONE')}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                supplierKpiFilter === 'NO_PHONE' ? 'bg-amber-950/60 border-amber-500' : 'bg-slate-900 border-slate-800'
+              }`}
+            >
+              <p className="text-[10px] font-bold text-amber-400 uppercase">⚠️ Sin Teléfono</p>
+              <p className="text-xl font-black text-amber-300 mt-0.5">{supplierKpis.noPhone}</p>
+            </div>
+
+            <div
+              onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_EMAIL' ? 'TODOS' : 'NO_EMAIL')}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                supplierKpiFilter === 'NO_EMAIL' ? 'bg-purple-950/60 border-purple-500' : 'bg-slate-900 border-slate-800'
+              }`}
+            >
+              <p className="text-[10px] font-bold text-purple-400 uppercase">⚠️ Sin Email</p>
+              <p className="text-xl font-black text-purple-300 mt-0.5">{supplierKpis.noEmail}</p>
+            </div>
+
+            <div
+              onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_TRADE' ? 'TODOS' : 'NO_TRADE')}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                supplierKpiFilter === 'NO_TRADE' ? 'bg-rose-950/60 border-rose-500' : 'bg-slate-900 border-slate-800'
+              }`}
+            >
+              <p className="text-[10px] font-bold text-rose-400 uppercase">⚠️ Sin Rubro</p>
+              <p className="text-xl font-black text-rose-300 mt-0.5">{supplierKpis.noTrade}</p>
+            </div>
+
+            <div
+              onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'GASES' ? 'TODOS' : 'GASES')}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                supplierKpiFilter === 'GASES' ? 'bg-cyan-950/60 border-cyan-400' : 'bg-slate-900 border-slate-800'
+              }`}
+            >
+              <p className="text-[10px] font-bold text-cyan-400 uppercase">💨 Gases (P-02)</p>
+              <p className="text-xl font-black text-cyan-300 mt-0.5">{supplierKpis.gasesCount}</p>
+            </div>
+          </div>
+
+          {/* BARRA DE HERRAMIENTAS Y VISTAS */}
+          <div className="flex items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSuppliersViewMode('lista')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                  suppliersViewMode === 'lista' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Vista Lista</span>
+              </button>
+              <button
+                onClick={() => setSuppliersViewMode('fichas')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                  suppliersViewMode === 'fichas' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Vista Fichas</span>
+              </button>
+            </div>
+
             <button
               onClick={() => {
                 setEditingSupplier(null)
@@ -1138,146 +1360,290 @@ export default function Compras() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {suppliers.map((sup) => (
-              <div
-                key={sup.id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between hover:border-slate-700 transition-all shadow-md"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-bold text-white text-sm">{sup.name}</h3>
-                    {sup.is_gas_supplier && (
-                      <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold shrink-0">
-                        💨 GASES
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase font-semibold">
-                      {sup.trade || 'GENERAL'}
-                    </span>
-                    {sup.cuit_cuil && <span className="text-[10px] text-slate-500 font-mono">CUIT: {sup.cuit_cuil}</span>}
-                  </div>
-
-                  <div className="mt-3 space-y-1 text-xs text-slate-300">
-                    {sup.phone && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        <span className="font-mono">{sup.phone}</span>
-                      </div>
-                    )}
-                    {sup.email && (
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        <span className="truncate">{sup.email}</span>
-                      </div>
-                    )}
-                    {sup.contact_name && (
-                      <div className="flex items-center gap-2 text-slate-400">
-                        <span>Contacto: {sup.contact_name}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Datos especiales de Gases P-02 */}
-                  {sup.is_gas_supplier && (
-                    <div className="mt-3 p-2 bg-slate-950 rounded-lg border border-cyan-900/40 text-[10px] text-cyan-200 space-y-0.5">
-                      <p className="font-bold text-cyan-400">Circuito de Reposición (Regla P-02):</p>
-                      {sup.client_number && <p>N° Cliente: <span className="font-mono font-bold text-white">{sup.client_number}</span></p>}
-                      {sup.order_cutoff_day && <p>Corte de Pedido: {sup.order_cutoff_day}</p>}
-                      {sup.delivery_day && <p>Día de Entrega: {sup.delivery_day}</p>}
-                    </div>
-                  )}
-
-                  {sup.observations && (
-                    <p className="mt-2 text-[10px] text-slate-400 italic line-clamp-2">{sup.observations}</p>
-                  )}
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                  <span className="text-[10px] text-slate-500">Pago: {sup.payment_method || 'Cta Cte'}</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        setEditingSupplier(sup)
-                        setShowSupplierModal(true)
-                      }}
-                      className="px-2 py-1 text-slate-400 hover:text-white rounded bg-slate-800 hover:bg-slate-700 text-xs transition-colors"
-                    >
-                      Editar
-                    </button>
-                  </div>
-                </div>
+          {/* VISTA 1: TABLA (LISTA CON STICKY HEADERS) */}
+          {suppliersViewMode === 'lista' ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+              <div className="overflow-x-auto max-h-[550px] overflow-y-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th className="py-2.5 px-3">Proveedor / Razón Social</th>
+                      <th className="py-2.5 px-3">Rubros</th>
+                      <th className="py-2.5 px-3">CUIT</th>
+                      <th className="py-2.5 px-3">Teléfono / WhatsApp</th>
+                      <th className="py-2.5 px-3">Email</th>
+                      <th className="py-2.5 px-3">Pago</th>
+                      <th className="py-2.5 px-3">Circuito Gases (P-02)</th>
+                      <th className="py-2.5 px-3 text-center">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {filteredSuppliers.map((sup) => {
+                      const allTrades = sup.trades && sup.trades.length > 0 ? sup.trades : sup.trade ? [sup.trade] : []
+                      return (
+                        <tr key={sup.id} className="hover:bg-slate-800/50 transition-colors">
+                          <td className="py-2 px-3 font-bold text-white whitespace-nowrap">{sup.name}</td>
+                          <td className="py-2 px-3">
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {allTrades.length > 0 ? (
+                                allTrades.map((t, idx) => (
+                                  <span key={idx} className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px] uppercase font-semibold">
+                                    {t}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-[10px] text-rose-400 italic">Sin rubro</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 font-mono text-slate-300 whitespace-nowrap">{sup.cuit_cuil || '—'}</td>
+                          <td className="py-2 px-3 font-mono text-slate-300 whitespace-nowrap">
+                            {sup.phone ? (
+                              <span className="text-emerald-400">{sup.phone}</span>
+                            ) : (
+                              <span className="text-amber-400/80 italic text-[10px]">Sin teléfono</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-slate-300 truncate max-w-[150px]">{sup.email || '—'}</td>
+                          <td className="py-2 px-3 whitespace-nowrap text-slate-400">{sup.payment_method || 'Cta Cte'}</td>
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            {sup.is_gas_supplier ? (
+                              <span className="px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
+                                {sup.client_number ? `Cli: ${sup.client_number}` : 'Gases'}
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-center whitespace-nowrap">
+                            <button
+                              onClick={() => {
+                                setEditingSupplier(sup)
+                                setShowSupplierModal(true)
+                              }}
+                              className="px-2 py-1 text-slate-400 hover:text-white rounded bg-slate-800 hover:bg-slate-700 text-xs"
+                            >
+                              Editar
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            /* VISTA 2: FICHAS (CARDS) */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredSuppliers.map((sup) => {
+                const allTrades = sup.trades && sup.trades.length > 0 ? sup.trades : sup.trade ? [sup.trade] : []
+                return (
+                  <div key={sup.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-md">
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-bold text-white text-sm">{sup.name}</h3>
+                        {sup.is_gas_supplier && (
+                          <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold shrink-0">
+                            💨 GASES
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Rubros múltiples */}
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {allTrades.map((t, idx) => (
+                          <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase font-semibold">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 space-y-1 text-xs text-slate-300">
+                        {sup.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span className="font-mono">{sup.phone}</span>
+                          </div>
+                        )}
+                        {sup.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span className="truncate">{sup.email}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {sup.is_gas_supplier && (
+                        <div className="mt-3 p-2 bg-slate-950 rounded-lg border border-cyan-900/40 text-[10px] text-cyan-200 space-y-0.5">
+                          <p className="font-bold text-cyan-400">Circuito P-02:</p>
+                          {sup.client_number && <p>N° Cliente: <span className="font-mono font-bold text-white">{sup.client_number}</span></p>}
+                          {sup.order_cutoff_day && <p>Corte: {sup.order_cutoff_day}</p>}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                      <span className="text-[10px] text-slate-500">{sup.payment_method || 'Cta Cte'}</span>
+                      <button
+                        onClick={() => {
+                          setEditingSupplier(sup)
+                          setShowSupplierModal(true)
+                        }}
+                        className="px-2 py-1 text-slate-400 hover:text-white rounded bg-slate-800 hover:bg-slate-700 text-xs"
+                      >
+                        Editar
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {/* ========================================================= */}
-      {/* VISTA 3: ARCHIVO HISTÓRICO Y GESTOR DOCUMENTAL (1-CLIC) */}
+      {/* VISTA 3: ARCHIVO HISTÓRICO Y GESTOR DOCUMENTAL */}
       {/* ========================================================= */}
       {activeTab === 'documentos' && (
         <div className="space-y-4">
           <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Gestor Documental de Compras (Supabase Storage)
+                Gestor Documental de Compras
                 <span className="text-xs px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300">
-                  {documents.length} archivos indexados
+                  {documents.length} archivos
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Cotizaciones, presupuestos y remitos organizados automáticamente en la nube sin carpetas externas ni links rotos.
+                Cotizaciones de materiales, fichas técnicas de fabricantes, cotizaciones confidenciales de mano de obra y fotos de muestra.
               </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDocsViewMode('lista')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                  docsViewMode === 'lista' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Vista Lista</span>
+              </button>
+              <button
+                onClick={() => setDocsViewMode('fichas')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                  docsViewMode === 'fichas' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Vista Fichas</span>
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {documents.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-slate-500 bg-slate-900 border border-slate-800 rounded-xl">
-                Aún no hay comprobantes ni cotizaciones adjuntadas en el sistema.
-              </div>
-            ) : (
-              documents.map((d) => (
+          {docsViewMode === 'lista' ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">Archivo</th>
+                    <th className="py-2.5 px-3">Tipo Documento</th>
+                    <th className="py-2.5 px-3">Descripción</th>
+                    <th className="py-2.5 px-3">Rubro</th>
+                    <th className="py-2.5 px-3">Fecha</th>
+                    <th className="py-2.5 px-3 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {documents.map((d) => (
+                    <tr key={d.id} className="hover:bg-slate-800/50 transition-colors">
+                      <td className="py-2 px-3 font-bold text-white flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
+                        <span className="truncate max-w-[220px]">{d.original_filename}</span>
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300">
+                          {d.doc_type || 'COTIZACION_MATERIAL'}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-slate-300">{d.description || '—'}</td>
+                      <td className="py-2 px-3 text-slate-400">{d.category || 'General'}</td>
+                      <td className="py-2 px-3 text-slate-400 font-mono text-[10px]">{new Date(d.created_at).toLocaleDateString('es-AR')}</td>
+                      <td className="py-2 px-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <a
+                            href={d.storage_path}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2 py-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 rounded text-xs font-bold"
+                          >
+                            Abrir
+                          </a>
+                          <button
+                            onClick={() => {
+                              setSelectedDocAction(d)
+                              setShowDocActionModal(true)
+                            }}
+                            className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800"
+                            title="Gestionar archivo (editar metadatos, reemplazar, borrar)"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {documents.map((d) => (
                 <div key={d.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
-                        <h4 className="font-bold text-white text-xs truncate max-w-[200px]" title={d.original_filename}>
-                          {d.original_filename}
-                        </h4>
+                        <h4 className="font-bold text-white text-xs truncate max-w-[180px]">{d.original_filename}</h4>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-mono">{d.year || 2026}</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">{d.doc_type || 'Material'}</span>
                     </div>
-
                     {d.description && <p className="text-xs text-slate-300 mt-2">{d.description}</p>}
-                    <p className="text-[10px] text-slate-500 mt-1">Rubro: {d.category || 'General'}</p>
                   </div>
 
                   <div className="mt-3 pt-2 border-t border-slate-800 flex items-center justify-between">
                     <span className="text-[10px] text-slate-500">{new Date(d.created_at).toLocaleDateString('es-AR')}</span>
-                    <a
-                      href={d.storage_path}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-2.5 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
-                    >
-                      <Download className="w-3 h-3" />
-                      <span>Abrir Archivo</span>
-                    </a>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href={d.storage_path}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-1 bg-cyan-500/20 text-cyan-300 rounded text-xs font-bold"
+                      >
+                        Abrir
+                      </a>
+                      <button
+                        onClick={() => {
+                          setSelectedDocAction(d)
+                          setShowDocActionModal(true)
+                        }}
+                        className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800"
+                      >
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 1: CARGAR / EDITAR PEDIDO DE COMPRA */}
+      {/* MODAL 1: FORMULARIO MULTI-MATERIAL (ENCABEZADO ÚNICO + RENGLONES) */}
       {/* ========================================================= */}
       {showOrderModal && (
         <OrderFormModal
@@ -1288,14 +1654,16 @@ export default function Compras() {
           materials={materials}
           workers={workers}
           currentFortnight={currentFortnight}
+          viewMode={viewMode}
+          isSupervisorOrAdmin={isSupervisorOrAdmin}
           onClose={() => setShowOrderModal(false)}
-          onSuccess={(savedOrder) => {
+          onSuccess={(savedOrders) => {
             if (editingOrder) {
-              setPurchaseOrders((prev) => prev.map((p) => (p.id === savedOrder.id ? savedOrder : p)))
-              showFeedbackMsg('success', 'Pedido actualizado exitosamente.')
+              setPurchaseOrders((prev) => prev.map((p) => (p.id === savedOrders[0].id ? savedOrders[0] : p)))
+              showFeedbackMsg('success', 'Pedido actualizado correctamente.')
             } else {
-              setPurchaseOrders((prev) => [savedOrder, ...prev])
-              showFeedbackMsg('success', 'Nuevo pedido de compra registrado exitosamente.')
+              setPurchaseOrders((prev) => [...savedOrders, ...prev])
+              showFeedbackMsg('success', `Se registraron ${savedOrders.length} materiales en la solicitud.`)
             }
             setShowOrderModal(false)
           }}
@@ -1314,13 +1682,13 @@ export default function Compras() {
           }}
           onSuccess={async (newMaterial) => {
             setMaterials((prev) => [...prev, newMaterial])
-            // Actualizar la orden para vincularla al nuevo material
             await supabase
               .from('purchase_orders')
               .update({
                 material_id: newMaterial.id,
                 is_new_material: false,
                 system_unit_price: newMaterial.cost_ars,
+                unit_measure: newMaterial.unit_measure,
                 updated_at: new Date().toISOString()
               })
               .eq('id', pendingMaterialOrder.id)
@@ -1332,7 +1700,8 @@ export default function Compras() {
                       ...p,
                       material_id: newMaterial.id,
                       is_new_material: false,
-                      system_unit_price: newMaterial.cost_ars
+                      system_unit_price: newMaterial.cost_ars,
+                      unit_measure: newMaterial.unit_measure
                     }
                   : p
               )
@@ -1346,7 +1715,7 @@ export default function Compras() {
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 3: ADJUNTAR COTIZACIÓN / COMPROBANTE (GESTOR 1-CLIC) */}
+      {/* MODAL 3: ADJUNTAR COTIZACIÓN / FICHA TÉCNICA (1-CLIC) */}
       {/* ========================================================= */}
       {showDocModal && docTargetOrder && (
         <UploadDocModal
@@ -1358,7 +1727,7 @@ export default function Compras() {
           }}
           onSuccess={(newDoc) => {
             setDocuments((prev) => [newDoc, ...prev])
-            showFeedbackMsg('success', 'Documento adjuntado y normalizado con éxito.')
+            showFeedbackMsg('success', 'Documento adjuntado y clasificado con éxito.')
             setShowDocModal(false)
             setDocTargetOrder(null)
           }}
@@ -1366,7 +1735,31 @@ export default function Compras() {
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 4: CONCILIAR HASTA AQUÍ ("LÍNEA MORADA") */}
+      {/* MODAL 3B: GESTIONAR ARCHIVO EXISTENTE (EDITAR / REEMPLAZAR / BORRAR) */}
+      {/* ========================================================= */}
+      {showDocActionModal && selectedDocAction && (
+        <DocActionModal
+          doc={selectedDocAction}
+          onClose={() => {
+            setShowDocActionModal(false)
+            setSelectedDocAction(null)
+          }}
+          onSuccess={({ action, updatedDoc, deletedId }) => {
+            if (action === 'delete') {
+              setDocuments((prev) => prev.filter((d) => d.id !== deletedId))
+              showFeedbackMsg('success', 'Documento eliminado correctamente.')
+            } else {
+              setDocuments((prev) => prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d)))
+              showFeedbackMsg('success', 'Documento actualizado correctamente.')
+            }
+            setShowDocActionModal(false)
+            setSelectedDocAction(null)
+          }}
+        />
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 4: CONCILIAR CON FACTURA ("LÍNEA MORADA") */}
       {/* ========================================================= */}
       {showReconcileModal && reconcileTarget && (
         <ReconcileModal
@@ -1397,7 +1790,7 @@ export default function Compras() {
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 5: ALTA / EDICIÓN DE PROVEEDOR */}
+      {/* MODAL 5: ALTA / EDICIÓN DE PROVEEDOR (MULTI-RUBRO COMBOBOX) */}
       {/* ========================================================= */}
       {showSupplierModal && (
         <SupplierModal
@@ -1417,70 +1810,21 @@ export default function Compras() {
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 6: DESPACHO AGRUPADO DE PEDIDOS POR WHATSAPP */}
+      {/* MODAL 6: DESPACHO POR WHATSAPP (SOPORTE 2 COMPRADORES & 0810) */}
       {/* ========================================================= */}
       {showBatchOrderModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-emerald-400" />
-                  Emitir Pedidos Agrupados por WhatsApp
-                </h3>
-                <p className="text-xs text-slate-400">
-                  El sistema agrupa automáticamente los materiales seleccionados por proveedor para envío directo.
-                </p>
-              </div>
-              <button onClick={() => setShowBatchOrderModal(false)} className="text-slate-400 hover:text-white">
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-              {batchOrderData.map(({ supplier, items }) => (
-                <div key={supplier.id} className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-white text-sm">{supplier.name}</h4>
-                      <p className="text-[10px] text-slate-400">
-                        {supplier.phone ? `WhatsApp: ${supplier.phone}` : '⚠️ Sin teléfono registrado'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleEmitBatchOrderWhatsApp(supplier, items)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>Abrir WhatsApp ({items.length} ítems)</span>
-                    </button>
-                  </div>
-
-                  <ul className="divide-y divide-slate-850 text-xs text-slate-300">
-                    {items.map((it) => (
-                      <li key={it.id} className="py-1 flex items-center justify-between">
-                        <span>{it.material_name_raw}</span>
-                        <span className="font-mono text-cyan-400 font-bold">
-                          {it.quantity} {it.unit_measure || 'u'}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-end pt-3 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setShowBatchOrderModal(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
+        <BatchOrderWhatsAppModal
+          selectedOrderIds={selectedOrderIds}
+          purchaseOrders={purchaseOrders}
+          suppliers={suppliers}
+          systemSettings={systemSettings}
+          onClose={() => setShowBatchOrderModal(false)}
+          onSuccess={(updatedIds) => {
+            setPurchaseOrders((prev) => prev.map((p) => (updatedIds.includes(p.id) ? { ...p, status: 'PEDIDO' } : p)))
+            setShowBatchOrderModal(false)
+            showFeedbackMsg('success', 'Pedidos emitidos por WhatsApp y actualizados a estado PEDIDO.')
+          }}
+        />
       )}
     </div>
   )
@@ -1490,34 +1834,49 @@ export default function Compras() {
 // SUBCOMPONENTES MODALES
 // =========================================================================
 
-// MODAL 1: FORMULARIO DE PEDIDO DE COMPRA
-function OrderFormModal({ order, ships, workOrders, suppliers, materials, workers, currentFortnight, onClose, onSuccess }) {
+// MODAL 1: FORMULARIO MULTI-MATERIAL (ENCABEZADO ÚNICO + RENGLONES DINÁMICOS)
+function OrderFormModal({
+  order,
+  ships,
+  workOrders,
+  suppliers,
+  materials,
+  workers,
+  currentFortnight,
+  viewMode,
+  isSupervisorOrAdmin,
+  onClose,
+  onSuccess
+}) {
+  // Encabezado
   const [chargeType, setChargeType] = useState(order?.charge_type || 'DIRECT')
   const [orderDate, setOrderDate] = useState(order?.order_date || new Date().toISOString().split('T')[0])
   const [shipId, setShipId] = useState(order?.ship_id || '')
   const [workOrderId, setWorkOrderId] = useState(order?.work_order_id || '')
+  const [urgency, setUrgency] = useState(order?.urgency || 'SIN_APURO')
   const [requestedByName, setRequestedByName] = useState(order?.requested_by_name || 'PAÑOL')
-  const [supplierId, setSupplierId] = useState(order?.supplier_id || (suppliers[0]?.id || ''))
 
-  // Material (Buscador reactivo con autocompletado)
-  const [materialSearch, setMaterialSearch] = useState(order?.material_name_raw || '')
-  const [selectedMaterialId, setSelectedMaterialId] = useState(order?.material_id || null)
-  const [isNewMaterial, setIsNewMaterial] = useState(order?.is_new_material || false)
-  const [quantity, setQuantity] = useState(order?.quantity || 1)
-  const [unitMeasure, setUnitMeasure] = useState(order?.unit_measure || 'Unidad')
-  const [supplierQuotedPrice, setSupplierQuotedPrice] = useState(order?.supplier_quoted_price || '')
-  const [systemUnitPrice, setSystemUnitPrice] = useState(order?.system_unit_price || 0)
-  const [estimatedDelivery, setEstimatedDelivery] = useState(order?.estimated_delivery || '')
-  const [status, setStatus] = useState(order?.status || 'PEDIR')
-  const [observations, setObservations] = useState(order?.observations || '')
+  // Renglones dinámicos de materiales
+  const [items, setItems] = useState([
+    {
+      material_id: order?.material_id || null,
+      material_name_raw: order?.material_name_raw || '',
+      is_new_material: order?.is_new_material || false,
+      quantity: order?.quantity || 1,
+      unit_measure: order?.unit_measure || 'unidad',
+      supplier_id: order?.supplier_id || '', // Vacío por defecto
+      supplier_quoted_price: order?.supplier_quoted_price || '', // Vacío por defecto
+      system_unit_price: order?.system_unit_price || 0,
+      observations: order?.observations || ''
+    }
+  ])
+
   const [saving, setSaving] = useState(false)
 
-  // Autocompletado de materiales
-  const filteredMaterials = useMemo(() => {
-    if (!materialSearch || selectedMaterialId) return []
-    const q = materialSearch.toLowerCase()
-    return materials.filter((m) => m.name.toLowerCase().includes(q)).slice(0, 6)
-  }, [materialSearch, selectedMaterialId, materials])
+  // Lista de personas habilitadas para retirar materiales
+  const authorizedWorkers = useMemo(() => {
+    return workers.filter((w) => w.can_withdraw_materials)
+  }, [workers])
 
   // Filtrado de OTs por Barco seleccionado
   const availableWorkOrders = useMemo(() => {
@@ -1525,7 +1884,12 @@ function OrderFormModal({ order, ships, workOrders, suppliers, materials, worker
     return workOrders.filter((w) => w.ship_id === shipId)
   }, [shipId, workOrders])
 
-  // Si cambia el destino a VIA_PANOL, fijar barco ASTILLERO
+  // OT seleccionada para mostrar su descripción completa
+  const selectedWorkOrder = useMemo(() => {
+    return workOrders.find((w) => w.id === workOrderId)
+  }, [workOrders, workOrderId])
+
+  // Si cambia el destino a VIA_PANOL, fijar barco ASTILLERO y OT STOCK
   useEffect(() => {
     if (chargeType === 'VIA_PANOL') {
       const ast = ships.find((s) => s.name === 'ASTILLERO')
@@ -1537,56 +1901,98 @@ function OrderFormModal({ order, ships, workOrders, suppliers, materials, worker
     }
   }, [chargeType, ships, workOrders])
 
-  function handleSelectMaterial(mat) {
-    setSelectedMaterialId(mat.id)
-    setMaterialSearch(mat.name)
-    setIsNewMaterial(false)
-    setSystemUnitPrice(mat.cost_ars || 0)
-    setUnitMeasure(mat.unit_measure || 'Unidad')
-    if (!supplierQuotedPrice) setSupplierQuotedPrice(mat.cost_ars || '')
+  function handleAddItem() {
+    setItems([
+      ...items,
+      {
+        material_id: null,
+        material_name_raw: '',
+        is_new_material: false,
+        quantity: 1,
+        unit_measure: 'unidad',
+        supplier_id: '',
+        supplier_quoted_price: '',
+        system_unit_price: 0,
+        observations: ''
+      }
+    ])
   }
 
-  function handleMaterialSearchChange(val) {
-    setMaterialSearch(val)
-    setSelectedMaterialId(null)
-    setIsNewMaterial(true) // Si escribe y no selecciona del catálogo, se marca como nuevo
+  function handleRemoveItem(idx) {
+    if (items.length === 1) return alert('Debe haber al menos un material en el pedido.')
+    setItems(items.filter((_, i) => i !== idx))
+  }
+
+  function handleItemChange(idx, field, value) {
+    const updated = [...items]
+    updated[idx][field] = value
+
+    // Si cambia el nombre del material, deducir automáticamente la unidad
+    if (field === 'material_name_raw') {
+      updated[idx].unit_measure = deduceUnitMeasure(value)
+      updated[idx].material_id = null
+      updated[idx].is_new_material = true
+      updated[idx].system_unit_price = 0
+    }
+
+    setItems(updated)
+  }
+
+  function handleSelectCatalogMaterial(idx, mat) {
+    const updated = [...items]
+    updated[idx].material_id = mat.id
+    updated[idx].material_name_raw = mat.name
+    updated[idx].is_new_material = false
+    updated[idx].system_unit_price = mat.cost_ars || 0
+    updated[idx].unit_measure = mat.unit_measure || deduceUnitMeasure(mat.name)
+    setItems(updated)
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!materialSearch.trim()) return alert('Debe ingresar el nombre del material.')
-    if (!supplierId) return alert('Debe seleccionar un proveedor.')
-    if (Number(quantity) <= 0) return alert('La cantidad debe ser mayor a 0.')
+    if (chargeType === 'DIRECT' && (!shipId || !workOrderId)) {
+      return alert('Debe seleccionar el Buque y la Orden de Trabajo para compras directas.')
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      if (!it.material_name_raw.trim()) {
+        return alert(`El renglón #${i + 1} no tiene nombre de material.`)
+      }
+      if (Number(it.quantity) <= 0) {
+        return alert(`La cantidad del renglón #${i + 1} debe ser mayor a 0.`)
+      }
+    }
 
     setSaving(true)
     try {
-      const payload = {
+      const payloads = items.map((it) => ({
         charge_type: chargeType,
         order_date: orderDate,
         ship_id: shipId || null,
         work_order_id: workOrderId || null,
         requested_by_name: requestedByName,
-        material_id: selectedMaterialId,
-        material_name_raw: materialSearch.trim(),
-        is_new_material: isNewMaterial,
-        quantity: Number(quantity),
-        unit_measure: unitMeasure,
-        supplier_id: supplierId,
-        supplier_quoted_price: supplierQuotedPrice ? Number(supplierQuotedPrice) : null,
-        system_unit_price: systemUnitPrice ? Number(systemUnitPrice) : 0,
-        estimated_delivery: estimatedDelivery || null,
-        status,
-        observations: observations.trim() || null,
+        urgency,
+        material_id: it.material_id,
+        material_name_raw: it.material_name_raw.trim(),
+        is_new_material: it.is_new_material,
+        quantity: Number(it.quantity),
+        unit_measure: it.unit_measure,
+        supplier_id: it.supplier_id || null,
+        supplier_quoted_price: it.supplier_quoted_price ? Number(it.supplier_quoted_price) : null,
+        system_unit_price: it.system_unit_price ? Number(it.system_unit_price) : 0,
+        status: 'PEDIR',
+        observations: it.observations.trim() || null,
         fortnight_period: currentFortnight,
         updated_at: new Date().toISOString()
-      }
+      }))
 
       if (order?.id) {
-        const { data, error } = await supabase.from('purchase_orders').update(payload).eq('id', order.id).select().single()
+        const { data, error } = await supabase.from('purchase_orders').update(payloads[0]).eq('id', order.id).select().single()
         if (error) throw error
-        onSuccess(data)
+        onSuccess([data])
       } else {
-        const { data, error } = await supabase.from('purchase_orders').insert([payload]).select().single()
+        const { data, error } = await supabase.from('purchase_orders').insert(payloads).select()
         if (error) throw error
         onSuccess(data)
       }
@@ -1600,262 +2006,303 @@ function OrderFormModal({ order, ships, workOrders, suppliers, materials, worker
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 space-y-4 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <ShoppingCart className="w-5 h-5 text-cyan-400" />
-            {order ? 'Editar Pedido de Compra' : 'Cargar Pedido de Compra'}
-          </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            ✕
-          </button>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
+        {/* Cabecera del Modal */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-cyan-400" />
+              {order ? 'Editar Pedido de Compra' : 'Cargar Materiales (Multi-Renglón por OT / Obra)'}
+            </h3>
+            <p className="text-xs text-slate-400">
+              {viewMode === 'simple'
+                ? 'Solicitud simplificada: carga los materiales que necesitás sin preocuparte por precios ni proveedores.'
+                : 'Defina la obra o pañol una sola vez y agregue múltiples renglones de materiales.'}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          {/* Tipo de Carga y Fecha */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Destino del Insumo</label>
-              <select
-                value={chargeType}
-                onChange={(e) => setChargeType(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              >
-                <option value="DIRECT">Carga Directa para Obra (Buque)</option>
-                <option value="VIA_PANOL">Reposición de Stock (Pañol)</option>
-                <option value="STANDBY">Stand-By en Depósito</option>
-              </select>
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs flex-1 overflow-y-auto pr-1">
+          {/* SECCIÓN 1: ENCABEZADO COMÚN */}
+          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+            <h4 className="text-[11px] uppercase tracking-wider font-bold text-cyan-400">1. Destino y Datos del Trabajo</h4>
 
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Fecha del Pedido</label>
-              <input
-                type="date"
-                value={orderDate}
-                onChange={(e) => setOrderDate(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-          </div>
-
-          {/* Buque y OT (solo si es Carga Directa) */}
-          {chargeType === 'DIRECT' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-slate-400 mb-1 font-semibold">Buque / Obra</label>
+                <label className="block text-slate-400 mb-1 font-semibold">Destino</label>
                 <select
-                  value={shipId}
-                  onChange={(e) => {
-                    setShipId(e.target.value)
-                    setWorkOrderId('')
-                  }}
+                  value={chargeType}
+                  onChange={(e) => setChargeType(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-                  required
                 >
-                  <option value="">-- Seleccionar Buque --</option>
-                  {ships.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
+                  <option value="DIRECT">Carga Directa para Obra (Buque)</option>
+                  <option value="VIA_PANOL">Reposición de Stock (Pañol)</option>
+                  <option value="STANDBY">Stand-By en Depósito</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1 font-semibold">Orden de Trabajo (OT)</label>
+                <label className="block text-slate-400 mb-1 font-semibold">Fecha (Doble Clic para Calendario)</label>
+                <input
+                  type="date"
+                  value={orderDate}
+                  onChange={(e) => setOrderDate(e.target.value)}
+                  onDoubleClick={(e) => e.target.showPicker && e.target.showPicker()}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  title="Doble clic para abrir calendario"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">Urgencia</label>
                 <select
-                  value={workOrderId}
-                  onChange={(e) => setWorkOrderId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-                  required
+                  value={urgency}
+                  onChange={(e) => setUrgency(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-bold"
                 >
-                  <option value="">-- Seleccionar OT --</option>
-                  {availableWorkOrders.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.ot_number ? `OT #${w.ot_number} - ` : ''}
-                      {w.title}
-                    </option>
-                  ))}
+                  <option value="SIN_APURO">🟢 Sin Apuro (Normal)</option>
+                  <option value="URGENTE">🔴 Urgente (Prioridad Alta)</option>
+                  <option value="PROXIMA_SALIDA">🟡 Próxima Salida de Buque</option>
                 </select>
               </div>
             </div>
-          )}
 
-          {/* Material con Autocompletado */}
-          <div className="relative">
-            <label className="block text-slate-400 mb-1 font-semibold flex items-center justify-between">
-              <span>Material / Insumo Solicitado</span>
-              {isNewMaterial && (
-                <span className="text-[10px] text-amber-400 font-bold">⚠️ Material nuevo (quedará pendiente de alta en B.D.)</span>
-              )}
-            </label>
-            <input
-              type="text"
-              placeholder="Escribe para buscar en catálogo o cargar nuevo..."
-              value={materialSearch}
-              onChange={(e) => handleMaterialSearchChange(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-medium"
-              required
-            />
-
-            {/* Menú flotante de autocompletado */}
-            {filteredMaterials.length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
-                {filteredMaterials.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => handleSelectMaterial(m)}
-                    className="w-full text-left p-2.5 hover:bg-cyan-950/50 flex items-center justify-between text-xs transition-colors"
+            {/* Buque y OT (solo para Carga Directa) */}
+            {chargeType === 'DIRECT' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-850">
+                <div>
+                  <label className="block text-slate-400 mb-1 font-semibold">Buque / Obra</label>
+                  <select
+                    value={shipId}
+                    onChange={(e) => {
+                      setShipId(e.target.value)
+                      setWorkOrderId('')
+                    }}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                    required
                   >
-                    <div>
-                      <p className="font-bold text-white">{m.name}</p>
-                      <p className="text-[10px] text-slate-400">Rubro: {m.rubro || m.category || 'General'}</p>
-                    </div>
-                    <div className="text-right font-mono">
-                      <p className="text-cyan-300 font-bold">${Number(m.cost_ars || 0).toLocaleString('es-AR')}</p>
-                      <p className="text-[10px] text-slate-500">{m.unit_measure || 'Unidad'}</p>
-                    </div>
-                  </button>
-                ))}
+                    <option value="">-- Seleccionar Buque --</option>
+                    {ships.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1 font-semibold">Orden de Trabajo (OT)</label>
+                  <select
+                    value={workOrderId}
+                    onChange={(e) => setWorkOrderId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                    required
+                  >
+                    <option value="">-- Seleccionar OT --</option>
+                    {availableWorkOrders.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.ot_number ? `OT #${w.ot_number} - ` : ''}{w.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* DESCRIPCIÓN DE LA OT VISIBLE */}
+                {selectedWorkOrder && (
+                  <div className="col-span-full bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300">
+                    <span className="font-bold text-cyan-400">Descripción de la OT: </span>
+                    <span>{selectedWorkOrder.description || selectedWorkOrder.title || 'Sin descripción técnica adicional.'}</span>
+                  </div>
+                )}
               </div>
             )}
-          </div>
 
-          {/* Cantidad y Unidad */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Cantidad</label>
-              <input
-                type="number"
-                step="any"
-                min="0.01"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-mono"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Unidad Medida</label>
-              <input
-                type="text"
-                placeholder="Unidad, Kilos, Bolsón..."
-                value={unitMeasure}
-                onChange={(e) => setUnitMeasure(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">$/U Cotizado AR$</label>
-              <input
-                type="number"
-                step="any"
-                placeholder="Costo cotizado"
-                value={supplierQuotedPrice}
-                onChange={(e) => setSupplierQuotedPrice(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">$/U Sistema AR$</label>
-              <input
-                type="number"
-                value={systemUnitPrice}
-                disabled
-                className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-400 font-mono"
-              />
+            {/* Solicitante Inteligente */}
+            <div className="pt-2 border-t border-slate-850 flex items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-slate-400 mb-1 font-semibold">Persona o Sector que Solicita</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={requestedByName}
+                    onChange={(e) => setRequestedByName(e.target.value)}
+                    placeholder="Escriba o elija de la lista..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                  />
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) setRequestedByName(e.target.value)
+                    }}
+                    className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="">-- Habilitados Pañol --</option>
+                    <option value="PAÑOL">PAÑOL CENTRAL</option>
+                    {authorizedWorkers.map((w) => (
+                      <option key={w.id} value={w.name}>{w.name} ({w.trade})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Proveedor y Solicitante */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Proveedor Asignado</label>
-              <select
-                value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-                required
+          {/* SECCIÓN 2: GRILLA DINÁMICA DE MATERIALES */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[11px] uppercase tracking-wider font-bold text-cyan-400">
+                2. Materiales e Insumos ({items.length} renglones)
+              </h4>
+              <button
+                type="button"
+                onClick={handleAddItem}
+                className="px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer"
               >
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} {s.is_gas_supplier ? '(Gases)' : ''}
-                  </option>
-                ))}
-              </select>
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Agregar Renglón</span>
+              </button>
             </div>
 
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Persona que Solicita</label>
-              <input
-                type="text"
-                placeholder="Ej: PAÑOL, MANUEL, LUIS M..."
-                value={requestedByName}
-                onChange={(e) => setRequestedByName(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-          </div>
+            <div className="space-y-3">
+              {items.map((it, idx) => (
+                <div key={idx} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3 relative group">
+                  <div className="flex items-center justify-between border-b border-slate-850 pb-2">
+                    <span className="font-mono text-cyan-400 font-bold">Renglón #{idx + 1}</span>
+                    {items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(idx)}
+                        className="text-slate-500 hover:text-rose-400 transition-colors"
+                        title="Eliminar este renglón"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
 
-          {/* Estado y Entrega Estimada */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Estado del Pedido</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              >
-                {STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
-                  <option key={st.value} value={st.value}>
-                    {st.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  {/* Nombre del Material con Autocomplete */}
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-semibold flex items-center justify-between">
+                      <span>Material / Insumo</span>
+                      <span className="text-[10px] text-slate-500">
+                        Unidad deducida: <strong className="text-cyan-400">{it.unit_measure}</strong>
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: BRONCE SAE 64 X KILO, MADERA ANCHICO x METRO..."
+                      value={it.material_name_raw}
+                      onChange={(e) => handleItemChange(idx, 'material_name_raw', e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-cyan-500"
+                      required
+                    />
 
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Fecha Estimada de Entrega</label>
-              <input
-                type="date"
-                value={estimatedDelivery}
-                onChange={(e) => setEstimatedDelivery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-          </div>
+                    {/* Sugerencias de Catálogo si escribe */}
+                    {it.material_name_raw && !it.material_id && (
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {materials
+                          .filter((m) => m.name.toLowerCase().includes(it.material_name_raw.toLowerCase()))
+                          .slice(0, 4)
+                          .map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => handleSelectCatalogMaterial(idx, m)}
+                              className="px-2 py-0.5 rounded bg-slate-850 hover:bg-cyan-950 border border-slate-700 text-[10px] text-slate-300 hover:text-cyan-300 transition-colors"
+                            >
+                              ✓ {m.name} ({m.unit_measure || 'unidad'})
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
 
-          {/* Observaciones */}
-          <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Observaciones / Especificaciones</label>
-            <textarea
-              rows="2"
-              placeholder="Detalles técnicos, urgencia, número de presupuesto de referencia..."
-              value={observations}
-              onChange={(e) => setObservations(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-            ></textarea>
+                  {/* Cantidad y Unidad Automática Bloqueada */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-semibold">Cantidad</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0.01"
+                        value={it.quantity}
+                        onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-semibold">Unidad Medida</label>
+                      <input
+                        type="text"
+                        value={it.unit_measure}
+                        disabled
+                        className="w-full bg-slate-850 border border-slate-800 rounded-lg p-2 text-cyan-300 font-bold cursor-not-allowed uppercase"
+                        title="Deducida automáticamente por reglas de nomenclatura"
+                      />
+                    </div>
+
+                    {/* Campos de Costo y Proveedor: solo visibles en Modo Completo */}
+                    {viewMode === 'completa' && (
+                      <>
+                        <div>
+                          <label className="block text-slate-400 mb-1 font-semibold">Proveedor</label>
+                          <select
+                            value={it.supplier_id}
+                            onChange={(e) => handleItemChange(idx, 'supplier_id', e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                          >
+                            <option value="">-- Sin Proveedor --</option>
+                            {suppliers.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-400 mb-1 font-semibold">$/U Cotizado AR$</label>
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="Vacío por defecto"
+                            value={it.supplier_quoted_price}
+                            onChange={(e) => handleItemChange(idx, 'supplier_quoted_price', e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Observaciones del Renglón */}
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Observaciones de este material (medida específica, espesor, urgencia interna)..."
+                      value={it.observations}
+                      onChange={(e) => handleItemChange(idx, 'observations', e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-750 rounded-lg p-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Botones de acción */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-lg transition-all"
+              className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold rounded-lg transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
             >
-              {saving ? 'Guardando...' : order ? 'Actualizar Pedido' : 'Guardar Pedido'}
+              {saving ? 'Guardando...' : order ? 'Actualizar Pedido' : `Registrar ${items.length} Materiales`}
             </button>
           </div>
         </form>
@@ -1869,12 +2316,11 @@ function NewMaterialModal({ order, onClose, onSuccess }) {
   const [name, setName] = useState(order.material_name_raw)
   const [category, setCategory] = useState('Consumibles')
   const [rubro, setRubro] = useState('MATERIALES')
-  const [unitMeasure, setUnitMeasure] = useState(order.unit_measure || 'Unidad')
+  const [unitMeasure, setUnitMeasure] = useState(order.unit_measure || deduceUnitMeasure(order.material_name_raw))
   const [costArs, setCostArs] = useState(order.supplier_quoted_price || 0)
   const [minimumStock, setMinimumStock] = useState(0)
   const [saving, setSaving] = useState(false)
 
-  // Nomenclaturas técnicas sugeridas
   function applyNamingPattern(prefix) {
     setName(`${prefix} ${name}`)
   }
@@ -1917,9 +2363,7 @@ function NewMaterialModal({ order, onClose, onSuccess }) {
             </h3>
             <p className="text-xs text-slate-400">Normalización técnica y asignación de rubro (Solo Supervisor).</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            ✕
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -1928,41 +2372,19 @@ function NewMaterialModal({ order, onClose, onSuccess }) {
             <input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value)
+                setUnitMeasure(deduceUnitMeasure(e.target.value))
+              }}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-cyan-500"
               required
             />
-            {/* Guías rápidas de nomenclatura */}
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
               <span className="text-[10px] text-slate-500">Prefijos:</span>
-              <button
-                type="button"
-                onClick={() => applyNamingPattern('BULON ZINCADO')}
-                className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 hover:text-white"
-              >
-                BULON
-              </button>
-              <button
-                type="button"
-                onClick={() => applyNamingPattern('CAÑO INOX')}
-                className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 hover:text-white"
-              >
-                CAÑO
-              </button>
-              <button
-                type="button"
-                onClick={() => applyNamingPattern('CHAPA NAVAL')}
-                className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 hover:text-white"
-              >
-                CHAPA
-              </button>
-              <button
-                type="button"
-                onClick={() => applyNamingPattern('ELECTRODO')}
-                className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 hover:text-white"
-              >
-                ELECTRODO
-              </button>
+              <button type="button" onClick={() => applyNamingPattern('BULON ZINCADO')} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">BULON</button>
+              <button type="button" onClick={() => applyNamingPattern('CAÑO INOX')} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">CAÑO</button>
+              <button type="button" onClick={() => applyNamingPattern('CHAPA NAVAL')} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">CHAPA</button>
+              <button type="button" onClick={() => applyNamingPattern('ELECTRODO')} className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">ELECTRODO</button>
             </div>
           </div>
 
@@ -2023,24 +2445,14 @@ function NewMaterialModal({ order, onClose, onSuccess }) {
                 type="text"
                 value={unitMeasure}
                 onChange={(e) => setUnitMeasure(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 uppercase"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all"
-            >
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancelar</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg">
               {saving ? 'Registrando...' : 'Aprobar Alta en Catálogo'}
             </button>
           </div>
@@ -2050,10 +2462,11 @@ function NewMaterialModal({ order, onClose, onSuccess }) {
   )
 }
 
-// MODAL 3: ADJUNTAR COTIZACIÓN / REMITO (GESTOR 1-CLIC)
+// MODAL 3: ADJUNTAR COTIZACIÓN / FICHA TÉCNICA (1-CLIC)
 function UploadDocModal({ order, supplier, onClose, onSuccess }) {
   const [file, setFile] = useState(null)
   const [description, setDescription] = useState('')
+  const [docType, setDocType] = useState('COTIZACION_MATERIAL')
   const [uploading, setUploading] = useState(false)
 
   async function handleUpload(e) {
@@ -2065,19 +2478,16 @@ function UploadDocModal({ order, supplier, onClose, onSuccess }) {
       const year = new Date().getFullYear()
       const rubro = order.work_type || 'General'
       const ext = file.name.split('.').pop()
-      const safeDesc = (description || 'Cotizacion').replace(/[^a-zA-Z0-9_-]/g, '_')
+      const safeDesc = (description || 'Doc').replace(/[^a-zA-Z0-9_-]/g, '_')
       const safeProv = (supplier?.name || 'Proveedor').replace(/[^a-zA-Z0-9_-]/g, '_')
       const normalizedName = `${safeDesc}_${safeProv}.${ext}`
       const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${normalizedName}`
 
-      // Subir archivo al bucket compras
       const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, file)
       if (uploadError) throw uploadError
 
-      // Obtener URL pública
       const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
 
-      // Registrar en purchase_documents
       const docPayload = {
         purchase_order_id: order.id,
         supplier_id: supplier?.id || null,
@@ -2085,9 +2495,11 @@ function UploadDocModal({ order, supplier, onClose, onSuccess }) {
         normalized_filename: normalizedName,
         storage_path: urlData.publicUrl,
         category: rubro,
-        description: description || 'Cotización de compra',
+        description: description || 'Documento adjunto',
         year,
-        file_size_bytes: file.size
+        file_size_bytes: file.size,
+        doc_type: docType,
+        is_confidential_labor: docType === 'COTIZACION_MANO_OBRA'
       }
 
       const { data: newDoc, error: dbError } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
@@ -2108,11 +2520,9 @@ function UploadDocModal({ order, supplier, onClose, onSuccess }) {
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <Paperclip className="w-5 h-5 text-cyan-400" />
-            Adjuntar Documento (1-Clic)
+            Adjuntar Documento a Compra
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            ✕
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
         <form onSubmit={handleUpload} className="space-y-4 text-xs">
@@ -2122,7 +2532,22 @@ function UploadDocModal({ order, supplier, onClose, onSuccess }) {
           </div>
 
           <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Seleccionar Archivo (PDF, JPG, PNG, DOC)</label>
+            <label className="block text-slate-400 mb-1 font-semibold">Tipo de Documento</label>
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-semibold"
+            >
+              <option value="COTIZACION_MATERIAL">📄 Cotización de Material (Visible en Compras)</option>
+              <option value="COTIZACION_MANO_OBRA">🔒 Cotización de Mano de Obra (Confidencial Supervisor)</option>
+              <option value="FICHA_TECNICA">📐 Ficha Técnica / Especificación de Fabricante</option>
+              <option value="IMAGEN_MUESTRA">📸 Imagen / Fotografía de Muestra o Rotura</option>
+              <option value="REMITO_FACTURA">🧾 Remito o Factura</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-slate-400 mb-1 font-semibold">Seleccionar Archivo (PDF, DOCX, JPG, PNG)</label>
             <input
               type="file"
               onChange={(e) => setFile(e.target.files[0])}
@@ -2135,7 +2560,7 @@ function UploadDocModal({ order, supplier, onClose, onSuccess }) {
             <label className="block text-slate-400 mb-1 font-semibold">Descripción Breve</label>
             <input
               type="text"
-              placeholder="Ej: Presupuesto Oxígeno, Factura Lote Tubos..."
+              placeholder="Ej: Presupuesto Tubos, Ficha Acero Naval..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
@@ -2143,22 +2568,182 @@ function UploadDocModal({ order, supplier, onClose, onSuccess }) {
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={uploading}
-              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-lg transition-all"
-            >
-              {uploading ? 'Subiendo y normalizando...' : 'Subir Documento'}
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancelar</button>
+            <button type="submit" disabled={uploading} className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-bold rounded-lg">
+              {uploading ? 'Subiendo y clasificando...' : 'Subir Documento'}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// MODAL 3B: GESTIONAR ARCHIVO EXISTENTE (EDITAR METADATOS / REEMPLAZAR ARCHIVO / ELIMINAR)
+function DocActionModal({ doc, onClose, onSuccess }) {
+  const [description, setDescription] = useState(doc.description || '')
+  const [docType, setDocType] = useState(doc.doc_type || 'COTIZACION_MATERIAL')
+  const [newFile, setNewFile] = useState(null)
+  const [processing, setProcessing] = useState(false)
+
+  async function handleUpdateMetadata(e) {
+    e.preventDefault()
+    setProcessing(true)
+    try {
+      const updates = {
+        description: description.trim(),
+        doc_type: docType,
+        is_confidential_labor: docType === 'COTIZACION_MANO_OBRA'
+      }
+      const { data, error } = await supabase.from('purchase_documents').update(updates).eq('id', doc.id).select().single()
+      if (error) throw error
+      onSuccess({ action: 'update', updatedDoc: data })
+    } catch (err) {
+      alert('Error actualizando metadatos: ' + err.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  async function handleReplaceFile() {
+    if (!newFile) return alert('Por favor selecciona el nuevo archivo físico.')
+    if (!confirm('¿Reemplazar el archivo anterior por este nuevo? El archivo anterior será eliminado de la nube.')) return
+
+    setProcessing(true)
+    try {
+      const year = new Date().getFullYear()
+      const rubro = doc.category || 'General'
+      const ext = newFile.name.split('.').pop()
+      const safeDesc = (description || 'Doc').replace(/[^a-zA-Z0-9_-]/g, '_')
+      const normalizedName = `${safeDesc}_reemplazo.${ext}`
+      const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${normalizedName}`
+
+      // Subir nuevo archivo
+      const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, newFile)
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+
+      // Actualizar registro
+      const updates = {
+        original_filename: newFile.name,
+        normalized_filename: normalizedName,
+        storage_path: urlData.publicUrl,
+        file_size_bytes: newFile.size
+      }
+
+      const { data, error } = await supabase.from('purchase_documents').update(updates).eq('id', doc.id).select().single()
+      if (error) throw error
+
+      onSuccess({ action: 'replace', updatedDoc: data })
+    } catch (err) {
+      alert('Error reemplazando archivo: ' + err.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  async function handleDeleteDoc() {
+    if (!confirm(`¿Eliminar definitivamente el documento "${doc.original_filename}"? Se borrará el archivo de la nube.`)) return
+    setProcessing(true)
+    try {
+      // Borrar de base de datos
+      const { error: dbError } = await supabase.from('purchase_documents').delete().eq('id', doc.id)
+      if (dbError) throw dbError
+
+      onSuccess({ action: 'delete', deletedId: doc.id })
+    } catch (err) {
+      alert('Error eliminando documento: ' + err.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <SlidersHorizontal className="w-5 h-5 text-cyan-400" />
+            Gestionar Archivo Adjunto
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <div className="space-y-4 text-xs">
+          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <p className="font-bold text-white truncate">{doc.original_filename}</p>
+            <p className="text-[10px] text-slate-500 font-mono mt-0.5">Fecha: {new Date(doc.created_at).toLocaleDateString('es-AR')}</p>
+          </div>
+
+          <form onSubmit={handleUpdateMetadata} className="space-y-3">
+            <div>
+              <label className="block text-slate-400 mb-1 font-semibold">Tipo de Documento</label>
+              <select
+                value={docType}
+                onChange={(e) => setDocType(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-semibold"
+              >
+                <option value="COTIZACION_MATERIAL">📄 Cotización de Material</option>
+                <option value="COTIZACION_MANO_OBRA">🔒 Cotización de Mano de Obra (Confidencial)</option>
+                <option value="FICHA_TECNICA">📐 Ficha Técnica</option>
+                <option value="IMAGEN_MUESTRA">📸 Imagen / Foto de Muestra</option>
+                <option value="REMITO_FACTURA">🧾 Remito o Factura</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1 font-semibold">Descripción</label>
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={processing}
+              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg transition-colors"
+            >
+              Guardar Cambios de Metadatos
+            </button>
+          </form>
+
+          {/* Reemplazo de archivo físico */}
+          <div className="pt-3 border-t border-slate-800 space-y-2">
+            <label className="block text-slate-400 font-semibold">Reemplazar Archivo Físico</label>
+            <input
+              type="file"
+              onChange={(e) => setNewFile(e.target.files[0])}
+              className="w-full text-slate-300 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-md file:border-0 file:text-[11px] file:bg-slate-800 file:text-cyan-300"
+            />
+            {newFile && (
+              <button
+                type="button"
+                onClick={handleReplaceFile}
+                disabled={processing}
+                className="w-full py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-lg transition-all"
+              >
+                Subir y Reemplazar Archivo
+              </button>
+            )}
+          </div>
+
+          {/* Eliminar definitivo */}
+          <div className="pt-3 border-t border-slate-800 flex justify-end">
+            <button
+              type="button"
+              onClick={handleDeleteDoc}
+              disabled={processing}
+              className="px-3 py-1.5 bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Eliminar Documento</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -2169,15 +2754,11 @@ function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [reconcileAllPrior, setReconcileAllPrior] = useState(true)
 
-  // Identificar qué pedidos se van a conciliar
   const eligibleOrders = useMemo(() => {
     return purchaseOrders.filter((po) => {
       if (po.supplier_id !== target.supplierId) return false
       if (po.is_reconciled) return false
-      if (reconcileAllPrior) {
-        // Todas las de este proveedor con fecha menor o igual
-        return po.order_date <= target.orderDate
-      }
+      if (reconcileAllPrior) return po.order_date <= target.orderDate
       return po.id === target.orderId
     })
   }, [purchaseOrders, target, reconcileAllPrior])
@@ -2201,9 +2782,7 @@ function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
             </h3>
             <p className="text-xs text-slate-400">Auditoría contable para {target.supplierName}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            ✕
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -2236,17 +2815,8 @@ function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-lg transition-all"
-            >
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancelar</button>
+            <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white font-bold rounded-lg">
               Confirmar Conciliación
             </button>
           </div>
@@ -2256,10 +2826,9 @@ function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
   )
 }
 
-// MODAL 5: NUEVO / EDITAR PROVEEDOR
+// MODAL 5: ALTA / EDICIÓN DE PROVEEDOR (COMBOBOX MULTI-RUBRO)
 function SupplierModal({ supplier, onClose, onSuccess }) {
   const [name, setName] = useState(supplier?.name || '')
-  const [trade, setTrade] = useState(supplier?.trade || 'FERRETERIA')
   const [cuitCuil, setCuitCuil] = useState(supplier?.cuit_cuil || '')
   const [phone, setPhone] = useState(supplier?.phone || '')
   const [email, setEmail] = useState(supplier?.email || '')
@@ -2271,17 +2840,46 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
   const [orderCutoffDay, setOrderCutoffDay] = useState(supplier?.order_cutoff_day || '')
   const [deliveryDay, setDeliveryDay] = useState(supplier?.delivery_day || '')
   const [observations, setObservations] = useState(supplier?.observations || '')
+
+  // Rubros múltiples (Array de tags)
+  const [selectedTrades, setSelectedTrades] = useState(
+    supplier?.trades && supplier?.trades.length > 0
+      ? supplier.trades
+      : supplier?.trade
+      ? [supplier.trade]
+      : ['FERRETERIA']
+  )
+  const [newTradeInput, setNewTradeInput] = useState('')
   const [saving, setSaving] = useState(false)
+
+  function handleToggleTrade(trade) {
+    if (selectedTrades.includes(trade)) {
+      setSelectedTrades(selectedTrades.filter((t) => t !== trade))
+    } else {
+      setSelectedTrades([...selectedTrades, trade])
+    }
+  }
+
+  function handleAddNewTrade() {
+    if (!newTradeInput.trim()) return
+    const clean = newTradeInput.trim().toUpperCase()
+    if (!selectedTrades.includes(clean)) {
+      setSelectedTrades([...selectedTrades, clean])
+    }
+    setNewTradeInput('')
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!name.trim()) return alert('Debe ingresar el nombre del proveedor.')
+    if (selectedTrades.length === 0) return alert('Debe seleccionar al menos un rubro para el proveedor.')
 
     setSaving(true)
     try {
       const payload = {
         name: name.trim().toUpperCase(),
-        trade: trade.trim().toUpperCase(),
+        trades: selectedTrades,
+        trade: selectedTrades.join(', '), // Retrocompatibilidad
         cuit_cuil: cuitCuil.trim() || null,
         phone: phone.trim() || null,
         email: email.trim() || null,
@@ -2321,9 +2919,7 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
             <Building2 className="w-5 h-5 text-cyan-400" />
             {supplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            ✕
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -2339,55 +2935,112 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Rubro Principal</label>
-              <input
-                type="text"
-                placeholder="Ej: FERRETERIA, GASES, PINTURA..."
-                value={trade}
-                onChange={(e) => setTrade(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white uppercase focus:outline-none focus:border-cyan-500"
-              />
+          {/* COMBOBOX MULTI-RUBRO (CHIPS + ESCRIBIR NUEVO) */}
+          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+            <label className="block text-slate-400 font-semibold flex items-center justify-between">
+              <span>Rubros Asignados (Multi-Selección)</span>
+              <span className="text-[10px] text-cyan-400 font-bold">{selectedTrades.length} seleccionados</span>
+            </label>
+
+            {/* Chips de rubros seleccionados */}
+            <div className="flex flex-wrap gap-1.5 min-h-[28px] p-1.5 bg-slate-900 rounded-lg border border-slate-800">
+              {selectedTrades.length === 0 ? (
+                <span className="text-[11px] text-slate-500 italic">Selecciona rubros abajo o escribe uno nuevo</span>
+              ) : (
+                selectedTrades.map((t, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold"
+                  >
+                    <span>{t}</span>
+                    <button type="button" onClick={() => handleToggleTrade(t)} className="text-cyan-400 hover:text-white">✕</button>
+                  </span>
+                ))
+              )}
             </div>
 
+            {/* Rubros comunes para tildar rápido */}
+            <div className="flex flex-wrap gap-1 pt-1">
+              {STANDARD_TRADES.map((st) => {
+                const isChecked = selectedTrades.includes(st)
+                return (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => handleToggleTrade(st)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                      isChecked
+                        ? 'bg-cyan-500 text-slate-950 font-bold'
+                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {isChecked ? `✓ ${st}` : `+ ${st}`}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Input para agregar nuevo rubro libre */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                placeholder="Escribir otro rubro nuevo..."
+                value={newTradeInput}
+                onChange={(e) => setNewTradeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddNewTrade()
+                  }
+                }}
+                className="flex-1 bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-1 text-xs text-white uppercase"
+              />
+              <button
+                type="button"
+                onClick={handleAddNewTrade}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-semibold"
+              >
+                + Agregar
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-400 mb-1 font-semibold">CUIT / CUIL</label>
               <input
                 type="text"
-                placeholder="Ej: 30-50014764-9"
+                placeholder="30-50014764-9"
                 value={cuitCuil}
                 onChange={(e) => setCuitCuil(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-400 mb-1 font-semibold">Teléfono / WhatsApp</label>
               <input
                 type="text"
-                placeholder="Ej: +5492234810922"
+                placeholder="+5492234810922"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
               />
             </div>
+          </div>
 
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Email de Contacto</label>
+              <label className="block text-slate-400 mb-1 font-semibold">Email</label>
               <input
                 type="email"
-                placeholder="pedidos@empresa.com"
+                placeholder="contacto@proveedor.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-400 mb-1 font-semibold">Forma de Pago</label>
               <select
@@ -2397,19 +3050,6 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
               >
                 <option value="CUENTA_CORRIENTE">Cuenta Corriente</option>
                 <option value="CONTADO">Contado / Transferencia</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Medio de Facturación</label>
-              <select
-                value={billingMedium}
-                onChange={(e) => setBillingMedium(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              >
-                <option value="EMAIL">Email</option>
-                <option value="WHATSAPP">WhatsApp</option>
-                <option value="EN_MANO">En Mano / Remito Físico</option>
               </select>
             </div>
           </div>
@@ -2462,34 +3102,204 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
             )}
           </div>
 
-          <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Observaciones</label>
-            <textarea
-              rows="2"
-              placeholder="Notas comerciales, descuentos acordados, plazos..."
-              value={observations}
-              onChange={(e) => setObservations(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-            ></textarea>
-          </div>
-
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-lg transition-all"
-            >
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancelar</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-lg">
               {saving ? 'Guardando...' : supplier ? 'Guardar Cambios' : 'Registrar Proveedor'}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// MODAL 6: DESPACHO POR WHATSAPP (SOPORTE 2 COMPRADORES & 0810)
+function BatchOrderWhatsAppModal({ selectedOrderIds, purchaseOrders, suppliers, systemSettings, onClose, onSuccess }) {
+  // Configuración de los 2 compradores (desde systemSettings o fallback)
+  const buyer1 = systemSettings?.buyer_1 || { name: 'Jorge Sentis', phone: '+5492235000001', is_active: true }
+  const buyer2 = systemSettings?.buyer_2 || { name: 'Andrés', phone: '+5492235000002', is_active: true }
+
+  const [selectedBuyer, setSelectedBuyer] = useState('buyer_1')
+
+  const activeBuyer = selectedBuyer === 'buyer_1' ? buyer1 : buyer2
+
+  // Agrupar los pedidos seleccionados por proveedor
+  const batchData = useMemo(() => {
+    const selected = purchaseOrders.filter((p) => selectedOrderIds.has(p.id))
+    const map = new Map()
+    selected.forEach((po) => {
+      const sup = suppliers.find((s) => s.id === po.supplier_id) || {
+        id: 'unknown',
+        name: 'Sin Proveedor Asignado',
+        phone: ''
+      }
+      if (!map.has(sup.id)) {
+        map.set(sup.id, { supplier: sup, items: [] })
+      }
+      map.get(sup.id).items.push(po)
+    })
+    return Array.from(map.values())
+  }, [selectedOrderIds, purchaseOrders, suppliers])
+
+  function buildWhatsAppText(supplierName, items) {
+    let text = `*SOLICITUD DE COMPRA - ALON CAR S.A.*\n`
+    text += `Estimados *${supplierName}*,\n`
+    text += `Por medio de la presente solicitamos cotización/entrega de los siguientes materiales:\n\n`
+
+    items.forEach((item, idx) => {
+      text += `*${idx + 1}.* ${item.material_name_raw} — Cantidad: *${item.quantity} ${item.unit_measure || 'unidades'}*`
+      if (item.observations) text += ` _(Nota: ${item.observations})_`
+      text += `\n`
+    })
+
+    text += `\n_Por favor confirmar disponibilidad y plazos de entrega._\n`
+    text += `Muchas gracias.\n*Solicitado por: ${activeBuyer.name}*\n*Astillero & Metalúrgica Alon Car S.A.* (Tel: ${activeBuyer.phone})`
+    return encodeURIComponent(text)
+  }
+
+  async function handleEmitOrder(supplier, items) {
+    const rawPhone = supplier.phone || ''
+    const isLandlineOr0810 = rawPhone.startsWith('0810') || rawPhone.startsWith('0800')
+
+    if (isLandlineOr0810) {
+      alert(`El proveedor ${supplier.name} opera con línea fija / 0810 (${rawPhone}). Utilice el botón de llamada telefónica.`)
+      return
+    }
+
+    const cleanFormatted = formatArgPhoneForWhatsApp(rawPhone)
+    const encodedText = buildWhatsAppText(supplier.name, items)
+    const url = cleanFormatted ? `https://api.whatsapp.com/send?phone=${cleanFormatted}&text=${encodedText}` : `https://api.whatsapp.com/send?text=${encodedText}`
+
+    try {
+      const ids = items.map((i) => i.id)
+      for (const id of ids) {
+        await supabase.from('purchase_orders').update({ status: 'PEDIDO', updated_at: new Date().toISOString() }).eq('id', id)
+      }
+      window.open(url, '_blank')
+      onSuccess(ids)
+    } catch (err) {
+      alert('Error al emitir pedido: ' + err.message)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-emerald-400" />
+              Emitir Pedidos Agrupados por WhatsApp
+            </h3>
+            <p className="text-xs text-slate-400">
+              Seleccione el comprador emisor. Los pedidos se agrupan automáticamente por proveedor.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        {/* SELECTOR DE LOS 2 COMPRADORES */}
+        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+          <label className="block text-slate-400 font-semibold text-xs">
+            Seleccionar Comprador Emisor (Firma el mensaje):
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedBuyer('buyer_1')}
+              className={`p-2.5 rounded-xl border text-left transition-all flex items-center justify-between ${
+                selectedBuyer === 'buyer_1'
+                  ? 'bg-cyan-950 border-cyan-500 text-white'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div>
+                <p className="font-bold text-xs">{buyer1.name}</p>
+                <p className="text-[10px] text-slate-400">{buyer1.role || 'Administración'} • {buyer1.phone}</p>
+              </div>
+              {selectedBuyer === 'buyer_1' && <CheckCircle2 className="w-4 h-4 text-cyan-400" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedBuyer('buyer_2')}
+              className={`p-2.5 rounded-xl border text-left transition-all flex items-center justify-between ${
+                selectedBuyer === 'buyer_2'
+                  ? 'bg-blue-950 border-blue-500 text-white'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div>
+                <p className="font-bold text-xs">{buyer2.name}</p>
+                <p className="text-[10px] text-slate-400">{buyer2.role || 'Pañol'} • {buyer2.phone}</p>
+              </div>
+              {selectedBuyer === 'buyer_2' && <CheckCircle2 className="w-4 h-4 text-blue-400" />}
+            </button>
+          </div>
+        </div>
+
+        {/* LISTA AGRUPADA POR PROVEEDOR */}
+        <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+          {batchData.map(({ supplier, items }) => {
+            const rawPhone = supplier.phone || ''
+            const is0810 = rawPhone.startsWith('0810') || rawPhone.startsWith('0800')
+
+            return (
+              <div key={supplier.id} className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-white text-sm">{supplier.name}</h4>
+                    <p className="text-[10px] text-slate-400">
+                      {supplier.phone ? `Tel: ${supplier.phone}` : '⚠️ Sin teléfono registrado'}
+                      {supplier.client_number && ` • N° Cliente: ${supplier.client_number}`}
+                    </p>
+                  </div>
+
+                  {is0810 ? (
+                    <a
+                      href={`tel:${rawPhone.replace(/[^0-9]/g, '')}`}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Llamar al {rawPhone}</span>
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleEmitOrder(supplier, items)}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>Abrir WhatsApp ({items.length} ítems)</span>
+                    </button>
+                  )}
+                </div>
+
+                <ul className="divide-y divide-slate-850 text-xs text-slate-300">
+                  {items.map((it) => (
+                    <li key={it.id} className="py-1 flex items-center justify-between">
+                      <span>{it.material_name_raw}</span>
+                      <span className="font-mono text-cyan-400 font-bold">
+                        {it.quantity} {it.unit_measure || 'unidades'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="flex justify-end pt-3 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg"
+          >
+            Cerrar
+          </button>
+        </div>
       </div>
     </div>
   )

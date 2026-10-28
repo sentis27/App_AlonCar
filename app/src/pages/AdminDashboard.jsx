@@ -42,11 +42,14 @@ import {
   CornerDownRight,
   ExternalLink,
   Target,
-  Brain
+  Brain,
+  ShoppingCart,
+  MessageSquare
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import AiGovernancePanel from '../components/AiGovernancePanel'
+import ComprasSettingsPanel from '../components/ComprasSettingsPanel'
 
 // Módulos del sistema controlables en la matriz de seguridad
 const SYSTEM_MODULES = [
@@ -1006,9 +1009,23 @@ export default function AdminDashboard() {
           <Brain className="w-4 h-4" />
           <span>🧠 Gobernanza IA & Prompts</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('compras')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'compras'
+              ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(0,242,254,0.3)]'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <ShoppingCart className="w-4 h-4" />
+          <span>Config. Compras & WhatsApp</span>
+        </button>
       </div>
 
       {activeTab === 'ia' && <AiGovernancePanel />}
+      {activeTab === 'compras' && <ComprasSettingsPanel />}
 
 
       {/* ========================================================================= */}
