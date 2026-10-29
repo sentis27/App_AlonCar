@@ -51,7 +51,10 @@ import {
   Image as ImageIcon,
   Tag,
   Lock,
-  UserCheck
+  UserCheck,
+  AlertCircle,
+  Upload,
+  Save
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
