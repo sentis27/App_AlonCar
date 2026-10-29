@@ -2243,7 +2243,12 @@ export default function WorkOrders() {
                   const rowIsEliminada = isWorkItemEliminada(row, row.wo)
 
                   return (
-                    <tr key={row.id} className="hover:bg-slate-800/30 transition-colors align-top">
+                    <tr 
+                      key={row.id} 
+                      onDoubleClick={() => handleOpenEditWorkModal(row)}
+                      className="hover:bg-slate-800/30 transition-colors align-top cursor-pointer select-none"
+                      title="Doble clic para editar este trabajo / OT"
+                    >
                       {/* 1. Barco (Nombre limpio sin texto extra) */}
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1.5 font-bold text-white">

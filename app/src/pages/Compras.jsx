@@ -55,6 +55,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 
 // Estados válidos según GS-006 (Colores de texto puros sin teñir fondo completo)
 const STATUS_OPTIONS = [
@@ -250,7 +251,15 @@ export default function Compras() {
   // Selección de filas (para totales y acciones en lote)
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set())
 
-  // Modales
+  const [shipPickerModal, setShipPickerModal] = useState({
+    isOpen: false,
+    orderId: null,
+    shipId: '',
+    workOrderId: '',
+    contractorName: ''
+  })
+
+    // Modales
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [editingOrder, setEditingOrder] = useState(null)
 
@@ -391,7 +400,19 @@ export default function Compras() {
 
     const now = new Date()
 
+    let countSinOtTotal = 0
+    let countSinOtObras = 0
+    let countSinOtStock = 0
+
     purchaseOrders.forEach((po) => {
+      if (!po.work_order_id) {
+        countSinOtTotal++
+        if (po.charge_type === 'STOCK') {
+          countSinOtStock++
+        } else {
+          countSinOtObras++
+        }
+      }
       if (po.is_new_material && !po.no_catalog_required) newMaterialsCount++
       if (po.is_reconciled) countConciliados++
 
@@ -418,6 +439,9 @@ export default function Compras() {
     })
 
     return {
+      countSinOtTotal,
+      countSinOtObras,
+      countSinOtStock,
       porEmitirTotal: countPedir + countSolicitud,
       countPedir,
       countSolicitud,
@@ -503,7 +527,13 @@ export default function Compras() {
       }
 
       // Filtro KPI interactivo de Grupo
-      if (activeKpiFilter === 'por_emitir') {
+      if (activeKpiFilter === 'sin_ot') {
+        if (po.work_order_id) return false
+      } else if (activeKpiFilter === 'sin_ot_obras') {
+        if (po.work_order_id || po.charge_type === 'STOCK') return false
+      } else if (activeKpiFilter === 'sin_ot_stock') {
+        if (po.work_order_id || po.charge_type !== 'STOCK') return false
+      } else if (activeKpiFilter === 'por_emitir') {
         if (!['PEDIR', 'SOLICITUD'].includes(po.status)) return false
       } else if (activeKpiFilter === 'cotizaciones') {
         if (!['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)) return false
@@ -1047,7 +1077,46 @@ export default function Compras() {
       {activeTab === 'compras' && (
         <>
           {/* TARJETAS DE KPIs SUPERIORES (GRUPOS Y SUBGRUPOS INTERACTIVOS 1-CLIC) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2.5">
+            {/* KPI 0: Falta Cargar OT (Total + Obras / Astillero) */}
+            <div
+              onClick={() => toggleKpiFilter('sin_ot')}
+              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                activeKpiFilter === 'sin_ot' || activeKpiFilter === 'sin_ot_obras' || activeKpiFilter === 'sin_ot_stock'
+                  ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20'
+                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-[10px] uppercase font-bold text-amber-300 tracking-wider">Falta Cargar OT</span>
+                </div>
+                <span className="text-xl font-black text-amber-400 font-mono">{kpis.countSinOtTotal}</span>
+              </div>
+              <div className="flex items-center gap-1 mt-2 pt-2 border-t border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('sin_ot_obras'); }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors ${
+                    activeKpiFilter === 'sin_ot_obras' ? 'bg-amber-500 text-slate-950 font-black' : 'bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                  }`}
+                  title="Pedidos imputados a buque/obra sin OT vinculada"
+                >
+                  🚢 Obras: {kpis.countSinOtObras}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('sin_ot_stock'); }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors ${
+                    activeKpiFilter === 'sin_ot_stock' ? 'bg-cyan-500 text-slate-950 font-black' : 'bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
+                  }`}
+                  title="Pedidos para Astillero / Stock general sin OT vinculada"
+                >
+                  🏢 Stock: {kpis.countSinOtStock}
+                </button>
+              </div>
+            </div>
             {/* KPI 1: Por Emitir (PEDIR + SOLICITUD) */}
             <div
               onClick={() => toggleKpiFilter('por_emitir')}
@@ -1588,25 +1657,36 @@ export default function Compras() {
                             )
                           })()}
 
-                          {/* 4. Buque / OT */}
+                          {/* 4. Buque / OT (Doble Clic abre ShipWorkOrderPickerModal) */}
                           {(() => {
                             const cp = getSpreadsheetCellProps(rowIndex, 'ship_id')
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 ${cp.className}`}
+                                onDoubleClick={() => {
+                                  setShipPickerModal({
+                                    isOpen: true,
+                                    orderId: po.id,
+                                    shipId: po.ship_id || '',
+                                    workOrderId: po.work_order_id || '',
+                                    contractorName: po.charge_type
+                                  })
+                                }}
+                                className={`py-2 px-3 cursor-pointer ${cp.className}`}
+                                title="Doble clic para cambiar Buque u Orden de Trabajo"
                               >
                                 <div className="font-semibold text-slate-200 truncate max-w-[130px]" title={shp?.name || 'ASTILLERO'}>
                                   {shp?.name || 'ASTILLERO'}
                                 </div>
-                                <div className="text-[10px] text-slate-400 truncate max-w-[130px]" title={wo?.title || 'STOCK'}>
-                                  {wo?.title || 'STOCK GENERAL'}
+                                <div className="text-[10px] text-slate-400 truncate max-w-[130px]" title={wo?.title || (po.work_order_id ? 'OT' : '⚠️ Sin OT')}>
+                                  {wo?.title || (po.work_order_id ? 'OT' : <span className="text-amber-400 font-bold">⚠️ Sin OT</span>)}
                                 </div>
                                 {cp.renderHandle && (
                                   <div
                                     onMouseDown={grid.handleFillHandleMouseDown}
                                     onDoubleClick={grid.handleFillHandleDoubleClick}
                                     className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                    title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
                                   />
                                 )}
                               </td>
@@ -5428,6 +5508,58 @@ function InlineSupplierPicker({ suppliers, currentSupplierId, onSelect, onCancel
           ))
         )}
       </div>
+      {/* Modal enfocado de Buque / OT en Doble Clic */}
+      <ShipWorkOrderPickerModal
+        isOpen={shipPickerModal.isOpen}
+        onClose={() => setShipPickerModal({ isOpen: false, orderId: null, shipId: '', workOrderId: '', contractorName: '' })}
+        ships={ships}
+        workOrders={workOrders}
+        currentShipId={shipPickerModal.shipId}
+        currentWorkOrderId={shipPickerModal.workOrderId}
+        contractorName={shipPickerModal.contractorName}
+        title="Asignar Buque y Orden de Trabajo (Compras)"
+        onSave={async ({ shipId, workOrderId }) => {
+          const orderId = shipPickerModal.orderId
+          const target = purchaseOrders.find((p) => p.id === orderId)
+          if (!target) return
+
+          if (grid?.pushUndoAction) {
+            grid.pushUndoAction({
+              colKey: 'ship_id',
+              colLabel: 'Buque / OT',
+              actionLabel: 'Cambio de Buque y OT',
+              previousValues: { [orderId]: { ship_id: target.ship_id, work_order_id: target.work_order_id } },
+              newValue: { ship_id: shipId, work_order_id: workOrderId },
+              timestamp: Date.now()
+            })
+          }
+
+          setPurchaseOrders((prev) =>
+            prev.map((p) => (p.id === orderId ? { ...p, ship_id: shipId, work_order_id: workOrderId } : p))
+          )
+
+          try {
+            const { error } = await supabase
+              .from('purchase_orders')
+              .update({
+                ship_id: shipId,
+                work_order_id: workOrderId, // can be null!
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', orderId)
+            if (error) throw error
+            if (!workOrderId) {
+              showFeedbackMsg('success', 'Buque asignado. OT dejada en blanco (sumada a KPI Falta Cargar OT).')
+            } else {
+              showFeedbackMsg('success', 'Buque y OT asignados con éxito.')
+            }
+          } catch (err) {
+            console.error('Error guardando Buque y OT en Compras:', err)
+            showFeedbackMsg('error', 'Error al guardar Buque y OT: ' + err.message)
+            fetchData()
+          }
+        }}
+      />
     </div>
   )
 }

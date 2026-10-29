@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import {
   Wrench,
   Building2,
@@ -30,7 +32,9 @@ import {
   Ship,
   Sparkles,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  RotateCcw,
+  RotateCw
 } from 'lucide-react'
 
 // Tipos de Comprobante y Reglas de Negocio (DEC-017)
@@ -271,6 +275,16 @@ export default function Terceros() {
   const [voucherHistory, setVoucherHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [feedbackMessage, setFeedbackMessage] = useState(null)
+
+  const searchInputRef = useRef(null)
+  const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
+  const [pickerModal, setPickerModal] = useState({
+    isOpen: false,
+    serviceId: null,
+    shipId: '',
+    workOrderId: '',
+    contractorName: ''
+  })
 
   // 3. Filtros y Vistas
   const [viewMode, setViewMode] = useState('filas') // 'filas' | 'fichas'
@@ -871,23 +885,211 @@ export default function Terceros() {
     })
   }, [services, kpiFilter, selectedShipFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm, shipMap, otMap, contractorMap])
 
-  // Métricas calculadas para las alertas individuales de KPI
+  // Métricas calculadas para las alertas individuales de KPI (DEC-017 + Radar Operativo)
   const kpiCounts = useMemo(() => {
     let sinPrecioCount = 0
     let sinOtCount = 0
+    let rpfCount = 0
+    let fcrCount = 0
 
     services.forEach((s) => {
       if (!s.amount_ars || Number(s.amount_ars) === 0) sinPrecioCount++
       if (!s.work_order_id) sinOtCount++
+      if (s.voucher_type === 'RPF') rpfCount++
+      if (s.voucher_type === 'FCR') fcrCount++
     })
 
     return {
       sinPrecio: sinPrecioCount,
-      sinOt: sinOtCount
+      sinOt: sinOtCount,
+      rpf: rpfCount,
+      fcr: fcrCount
     }
   }, [services])
 
-  // Manejo de selección de filas estilo Excel / Sheets (Clic, Ctrl+Clic, Shift+Clic)
+  // Columnas interactivas estilo Hoja de Cálculo
+  const spreadsheetColumns = useMemo(() => [
+    { key: 'service_date', label: 'Fecha', readOnly: false },
+    { key: 'ship_wo', label: 'Barco / OT', readOnly: false },
+    { key: 'contractor_name', label: 'Contratista', readOnly: false },
+    { key: 'trade', label: 'Rubro', readOnly: false },
+    { key: 'amount_ars', label: 'Importe AR$', readOnly: !canEditAmounts },
+    { key: 'voucher_type', label: 'Comprobante', readOnly: false },
+    { key: 'voucher_number', label: 'Nº Comprobante', readOnly: false },
+    { key: 'direct_observations', label: 'Comentarios', readOnly: false }
+  ], [canEditAmounts])
+
+  // Actualización batch para comandos de hoja de cálculo (Ctrl+D, Ctrl+V, Drag Fill, Ctrl+Z)
+  const handleSpreadsheetBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    if (isRevert && revertMap) {
+      setServices((prev) =>
+        prev.map((s) => {
+          if (revertMap[s.id] !== undefined) {
+            if (colKey === 'ship_wo') {
+              return { ...s, ship_id: revertMap[s.id].ship_id, work_order_id: revertMap[s.id].work_order_id }
+            }
+            return { ...s, [colKey]: revertMap[s.id] }
+          }
+          return s
+        })
+      )
+      try {
+        for (const [id, oldVal] of Object.entries(revertMap)) {
+          if (colKey === 'ship_wo') {
+            await supabase.from('third_party_services').update({
+              ship_id: oldVal.ship_id,
+              work_order_id: oldVal.work_order_id,
+              updated_at: new Date().toISOString()
+            }).eq('id', id)
+          } else {
+            await supabase.from('third_party_services').update({
+              [colKey]: oldVal,
+              updated_at: new Date().toISOString()
+            }).eq('id', id)
+          }
+        }
+        showFeedback('success', `Deshecho: valores restaurados en ${Object.keys(revertMap).length} filas.`)
+      } catch (err) {
+        console.error('Error al revertir:', err)
+        showFeedback('error', 'Error al revertir: ' + err.message)
+        fetchData()
+      }
+      return
+    }
+
+    const targetIdSet = new Set(targetIds)
+    setServices((prev) =>
+      prev.map((s) => {
+        if (targetIdSet.has(s.id)) {
+          if (colKey === 'amount_ars') {
+            const num = parseFloat(newValue) || 0
+            const rate = Number(s.usd_rate) || 1500
+            const usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+            return { ...s, amount_ars: num, amount_usd: usd }
+          }
+          return { ...s, [colKey]: newValue }
+        }
+        return s
+      })
+    )
+
+    try {
+      const updatePayload = { [colKey]: newValue, updated_at: new Date().toISOString() }
+      const { error } = await supabase
+        .from('third_party_services')
+        .update(updatePayload)
+        .in('id', targetIds)
+      if (error) throw error
+      showFeedback('success', `Se actualizaron ${targetIds.length} fila(s) con "${newValue}".`)
+    } catch (err) {
+      console.error('Error en lote Terceros:', err)
+      showFeedback('error', 'Error al actualizar filas: ' + err.message)
+      fetchData()
+    }
+  }, [showFeedback, fetchData])
+
+  // Hook central de Hoja de Cálculo
+  const grid = useSpreadsheetGrid({
+    rows: filteredServices,
+    columns: spreadsheetColumns,
+    getRowId: (row) => row.id,
+    onBatchUpdate: handleSpreadsheetBatchUpdate,
+    onFocusSearch: () => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    },
+    canEditCell: (row, colKey, newValue) => {
+      if (colKey === 'amount_ars' && !canEditAmounts) {
+        showFeedback('error', 'No tienes permisos para modificar importes en esta terminal.')
+        return false
+      }
+      return true
+    },
+    showFeedback: (type, text) => showFeedback(type, text)
+  })
+
+  // Helper de propiedades para cada celda
+  function getSpreadsheetCellProps(rowIndex, colKey) {
+    const colIdx = spreadsheetColumns.findIndex((c) => c.key === colKey)
+    if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
+
+    const isActive = grid.isCellActive(rowIndex, colIdx)
+    const isSelected = grid.isCellSelected(rowIndex, colIdx)
+    const isFillPreview = grid.isCellInFillPreview(rowIndex, colIdx)
+    const renderHandle = grid.shouldRenderFillHandle(rowIndex, colIdx)
+
+    return {
+      renderHandle,
+      domProps: {
+        onClick: (e) => grid.handleCellClick(rowIndex, colIdx, e),
+        onMouseDown: (e) => grid.handleCellMouseDown(rowIndex, colIdx, e),
+        onMouseEnter: () => grid.handleCellMouseEnter(rowIndex, colIdx)
+      },
+      className: `relative select-none transition-colors ${
+        isActive
+          ? 'ring-2 ring-cyan-400 bg-cyan-950/40 z-20 outline-none'
+          : isFillPreview
+          ? 'bg-cyan-900/40 border-y border-dashed border-cyan-400'
+          : isSelected
+          ? 'bg-cyan-900/30'
+          : ''
+      }`
+    }
+  }
+
+  // Guardar edición rápida inline con doble clic
+  async function saveInlineEdit(serviceId, field, newValue) {
+    setInlineEdit({ id: null, field: null, value: '' })
+    const targetService = services.find((s) => s.id === serviceId)
+    if (!targetService || targetService[field] === newValue) return
+
+    if (grid?.pushUndoAction) {
+      grid.pushUndoAction({
+        colKey: field,
+        colLabel: field,
+        actionLabel: 'Edición en celda',
+        previousValues: { [serviceId]: targetService[field] },
+        newValue,
+        timestamp: Date.now()
+      })
+    }
+
+    setServices((prev) =>
+      prev.map((s) => {
+        if (s.id === serviceId) {
+          if (field === 'amount_ars') {
+            const num = parseFloat(newValue) || 0
+            const rate = Number(s.usd_rate) || 1500
+            const usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+            return { ...s, amount_ars: num, amount_usd: usd }
+          }
+          return { ...s, [field]: newValue }
+        }
+        return s
+      })
+    )
+
+    try {
+      const updateData = { [field]: newValue, updated_at: new Date().toISOString() }
+      if (field === 'amount_ars') {
+        const num = parseFloat(newValue) || 0
+        const rate = Number(targetService.usd_rate) || 1500
+        updateData.amount_ars = num
+        updateData.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+      }
+      const { error } = await supabase
+        .from('third_party_services')
+        .update(updateData)
+        .eq('id', serviceId)
+      if (error) throw error
+      showFeedback('success', 'Campo actualizado correctamente.')
+    } catch (err) {
+      console.error('Error guardando celda inline:', err)
+      showFeedback('error', 'Error al guardar: ' + err.message)
+      setServices((prev) => prev.map((s) => (s.id === serviceId ? targetService : s)))
+    }
+  }
+
   const handleRowClick = (id, index, event) => {
     if (event.target.closest('button') || event.target.closest('a') || event.target.tagName === 'INPUT') {
       return
@@ -1143,79 +1345,144 @@ export default function Terceros() {
         </div>
       </div>
 
-      {/* ALERTAS OPERATIVAS INDIVIDUALES (KPIs Clickeables) */}
-      <div className="flex flex-wrap items-center gap-4">
-        {/* Alerta 1: Sin Costo */}
-        <button
-          type="button"
-          onClick={() => setKpiFilter(kpiFilter === 'sin_precio' ? 'todos' : 'sin_precio')}
-          className={`flex-1 min-w-[240px] p-4 rounded-2xl border transition-all cursor-pointer text-left shadow-sm ${
-            kpiFilter === 'sin_precio'
-              ? 'bg-amber-950/80 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.25)] ring-2 ring-amber-400'
-              : 'bg-slate-900/70 border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/60'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4 text-amber-400 animate-pulse" />
-              Líneas Sin Costo
-            </span>
-            {kpiCounts.sinPrecio > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
-                Pendiente $
-              </span>
-            )}
+      {/* ZONA 2: RADAR OPERATIVO & ALERTAS EN VIVO (ESTANDARIZADO) */}
+      <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-wider text-cyan-400">📊 RADAR OPERATIVO & ALERTAS EN VIVO</span>
+            <span className="text-[10px] text-slate-500 font-mono">Monitoreo de inconsistencias contables y fiscales</span>
           </div>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-black text-amber-300 font-mono">{kpiCounts.sinPrecio}</span>
-            <span className="text-xs text-slate-400">comprobantes a valorizar ($0)</span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            {kpiFilter === 'sin_precio' ? '✓ Filtro activo (Clic para desactivar)' : 'Clic para filtrar solo líneas sin precio'}
-          </p>
-        </button>
+          {kpiFilter !== 'todos' && (
+            <button
+              type="button"
+              onClick={() => setKpiFilter('todos')}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5 text-slate-400" />
+              <span>Ver todas las líneas</span>
+            </button>
+          )}
+        </div>
 
-        {/* Alerta 2: Sin OT */}
-        <button
-          type="button"
-          onClick={() => setKpiFilter(kpiFilter === 'sin_ot' ? 'todos' : 'sin_ot')}
-          className={`flex-1 min-w-[240px] p-4 rounded-2xl border transition-all cursor-pointer text-left shadow-sm ${
-            kpiFilter === 'sin_ot'
-              ? 'bg-rose-950/80 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.25)] ring-2 ring-rose-400'
-              : 'bg-slate-900/70 border-slate-800 hover:border-rose-500/50 hover:bg-slate-800/60'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 text-rose-400 animate-pulse" />
-              Líneas Sin OT Asignada
-            </span>
-            {kpiCounts.sinOt > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-400/20 text-rose-300 font-bold border border-rose-400/30">
-                Sin C.C.
-              </span>
-            )}
-          </div>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-black text-rose-300 font-mono">{kpiCounts.sinOt}</span>
-            <span className="text-xs text-slate-400">trabajos sin orden vinculada</span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            {kpiFilter === 'sin_ot' ? '✓ Filtro activo (Clic para desactivar)' : 'Clic para filtrar solo líneas sin OT'}
-          </p>
-        </button>
-
-        {/* Botón de limpiar filtro de alerta si está activo */}
-        {kpiFilter !== 'todos' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Alerta 1: Falta Cargar OT (Ámbar) */}
           <button
             type="button"
-            onClick={() => setKpiFilter('todos')}
-            className="px-4 py-3 rounded-2xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer self-stretch justify-center"
+            onClick={() => setKpiFilter(kpiFilter === 'sin_ot' ? 'todos' : 'sin_ot')}
+            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              kpiFilter === 'sin_ot'
+                ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20 ring-2 ring-amber-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40 hover:bg-slate-850'
+            }`}
           >
-            <X className="w-4 h-4 text-slate-400" />
-            <span>Quitar filtro de alerta (Ver todos)</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-400" />
+                Falta Cargar OT
+              </span>
+              {kpiCounts.sinOt > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                  Sin C.C.
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-amber-300 font-mono">{kpiCounts.sinOt}</span>
+              <span className="text-xs text-slate-400">trabajos sin OT vinculada</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {kpiFilter === 'sin_ot' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar solo líneas sin OT'}
+            </p>
           </button>
-        )}
+
+          {/* Alerta 2: Sin Costo $0 (Rojo / Rose) */}
+          <button
+            type="button"
+            onClick={() => setKpiFilter(kpiFilter === 'sin_precio' ? 'todos' : 'sin_precio')}
+            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              kpiFilter === 'sin_precio'
+                ? 'bg-rose-950/80 border-rose-400 shadow-lg shadow-rose-500/20 ring-2 ring-rose-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-rose-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                Líneas Sin Costo
+              </span>
+              {kpiCounts.sinPrecio > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-400/20 text-rose-300 font-bold border border-rose-400/30">
+                  Pendiente $
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-rose-300 font-mono">{kpiCounts.sinPrecio}</span>
+              <span className="text-xs text-slate-400">comprobantes a valorizar ($0)</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {kpiFilter === 'sin_precio' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar comprobantes $0'}
+            </p>
+          </button>
+
+          {/* Alerta 3: RPF Pendiente de Factura (Púrpura) */}
+          <button
+            type="button"
+            onClick={() => setKpiFilter(kpiFilter === 'RPF' ? 'todos' : 'RPF')}
+            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              kpiFilter === 'RPF'
+                ? 'bg-purple-950/80 border-purple-400 shadow-lg shadow-purple-500/20 ring-2 ring-purple-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-purple-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-purple-400" />
+                RPF Pdte. Factura
+              </span>
+              {kpiCounts.rpf > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-400/20 text-purple-300 font-bold border border-purple-400/30">
+                  Reclamar
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-purple-300 font-mono">{kpiCounts.rpf}</span>
+              <span className="text-xs text-slate-400">remitos sin factura oficial</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {kpiFilter === 'RPF' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para exigir factura oficial'}
+            </p>
+          </button>
+
+          {/* Alerta 4: FCR Facturado Definitivo (Esmeralda / Verde) */}
+          <button
+            type="button"
+            onClick={() => setKpiFilter(kpiFilter === 'FCR' ? 'todos' : 'FCR')}
+            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              kpiFilter === 'FCR'
+                ? 'bg-emerald-950/80 border-emerald-400 shadow-lg shadow-emerald-500/20 ring-2 ring-emerald-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-emerald-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <FileCheck className="w-4 h-4 text-emerald-400" />
+                FCR Facturado
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 font-bold border border-emerald-400/30">
+                Definitivo
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-emerald-300 font-mono">{kpiCounts.fcr}</span>
+              <span className="text-xs text-slate-400">facturas fiscales oficiales</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {kpiFilter === 'FCR' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar solo facturados'}
+            </p>
+          </button>
+        </div>
       </div>
 
       {/* BARRA DE FILTROS & BÚSQUEDA */}
@@ -1225,12 +1492,14 @@ export default function Terceros() {
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
             <input
+              ref={searchInputRef}
               type="text"
-              placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle..."
+              placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F)"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary transition-all"
             />
+            <span className="absolute right-8 top-2.5 px-1.5 py-0.5 rounded bg-slate-800 text-[9px] font-mono text-slate-400 border border-slate-700 pointer-events-none hidden sm:inline">Ctrl + F</span>
             {searchTerm && (
               <button
                 type="button"
@@ -1240,6 +1509,11 @@ export default function Terceros() {
                 <X className="w-4 h-4" />
               </button>
             )}
+          </div>
+
+          <div className="hidden xl:flex items-center gap-1.5 text-[10px] font-mono text-slate-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+            <span className="text-cyan-400 font-bold">⌨️ Atajos:</span>
+            <span>Doble Clic (Editar) | Ctrl+C/V/D | Ctrl+Z/Y</span>
           </div>
 
           {/* Toggle de Vistas Universales (Filas / Fichas) */}
@@ -1415,14 +1689,13 @@ export default function Terceros() {
                   return (
                     <tr
                       key={srv.id}
-                      onClick={(e) => handleRowClick(srv.id, index, e)}
-                      className={`transition-colors cursor-pointer select-none ${
+                      className={`transition-colors select-none ${
                         isSelected
-                          ? 'bg-cyan-950/60 hover:bg-cyan-950/80 text-cyan-50 border-l-2 border-l-cyan-400'
-                          : 'hover:bg-slate-800/40 text-slate-200'
+                          ? 'bg-cyan-950/40 text-cyan-50 border-l-2 border-l-cyan-400'
+                          : 'hover:bg-slate-850/40 text-slate-200'
                       }`}
                     >
-                      {/* Checkbox individual */}
+                      {/* Checkbox individual para selección de fila */}
                       <td className="py-2.5 px-2 text-center">
                         <input
                           type="checkbox"
@@ -1432,64 +1705,197 @@ export default function Terceros() {
                         />
                       </td>
 
-                      {/* 1. Fecha (dd/mm/aaaa) */}
-                      <td className="py-2.5 px-2 whitespace-nowrap">
-                        <div className="font-semibold text-slate-200">
-                          {formatDate(srv.service_date || srv.entry_date)}
-                        </div>
-                        {srv.entry_date && srv.entry_date !== srv.service_date && (
-                          <div className="text-[10px] text-slate-500 font-sans">
-                            Carga: {formatDate(srv.entry_date)}
-                          </div>
-                        )}
-                      </td>
+                      {/* 1. Fecha (Editable con doble clic) */}
+                      {(() => {
+                        const cp = getSpreadsheetCellProps(index, 'service_date')
+                        return (
+                          <td
+                            {...cp.domProps}
+                            onDoubleClick={() => setInlineEdit({ id: srv.id, field: 'service_date', value: srv.service_date || srv.entry_date || '' })}
+                            className={`py-2.5 px-2 whitespace-nowrap ${cp.className}`}
+                          >
+                            {inlineEdit.id === srv.id && inlineEdit.field === 'service_date' ? (
+                              <input
+                                type="date"
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveInlineEdit(srv.id, 'service_date', inlineEdit.value)
+                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                }}
+                                onBlur={() => saveInlineEdit(srv.id, 'service_date', inlineEdit.value)}
+                                className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white outline-none font-mono"
+                              />
+                            ) : (
+                              <div>
+                                <div className="font-semibold text-slate-200">
+                                  {formatDate(srv.service_date || srv.entry_date)}
+                                </div>
+                                {srv.entry_date && srv.entry_date !== srv.service_date && (
+                                  <div className="text-[10px] text-slate-500 font-sans">
+                                    Carga: {formatDate(srv.entry_date)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {cp.renderHandle && (
+                              <div
+                                onMouseDown={grid.handleFillHandleMouseDown}
+                                onDoubleClick={grid.handleFillHandleDoubleClick}
+                                className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                              />
+                            )}
+                          </td>
+                        )
+                      })()}
 
-                      {/* 2. Barco / OT */}
-                      <td className="py-2.5 px-2 font-sans truncate">
-                        <div className="font-bold text-white flex items-center gap-1.5 truncate" title={shipName}>
-                          <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                          <span className="truncate">{shipName}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 truncate">
-                          {ot ? (
-                            <span className="font-mono text-cyan-300 font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50 shrink-0">
-                              {ot.ot_number}
-                            </span>
-                          ) : (
-                            <span className="text-amber-400 text-[10px] shrink-0">⚠️ Sin OT</span>
-                          )}
-                          <span className="truncate text-[10px] text-slate-500" title={ot?.title}>
-                            {ot?.title || ''}
-                          </span>
-                        </div>
-                      </td>
+                      {/* 2. Barco / OT (Doble Clic abre ShipWorkOrderPickerModal) */}
+                      {(() => {
+                        const cp = getSpreadsheetCellProps(index, 'ship_wo')
+                        return (
+                          <td
+                            {...cp.domProps}
+                            onDoubleClick={() => {
+                              setPickerModal({
+                                isOpen: true,
+                                serviceId: srv.id,
+                                shipId: srv.ship_id,
+                                workOrderId: srv.work_order_id,
+                                contractorName: srv.contractor_name
+                              })
+                            }}
+                            className={`py-2.5 px-2 font-sans truncate cursor-pointer ${cp.className}`}
+                            title="Doble clic para cambiar Buque u Orden de Trabajo"
+                          >
+                            <div className="font-bold text-white flex items-center gap-1.5 truncate" title={shipName}>
+                              <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                              <span className="truncate">{shipName}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 truncate">
+                              {ot ? (
+                                <span className="font-mono text-cyan-300 font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50 shrink-0">
+                                  {ot.ot_number}
+                                </span>
+                              ) : (
+                                <span className="text-amber-400 text-[10px] shrink-0 font-bold">⚠️ Sin OT</span>
+                              )}
+                              <span className="truncate text-[10px] text-slate-500" title={ot?.title}>
+                                {ot?.title || '(Doble clic para asignar)'}
+                              </span>
+                            </div>
+                            {cp.renderHandle && (
+                              <div
+                                onMouseDown={grid.handleFillHandleMouseDown}
+                                onDoubleClick={grid.handleFillHandleDoubleClick}
+                                className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                              />
+                            )}
+                          </td>
+                        )
+                      })()}
 
                       {/* 3. Contratista y Rubro */}
-                      <td className="py-2.5 px-2 font-sans truncate">
-                        <div className="font-bold text-slate-100 uppercase tracking-wide truncate" title={srv.contractor_name}>
-                          {srv.contractor_name}
-                        </div>
-                        <div className="mt-0.5 truncate">
-                          {effectiveTrade ? (
-                            <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono truncate max-w-full">
-                              {effectiveTrade}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro</span>
-                          )}
-                        </div>
-                      </td>
+                      {(() => {
+                        const cp = getSpreadsheetCellProps(index, 'contractor_name')
+                        return (
+                          <td
+                            {...cp.domProps}
+                            onDoubleClick={() => setInlineEdit({ id: srv.id, field: 'contractor_name', value: srv.contractor_name || '' })}
+                            className={`py-2.5 px-2 font-sans truncate ${cp.className}`}
+                          >
+                            {inlineEdit.id === srv.id && inlineEdit.field === 'contractor_name' ? (
+                              <input
+                                type="text"
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveInlineEdit(srv.id, 'contractor_name', inlineEdit.value)
+                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                }}
+                                onBlur={() => saveInlineEdit(srv.id, 'contractor_name', inlineEdit.value)}
+                                className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white outline-none font-bold uppercase"
+                              />
+                            ) : (
+                              <div>
+                                <div className="font-bold text-slate-100 uppercase tracking-wide truncate" title={srv.contractor_name}>
+                                  {srv.contractor_name}
+                                </div>
+                                <div className="mt-0.5 truncate">
+                                  {effectiveTrade ? (
+                                    <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono truncate max-w-full">
+                                      {effectiveTrade}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro</span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {cp.renderHandle && (
+                              <div
+                                onMouseDown={grid.handleFillHandleMouseDown}
+                                onDoubleClick={grid.handleFillHandleDoubleClick}
+                                className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                              />
+                            )}
+                          </td>
+                        )
+                      })()}
 
-                      {/* 4. Importe AR$ */}
-                      <td className="py-2.5 px-2 text-right whitespace-nowrap font-mono font-semibold text-slate-100">
-                        {Number(srv.amount_ars) > 0 ? (
-                          <span>${Number(srv.amount_ars).toLocaleString('es-AR')}</span>
-                        ) : (
-                          <span className="text-amber-400 text-xs">$0 (Sin Precio)</span>
-                        )}
-                      </td>
+                      {/* 4. Importe AR$ (Editable si tiene permiso canEditAmounts) */}
+                      {(() => {
+                        const cp = getSpreadsheetCellProps(index, 'amount_ars')
+                        return (
+                          <td
+                            {...cp.domProps}
+                            onDoubleClick={() => {
+                              if (canEditAmounts) {
+                                setInlineEdit({ id: srv.id, field: 'amount_ars', value: srv.amount_ars || '' })
+                              } else {
+                                showFeedback('error', 'No tienes permisos para modificar importes monetarios.')
+                              }
+                            }}
+                            className={`py-2.5 px-2 text-right whitespace-nowrap font-mono font-semibold text-slate-100 ${cp.className}`}
+                          >
+                            {inlineEdit.id === srv.id && inlineEdit.field === 'amount_ars' ? (
+                              <input
+                                type="number"
+                                autoFocus
+                                step="any"
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveInlineEdit(srv.id, 'amount_ars', inlineEdit.value)
+                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                }}
+                                onBlur={() => saveInlineEdit(srv.id, 'amount_ars', inlineEdit.value)}
+                                className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-right text-white outline-none font-mono"
+                              />
+                            ) : (
+                              Number(srv.amount_ars) > 0 ? (
+                                <span>${Number(srv.amount_ars).toLocaleString('es-AR')}</span>
+                              ) : (
+                                <span className="text-amber-400 text-xs font-bold">$0 (Sin Precio)</span>
+                              )
+                            )}
+                            {cp.renderHandle && (
+                              <div
+                                onMouseDown={grid.handleFillHandleMouseDown}
+                                onDoubleClick={grid.handleFillHandleDoubleClick}
+                                className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                              />
+                            )}
+                          </td>
+                        )
+                      })()}
 
-                      {/* 5. Dólar / US$ */}
+                      {/* 5. Dólar / US$ (Calculado) */}
                       <td className="py-2.5 px-2 text-right whitespace-nowrap">
                         <div className="font-mono font-extrabold text-cyan-300">
                           ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1499,71 +1905,166 @@ export default function Terceros() {
                         </div>
                       </td>
 
-                      {/* 6. Comprobante (Tipo) */}
-                      <td className="py-2.5 px-2 whitespace-nowrap text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${voucherConfig.color}`}>
-                          {srv.voucher_type}
-                        </span>
-                      </td>
+                      {/* 6. Comprobante (Tipo - Editable con doble clic y compatible con Ctrl+D) */}
+                      {(() => {
+                        const cp = getSpreadsheetCellProps(index, 'voucher_type')
+                        return (
+                          <td
+                            {...cp.domProps}
+                            onDoubleClick={() => setInlineEdit({ id: srv.id, field: 'voucher_type', value: srv.voucher_type || 'PRC' })}
+                            className={`py-2.5 px-2 whitespace-nowrap text-center ${cp.className}`}
+                          >
+                            {inlineEdit.id === srv.id && inlineEdit.field === 'voucher_type' ? (
+                              <select
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => saveInlineEdit(srv.id, 'voucher_type', e.target.value)}
+                                onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
+                                className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-xs text-white outline-none font-bold"
+                              >
+                                {VOUCHER_TYPES.map((v) => (
+                                  <option key={v.code} value={v.code}>{v.code}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${voucherConfig.color}`}>
+                                {srv.voucher_type}
+                              </span>
+                            )}
+                            {cp.renderHandle && (
+                              <div
+                                onMouseDown={grid.handleFillHandleMouseDown}
+                                onDoubleClick={grid.handleFillHandleDoubleClick}
+                                className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                              />
+                            )}
+                          </td>
+                        )
+                      })()}
 
-                      {/* 7. Nº Comprobante (Múltiples comprobantes agrupados) */}
-                      <td className="py-2.5 px-2 font-mono">
-                        <div className="space-y-0.5">
-                          {fcrNumber && (
-                            <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 truncate" title={`Factura: ${fcrNumber}`}>
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 shrink-0 font-sans">
-                                FCR
-                              </span>
-                              <span className="truncate">{fcrNumber}</span>
-                            </div>
-                          )}
-                          {prcNumber && (
-                            <div className="flex items-center gap-1 text-[11px] font-bold text-amber-300 truncate" title={`Presupuesto: ${prcNumber}`}>
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800 shrink-0 font-sans">
-                                PRC
-                              </span>
-                              <span className="truncate">{prcNumber}</span>
-                            </div>
-                          )}
-                          {remitoAloncar && (
-                            <div className="flex items-center gap-1 text-[10px] text-cyan-300 truncate" title={`Remito: #${remitoAloncar}`}>
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 shrink-0 font-sans">
-                                RMT
-                              </span>
-                              <span className="truncate">#{remitoAloncar}</span>
-                            </div>
-                          )}
-                          {supplierRemito && (
-                            <div className="flex items-center gap-1 text-[10px] text-purple-300 truncate" title={`Remito Taller: ${supplierRemito}`}>
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800 shrink-0 font-sans">
-                                RMO
-                              </span>
-                              <span className="truncate">{supplierRemito}</span>
-                            </div>
-                          )}
-                          {!hasAnyVoucherNumber && (
-                            <span className="text-slate-600 text-[11px] italic font-sans">S/N</span>
-                          )}
-                        </div>
-                      </td>
+                      {/* 7. Nº Comprobante (Editable con doble clic) */}
+                      {(() => {
+                        const cp = getSpreadsheetCellProps(index, 'voucher_number')
+                        return (
+                          <td
+                            {...cp.domProps}
+                            onDoubleClick={() => setInlineEdit({ id: srv.id, field: 'voucher_number', value: srv.voucher_number || '' })}
+                            className={`py-2.5 px-2 font-mono ${cp.className}`}
+                          >
+                            {inlineEdit.id === srv.id && inlineEdit.field === 'voucher_number' ? (
+                              <input
+                                type="text"
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveInlineEdit(srv.id, 'voucher_number', inlineEdit.value)
+                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                }}
+                                onBlur={() => saveInlineEdit(srv.id, 'voucher_number', inlineEdit.value)}
+                                className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white outline-none font-mono"
+                              />
+                            ) : (
+                              <div className="space-y-0.5">
+                                {fcrNumber && (
+                                  <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-300 truncate" title={`Factura: ${fcrNumber}`}>
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 shrink-0 font-sans">
+                                      FCR
+                                    </span>
+                                    <span className="truncate">{fcrNumber}</span>
+                                  </div>
+                                )}
+                                {prcNumber && (
+                                  <div className="flex items-center gap-1 text-[11px] font-bold text-amber-300 truncate" title={`Presupuesto: ${prcNumber}`}>
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800 shrink-0 font-sans">
+                                      PRC
+                                    </span>
+                                    <span className="truncate">{prcNumber}</span>
+                                  </div>
+                                )}
+                                {remitoAloncar && (
+                                  <div className="flex items-center gap-1 text-[10px] text-cyan-300 truncate" title={`Remito: #${remitoAloncar}`}>
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 shrink-0 font-sans">
+                                      RMT
+                                    </span>
+                                    <span className="truncate">#{remitoAloncar}</span>
+                                  </div>
+                                )}
+                                {supplierRemito && (
+                                  <div className="flex items-center gap-1 text-[10px] text-purple-300 truncate" title={`Remito Taller: ${supplierRemito}`}>
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800 shrink-0 font-sans">
+                                      RMO
+                                    </span>
+                                    <span className="truncate">{supplierRemito}</span>
+                                  </div>
+                                )}
+                                {!hasAnyVoucherNumber && (
+                                  <span className="text-slate-600 text-[11px] italic font-sans">S/N</span>
+                                )}
+                              </div>
+                            )}
+                            {cp.renderHandle && (
+                              <div
+                                onMouseDown={grid.handleFillHandleMouseDown}
+                                onDoubleClick={grid.handleFillHandleDoubleClick}
+                                className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                              />
+                            )}
+                          </td>
+                        )
+                      })()}
 
-                      {/* 8. Comentarios (Observaciones Directas y Específicas) */}
-                      <td className="py-2.5 px-2 font-sans overflow-hidden">
-                        <div className="space-y-0.5 truncate max-w-full">
-                          {srv.direct_observations ? (
-                            <p className="text-[11px] text-slate-300 line-clamp-2" title={srv.direct_observations}>
-                              {srv.direct_observations}
-                            </p>
-                          ) : (
-                            <span className="text-slate-600 text-[11px] italic">Sin observaciones</span>
-                          )}
-                          {srv.specific_observations && (
-                            <p className="text-[10px] text-slate-400 line-clamp-1 italic truncate" title={srv.specific_observations}>
-                              Nota: {srv.specific_observations}
-                            </p>
-                          )}
-                        </div>
-                      </td>
+                      {/* 8. Comentarios (Editable con doble clic) */}
+                      {(() => {
+                        const cp = getSpreadsheetCellProps(index, 'direct_observations')
+                        return (
+                          <td
+                            {...cp.domProps}
+                            onDoubleClick={() => setInlineEdit({ id: srv.id, field: 'direct_observations', value: srv.direct_observations || '' })}
+                            className={`py-2.5 px-2 font-sans overflow-hidden ${cp.className}`}
+                          >
+                            {inlineEdit.id === srv.id && inlineEdit.field === 'direct_observations' ? (
+                              <input
+                                type="text"
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveInlineEdit(srv.id, 'direct_observations', inlineEdit.value)
+                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                }}
+                                onBlur={() => saveInlineEdit(srv.id, 'direct_observations', inlineEdit.value)}
+                                className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white outline-none font-sans"
+                              />
+                            ) : (
+                              <div className="space-y-0.5 truncate max-w-full">
+                                {srv.direct_observations ? (
+                                  <p className="text-[11px] text-slate-300 line-clamp-2" title={srv.direct_observations}>
+                                    {srv.direct_observations}
+                                  </p>
+                                ) : (
+                                  <span className="text-slate-600 text-[11px] italic">Sin observaciones</span>
+                                )}
+                                {srv.specific_observations && (
+                                  <p className="text-[10px] text-slate-400 line-clamp-1 italic truncate" title={srv.specific_observations}>
+                                    Nota: {srv.specific_observations}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {cp.renderHandle && (
+                              <div
+                                onMouseDown={grid.handleFillHandleMouseDown}
+                                onDoubleClick={grid.handleFillHandleDoubleClick}
+                                className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                              />
+                            )}
+                          </td>
+                        )
+                      })()}
 
                       {/* 9. Acciones */}
                       <td className="py-2.5 px-2 text-right font-sans">
@@ -1636,6 +2137,32 @@ export default function Terceros() {
 
           {/* BARRA DE TOTALES Y ESTADÍSTICAS REACTIVA (TIPO EXCEL / GOOGLE SHEETS) */}
           <div className="bg-slate-950 border-t border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-inner shrink-0 z-20">
+            {/* Botones Deshacer / Rehacer estilo Hoja de Cálculo */}
+            <div className="flex items-center gap-1.5">
+              {grid?.canUndo && (
+                <button
+                  type="button"
+                  onClick={grid.undo}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
+                  title="Deshacer el último cambio (Ctrl + Z)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Deshacer (Ctrl+Z)</span>
+                </button>
+              )}
+              {grid?.canRedo && (
+                <button
+                  type="button"
+                  onClick={grid.redo}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
+                  title="Rehacer el cambio deshecho (Ctrl + Y)"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span>Rehacer (Ctrl+Y)</span>
+                </button>
+              )}
+            </div>
+
             {/* Indicador de modo (Selección manual vs Todo lo filtrado) */}
             <div className="flex items-center gap-3">
               {stats.isCustomSelection ? (
@@ -2673,6 +3200,59 @@ export default function Terceros() {
           </div>
         </div>
       )}
+
+{/* Modal enfocado de Buque / OT en Doble Clic */}
+      <ShipWorkOrderPickerModal
+        isOpen={pickerModal.isOpen}
+        onClose={() => setPickerModal({ isOpen: false, serviceId: null, shipId: '', workOrderId: '', contractorName: '' })}
+        ships={ships}
+        workOrders={workOrders}
+        currentShipId={pickerModal.shipId}
+        currentWorkOrderId={pickerModal.workOrderId}
+        contractorName={pickerModal.contractorName}
+        title="Asignar Buque y OT al Comprobante de Terceros"
+        onSave={async ({ shipId, workOrderId }) => {
+          const serviceId = pickerModal.serviceId
+          const target = services.find((s) => s.id === serviceId)
+          if (!target) return
+
+          if (grid?.pushUndoAction) {
+            grid.pushUndoAction({
+              colKey: 'ship_wo',
+              colLabel: 'Barco / OT',
+              actionLabel: 'Cambio de Buque y OT',
+              previousValues: { [serviceId]: { ship_id: target.ship_id, work_order_id: target.work_order_id } },
+              newValue: { ship_id: shipId, work_order_id: workOrderId },
+              timestamp: Date.now()
+            })
+          }
+
+          setServices((prev) =>
+            prev.map((s) => (s.id === serviceId ? { ...s, ship_id: shipId, work_order_id: workOrderId } : s))
+          )
+
+          try {
+            const { error } = await supabase
+              .from('third_party_services')
+              .update({
+                ship_id: shipId,
+                work_order_id: workOrderId,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', serviceId)
+            if (error) throw error
+            if (!workOrderId) {
+              showFeedback('success', 'Buque asignado. OT dejada en blanco (sumada a KPI Falta Cargar OT).')
+            } else {
+              showFeedback('success', 'Buque y OT asignados con éxito.')
+            }
+          } catch (err) {
+            console.error('Error guardando Buque y OT:', err)
+            showFeedback('error', 'Error al guardar Buque y OT: ' + err.message)
+            fetchData()
+          }
+        }}
+      />
     </div>
   )
 }

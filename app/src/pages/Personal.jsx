@@ -318,6 +318,40 @@ export default function Personal() {
     }
   }
 
+  // Helper para cargar y editar una tarifa
+  const handleLoadRateCard = (rc) => {
+    if (rc.year && rc.month && rc.quincena) {
+      setRateYear(rc.year)
+      setRateMonth(rc.month)
+      setRateQuincena(rc.quincena)
+    }
+    if (rc.admin_center === 'ASTILLERO') {
+      setRateAdminCenter('ASTILLERO')
+      if (rc.rate_oficial_ars) {
+        setAstilleroForm(prev => ({
+          ...prev,
+          [rc.entity_name]: {
+            ars: parseFloat(rc.rate_oficial_ars) || 0,
+            usd: parseFloat(rc.rate_oficial_usd) || 0
+          }
+        }))
+      }
+    } else {
+      setRateAdminCenter('CONTRATISTA')
+      handleSelectContractor(rc.entity_name)
+      setContractorOficialArs(parseFloat(rc.rate_oficial_ars) || 0)
+      setContractorOficialUsd(parseFloat(rc.rate_oficial_usd) || 0)
+      setContractorHasAyudante(rc.has_ayudante)
+      setContractorAyudanteArs(rc.rate_ayudante_ars ? parseFloat(rc.rate_ayudante_ars) : 0)
+      setContractorAyudanteUsd(rc.rate_ayudante_usd ? parseFloat(rc.rate_ayudante_usd) : 0)
+    }
+    setStatusMessage({
+      type: 'info',
+      text: `Editando valores de ${rc.entity_name} para la quincena ${rc.period}.`
+    })
+    window.scrollTo({ top: 120, behavior: 'smooth' })
+  }
+
   // Cargar tarifario de la quincena seleccionada o historial completo
   async function loadRateCards(periodToLoad, scope = rateTableScope) {
     try {
@@ -2743,7 +2777,12 @@ export default function Personal() {
                     </tr>
                   ) : (
                     filteredRateCards.map(rc => (
-                      <tr key={rc.id} className="hover:bg-slate-800/30 transition-colors">
+                      <tr 
+                        key={rc.id} 
+                        onDoubleClick={() => handleLoadRateCard(rc)}
+                        className="hover:bg-slate-800/30 transition-colors cursor-pointer select-none"
+                        title="Doble clic para editar esta tarifa"
+                      >
                         <td className="py-2 px-3">
                           <span className="font-mono text-xs font-bold text-slate-400">{rc.period}</span>
                         </td>
@@ -3200,7 +3239,9 @@ export default function Personal() {
                       return (
                         <tr 
                           key={w.id} 
-                          className={`hover:bg-slate-800/30 transition-colors ${!isActivo ? 'opacity-60 bg-rose-950/5' : ''}`}
+                          onDoubleClick={() => handleStartEdit(w)}
+                          className={`hover:bg-slate-800/30 transition-colors cursor-pointer select-none ${!isActivo ? 'opacity-60 bg-rose-950/5' : ''}`}
+                          title="Doble clic para editar colaborador"
                         >
                           {/* 1. Nombre y Apellido */}
                           <td className="py-2 px-3">

@@ -446,3 +446,28 @@ Responsable: Tú + Antigravity (colaborativo)
 
 Última actualización: 2026-10-29
 Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales
+
+
+### ✓ HECHO — 3.7 Interacción Estilo Google Sheets / Excel & Desacople OT Nullable (DEC-018)
+- **Desacople Operativo (Migración 0028):**
+  - Incorporada columna `ship_id` en `labor_logs` e `inventory_transactions`.
+  - Eliminada restricción `NOT NULL` en `work_order_id` en `labor_logs`, `third_party_services`, `purchase_orders` e `inventory_transactions`.
+  - Creados índices parciales `WHERE work_order_id IS NULL` para monitoreo de imputaciones huérfanas en tiempo real.
+- **Componente Modal Compacto `ShipWorkOrderPickerModal`:**
+  - Selector unificado en 1 solo modal para `Barco / OT` en doble clic de celda.
+  - Limpieza automática de OT al cambiar de barco y opción explícita de dejar OT en blanco sumando a KPI.
+- **Hook Universal `useSpreadsheetGrid`:**
+  - Soporte de `Ctrl+C`, `Ctrl+V`, `Ctrl+D` (Fill Down), `Ctrl+Z` (Undo con memoria de 50 pasos) y `Ctrl+Y` / `Ctrl+Shift+Z` (Redo).
+  - Navegación con teclado (Flechas), selección activa y tirador de arrastre (Fill Handle `■`) con doble clic de autorrelleno.
+- **Estandarización Visual de 4 Zonas:**
+  - Zona 1: Contexto / Rol con acento cian.
+  - Zona 2: Radar Operativo de Alertas en Vivo con colores semánticos (Ámbar, Rojo, Púrpura, Verde).
+  - Zona 3: Barra de Búsqueda con permanente `[Ctrl + F]` y atajos de teclado.
+  - Zona 4: Cuadrícula interactiva con cabecera congelada y barra flotante de totales con botones Deshacer/Rehacer.
+- **Módulos Actualizados y Verificados:**
+  - **Terceros (`Terceros.jsx`):** 4 KPIs Radar (Falta OT, Sin Costo $0, RPF, FCR) + celdas interactivas + picker modal.
+  - **Horas (`LaborLogs.jsx`):** 5 KPIs Radar (Falta OT, R, RR, Jornada Incompleta, Sin PRC) + imputación OT nullable + picker modal.
+  - **Compras (`Compras.jsx`):** KPI Agrupado Falta Cargar OT (Total + Obras / Stock) + doble clic buque/OT + picker modal.
+  - **Personal y Tarifas (`Personal.jsx`):** Edición rápida por doble clic en Padrón y Tarifario histórico.
+  - **Barcos y Obras (`Ships.jsx`):** Indicador visual en vivo de imputaciones huérfanas sin OT (`⚠️ X sin OT`).
+  - **Órdenes de Trabajo (`WorkOrders.jsx`):** Edición rápida por doble clic de trabajos en Planilla Unificada.

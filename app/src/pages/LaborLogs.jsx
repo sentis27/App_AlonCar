@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import {
   OFFICIAL_RUBROS_CATALOG,
   canonicalizeRubroLabel,
@@ -227,6 +228,16 @@ export default function LaborLogs() {
   const [selectedQuincenaWorker, setSelectedQuincenaWorker] = useState(null) // Para inspección y ajuste 1-clic
 
   // Estado para Edición / Carga Rápida In-situ
+  // Modal enfocado de Buque / OT en Doble Clic
+  const [shipPickerModal, setShipPickerModal] = useState({
+    isOpen: false,
+    logId: null,
+    rowIndex: null,
+    currentShipId: '',
+    currentWorkOrderId: '',
+    workerName: ''
+  })
+
   const [editingLog, setEditingLog] = useState(null)
   const [editingForm, setEditingForm] = useState(null)
   const [savingEdit, setSavingEdit] = useState(false)
@@ -287,7 +298,7 @@ export default function LaborLogs() {
         supabase.from('ships').select('*').order('name'),
         supabase.from('work_orders').select('*').order('ot_number'),
         supabase.from('work_items').select('*').order('created_at', { ascending: true }),
-        supabase.from('labor_logs').select('*, work_orders(title, ot_number, ship_id, ships(name))').order('date_logged', { ascending: false }).limit(200),
+        supabase.from('labor_logs').select('*, ships(name), work_orders(title, ot_number, ship_id, ships(name))').order('date_logged', { ascending: false }).limit(300),
         supabase.from('workers').select('*').order('name')
       ])
 
@@ -843,11 +854,12 @@ export default function LaborLogs() {
     e.preventDefault()
     setStatusMessage(null)
 
-    const rowsMissingWo = operariosRows.filter(r => !(r.work_order_id || selectedWorkOrderId))
-    if (rowsMissingWo.length > 0) {
+    // Regla de Negocio: La OT puede dejarse en blanco (work_order_id = null), pero debe tener al menos un Buque de destino
+    const rowsMissingShip = operariosRows.filter(r => !(r.ship_id || selectedShipId || (r.work_order_id && woByIdMap[r.work_order_id]?.ship_id)))
+    if (rowsMissingShip.length > 0) {
       setStatusMessage({
         type: 'error',
-        text: `Hay ${rowsMissingWo.length} fila(s) sin Orden de Trabajo asignada. Seleccioná una OT habilitada o usá el botón "+ Crear Barco/OT" en la fila correspondiente.`
+        text: `Hay ${rowsMissingShip.length} fila(s) sin Buque de destino asignado. Debe seleccionar al menos un Buque (la OT puede dejarse en blanco).`
       })
       return
     }
@@ -869,11 +881,14 @@ export default function LaborLogs() {
         const h100 = parseFloat(row.hours_extra_100) || 0
         const hTotal = hNorm + h50 + h100
 
-        const targetWoId = row.work_order_id || selectedWorkOrderId
+        const targetWoId = row.work_order_id || selectedWorkOrderId || null
+        const targetShipId = row.ship_id || selectedShipId || (targetWoId ? woByIdMap[targetWoId]?.ship_id : null) || null
         const targetItemId = row.work_item_id || currentWorkItem?.id || null
-        const hasUnresolvedAlert = Boolean(row.needs_review)
+        const isMissingWo = !targetWoId
+        const hasUnresolvedAlert = Boolean(row.needs_review) || isMissingWo
 
         return {
+          ship_id: targetShipId,
           work_order_id: targetWoId,
           work_item_id: targetItemId,
           hours_worked: hTotal,
@@ -887,8 +902,8 @@ export default function LaborLogs() {
           work_type: workType,
           cost_center: 'CLIENTE',
           notes: row.notes || null,
-          approval_status: hasUnresolvedAlert ? 'R' : 'Aprobado',
-          review_reason: hasUnresolvedAlert ? (row.review_warnings || []).join(' | ') : null
+          approval_status: isMissingWo ? 'R' : (hasUnresolvedAlert ? 'R' : 'Aprobado'),
+          review_reason: isMissingWo ? 'Falta Cargar OT (Pendiente de apertura)' : (hasUnresolvedAlert ? (row.review_warnings || []).join(' | ') : null)
         }
       })
 
@@ -1332,6 +1347,8 @@ export default function LaborLogs() {
     if (dailyFilterType === 'completa') return item.status === 'completa' || item.status === 'extras'
     if (dailyFilterType === 'revision_R') return item.logs.some(l => l.approval_status === 'R')
     if (dailyFilterType === 'corregidas_RR') return item.logs.some(l => l.approval_status === 'RR')
+    if (dailyFilterType === 'sin_ot') return item.logs.some(l => !l.work_order_id)
+    if (dailyFilterType === 'sin_prc') return item.logs.some(l => (l.cost_center === 'PRESUPUESTO' || l.work_type === 'PRESUPUESTO') && !l.prc_number)
     return true
   })
 
@@ -2390,10 +2407,10 @@ export default function LaborLogs() {
                                   className={`w-full bg-slate-900 border rounded-lg px-1.5 py-1.5 text-[11px] font-semibold focus:outline-none ${
                                     row.work_order_id || selectedWorkOrderId
                                       ? 'border-emerald-500/40 text-emerald-200'
-                                      : 'border-rose-500/60 text-rose-300'
+                                      : 'border-amber-500/60 text-amber-300 bg-amber-950/20'
                                   }`}
                                 >
-                                  <option value="">-- Elegir OT --</option>
+                                  <option value="">-- ⚠️ Dejar OT en blanco (Pendiente) --</option>
                                   {rowEnabledWorkOrders.map(wo => (
                                     <option key={wo.id} value={wo.id} className="bg-slate-900 text-white">
                                       {wo.ot_number ? `${wo.ot_number}: ` : ''}{wo.title}
@@ -2756,76 +2773,175 @@ export default function LaborLogs() {
               </button>
             </div>
 
-            {/* KPIs Rápidos y Botones de Revisión Separados */}
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {/* Botón 1 (Rojo): HORAS QUE REQUIEREN REVISIÓN (Alerta Operario) */}
+                      </div>
+
+          {/* ZONA 2: RADAR OPERATIVO & ALERTAS EN VIVO (TAB-002 ALERTAS - ESTANDARIZADO) */}
+          <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-cyan-400">📊 RADAR OPERATIVO & ALERTAS EN VIVO</span>
+                <span className="text-[10px] text-slate-500 font-mono">Control Diario de Inconsistencias (GS-001)</span>
+              </div>
+              {dailyFilterType !== 'todos' && (
+                <button
+                  type="button"
+                  onClick={() => setDailyFilterType('todos')}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Ver toda la nómina</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {/* Alerta 1: Falta Cargar OT (Ámbar) */}
               <button
                 type="button"
-                onClick={() => {
-                  setReviewModalFilter('R')
-                  setShowReviewModal(true)
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer shadow-sm ${
-                  countR > 0
-                    ? 'bg-rose-950/90 hover:bg-rose-900 text-rose-200 border-rose-500 shadow-rose-900/40'
-                    : 'bg-slate-950 hover:bg-slate-800 text-slate-400 border-slate-800'
+                onClick={() => setDailyFilterType(dailyFilterType === 'sin_ot' ? 'todos' : 'sin_ot')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  dailyFilterType === 'sin_ot'
+                    ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20 ring-2 ring-amber-400'
+                    : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40 hover:bg-slate-850'
                 }`}
-                title="Horas observadas por el supervisor que el operario debe corregir (Alerta Operario)"
               >
-                <span className={`px-1.5 py-0.5 rounded-md text-xs font-mono font-extrabold ${
-                  countR > 0 ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-800 text-slate-400'
-                }`}>
-                  {countR}
-                </span>
-                <span className="underline decoration-rose-500 underline-offset-4 tracking-wide font-extrabold text-[11px]">
-                  REQUIEREN REVISIÓN (R)
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-400" />
+                    Falta Cargar OT
+                  </span>
+                  {auditDateSinOtCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                      Hoy: {auditDateSinOtCount}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-2xl font-black text-amber-300 font-mono">{countSinOt}</span>
+                  <span className="text-xs text-slate-400">imputaciones sin OT</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {dailyFilterType === 'sin_ot' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar sin OT'}
+                </p>
               </button>
 
-              {/* Botón 2 (Amarillo): HORAS CORREGIDAS (Alerta Supervisor) */}
+              {/* Alerta 2: Requiere Revisión R (Rojo / Rose) */}
               <button
                 type="button"
-                onClick={() => {
-                  setReviewModalFilter('RR')
-                  setShowReviewModal(true)
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer shadow-sm ${
-                  countRR > 0
-                    ? 'bg-amber-950/90 hover:bg-amber-900 text-amber-200 border-amber-500 shadow-amber-900/40'
-                    : 'bg-slate-950 hover:bg-slate-800 text-slate-400 border-slate-800'
+                onClick={() => setDailyFilterType(dailyFilterType === 'revision_R' ? 'todos' : 'revision_R')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  dailyFilterType === 'revision_R'
+                    ? 'bg-rose-950/80 border-rose-400 shadow-lg shadow-rose-500/20 ring-2 ring-rose-400'
+                    : 'bg-slate-900/80 border-slate-800 hover:border-rose-500/40 hover:bg-slate-850'
                 }`}
-                title="Horas corregidas por el operario esperando visto bueno final del supervisor (Alerta Supervisor)"
               >
-                <span className={`px-1.5 py-0.5 rounded-md text-xs font-mono font-extrabold ${
-                  countRR > 0 ? 'bg-amber-500 text-slate-950 font-black animate-pulse' : 'bg-slate-800 text-slate-400'
-                }`}>
-                  {countRR}
-                </span>
-                <span className="underline decoration-amber-500 underline-offset-4 tracking-wide font-extrabold text-[11px]">
-                  HORAS CORREGIDAS (RR)
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-400" />
+                    Requiere Revisión (R)
+                  </span>
+                  {auditDateRCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-400/20 text-rose-300 font-bold border border-rose-400/30">
+                      Hoy: {auditDateRCount}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-2xl font-black text-rose-300 font-mono">{countR}</span>
+                  <span className="text-xs text-slate-400">alertas para operario</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {dailyFilterType === 'revision_R' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar estado R'}
+                </p>
               </button>
 
-              <div className="bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800">
-                <span className="text-slate-400">Nómina Astillero: </span>
-                <strong className="text-white font-mono">{totalAstillero}</strong>
-              </div>
-              <div className="bg-emerald-950/60 border border-emerald-800/40 px-3.5 py-2 rounded-xl text-emerald-300">
-                <span>Completas (9h / 8h Feriado): </span>
-                <strong className="font-mono">{completasAstillero}</strong>
-              </div>
-              <div className="bg-amber-950/60 border border-amber-800/40 px-3.5 py-2 rounded-xl text-amber-300">
-                <span>Incompletas: </span>
-                <strong className="font-mono">{incompletasAstillero}</strong>
-              </div>
-              <div className="bg-rose-950/60 border border-rose-800/40 px-3.5 py-2 rounded-xl text-rose-300">
-                <span>Sin Carga: </span>
-                <strong className="font-mono">{sinCargaAstillero}</strong>
-              </div>
-              <div className="bg-purple-950/60 border border-purple-800/40 px-3.5 py-2 rounded-xl text-purple-300">
-                <span>Talleres / Terceros: </span>
-                <strong className="font-mono">{totalTalleresActivos + totalContratistasActivos}</strong>
-              </div>
+              {/* Alerta 3: Horas Corregidas RR (Amarillo) */}
+              <button
+                type="button"
+                onClick={() => setDailyFilterType(dailyFilterType === 'corregidas_RR' ? 'todos' : 'corregidas_RR')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  dailyFilterType === 'corregidas_RR'
+                    ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20 ring-2 ring-amber-400'
+                    : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40 hover:bg-slate-850'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-amber-300" />
+                    Horas Corregidas (RR)
+                  </span>
+                  {auditDateRRCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                      Hoy: {auditDateRRCount}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-2xl font-black text-amber-300 font-mono">{countRR}</span>
+                  <span className="text-xs text-slate-400">pendiente visto bueno</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {dailyFilterType === 'corregidas_RR' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar estado RR'}
+                </p>
+              </button>
+
+              {/* Alerta 4: Jornada Incompleta (Naranja) */}
+              <button
+                type="button"
+                onClick={() => setDailyFilterType(dailyFilterType === 'incompleta' ? 'todos' : 'incompleta')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  dailyFilterType === 'incompleta'
+                    ? 'bg-orange-950/80 border-orange-400 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400'
+                    : 'bg-slate-900/80 border-slate-800 hover:border-orange-500/40 hover:bg-slate-850'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-orange-400" />
+                    Jornada Incompleta
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-400/20 text-orange-300 font-bold border border-orange-400/30">
+                    &lt;9hs
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-2xl font-black text-orange-300 font-mono">{incompletasAstillero}</span>
+                  <span className="text-xs text-slate-400">operarios astillero hoy</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {dailyFilterType === 'incompleta' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar incompletas'}
+                </p>
+              </button>
+
+              {/* Alerta 5: Sin PRC (Púrpura) */}
+              <button
+                type="button"
+                onClick={() => setDailyFilterType(dailyFilterType === 'sin_prc' ? 'todos' : 'sin_prc')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  dailyFilterType === 'sin_prc'
+                    ? 'bg-purple-950/80 border-purple-400 shadow-lg shadow-purple-500/20 ring-2 ring-purple-400'
+                    : 'bg-slate-900/80 border-slate-800 hover:border-purple-500/40 hover:bg-slate-850'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-purple-400" />
+                    Sin PRC Vinculado
+                  </span>
+                  {auditDateSinPrcCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-400/20 text-purple-300 font-bold border border-purple-400/30">
+                      Hoy: {auditDateSinPrcCount}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-2xl font-black text-purple-300 font-mono">{countSinPrc}</span>
+                  <span className="text-xs text-slate-400">presupuesto sin PRC</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {dailyFilterType === 'sin_prc' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar sin PRC'}
+                </p>
+              </button>
             </div>
           </div>
 
@@ -3138,23 +3254,50 @@ export default function LaborLogs() {
                             </span>
                           </td>
 
-                          {/* Imputación OT */}
-                          <td className="py-2.5 px-3 align-top">
+                          {/* Imputación OT (Doble clic abre ShipWorkOrderPickerModal) */}
+                          <td className="py-2.5 px-3 align-top font-sans">
                             {item.logs.length === 0 ? (
                               <span className="text-slate-500 italic text-[11px]">Sin imputación</span>
                             ) : (
                               <div className="space-y-2 py-0.5">
-                                {item.logs.map(l => (
-                                  <div key={l.id} className="h-6 flex items-center text-[11px] truncate max-w-[220px]" title={`${l.work_orders?.ships?.name}: ${l.work_orders?.title} (${l.hours_worked || l.hours_normal || 0} hs)`}>
-                                    <strong className="text-white mr-1">{l.work_orders?.ships?.name}:</strong>
-                                    <span className="text-slate-300 truncate">{l.work_orders?.title}</span>
-                                    {item.logs.length > 1 && (
-                                      <span className="ml-1 text-[10px] text-cyan-400 font-mono font-bold shrink-0">
-                                        ({l.hours_worked || l.hours_normal || 0}h)
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
+                                {item.logs.map(l => {
+                                  const shipName = cleanShipName(l.ships?.name || l.work_orders?.ships?.name || '') || 'Sin Buque'
+                                  const ot = l.work_orders
+
+                                  return (
+                                    <div 
+                                      key={l.id} 
+                                      onDoubleClick={() => {
+                                        setShipPickerModal({
+                                          isOpen: true,
+                                          logId: l.id,
+                                          rowIndex: null,
+                                          currentShipId: l.ship_id || l.work_orders?.ship_id || '',
+                                          currentWorkOrderId: l.work_order_id || '',
+                                          workerName: `${item.worker.name} (${l.rubro || 'General'})`
+                                        })
+                                      }}
+                                      className="h-6 flex items-center text-[11px] truncate max-w-[260px] cursor-pointer hover:bg-cyan-950/40 px-1 rounded transition-colors group" 
+                                      title={`Doble clic para cambiar Buque u OT: ${shipName} - ${ot?.title || 'Sin OT'}`}
+                                    >
+                                      <Ship className="w-3 h-3 text-cyan-400 mr-1 shrink-0" />
+                                      <strong className="text-white mr-1 truncate">{shipName}:</strong>
+                                      {ot ? (
+                                        <span className="text-cyan-300 font-mono font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50 mr-1 shrink-0">
+                                          {ot.ot_number}
+                                        </span>
+                                      ) : (
+                                        <span className="text-amber-400 font-bold text-[10px] mr-1 shrink-0">⚠️ Sin OT</span>
+                                      )}
+                                      <span className="text-slate-300 truncate text-[10px]">{ot?.title || '(Doble clic para asignar)'}</span>
+                                      {item.logs.length > 1 && (
+                                        <span className="ml-1 text-[10px] text-cyan-400 font-mono font-bold shrink-0">
+                                          ({l.hours_worked || l.hours_normal || 0}h)
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
                               </div>
                             )}
                           </td>
@@ -4791,6 +4934,51 @@ export default function LaborLogs() {
           <option key={r} value={r} />
         ))}
       </datalist>
+      {/* Modal enfocado de Buque y OT con Doble Clic */}
+      <ShipWorkOrderPickerModal
+        isOpen={shipPickerModal.isOpen}
+        onClose={() => setShipPickerModal({ isOpen: false, logId: null, rowIndex: null, currentShipId: '', currentWorkOrderId: '', workerName: '' })}
+        ships={ships}
+        workOrders={workOrders}
+        workItems={workItems}
+        currentShipId={shipPickerModal.currentShipId}
+        currentWorkOrderId={shipPickerModal.currentWorkOrderId}
+        workerName={shipPickerModal.workerName}
+        title="Asignar Buque y Orden de Trabajo (Horas)"
+        onSave={async ({ shipId, workOrderId }) => {
+          if (shipPickerModal.logId) {
+            const updatePayload = {
+              ship_id: shipId,
+              work_order_id: workOrderId, // can be null!
+              updated_at: new Date().toISOString()
+            }
+            if (!workOrderId) {
+              updatePayload.approval_status = 'R'
+              updatePayload.review_reason = 'Falta Cargar OT (Pendiente de apertura)'
+            }
+            const { error } = await supabase
+              .from('labor_logs')
+              .update(updatePayload)
+              .eq('id', shipPickerModal.logId)
+            if (error) throw error
+            setStatusMessage({
+              type: 'success',
+              text: workOrderId
+                ? 'Buque y OT asignados exitosamente.'
+                : 'Buque asignado. OT dejada en blanco (sumada a KPI Falta Cargar OT).'
+            })
+            loadInitialData()
+          } else if (shipPickerModal.rowIndex !== null) {
+            setOperariosRows(prev =>
+              prev.map((r, i) =>
+                i === shipPickerModal.rowIndex
+                  ? { ...r, ship_id: shipId, work_order_id: workOrderId || '' }
+                  : r
+              )
+            )
+          }
+        }}
+      />
     </div>
   )
 }

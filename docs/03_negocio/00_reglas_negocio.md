@@ -492,3 +492,42 @@ Durante la implementación y prueba real en **Carga de Horas** con el buque `NON
 - **Dashboard del Pañolero ("DETALLE DE TUBOS CONTRATISTAS" Digital):**
   - **KPIs Superiores de Reposición por Proveedor:** Muestra en tiempo real los tubos vacíos acumulados por cada proveedor activo en Compras (ej: `Air Liquide: 10 vacíos`, `Praxair Linde: 4 vacíos`, `Ferremat: 2 vacíos`) con botón de acción directa `[ Generar Pedido de Reposición (N) ]`.
   - **Matriz de Saldos por Contratista (Tipo Sheets con Sticky Headers):** Rejilla con inmovilización vertical de encabezados (`sticky top-0 z-20 bg-slate-950`) que desglosa por fila a cada contratista y por columna a cada gas, con acceso a su bitácora histórica de retiros y devoluciones en 1 clic.
+
+
+---
+
+## 9. Modelo de Interacción Tipo Hoja de Cálculo (Google Sheets / Excel) y Desacople de OT Nullable (DEC-018)
+
+### 9.1. Desacople Operativo de Buque y Orden de Trabajo (OT Nullable)
+- **Regla Fundamental:** En todas las planillas del sistema (Horas, Terceros, Compras, Pañol), una fila puede guardarse con Buque asignado y Orden de Trabajo en blanco (`work_order_id = NULL`).
+- **Motivo de Negocio:** En la dinámica diaria del astillero, con frecuencia la carga operativa de horas, servicios de terceros o compras de emergencia ocurre antes de que la OT formal haya sido abierta por el Jefe de Obra o el Administrador.
+- **Efecto de la OT Vacía:** No constituye un error de validación que impida guardar el registro. El sistema imputa el costo/horas al buque inmediatamente y suma `+1` al contador del **KPI "⚠️ Falta Cargar OT"**, alertando al Administrador y al Jefe de Obra para regularizar la asignación.
+- **Limpieza Automática al Cambiar Buque:** Si el usuario modifica el Buque en una fila existente, la OT asignada previamente se elimina automáticamente (`work_order_id = NULL`), sumando al KPI de falta de OT para evitar imputaciones cruzadas entre barcos distintos.
+- **Base de Datos (Migración 0028):**
+  - Columna `ship_id UUID REFERENCES public.ships(id) ON DELETE SET NULL` incorporada en `labor_logs` e `inventory_transactions`.
+  - Eliminada restricción `NOT NULL` de `work_order_id` en `labor_logs`, `third_party_services`, `purchase_orders` e `inventory_transactions`.
+  - Índices parciales de alta velocidad `WHERE work_order_id IS NULL` creados en las 4 tablas operativas.
+
+### 9.2. Celda Unificada "Barco / OT" y Modal Compacto `ShipWorkOrderPickerModal`
+- **Visualización:** Se preserva una única columna compacta `Barco / OT` en las tablas (nombre del Buque en negrita arriba, número y título de OT o badge `⚠️ Sin OT` abajo), evitando duplicar columnas innecesarias.
+- **Interacción por Doble Clic:** Al hacer doble clic en la celda `Barco / OT`, se abre la ventana emergente modal `ShipWorkOrderPickerModal`, permitiendo:
+  1. Búsqueda rápida y selección del Buque de destino.
+  2. Selección de la OT activa en cascada para ese buque.
+  3. Casilla explícita `[x] Dejar OT en blanco (Pendiente de apertura o asignación)` para confirmar la imputación inmediata al buque sin OT.
+
+### 9.3. Estandarización de las 4 Zonas Visuales de Interfaz
+En base al diseño de jerarquía operativa, todos los módulos unifican su disposición en 4 zonas coherentes:
+- **Zona 1 (Contexto de Terminal y Rol):** Cabecera del módulo con barra lateral cian (`border-l-4 border-l-cyan-500 bg-slate-900/60`).
+- **Zona 2 (Radar Operativo & Alertas en Vivo):** Contenedor centralizado (`bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4`) con semaforización funcional universal:
+  - 🟡 **Ámbar:** Inconsistencias o faltantes (ej. *Falta Cargar OT*, *Horas Corregidas RR*).
+  - 🔴 **Rojo / Rose:** Alertas críticas que requieren intervención (ej. *Requiere Revisión R*, *Líneas Sin Costo $0*).
+  - 🟣 **Púrpura:** Procesos en reclamo / gestión intermedia (ej. *RPF Pdte. Factura*, *Sin PRC Vinculado*).
+  - 🟢 **Verde / Esmeralda:** Estados cerrados o definitivos (ej. *FCR Facturado*, *Jornada Completa*).
+- **Zona 3 (Barra de Búsqueda y Herramientas):** Barra de filtros con badge permanente `[Ctrl + F]`, atajos de teclado y selector de vistas.
+- **Zona 4 (Cuadrícula de Datos Interactiva y Barra Flotante de Totales):**
+  - Encabezados inmovilizados (`sticky top-0 z-20 bg-slate-950`).
+  - Navegación con teclado (Flechas arriba/abajo/izq/der).
+  - Selección de celda activa (`ring-2 ring-cyan-400 bg-cyan-950/40 z-20`).
+  - Tirador de arrastre (Fill Handle `■`) en esquina inferior derecha para autorrelleno hacia abajo.
+  - Comandos rápidos de portapapeles: `Ctrl+C` (Copiar celda/rango), `Ctrl+V` (Pegar), `Ctrl+D` (Rellenar hacia abajo el valor de la celda activa).
+  - Memoria de auditoría reversible: `Ctrl+Z` (Deshacer con memoria de hasta 50 pasos) y `Ctrl+Y` / `Ctrl+Shift+Z` (Rehacer).

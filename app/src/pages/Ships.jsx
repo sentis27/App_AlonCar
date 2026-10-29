@@ -117,6 +117,9 @@ export default function Ships() {
   const [contacts, setContacts] = useState([])
   const [workOrders, setWorkOrders] = useState([])
   const [workItems, setWorkItems] = useState([])
+  const [orphanLabor, setOrphanLabor] = useState([])
+  const [orphanTerceros, setOrphanTerceros] = useState([])
+  const [orphanCompras, setOrphanCompras] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
   const [uploadingDoc, setUploadingDoc] = useState(false)
@@ -157,14 +160,21 @@ export default function Ships() {
   const loadInitialData = async () => {
     try {
       setLoading(true)
-      const [shipsRes, ownersRes, staysRes, contactsRes, wosRes, itemsRes] = await Promise.all([
+      const [shipsRes, ownersRes, staysRes, contactsRes, wosRes, itemsRes, oLabRes, oTercRes, oCompRes] = await Promise.all([
         supabase.from('ships').select('*, owners(*)').order('name', { ascending: true }),
         supabase.from('owners').select('*').order('name', { ascending: true }),
         supabase.from('ship_stays').select('*, ships(id, name)').order('start_date', { ascending: false }),
         supabase.from('contacts').select('*, owners(id, name), ships(id, name)').order('name', { ascending: true }),
         supabase.from('work_orders').select('id, ship_id, ot_number, title, status, description, created_at').order('created_at', { ascending: false }),
-        supabase.from('work_items').select('id, work_order_id, status, description, contractors, work_type').order('created_at', { ascending: true })
+        supabase.from('work_items').select('id, work_order_id, status, description, contractors, work_type').order('created_at', { ascending: true }),
+        supabase.from('labor_logs').select('id, ship_id').is('work_order_id', null),
+        supabase.from('third_party_services').select('id, ship_id').is('work_order_id', null),
+        supabase.from('purchase_orders').select('id, ship_id').is('work_order_id', null)
       ])
+
+      if (oLabRes.data) setOrphanLabor(oLabRes.data)
+      if (oTercRes.data) setOrphanTerceros(oTercRes.data)
+      if (oCompRes.data) setOrphanCompras(oCompRes.data)
 
       if (shipsRes.data) setShips(shipsRes.data)
       if (ownersRes.data) setOwners(ownersRes.data)
@@ -205,15 +215,24 @@ export default function Ships() {
         return isNotClosed && (hasExecutionItem || isWoActiveStatus)
       })
 
+      const oLab = orphanLabor.filter(l => l.ship_id === ship.id).length
+      const oTerc = orphanTerceros.filter(t => t.ship_id === ship.id).length
+      const oComp = orphanCompras.filter(c => c.ship_id === ship.id).length
+      const orphanTotal = oLab + oTerc + oComp
+
       map[ship.id] = {
         total: shipWos.length,
         active: activeWos.length,
+        orphanTotal,
+        orphanLabor: oLab,
+        orphanTerceros: oTerc,
+        orphanCompras: oComp,
         shipWos,
         activeWos
       }
     })
     return map
-  }, [ships, workOrders, workItems])
+  }, [ships, workOrders, workItems, orphanLabor, orphanTerceros, orphanCompras])
 
   // Barcos huérfanos con alerta activa
   const orphanShips = useMemo(() => {
@@ -1418,6 +1437,15 @@ export default function Ships() {
                                 ) : (
                                   <span className="text-slate-500 font-mono text-[11px]">
                                     0 en ejecución
+                                  </span>
+                                )}
+                                {otMetrics.orphanTotal > 0 && (
+                                  <span 
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-950/90 text-amber-300 border border-amber-600/80 font-bold text-[10px] font-mono shadow-sm"
+                                    title={`Este buque tiene ${otMetrics.orphanTotal} imputaciones sin OT asignada (${otMetrics.orphanLabor} hs, ${otMetrics.orphanTerceros} terceros, ${otMetrics.orphanCompras} compras).`}
+                                  >
+                                    <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                                    <span>⚠️ {otMetrics.orphanTotal} sin OT</span>
                                   </span>
                                 )}
                               </div>
