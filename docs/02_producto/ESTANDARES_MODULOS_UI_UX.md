@@ -67,7 +67,7 @@ Para maximizar el espacio útil de la pantalla y permitir al usuario encontrar d
 ## 4. Comportamiento Universal de Fechas (Regla del Calendario)
 - **Cero ingresos de fecha manuales a ciegas:**
   - En cualquier módulo, pantalla, subsección, formulario o celda de tabla donde se cargue o modifique una fecha, **debe abrirse automáticamente un calendario interactivo**.
-- **En grillas:** El doble clic (o presionar `Enter`/`F2` sobre la celda activa) activa un `<input type="date" autoFocus />` que despliega el selector de calendario nativo.
+- **En grillas (tabla principal):** El doble clic (o presionar `Enter`/`F2` sobre la celda activa) activa un `<input type="date" autoFocus />` e invoca inmediatamente `el.showPicker()` en el callback `ref` al montarse para desplegar el calendario visual nativo sin requerir un clic extra.
 - Al confirmar la fecha (`Enter` o pérdida de foco), se valida el formato `YYYY-MM-DD`, se actualiza en base de datos y se añade a la pila de deshacer (`Ctrl+Z`).
 
 ---
@@ -105,3 +105,12 @@ Todo módulo con grilla de datos debe instanciar el hook `useSpreadsheetGrid`:
 - En columnas de Buque y Orden de Trabajo, la edición abre el selector en 2 pasos:
   1. Filtro y selección de Buque.
   2. Selección de Orden de Trabajo (OT) con soporte para dejar la **OT en blanco** (`work_order_id: null`) o imputar a `🏢 ASTILLERO — PAÑOL / STOCK GENERAL`.
+
+---
+
+## 7. Regla de Ancho de Pantalla (Cero Desborde Horizontal / Fit-to-Viewport)
+- **PROHIBIDO generar scroll horizontal en la ventana ni en la tabla principal** en pantallas de escritorio estándar (1366px – 1920px).
+- Toda tabla debe ajustarse al 100% del contenedor disponible (`w-full table-fixed` o paddings compactos `px-1.5 py-1.5`), empleando:
+  - **Códigos cortos en selectores y estados:** Mostrar únicamente el código operativo corto en la celda (ej. `PEDIR`, `COTIZAR`, `RECIB.COMP.DIRECT`) y trasladar las explicaciones entre paréntesis al atributo `title` (leyenda emergente al acercar el mouse).
+  - **Indicadores icónicos compactos:** Acciones de auditoría ocasional (como `Conciliado`) deben representarse con indicadores mínimos (ej. círculo violeta `🟣` de 16px con detalle al hacer clic/hover) en lugar de botones anchos con texto.
+  - **Truncado inteligente (`truncate` + `title`):** Columnas de texto variable (Material, Buque/OT, Proveedor, Solicita) deben usar `truncate` con `max-w` controlado y mostrar el texto completo en `title` al pasar el cursor.

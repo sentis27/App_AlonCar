@@ -54,30 +54,30 @@ import {
   UserCheck,
   AlertCircle,
   Upload,
-  Save
+  Save,
+  Navigation
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 
-// Estados válidos según GS-006 (Colores de texto puros sin teñir fondo completo)
+// Estados válidos según GS-006 (Ordenados según especificación operativa, texto corto visible y leyenda en tooltip)
 const STATUS_OPTIONS = [
-  { value: 'TODOS', label: 'Todos los Estados', textColor: 'text-slate-300' },
-  { value: 'PEDIR', label: 'PEDIR (Por Emitir)', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40', textColor: 'text-amber-400' },
-  { value: 'SOLICITUD', label: 'SOLICITUD (Pedido Inicial)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', textColor: 'text-yellow-400' },
-  { value: 'PEDIDO', label: 'PEDIDO (Emitido a Prov.)', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40', textColor: 'text-blue-400' },
-  { value: 'COTIZACION', label: 'COTIZACION (En Evaluación)', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40', textColor: 'text-purple-400' },
-  { value: 'COTIZAR', label: 'COTIZAR (A Pedir Precio)', color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40', textColor: 'text-indigo-400' },
-  { value: 'COTIZA.SOLICITUD', label: 'COTIZA.SOLICITUD (Esperando)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', textColor: 'text-yellow-300' },
-  { value: 'COTIZA.APROBADA', label: 'COTIZA.APROBADA (Aprobada)', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', textColor: 'text-emerald-400' },
-  { value: 'COTIZA.RECHAZADA', label: 'COTIZA.RECHAZADA (Rechazada)', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', textColor: 'text-rose-400' },
-  { value: 'RECIBIDO', label: 'RECIBIDO (Ingresó a Pañol)', color: 'bg-emerald-500/30 text-emerald-200 border-emerald-400/50', textColor: 'text-emerald-400' },
-  { value: 'RECIB.COMP.DIRECT', label: 'RECIB.COMP.DIRECT (Imputado a Buque)', color: 'bg-cyan-500/30 text-cyan-200 border-cyan-400/50', textColor: 'text-cyan-400' },
-  { value: 'RECIBIDO 2', label: 'RECIBIDO 2 (Material de Cliente)', color: 'bg-slate-500/20 text-slate-300 border-slate-500/40', textColor: 'text-slate-300' },
-  { value: 'PEDIDO INCOMPLETO', label: 'PEDIDO INCOMPLETO (Parcial)', color: 'bg-orange-500/20 text-orange-300 border-orange-500/40', textColor: 'text-orange-400' },
-  { value: 'SE COMPRA?', label: 'SE COMPRA? (Duda)', color: 'bg-pink-500/20 text-pink-300 border-pink-500/40', textColor: 'text-pink-400' },
-  { value: 'CANCELADOS', label: 'CANCELADOS', color: 'bg-red-500/20 text-red-400 border-red-500/40', textColor: 'text-rose-500' },
-  { value: 'NO VENDEN', label: 'NO VENDEN', color: 'bg-slate-700/50 text-slate-400 border-slate-600', textColor: 'text-slate-500' }
+  { value: 'TODOS', label: 'Todos los Estados', tooltip: 'Mostrar todos los estados', textColor: 'text-slate-300' },
+  { value: 'PEDIR', label: 'PEDIR', tooltip: 'Por Emitir', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40', textColor: 'text-amber-400' },
+  { value: 'PEDIDO', label: 'PEDIDO', tooltip: 'Emitido a Prov.', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40', textColor: 'text-blue-400' },
+  { value: 'COTIZAR', label: 'COTIZAR', tooltip: 'A Pedir Precio', color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40', textColor: 'text-indigo-400' },
+  { value: 'COTIZA.SOLICITUD', label: 'COTIZA.SOLICITUD', tooltip: 'Esperando', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', textColor: 'text-yellow-300' },
+  { value: 'COTIZACION', label: 'COTIZACION', tooltip: 'En Evaluación', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40', textColor: 'text-purple-400' },
+  { value: 'COTIZA.APROBADA', label: 'COTIZA.APROBADA', tooltip: 'Aprobada', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', textColor: 'text-emerald-400' },
+  { value: 'COTIZA.RECHAZADA', label: 'COTIZA.RECHAZADA', tooltip: 'Rechazada', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', textColor: 'text-rose-400' },
+  { value: 'RECIBIDO', label: 'RECIBIDO', tooltip: 'Ingresó a Pañol', color: 'bg-emerald-500/30 text-emerald-200 border-emerald-400/50', textColor: 'text-emerald-400' },
+  { value: 'RECIB.COMP.DIRECT', label: 'RECIB.COMP.DIRECT', tooltip: 'Imputado a Buque', color: 'bg-cyan-500/30 text-cyan-200 border-cyan-400/50', textColor: 'text-cyan-400' },
+  { value: 'RECIBIDO 2', label: 'RECIBIDO 2', tooltip: 'Material de Cliente', color: 'bg-slate-500/20 text-slate-300 border-slate-500/40', textColor: 'text-slate-300' },
+  { value: 'PEDIDO INCOMPLETO', label: 'PEDIDO INCOMPLETO', tooltip: 'Parcial', color: 'bg-orange-500/20 text-orange-300 border-orange-500/40', textColor: 'text-orange-400' },
+  { value: 'SE COMPRA?', label: 'SE COMPRA?', tooltip: 'Duda', color: 'bg-pink-500/20 text-pink-300 border-pink-500/40', textColor: 'text-pink-400' },
+  { value: 'CANCELADOS', label: 'CANCELADOS', tooltip: 'Orden cancelada', color: 'bg-red-500/20 text-red-400 border-red-500/40', textColor: 'text-rose-500' },
+  { value: 'NO VENDEN', label: 'NO VENDEN', tooltip: 'Proveedor no comercializa el ítem', color: 'bg-slate-700/50 text-slate-400 border-slate-600', textColor: 'text-slate-500' }
 ]
 
 // Lista estándar de rubros de proveedores para combobox
@@ -289,6 +289,9 @@ export default function Compras() {
   const [showReconcileModal, setShowReconcileModal] = useState(false)
   const [reconcileTarget, setReconcileTarget] = useState(null)
 
+  const [showFreightModal, setShowFreightModal] = useState(false)
+  const [freightTargetOrder, setFreightTargetOrder] = useState(null)
+
   const [showSupplierModal, setShowSupplierModal] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState(null)
 
@@ -390,7 +393,6 @@ export default function Compras() {
   // KPIs superiores agrupados con soporte de sub-estados
   const kpis = useMemo(() => {
     let countPedir = 0
-    let countSolicitud = 0
     let countCotizar = 0
     let countCotizaSol = 0
     let countCotizacion = 0
@@ -423,8 +425,7 @@ export default function Compras() {
       if (po.is_new_material && !po.no_catalog_required) newMaterialsCount++
       if (po.is_reconciled) countConciliados++
 
-      if (po.status === 'PEDIR') countPedir++
-      if (po.status === 'SOLICITUD') countSolicitud++
+      if (po.status === 'PEDIR' || po.status === 'SOLICITUD') countPedir++
 
       if (['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)) {
         countCotizacionesTotal++
@@ -449,9 +450,8 @@ export default function Compras() {
       countSinOtTotal,
       countSinOtObras,
       countSinOtStock,
-      porEmitirTotal: countPedir + countSolicitud,
+      porEmitirTotal: countPedir,
       countPedir,
-      countSolicitud,
       countCotizacionesTotal,
       countCotizar,
       countCotizaSol,
@@ -505,7 +505,7 @@ export default function Compras() {
       if (['por_emitir', 'cotizaciones', 'pedidos', 'recibidos', 'conciliados', 'alta_materiales'].includes(filterKey)) {
         setFilterStatus('TODOS')
         setFilterSupplier('TODOS')
-      } else if (['PEDIR', 'SOLICITUD', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA', 'PEDIDO', 'PEDIDO INCOMPLETO', 'SE COMPRA?'].includes(filterKey)) {
+      } else if (['PEDIR', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA', 'PEDIDO', 'PEDIDO INCOMPLETO', 'SE COMPRA?'].includes(filterKey)) {
         setFilterStatus(filterKey)
         setFilterSupplier('TODOS')
       } else if (filterKey === 'gases') {
@@ -561,7 +561,7 @@ export default function Compras() {
       if (filterSupplier !== 'TODOS' && po.supplier_id !== filterSupplier) return false
 
       // Filtro estado
-      if (filterStatus !== 'TODOS' && po.status !== filterStatus) return false
+      if (filterStatus !== 'TODOS' && po.status !== filterStatus && !(filterStatus === 'PEDIR' && po.status === 'SOLICITUD')) return false
 
       // Filtro quincena
       if (filterFortnight !== 'TODAS' && po.fortnight_period !== filterFortnight) return false
@@ -624,7 +624,8 @@ export default function Compras() {
     cols.push(
       { key: 'supplier_id', label: 'Proveedor', readOnly: false },
       { key: 'status', label: 'Estado', readOnly: false },
-      { key: 'urgency', label: 'Urgencia', readOnly: false }
+      { key: 'urgency', label: 'Urgencia', readOnly: false },
+      { key: 'delivery_date', label: 'F. Entrega', readOnly: false }
     )
     return cols
   }, [viewMode, ships, workOrders])
@@ -644,6 +645,23 @@ export default function Compras() {
                 charge_type: oldVal.charge_type || p.charge_type
               }
             }
+            if (colKey === 'reconciliation' && oldVal && typeof oldVal === 'object') {
+              return {
+                ...p,
+                is_reconciled: Boolean(oldVal.is_reconciled),
+                invoice_number: oldVal.invoice_number ?? null,
+                reconciled_at: oldVal.reconciled_at ?? null,
+                reconciled_by: oldVal.reconciled_by ?? null
+              }
+            }
+            if (colKey === 'freight' && oldVal && typeof oldVal === 'object') {
+              return {
+                ...p,
+                freight_transport_name: oldVal.freight_transport_name ?? null,
+                freight_request_date: oldVal.freight_request_date ?? null,
+                freight_estimated_date: oldVal.freight_estimated_date ?? null
+              }
+            }
             if (colKey === 'order_date') {
               return { ...p, order_date: oldVal, fortnight_period: computeFortnightFromDate(oldVal) }
             }
@@ -661,6 +679,15 @@ export default function Compras() {
               payload.ship_id = oldVal.ship_id ?? null
               payload.work_order_id = oldVal.work_order_id ?? null
               if (oldVal.charge_type) payload.charge_type = oldVal.charge_type
+            } else if (colKey === 'reconciliation' && oldVal && typeof oldVal === 'object') {
+              payload.is_reconciled = Boolean(oldVal.is_reconciled)
+              payload.invoice_number = oldVal.invoice_number ?? null
+              payload.reconciled_at = oldVal.reconciled_at ?? null
+              payload.reconciled_by = oldVal.reconciled_by ?? null
+            } else if (colKey === 'freight' && oldVal && typeof oldVal === 'object') {
+              payload.freight_transport_name = oldVal.freight_transport_name ?? null
+              payload.freight_request_date = oldVal.freight_request_date ?? null
+              payload.freight_estimated_date = oldVal.freight_estimated_date ?? null
             } else if (colKey === 'order_date') {
               payload.order_date = oldVal
               payload.fortnight_period = computeFortnightFromDate(oldVal)
@@ -686,6 +713,15 @@ export default function Compras() {
         dbPayload.ship_id = newValue.ship_id ?? null
         dbPayload.work_order_id = newValue.work_order_id ?? null
         if (newValue.charge_type) dbPayload.charge_type = newValue.charge_type
+      } else if (colKey === 'reconciliation' && newValue && typeof newValue === 'object') {
+        dbPayload.is_reconciled = Boolean(newValue.is_reconciled)
+        dbPayload.invoice_number = newValue.invoice_number ?? null
+        dbPayload.reconciled_at = newValue.reconciled_at ?? null
+        dbPayload.reconciled_by = newValue.reconciled_by ?? null
+      } else if (colKey === 'freight' && newValue && typeof newValue === 'object') {
+        dbPayload.freight_transport_name = newValue.freight_transport_name ?? null
+        dbPayload.freight_request_date = newValue.freight_request_date ?? null
+        dbPayload.freight_estimated_date = newValue.freight_estimated_date ?? null
       } else if (colKey === 'order_date') {
         dbPayload.order_date = newValue
         dbPayload.fortnight_period = computeFortnightFromDate(newValue)
@@ -744,6 +780,10 @@ export default function Compras() {
     }
     if (colKey === 'order_date') {
       setInlineEdit({ orderId: po.id, field: 'order_date', value: po.order_date || new Date().toISOString().split('T')[0] })
+      return
+    }
+    if (colKey === 'delivery_date') {
+      setInlineEdit({ orderId: po.id, field: 'delivery_date', value: po.delivery_date || new Date().toISOString().split('T')[0] })
       return
     }
     if (colKey === 'requested_by_name') {
@@ -869,16 +909,33 @@ export default function Compras() {
     if (selectedOrderIds.size === 0) return
     try {
       const idsArray = Array.from(selectedOrderIds)
+      const previousValues = {}
+      idsArray.forEach((id) => {
+        const po = purchaseOrders.find((p) => p.id === id)
+        previousValues[id] = Boolean(po?.no_catalog_required)
+      })
+
       const { error } = await supabase
         .from('purchase_orders')
         .update({ no_catalog_required: true, updated_at: new Date().toISOString() })
         .in('id', idsArray)
       if (error) throw error
 
+      if (grid?.pushUndoAction) {
+        grid.pushUndoAction({
+          colKey: 'no_catalog_required',
+          colLabel: 'NO requiere alta en catálogo',
+          actionLabel: 'Omitir Alta Catálogo',
+          previousValues,
+          newValue: true,
+          timestamp: Date.now()
+        })
+      }
+
       setPurchaseOrders((prev) =>
         prev.map((p) => (selectedOrderIds.has(p.id) ? { ...p, no_catalog_required: true } : p))
       )
-      showFeedbackMsg('success', `Se descartó el aviso de Alta en Catálogo para ${idsArray.length} pedido(s).`)
+      showFeedbackMsg('success', `Se marcó "NO requiere alta en catálogo" para ${idsArray.length} pedido(s). (Ctrl+Z para deshacer)`)
       setSelectedOrderIds(new Set())
     } catch (err) {
       console.error('Error omitiendo alta en lote:', err)
@@ -1190,12 +1247,17 @@ export default function Compras() {
       {/* ========================================================= */}
       {activeTab === 'compras' && (
         <>
-          {/* ZONA 2: TARJETAS DE KPIs SUPERIORES (RADAR OPERATIVO 1-CLIC) */}
-          <div className="alon-zone-kpis p-3 space-y-2.5">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90 flex items-center gap-1.5">
-                📊 RADAR DE KPIs Y ALERTAS OPERATIVAS • Clic en cualquier tarjeta para filtrar
-              </span>
+          {/* ZONA 2: TARJETAS DE KPIs SUPERIORES (RADAR OPERATIVO 1-CLIC — COMPACTO Y COLORES ÚNICOS) */}
+          <div className="alon-zone-kpis py-2.5 px-3 space-y-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
+              <div className="flex flex-wrap items-baseline gap-2.5">
+                <span className="text-sm md:text-base font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  📊 RADAR DE KPIs Y ALERTAS OPERATIVAS
+                </span>
+                <span className="text-[11px] italic text-slate-400 font-normal">
+                  • Clic en cualquier tarjeta para filtrar
+                </span>
+              </div>
               {activeKpiFilter && (
                 <button
                   type="button"
@@ -1206,307 +1268,312 @@ export default function Compras() {
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2.5">
-            {/* KPI 0: Falta Cargar OT (Total + Obras / Astillero) */}
-            <div
-              onClick={() => toggleKpiFilter('sin_ot')}
-              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'sin_ot' || activeKpiFilter === 'sin_ot_obras' || activeKpiFilter === 'sin_ot_stock'
-                  ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20'
-                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="text-[10px] uppercase font-bold text-amber-300 tracking-wider">Falta Cargar OT</span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2">
+              {/* KPI 0: Falta Cargar OT — Color Único: NARANJA (Orange) */}
+              <div
+                onClick={() => toggleKpiFilter('sin_ot')}
+                className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                  activeKpiFilter === 'sin_ot' || activeKpiFilter === 'sin_ot_obras' || activeKpiFilter === 'sin_ot_stock'
+                    ? 'bg-orange-950/85 border-orange-400 ring-1 ring-orange-400/50 shadow-lg shadow-orange-500/20'
+                    : 'bg-orange-950/25 border-orange-500/40 hover:border-orange-400/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[13px] xl:text-[14px] font-black text-orange-300 leading-tight tracking-tight">
+                    Falta OT
+                  </span>
+                  <span className="text-lg font-black text-orange-400 font-mono leading-none">{kpis.countSinOtTotal}</span>
                 </div>
-                <span className="text-xl font-black text-amber-400 font-mono">{kpis.countSinOtTotal}</span>
+                <div className="flex items-center gap-1 mt-1.5 pt-1 border-t border-orange-900/50">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('sin_ot_obras'); }}
+                    className={`px-1 py-0.5 rounded text-[9px] font-bold transition-colors ${
+                      activeKpiFilter === 'sin_ot_obras' ? 'bg-orange-500 text-slate-950 font-black' : 'bg-orange-500/15 text-orange-200 hover:bg-orange-500/30'
+                    }`}
+                    title="Pedidos imputados a buque/obra sin OT vinculada"
+                  >
+                    🚢 {kpis.countSinOtObras}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('sin_ot_stock'); }}
+                    className={`px-1 py-0.5 rounded text-[9px] font-bold transition-colors ${
+                      activeKpiFilter === 'sin_ot_stock' ? 'bg-orange-400 text-slate-950 font-black' : 'bg-orange-500/15 text-orange-200 hover:bg-orange-500/30'
+                    }`}
+                    title="Pedidos para Astillero / Stock general sin OT vinculada"
+                  >
+                    🏢 {kpis.countSinOtStock}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1 mt-2 pt-2 border-t border-slate-800/80">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('sin_ot_obras'); }}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors ${
-                    activeKpiFilter === 'sin_ot_obras' ? 'bg-amber-500 text-slate-950 font-black' : 'bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
-                  }`}
-                  title="Pedidos imputados a buque/obra sin OT vinculada"
-                >
-                  🚢 Obras: {kpis.countSinOtObras}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('sin_ot_stock'); }}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors ${
-                    activeKpiFilter === 'sin_ot_stock' ? 'bg-cyan-500 text-slate-950 font-black' : 'bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
-                  }`}
-                  title="Pedidos para Astillero / Stock general sin OT vinculada"
-                >
-                  🏢 Stock: {kpis.countSinOtStock}
-                </button>
-              </div>
-            </div>
-            {/* KPI 1: Por Emitir (PEDIR + SOLICITUD) */}
-            <div
-              onClick={() => toggleKpiFilter('por_emitir')}
-              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'por_emitir' || activeKpiFilter === 'PEDIR' || activeKpiFilter === 'SOLICITUD'
-                  ? 'bg-amber-950/70 border-amber-400 shadow-lg shadow-amber-500/20'
-                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-amber-300 tracking-wider">1. Por Emitir</span>
-                <span className="text-xl font-black text-amber-400">{kpis.porEmitirTotal}</span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-800/80">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIR'); }}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
-                    activeKpiFilter === 'PEDIR' ? 'bg-amber-500 text-slate-950 font-black' : 'bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
-                  }`}
-                >
-                  PEDIR: {kpis.countPedir}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('SOLICITUD'); }}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
-                    activeKpiFilter === 'SOLICITUD' ? 'bg-yellow-500 text-slate-950 font-black' : 'bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20'
-                  }`}
-                >
-                  SOLICITUD: {kpis.countSolicitud}
-                </button>
-              </div>
-            </div>
 
-            {/* KPI 2: Grupo Cotizaciones (Total + Subgrupos) */}
-            <div
-              onClick={() => toggleKpiFilter('cotizaciones')}
-              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'cotizaciones' || ['COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA'].includes(activeKpiFilter)
-                  ? 'bg-purple-950/70 border-purple-400 shadow-lg shadow-purple-500/20'
-                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase font-bold text-purple-300 tracking-wider">2. Cotizaciones</span>
-                  {kpis.expiredQuotes > 0 && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
-                      {kpis.expiredQuotes} venc.
-                    </span>
+              {/* KPI 1: Por Emitir (PEDIR) — Color Único: ÁMBAR / DORADO (Amber) */}
+              <div
+                onClick={() => toggleKpiFilter('por_emitir')}
+                className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                  activeKpiFilter === 'por_emitir' || activeKpiFilter === 'PEDIR'
+                    ? 'bg-amber-950/85 border-amber-400 ring-1 ring-amber-400/50 shadow-lg shadow-amber-500/20'
+                    : 'bg-amber-950/25 border-amber-500/40 hover:border-amber-400/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[13px] xl:text-[14px] font-black text-amber-300 leading-tight tracking-tight">
+                    1. Por Emitir
+                  </span>
+                  <span className="text-lg font-black text-amber-400 font-mono leading-none">{kpis.porEmitirTotal}</span>
+                </div>
+                <div className="flex items-center justify-between mt-1.5 pt-1 border-t border-amber-900/50 text-[9px]">
+                  <span className="text-amber-200/80 font-semibold">Estado: PEDIR</span>
+                  {activeKpiFilter === 'por_emitir' && (
+                    <span className="px-1 rounded bg-amber-400 text-slate-950 font-black text-[8px]">ACTIVO</span>
                   )}
                 </div>
-                <span className="text-xl font-black text-purple-400">{kpis.countCotizacionesTotal}</span>
               </div>
-              <div className="flex flex-wrap items-center gap-1 mt-2 pt-2 border-t border-slate-800/80">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZAR'); }}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                    activeKpiFilter === 'COTIZAR' ? 'bg-indigo-500 text-white font-bold' : 'bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
-                  }`}
-                  title="A pedir precio"
-                >
-                  COTIZAR: {kpis.countCotizar}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZA.SOLICITUD'); }}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                    activeKpiFilter === 'COTIZA.SOLICITUD' ? 'bg-yellow-500 text-slate-950 font-bold' : 'bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20'
-                  }`}
-                  title="Esperando proveedor"
-                >
-                  SOLIC.: {kpis.countCotizaSol}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZACION'); }}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                    activeKpiFilter === 'COTIZACION' ? 'bg-purple-500 text-white font-bold' : 'bg-purple-500/10 text-purple-300 hover:bg-purple-500/20'
-                  }`}
-                  title="En análisis"
-                >
-                  EVAL.: {kpis.countCotizacion}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZA.APROBADA'); }}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                    activeKpiFilter === 'COTIZA.APROBADA' ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                  }`}
-                  title="Aprobada"
-                >
-                  APROB.: {kpis.countCotizaAprob}
-                </button>
-              </div>
-            </div>
 
-            {/* KPI 3: En Proveedor & Tránsito (PEDIDO + PEDIDO INCOMPLETO) */}
-            <div
-              onClick={() => toggleKpiFilter('pedidos')}
-              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'pedidos' || activeKpiFilter === 'PEDIDO' || activeKpiFilter === 'PEDIDO INCOMPLETO'
-                  ? 'bg-blue-950/70 border-blue-400 shadow-lg shadow-blue-500/20'
-                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-blue-300 tracking-wider">3. En Proveedor</span>
-                <span className="text-xl font-black text-blue-400">{kpis.enProveedorTotal}</span>
-              </div>
-              <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-800/80">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIDO'); }}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
-                    activeKpiFilter === 'PEDIDO' ? 'bg-blue-500 text-slate-950 font-black' : 'bg-blue-500/10 text-blue-300 hover:bg-blue-500/20'
-                  }`}
-                >
-                  PEDIDO: {kpis.countPedido}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIDO INCOMPLETO'); }}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-colors ${
-                    activeKpiFilter === 'PEDIDO INCOMPLETO'
-                      ? 'bg-orange-500 text-slate-950 font-black'
-                      : kpis.countPedidoIncompleto > 0
-                      ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40 animate-pulse'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                  title="Recepción parcial / Saldo faltante a reclamar"
-                >
-                  <span>Incomp.:</span>
-                  <span className="font-mono">{kpis.countPedidoIncompleto}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* KPI 4: En Decisión Técnica (SE COMPRA?) */}
-            <div
-              onClick={() => toggleKpiFilter('SE COMPRA?')}
-              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'SE COMPRA?'
-                  ? 'bg-pink-950/80 border-pink-400 shadow-lg shadow-pink-500/20'
-                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-pink-300 tracking-wider">4. SE COMPRA?</span>
-                <span className={`text-xl font-black ${kpis.countSeCompra > 0 ? 'text-pink-400 animate-pulse' : 'text-slate-500'}`}>
-                  {kpis.countSeCompra}
-                </span>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
-                <span>Alerta Hugo & Martín</span>
-                <span className="text-pink-400 font-bold underline">Filtrar</span>
-              </div>
-            </div>
-
-            {/* KPI 5: Alta en Catálogo (Materiales sin Registro) */}
-            <div
-              onClick={() => toggleKpiFilter('alta_materiales')}
-              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'alta_materiales'
-                  ? 'bg-rose-950/80 border-rose-400 shadow-lg shadow-rose-500/20'
-                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-rose-300 tracking-wider">5. Alta Catálogo</span>
-                <span className={`text-xl font-black ${kpis.newMaterialsCount > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
-                  {kpis.newMaterialsCount}
-                </span>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
-                <span>Sin alta en B.D.</span>
-                <span className="text-rose-400 font-bold underline">Filtrar</span>
-              </div>
-            </div>
-
-            {/* KPI 6: Recibidos & Conciliados */}
-            <div
-              onClick={() => toggleKpiFilter('recibidos')}
-              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'recibidos' || activeKpiFilter === 'conciliados'
-                  ? 'bg-emerald-950/70 border-emerald-400 shadow-lg shadow-emerald-500/20'
-                  : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-emerald-300 tracking-wider">6. Recibidos</span>
-                <span className="text-xl font-black text-emerald-400">{kpis.recibidosTotal}</span>
-              </div>
-              <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-800/80 text-[9px] font-mono">
-                <span className="text-slate-400">Pañol: {kpis.countRecibido} | Obra: {kpis.countRecibidoDirecto}</span>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); toggleKpiFilter('conciliados'); }}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                    activeKpiFilter === 'conciliados' ? 'bg-purple-500 text-white' : 'bg-purple-950 text-purple-300 hover:bg-purple-900'
-                  }`}
-                >
-                  Fact.: {kpis.countConciliados}
-                </button>
-              </div>
-            </div>
-
-            {/* KPI 7: Regla P-02 Alertas de Gases (Air Liquide y Praxair) */}
-            <div
-              onClick={() => toggleKpiFilter('gases')}
-              className={`p-3 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                activeKpiFilter === 'gases'
-                  ? 'bg-cyan-950/90 border-cyan-400 shadow-lg shadow-cyan-500/20'
-                  : 'bg-gradient-to-br from-cyan-950/30 to-slate-900/90 border-cyan-800/40 hover:border-cyan-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Flame className="w-3.5 h-3.5 text-cyan-400" />
-                  <span className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">7. Gases P-02</span>
+              {/* KPI 2: Cotizaciones — Color Único: PÚRPURA / VIOLETA (Purple) */}
+              <div
+                onClick={() => toggleKpiFilter('cotizaciones')}
+                className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                  activeKpiFilter === 'cotizaciones' || ['COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA'].includes(activeKpiFilter)
+                    ? 'bg-purple-950/85 border-purple-400 ring-1 ring-purple-400/50 shadow-lg shadow-purple-500/20'
+                    : 'bg-purple-950/25 border-purple-500/40 hover:border-purple-400/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[13px] xl:text-[14px] font-black text-purple-300 leading-tight tracking-tight">
+                    2. Cotizac.
+                  </span>
+                  <span className="text-lg font-black text-purple-400 font-mono leading-none">{kpis.countCotizacionesTotal}</span>
                 </div>
-                <span className="text-[10px] text-cyan-400 underline font-semibold">Filtrar</span>
+                <div className="flex flex-wrap items-center gap-1 mt-1.5 pt-1 border-t border-purple-900/50">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZAR'); }}
+                    className={`px-1 py-0.2 rounded text-[8px] font-bold ${
+                      activeKpiFilter === 'COTIZAR' ? 'bg-indigo-500 text-white' : 'bg-purple-500/15 text-purple-200 hover:bg-purple-500/30'
+                    }`}
+                    title="COTIZAR (A Pedir Precio)"
+                  >
+                    COT:{kpis.countCotizar}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZA.SOLICITUD'); }}
+                    className={`px-1 py-0.2 rounded text-[8px] font-bold ${
+                      activeKpiFilter === 'COTIZA.SOLICITUD' ? 'bg-yellow-500 text-slate-950' : 'bg-purple-500/15 text-purple-200 hover:bg-purple-500/30'
+                    }`}
+                    title="COTIZA.SOLICITUD (Esperando)"
+                  >
+                    SOL:{kpis.countCotizaSol}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZACION'); }}
+                    className={`px-1 py-0.2 rounded text-[8px] font-bold ${
+                      activeKpiFilter === 'COTIZACION' ? 'bg-purple-400 text-slate-950' : 'bg-purple-500/15 text-purple-200 hover:bg-purple-500/30'
+                    }`}
+                    title="COTIZACION (En Evaluación)"
+                  >
+                    EV:{kpis.countCotizacion}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('COTIZA.APROBADA'); }}
+                    className={`px-1 py-0.2 rounded text-[8px] font-bold ${
+                      activeKpiFilter === 'COTIZA.APROBADA' ? 'bg-emerald-500 text-slate-950' : 'bg-purple-500/15 text-purple-200 hover:bg-purple-500/30'
+                    }`}
+                    title="COTIZA.APROBADA (Aprobada)"
+                  >
+                    OK:{kpis.countCotizaAprob}
+                  </button>
+                </div>
               </div>
-              <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px]">
-                <p className="font-bold text-white truncate">Air Liquide: Martes &lt;12hs</p>
-                <p className="text-slate-400 text-[9px] truncate">Cliente 2234867 | 0810-222-5272</p>
+
+              {/* KPI 3: En Proveedor — Color Único: AZUL ELÉCTRICO (Blue) */}
+              <div
+                onClick={() => toggleKpiFilter('pedidos')}
+                className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                  activeKpiFilter === 'pedidos' || activeKpiFilter === 'PEDIDO' || activeKpiFilter === 'PEDIDO INCOMPLETO'
+                    ? 'bg-blue-950/85 border-blue-400 ring-1 ring-blue-400/50 shadow-lg shadow-blue-500/20'
+                    : 'bg-blue-950/25 border-blue-500/40 hover:border-blue-400/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[13px] xl:text-[14px] font-black text-blue-300 leading-tight tracking-tight">
+                    3. En Prov.
+                  </span>
+                  <span className="text-lg font-black text-blue-400 font-mono leading-none">{kpis.enProveedorTotal}</span>
+                </div>
+                <div className="flex items-center justify-between gap-1 mt-1.5 pt-1 border-t border-blue-900/50">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIDO'); }}
+                    className={`px-1.5 py-0.2 rounded text-[9px] font-bold transition-colors ${
+                      activeKpiFilter === 'PEDIDO' ? 'bg-blue-500 text-slate-950 font-black' : 'bg-blue-500/15 text-blue-200 hover:bg-blue-500/30'
+                    }`}
+                  >
+                    PED: {kpis.countPedido}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('PEDIDO INCOMPLETO'); }}
+                    className={`px-1.5 py-0.2 rounded text-[9px] font-bold transition-colors ${
+                      activeKpiFilter === 'PEDIDO INCOMPLETO'
+                        ? 'bg-orange-500 text-slate-950 font-black'
+                        : kpis.countPedidoIncompleto > 0
+                        ? 'bg-orange-500/25 text-orange-300 border border-orange-500/40 animate-pulse'
+                        : 'bg-blue-950 text-blue-300/70'
+                    }`}
+                    title="Recepción parcial / Saldo faltante a reclamar"
+                  >
+                    Inc.: {kpis.countPedidoIncompleto}
+                  </button>
+                </div>
               </div>
-            </div>
+
+              {/* KPI 4: SE COMPRA? — Color Único: FUCSIA / MAGENTA (Fuchsia) */}
+              <div
+                onClick={() => toggleKpiFilter('SE COMPRA?')}
+                className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                  activeKpiFilter === 'SE COMPRA?'
+                    ? 'bg-fuchsia-950/85 border-fuchsia-400 ring-1 ring-fuchsia-400/50 shadow-lg shadow-fuchsia-500/20'
+                    : 'bg-fuchsia-950/25 border-fuchsia-500/40 hover:border-fuchsia-400/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[13px] xl:text-[14px] font-black text-fuchsia-300 leading-tight tracking-tight">
+                    4. Se Compra?
+                  </span>
+                  <span className={`text-lg font-black font-mono leading-none ${kpis.countSeCompra > 0 ? 'text-fuchsia-400 animate-pulse' : 'text-fuchsia-400/60'}`}>
+                    {kpis.countSeCompra}
+                  </span>
+                </div>
+                <div className="mt-1.5 pt-1 border-t border-fuchsia-900/50 text-[9px] text-fuchsia-200/80 flex items-center justify-between">
+                  <span className="truncate">Evaluación Gerencia</span>
+                  {activeKpiFilter === 'SE COMPRA?' && (
+                    <span className="px-1 rounded bg-fuchsia-400 text-slate-950 font-black text-[8px]">ACTIVO</span>
+                  )}
+                </div>
+              </div>
+
+              {/* KPI 5: Alta en Catálogo — Color Único: CARMÍN / ROJO (Rose) */}
+              <div
+                onClick={() => toggleKpiFilter('alta_materiales')}
+                className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                  activeKpiFilter === 'alta_materiales'
+                    ? 'bg-rose-950/85 border-rose-400 ring-1 ring-rose-400/50 shadow-lg shadow-rose-500/20'
+                    : 'bg-rose-950/25 border-rose-500/40 hover:border-rose-400/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[13px] xl:text-[14px] font-black text-rose-300 leading-tight tracking-tight">
+                    5. Alta Catál.
+                  </span>
+                  <span className={`text-lg font-black font-mono leading-none ${kpis.newMaterialsCount > 0 ? 'text-rose-400' : 'text-rose-400/60'}`}>
+                    {kpis.newMaterialsCount}
+                  </span>
+                </div>
+                <div className="mt-1.5 pt-1 border-t border-rose-900/50 text-[9px] text-rose-200/80 flex items-center justify-between">
+                  <span className="truncate">Nuevos s/registro</span>
+                  {activeKpiFilter === 'alta_materiales' && (
+                    <span className="px-1 rounded bg-rose-400 text-slate-950 font-black text-[8px]">ACTIVO</span>
+                  )}
+                </div>
+              </div>
+
+              {/* KPI 6: Recibidos — Color Único: VERDE ESMERALDA (Emerald) */}
+              <div
+                onClick={() => toggleKpiFilter('recibidos')}
+                className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                  activeKpiFilter === 'recibidos' || activeKpiFilter === 'conciliados'
+                    ? 'bg-emerald-950/85 border-emerald-400 ring-1 ring-emerald-400/50 shadow-lg shadow-emerald-500/20'
+                    : 'bg-emerald-950/25 border-emerald-500/40 hover:border-emerald-400/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[13px] xl:text-[14px] font-black text-emerald-300 leading-tight tracking-tight">
+                    6. Recibidos
+                  </span>
+                  <span className="text-lg font-black text-emerald-400 font-mono leading-none">{kpis.recibidosTotal}</span>
+                </div>
+                <div className="flex items-center justify-between gap-1 mt-1.5 pt-1 border-t border-emerald-900/50 text-[9px] font-mono">
+                  <span className="text-emerald-200/80 truncate">P:{kpis.countRecibido} | Ob:{kpis.countRecibidoDirecto}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKpiFilter('conciliados'); }}
+                    className={`px-1 py-0.2 rounded text-[8px] font-bold shrink-0 ${
+                      activeKpiFilter === 'conciliados' ? 'bg-purple-500 text-white' : 'bg-purple-950 text-purple-300 hover:bg-purple-900'
+                    }`}
+                    title="Filtrar conciliados con factura"
+                  >
+                    🟣 {kpis.countConciliados}
+                  </button>
+                </div>
+              </div>
+
+              {/* KPI 7: Gases P-02 — Color Único: CIAN / TURQUESA (Cyan) */}
+              <div
+                onClick={() => toggleKpiFilter('gases')}
+                className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+                  activeKpiFilter === 'gases'
+                    ? 'bg-cyan-950/85 border-cyan-400 ring-1 ring-cyan-400/50 shadow-lg shadow-cyan-500/20'
+                    : 'bg-cyan-950/25 border-cyan-500/40 hover:border-cyan-400/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1">
+                    <Flame className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span className="text-[13px] xl:text-[14px] font-black text-cyan-300 leading-tight tracking-tight">
+                      7. Gases P-02
+                    </span>
+                  </div>
+                  {activeKpiFilter === 'gases' && (
+                    <span className="px-1 rounded bg-cyan-400 text-slate-950 font-black text-[8px]">ACTIVO</span>
+                  )}
+                </div>
+                <div className="mt-1.5 pt-1 border-t border-cyan-900/50 text-[9px]">
+                  <p className="font-bold text-cyan-100 truncate">Air Liquide: Mar &lt;12hs</p>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* ZONA 3: BARRA DE FILTROS & HERRAMIENTAS */}
-          <div className="alon-zone-toolbar p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-            {/* Buscador */}
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          <div className="alon-zone-toolbar p-2.5 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+            {/* Buscador con soporte Esc para limpiar filtros en 1 toque */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2" />
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F)"
+                placeholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F | Esc limpia todo)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-14 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    clearAllFilters()
+                    e.target.blur()
+                  }
+                }}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
-              <span className="absolute right-8 top-2 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
+              <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
                 Ctrl+F
               </span>
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-500 hover:text-white">✕</button>
+                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2 text-slate-500 hover:text-white">✕</button>
               )}
             </div>
 
             {/* Selectores */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               {viewMode === 'completa' && (
                 <select
                   value={filterSupplier}
                   onChange={(e) => setFilterSupplier(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 max-w-[160px]"
                 >
                   <option value="TODOS">Todos los Proveedores</option>
                   {suppliers.map((s) => (
@@ -1520,10 +1587,11 @@ export default function Compras() {
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                title={STATUS_OPTIONS.find((s) => s.value === filterStatus)?.tooltip || 'Filtrar por estado'}
               >
                 {STATUS_OPTIONS.map((st) => (
-                  <option key={st.value} value={st.value}>
+                  <option key={st.value} value={st.value} title={st.tooltip}>
                     {st.label}
                   </option>
                 ))}
@@ -1532,7 +1600,7 @@ export default function Compras() {
               <select
                 value={filterFortnight}
                 onChange={(e) => setFilterFortnight(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
               >
                 <option value="TODAS">Todas las Quincenas</option>
                 {availableFortnights.map((fn) => (
@@ -1545,7 +1613,7 @@ export default function Compras() {
               <select
                 value={filterChargeType}
                 onChange={(e) => setFilterChargeType(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
               >
                 <option value="TODOS">Todos los Destinos</option>
                 <option value="DIRECT">Directo para Obra</option>
@@ -1555,10 +1623,10 @@ export default function Compras() {
             </div>
 
             {/* Alternadores Rápidos */}
-            <div className="flex items-center gap-2 border-l border-slate-800 pl-3">
+            <div className="flex items-center gap-1.5 border-l border-slate-800 pl-2.5">
               <button
                 onClick={() => setFilterNewOnly(!filterNewOnly)}
-                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                className={`px-2 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 ${
                   filterNewOnly
                     ? 'bg-rose-950 border border-rose-500 text-rose-300'
                     : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
@@ -1566,29 +1634,29 @@ export default function Compras() {
                 title="Filtrar materiales que no existen en base maestra"
               >
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Nuevos s/reg ({kpis.newMaterialsCount})</span>
+                <span>Nuevos ({kpis.newMaterialsCount})</span>
               </button>
 
               {viewMode === 'completa' && (
                 <button
                   onClick={() => setHideReconciled(!hideReconciled)}
-                  className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                  className={`px-2 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 ${
                     hideReconciled
                       ? 'bg-purple-950 border border-purple-500 text-purple-300'
                       : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
                   }`}
                   title="Ocultar las compras que ya fueron conciliadas con factura"
                 >
-                  <span>🟣 Ocultar Conciliados</span>
+                  <span>🟣 Ocultar Conc.</span>
                 </button>
               )}
 
-              {/* Botón Deshacer (Ctrl+Z) / Rehacer (Ctrl+Y) y Atajos */}
+              {/* Botón Deshacer (Ctrl+Z) / Rehacer (Ctrl+Y) */}
               {grid.canUndo && (
                 <button
                   type="button"
                   onClick={grid.undo}
-                  className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1.5 transition-all cursor-pointer animate-in fade-in"
+                  className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
                   title="Deshacer el último cambio (Ctrl + Z)"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -1600,26 +1668,13 @@ export default function Compras() {
                 <button
                   type="button"
                   onClick={grid.redo}
-                  className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1.5 transition-all cursor-pointer animate-in fade-in"
+                  className="px-2 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
                   title="Rehacer el cambio deshecho (Ctrl + Y)"
                 >
                   <RotateCw className="w-3.5 h-3.5" />
                   <span>Rehacer (Ctrl+Y)</span>
                 </button>
               )}
-
-              <div className="hidden 2xl:flex items-center gap-1.5 text-[10px] text-slate-500 font-mono bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                <span className="text-cyan-400 font-bold">⌨️ Grid:</span>
-                <span>Ctrl+C/V</span>
-                <span>•</span>
-                <span>Ctrl+D</span>
-                <span>•</span>
-                <span>Ctrl+Z</span>
-                <span>•</span>
-                <span>Ctrl+Y</span>
-                <span>•</span>
-                <span>Ctrl+F</span>
-              </div>
             </div>
           </div>
 
@@ -1628,13 +1683,28 @@ export default function Compras() {
           {/* ========================================================= */}
           <div className="alon-zone-grid">
             <div className="alon-grid-ribbon">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px]">
-                  {grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : 'MODO PLANILLA'}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px] inline-flex items-center gap-1">
+                  <Navigation className="w-3 h-3 text-cyan-400 fill-cyan-400/20 shrink-0" />
+                  <span>{grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : 'MODO PLANILLA'}</span>
                 </span>
-                <span className="text-slate-400">
-                  Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier celda para editar • Arrastrar esquina celeste o <strong className="text-slate-200">Ctrl+D</strong> para rellenar
-                </span>
+                {grid.selectionStats ? (
+                  <div className="flex flex-wrap items-center gap-2 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-0.5 rounded-lg text-[10px] font-mono text-cyan-200">
+                    <span><strong># Recuento:</strong> {grid.selectionStats.count}</span>
+                    {grid.selectionStats.numericCount > 0 && (
+                      <>
+                        <span>•</span>
+                        <span><strong>Σ Suma:</strong> {grid.selectionStats.sum.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                        <span>•</span>
+                        <span><strong>x̄ Promedio:</strong> {grid.selectionStats.avg.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-slate-400 text-[11px]">
+                    Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier celda para editar • Arrastrar esquina celeste o <strong className="text-slate-200">Ctrl+D</strong> para rellenar
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
                 <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
@@ -1659,65 +1729,70 @@ export default function Compras() {
               tabIndex={0}
               onKeyDown={grid.handleKeyDown}
               ref={grid.gridContainerRef}
-              className="overflow-x-auto max-h-[600px] overflow-y-auto relative focus:outline-none"
+              className="w-full max-h-[620px] overflow-y-auto overflow-x-hidden relative focus:outline-none"
             >
-              <table className="w-full text-left text-xs border-collapse">
-                {/* STICKY HEADER TIPO EXCEL */}
+              <table className="w-full text-left text-[11px] border-collapse">
+                {/* STICKY HEADER TIPO EXCEL (FIT-TO-VIEWPORT SIN SCROLL HORIZONTAL) */}
                 <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
-                    <th className="py-2.5 px-3 w-10 text-center">
+                    <th className="py-2 px-1.5 w-7 text-center">
                       <button
                         type="button"
                         onClick={toggleSelectAll}
                         className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
                         title={isAllFilteredSelected ? 'Deseleccionar todo' : 'Seleccionar todo'}
                       >
-                        {isAllFilteredSelected ? <CheckSquare className="w-4 h-4 text-cyan-400" /> : <Square className="w-4 h-4" />}
+                        {isAllFilteredSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
                       </button>
                     </th>
-                    <th className="py-2.5 px-3">Destino</th>
-                    <th className="py-2.5 px-3">Fecha / Quincena</th>
-                    <th className="py-2.5 px-3">Buque / OT</th>
-                    <th className="py-2.5 px-3">Solicita</th>
-                    <th className="py-2.5 px-3">Material Solicitado</th>
-                    <th className="py-2.5 px-3 text-right">Cant.</th>
+                    <th className="py-2 px-1.5">Destino ✎</th>
+                    <th className="py-2 px-1.5">Fecha / Q. ✎</th>
+                    <th className="py-2 px-1.5">Buque / OT ✎</th>
+                    <th className="py-2 px-1.5">Solicita ✎</th>
+                    <th className="py-2 px-1.5">Material Solicitado ✎</th>
+                    <th className="py-2 px-1.5 text-right">Cant. ✎</th>
 
                     {/* Columnas financieras visibles solo en Modo Completo */}
                     {viewMode === 'completa' && (
                       <>
-                        <th className="py-2.5 px-3 text-right">$/U Proveedor</th>
-                        <th className="py-2.5 px-3 text-right">$/U Sistema</th>
+                        <th className="py-2 px-1.5 text-right">$/U Prov. ✎</th>
+                        <th className="py-2 px-1.5 text-right">$/U Sist.</th>
                       </>
                     )}
 
-                    {/* Proveedor visible en AMBOS MODOS (esencial para recepción en pañol) */}
-                    <th className="py-2.5 px-3">Proveedor</th>
+                    {/* Proveedor visible en AMBOS MODOS */}
+                    <th className="py-2 px-1.5">Proveedor ✎</th>
 
-                    {/* Estado con selector editable en ambos modos */}
-                    <th className="py-2.5 px-3">Estado</th>
+                    {/* Estado compacto sin paréntesis */}
+                    <th className="py-2 px-1.5">Estado ✎</th>
 
-                    <th className="py-2.5 px-3">Urgencia</th>
-                    <th className="py-2.5 px-3 text-center">Doc</th>
+                    <th className="py-2 px-1.5">Urg. ✎</th>
+                    <th className="py-2 px-1.5 text-center">Doc</th>
+                    <th className="py-2 px-1.5 text-center" title="Fecha de entrega del pedido (independiente de la fecha de flete)">
+                      F. Entrega ✎
+                    </th>
 
                     {viewMode === 'completa' && (
-                      <th className="py-2.5 px-3 text-center">Conciliado</th>
+                      <th className="py-2 px-1 w-9 text-center" title="Conciliado con Factura">
+                        Conc.
+                      </th>
                     )}
 
-                    <th className="py-2.5 px-3 text-center">Acciones</th>
+                    <th className="py-2 px-1.5 text-center">Acciones</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-800/60 font-sans">
                   {loading ? (
                     <tr>
-                      <td colSpan={viewMode === 'completa' ? 15 : 12} className="text-center py-12 text-slate-500">
+                      <td colSpan={viewMode === 'completa' ? 16 : 13} className="text-center py-12 text-slate-500">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-cyan-400" />
                         Cargando registro de compras...
                       </td>
                     </tr>
                   ) : filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={viewMode === 'completa' ? 15 : 12} className="text-center py-12 text-slate-500">
+                      <td colSpan={viewMode === 'completa' ? 16 : 13} className="text-center py-12 text-slate-500">
                         No se encontraron registros de compra con los filtros seleccionados.
                       </td>
                     </tr>
@@ -1738,6 +1813,8 @@ export default function Compras() {
                       }
 
                       const urgency = po.urgency || 'SIN_APURO'
+                      const statusDef = STATUS_OPTIONS.find((s) => s.value === po.status)
+                      const hasFreight = Boolean(po.freight_transport_name || po.freight_estimated_date)
 
                       return (
                         <tr
@@ -1751,13 +1828,13 @@ export default function Compras() {
                           }`}
                         >
                           {/* 1. Checkbox */}
-                          <td className="py-2 px-3 text-center">
+                          <td className="py-1.5 px-1.5 text-center">
                             <button
                               type="button"
                               onClick={() => toggleSelectRow(po.id)}
                               className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
                             >
-                              {isSelected ? <CheckSquare className="w-4 h-4 text-cyan-400" /> : <Square className="w-4 h-4" />}
+                              {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
                             </button>
                           </td>
 
@@ -1768,7 +1845,7 @@ export default function Compras() {
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'charge_type')}
-                                className={`py-2 px-3 whitespace-nowrap cursor-pointer ${cp.className}`}
+                                className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer ${cp.className}`}
                                 title="Doble clic para cambiar Destino (Directo / Pañol / Stand-by)"
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'charge_type' ? (
@@ -1780,10 +1857,10 @@ export default function Compras() {
                                     onKeyDown={(e) => {
                                       if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
                                     }}
-                                    className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[10px] font-bold text-white focus:outline-none"
+                                    className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] font-bold text-white focus:outline-none"
                                   >
-                                    <option value="DIRECT">DIRECTO (OBRA)</option>
-                                    <option value="VIA_PANOL">PAÑOL / STOCK</option>
+                                    <option value="DIRECT">DIRECTO</option>
+                                    <option value="VIA_PANOL">PAÑOL</option>
                                     <option value="STANDBY">STANDBY</option>
                                   </select>
                                 ) : po.charge_type === 'DIRECT' ? (
@@ -1792,7 +1869,7 @@ export default function Compras() {
                                   </span>
                                 ) : po.charge_type === 'VIA_PANOL' ? (
                                   <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold text-[10px]">
-                                    PAÑOL / STOCK
+                                    PAÑOL
                                   </span>
                                 ) : (
                                   <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px]">
@@ -1811,22 +1888,39 @@ export default function Compras() {
                             )
                           })()}
 
-                          {/* 3. Fecha / Quincena (Doble clic editable) */}
+                          {/* 3. Fecha / Quincena (Doble clic abre calendario automáticamente con showPicker) */}
                           {(() => {
                             const cp = getSpreadsheetCellProps(rowIndex, 'order_date')
                             return (
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'order_date')}
-                                className={`py-2 px-3 whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
-                                title="Doble clic para editar fecha"
+                                className={`py-1.5 px-1.5 whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
+                                title="Doble clic para abrir calendario y editar fecha"
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'order_date' ? (
                                   <input
                                     type="date"
-                                    autoFocus
+                                    ref={(el) => {
+                                      if (el && !el.dataset.pickerOpened) {
+                                        el.dataset.pickerOpened = '1'
+                                        el.focus()
+                                        try {
+                                          if (typeof el.showPicker === 'function') el.showPicker()
+                                        } catch {}
+                                      }
+                                    }}
+                                    onClick={(e) => {
+                                      try {
+                                        if (typeof e.target.showPicker === 'function') e.target.showPicker()
+                                      } catch {}
+                                    }}
                                     value={inlineEdit.value}
-                                    onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                    onChange={(e) => {
+                                      const val = e.target.value
+                                      setInlineEdit({ ...inlineEdit, value: val })
+                                      if (val) saveInlineEdit(po.id, 'order_date', val)
+                                    }}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter' && inlineEdit.value) saveInlineEdit(po.id, 'order_date', inlineEdit.value)
                                       if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
@@ -1835,12 +1929,12 @@ export default function Compras() {
                                       if (inlineEdit.value) saveInlineEdit(po.id, 'order_date', inlineEdit.value)
                                       else setInlineEdit({ orderId: null, field: null, value: '' })
                                     }}
-                                    className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                    className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none cursor-pointer"
                                   />
                                 ) : (
                                   <>
-                                    <div className="text-slate-200">{po.order_date}</div>
-                                    <div className="text-[10px] text-slate-500">{po.fortnight_period}</div>
+                                    <div className="text-slate-200 text-[11px]">{po.order_date}</div>
+                                    <div className="text-[9px] text-slate-500">{po.fortnight_period}</div>
                                   </>
                                 )}
                                 {cp.renderHandle && (
@@ -1861,13 +1955,13 @@ export default function Compras() {
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'ship_id')}
-                                className={`py-2 px-3 cursor-pointer ${cp.className}`}
+                                className={`py-1.5 px-1.5 cursor-pointer ${cp.className}`}
                                 title="Doble clic para cambiar Buque u Orden de Trabajo"
                               >
-                                <div className="font-semibold text-slate-200 truncate max-w-[130px]" title={shp?.name || 'ASTILLERO'}>
+                                <div className="font-semibold text-slate-200 truncate max-w-[105px]" title={shp?.name || 'ASTILLERO'}>
                                   {shp?.name || 'ASTILLERO'}
                                 </div>
-                                <div className="text-[10px] text-slate-400 truncate max-w-[130px]" title={wo?.title || (po.work_order_id ? 'OT' : '⚠️ Sin OT')}>
+                                <div className="text-[9px] text-slate-400 truncate max-w-[105px]" title={wo?.title || (po.work_order_id ? 'OT' : '⚠️ Sin OT')}>
                                   {wo ? `${wo.ot_number ? `#${wo.ot_number} ` : ''}${wo.title}` : (po.work_order_id ? 'OT' : <span className="text-amber-400 font-bold">⚠️ Sin OT</span>)}
                                 </div>
                                 {cp.renderHandle && (
@@ -1889,8 +1983,8 @@ export default function Compras() {
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'requested_by_name')}
-                                className={`py-2 px-3 whitespace-nowrap cursor-pointer ${cp.className}`}
-                                title="Doble clic para editar solicitante"
+                                className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer ${cp.className}`}
+                                title={`Solicita: ${po.requested_by_name || 'PAÑOL'} (Doble clic para editar)`}
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'requested_by_name' ? (
                                   <input
@@ -1904,10 +1998,10 @@ export default function Compras() {
                                       if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
                                     }}
                                     onBlur={() => saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)}
-                                    className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                    className="w-24 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none"
                                   />
                                 ) : (
-                                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all">
+                                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all truncate max-w-[85px]">
                                     {po.requested_by_name || 'PAÑOL'}
                                   </div>
                                 )}
@@ -1923,14 +2017,15 @@ export default function Compras() {
                             )
                           })()}
 
-                          {/* 6. Material Solicitado (Editable con Doble Clic) */}
+                          {/* 6. Material Solicitado (Editable con Doble Clic + Alerta Roja si NO requiere alta en catálogo) */}
                           {(() => {
                             const cp = getSpreadsheetCellProps(rowIndex, 'material_name_raw')
+                            const isNoCatalogAlert = Boolean(po.no_catalog_required)
                             return (
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'material_name_raw')}
-                                className={`py-2 px-3 cursor-pointer ${cp.className}`}
+                                className={`py-1.5 px-1.5 cursor-pointer ${cp.className}`}
                                 title="Doble clic para editar descripción del material"
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'material_name_raw' ? (
@@ -1948,12 +2043,14 @@ export default function Compras() {
                                       if (inlineEdit.value.trim()) saveInlineEdit(po.id, 'material_name_raw', inlineEdit.value.trim())
                                       else setInlineEdit({ orderId: null, field: null, value: '' })
                                     }}
-                                    className="w-full min-w-[180px] bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                    className="w-full min-w-[150px] bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none"
                                   />
                                 ) : (
                                   <>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-medium text-white">{po.material_name_raw}</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="font-medium text-white truncate max-w-[165px]" title={po.material_name_raw}>
+                                        {po.material_name_raw}
+                                      </span>
                                       {po.is_new_material && !po.no_catalog_required && isSupervisorOrAdmin && (
                                         <button
                                           onClick={(e) => {
@@ -1961,7 +2058,7 @@ export default function Compras() {
                                             setPendingMaterialOrder(po)
                                             setShowNewMaterialModal(true)
                                           }}
-                                          className="px-1.5 py-0.2 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                          className="px-1.5 py-0.2 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer shrink-0"
                                           title="Material sin registro. Clic para formalizar alta o descartar."
                                         >
                                           <AlertTriangle className="w-2.5 h-2.5" />
@@ -1969,10 +2066,23 @@ export default function Compras() {
                                         </button>
                                       )}
                                     </div>
-                                    {po.observations && (
-                                      <p className="text-[10px] text-slate-400 italic truncate max-w-[200px]" title={po.observations}>
-                                        {po.observations}
+                                    {isNoCatalogAlert ? (
+                                      <p
+                                        className="text-[10px] text-rose-400 font-bold truncate max-w-[190px]"
+                                        title={
+                                          po.observations
+                                            ? `${po.observations} — Marcado como: NO requiere alta en catálogo (No se carga en Pañol)`
+                                            : 'Material nuevo sin registro en base maestra (Marcado: NO requiere alta en catálogo — No se carga en Pañol)'
+                                        }
+                                      >
+                                        {po.observations || 'Material nuevo sin registro en base (No requiere alta)'}
                                       </p>
+                                    ) : (
+                                      po.observations && (
+                                        <p className="text-[10px] text-slate-400 italic truncate max-w-[190px]" title={po.observations}>
+                                          {po.observations}
+                                        </p>
+                                      )
                                     )}
                                   </>
                                 )}
@@ -1994,7 +2104,7 @@ export default function Compras() {
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'quantity')}
-                                className={`py-2 px-3 text-right whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
+                                className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
                                 title="Doble clic para editar cantidad"
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'quantity' ? (
@@ -2008,12 +2118,12 @@ export default function Compras() {
                                       if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
                                     }}
                                     onBlur={() => saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1)}
-                                    className="w-20 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
+                                    className="w-16 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-right text-[11px] text-white focus:outline-none font-mono"
                                   />
                                 ) : (
                                   <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all font-mono inline-block text-right">
                                     <span className="font-bold text-white">{po.quantity}</span>{' '}
-                                    <span className="text-[10px] text-slate-500">{po.unit_measure || 'unidad'}</span>
+                                    <span className="text-[9px] text-slate-500">{po.unit_measure || 'un.'}</span>
                                   </div>
                                 )}
                                 {cp.renderHandle && (
@@ -2038,7 +2148,7 @@ export default function Compras() {
                                   <td
                                     {...cp.domProps}
                                     onDoubleClick={() => activateComprasCell(po, 'supplier_quoted_price')}
-                                    className={`py-2 px-3 text-right whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
+                                    className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
                                     title="Doble clic para editar $/U cotizado"
                                   >
                                     {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_quoted_price' ? (
@@ -2052,7 +2162,7 @@ export default function Compras() {
                                           if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
                                         }}
                                         onBlur={() => saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0)}
-                                        className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
+                                        className="w-24 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-right text-[11px] text-white focus:outline-none font-mono"
                                       />
                                     ) : (
                                       <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right">
@@ -2081,10 +2191,10 @@ export default function Compras() {
                                 return (
                                   <td
                                     {...cp.domProps}
-                                    className={`py-2 px-3 text-right whitespace-nowrap font-mono ${cp.className}`}
+                                    className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono ${cp.className}`}
                                   >
                                     <div className="text-slate-400">
-                                      {po.system_unit_price ? `${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}
+                                      {po.system_unit_price ? `$${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}
                                     </div>
                                     {deltaPct !== null && (
                                       <div
@@ -2109,15 +2219,15 @@ export default function Compras() {
                             </>
                           )}
 
-                          {/* 10. Proveedor (Visible en Ambos Modos y Editable con Doble Clic + Buscador por Iniciales o Fill Down) */}
+                          {/* 10. Proveedor (Editable con Doble Clic + Buscador por Iniciales o Fill Down) */}
                           {(() => {
                             const cp = getSpreadsheetCellProps(rowIndex, 'supplier_id')
                             return (
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'supplier_id')}
-                                className={`py-2 px-3 relative cursor-pointer ${cp.className}`}
-                                title="Doble clic para buscar y asignar proveedor por iniciales"
+                                className={`py-1.5 px-1.5 relative cursor-pointer ${cp.className}`}
+                                title={sup?.name ? `Proveedor: ${sup.name} (Doble clic para cambiar)` : 'Doble clic para buscar y asignar proveedor por iniciales'}
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_id' ? (
                                   <InlineSupplierPicker
@@ -2127,7 +2237,7 @@ export default function Compras() {
                                     onCancel={() => setInlineEdit({ orderId: null, field: null, value: '' })}
                                   />
                                 ) : (
-                                  <div className="hover:bg-slate-800/80 px-1.5 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[140px]">
+                                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[115px]">
                                     <span className="font-semibold text-slate-200">{sup?.name || <span className="text-slate-600 italic">Asignar...</span>}</span>
                                   </div>
                                 )}
@@ -2143,54 +2253,62 @@ export default function Compras() {
                             )
                           })()}
 
-                          {/* 11. Estado (Editable en Ambos Modos — Solo teñir los nombres, fondo neutro o Fill Down) */}
+                          {/* 11. Estado Compacto (Sin paréntesis visible, leyenda en tooltip al acercar el mouse) */}
                           {(() => {
                             const cp = getSpreadsheetCellProps(rowIndex, 'status')
+                            const normalizedStatus = po.status === 'SOLICITUD' ? 'PEDIR' : po.status
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 whitespace-nowrap ${cp.className}`}
+                                className={`py-1.5 px-1.5 whitespace-nowrap ${cp.className}`}
+                                title={statusDef?.tooltip ? `${normalizedStatus}: ${statusDef.tooltip}` : normalizedStatus}
                               >
                                 <select
-                                  value={po.status}
+                                  value={normalizedStatus}
                                   onChange={(e) => handleQuickStatusChange(po.id, e.target.value)}
-                                  className={`bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-cyan-500 rounded px-1.5 py-0.5 text-[11px] font-bold focus:outline-none transition-colors cursor-pointer ${
-                                    po.status === 'SE COMPRA?'
+                                  title={statusDef?.tooltip ? `${normalizedStatus} — ${statusDef.tooltip}` : normalizedStatus}
+                                  className={`bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-cyan-500 rounded px-1 py-0.5 text-[10px] font-bold focus:outline-none transition-colors cursor-pointer max-w-[118px] ${
+                                    normalizedStatus === 'SE COMPRA?'
                                       ? 'text-pink-400'
-                                      : po.status === 'PEDIDO INCOMPLETO'
+                                      : normalizedStatus === 'PEDIDO INCOMPLETO'
                                       ? 'text-orange-400'
-                                      : po.status === 'RECIBIDO'
+                                      : normalizedStatus === 'RECIBIDO'
                                       ? 'text-emerald-400'
-                                      : po.status === 'RECIBIDO 2'
+                                      : normalizedStatus === 'RECIBIDO 2'
                                       ? 'text-slate-300'
-                                      : po.status === 'RECIB.COMP.DIRECT'
+                                      : normalizedStatus === 'RECIB.COMP.DIRECT'
                                       ? 'text-cyan-400'
-                                      : po.status === 'PEDIDO'
+                                      : normalizedStatus === 'PEDIDO'
                                       ? 'text-blue-400'
-                                      : po.status === 'PEDIR' || po.status === 'SOLICITUD'
+                                      : normalizedStatus === 'PEDIR'
                                       ? 'text-amber-400'
-                                      : ['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)
+                                      : ['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(normalizedStatus)
                                       ? 'text-purple-400'
-                                      : po.status === 'CANCELADOS' || po.status === 'COTIZA.RECHAZADA'
+                                      : normalizedStatus === 'CANCELADOS' || normalizedStatus === 'COTIZA.RECHAZADA'
                                       ? 'text-rose-400'
                                       : 'text-slate-300'
                                   }`}
                                 >
                                   {viewMode === 'completa' ? (
                                     STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
-                                      <option key={st.value} value={st.value} className={`bg-slate-950 font-semibold ${st.textColor || 'text-slate-200'}`}>
+                                      <option
+                                        key={st.value}
+                                        value={st.value}
+                                        title={st.tooltip}
+                                        className={`bg-slate-950 font-semibold ${st.textColor || 'text-slate-200'}`}
+                                      >
                                         {st.label}
                                       </option>
                                     ))
                                   ) : (
                                     <>
-                                      <option value="PEDIR" className="bg-slate-950 text-amber-400 font-semibold">PEDIR (Por Emitir)</option>
-                                      <option value="RECIBIDO" className="bg-slate-950 text-emerald-400 font-semibold">✅ RECIBIDO (A Pañol / Stock)</option>
-                                      <option value="RECIB.COMP.DIRECT" className="bg-slate-950 text-cyan-400 font-semibold">🚢 RECIB.COMP.DIRECT (A Buque)</option>
-                                      <option value="PEDIDO INCOMPLETO" className="bg-slate-950 text-orange-400 font-semibold">⚠️ PEDIDO INCOMPLETO (Recepción Parcial)</option>
-                                      <option value="RECIBIDO 2" className="bg-slate-950 text-slate-300 font-semibold">📦 RECIBIDO 2 (Mat. de Cliente)</option>
-                                      <option value="CANCELADOS" className="bg-slate-950 text-rose-400 font-semibold">❌ CANCELADOS</option>
-                                      <option value="SE COMPRA?" className="bg-slate-950 text-pink-400 font-semibold">❓ SE COMPRA? (Duda Técnica)</option>
+                                      <option value="PEDIR" title="Por Emitir" className="bg-slate-950 text-amber-400 font-semibold">PEDIR</option>
+                                      <option value="RECIBIDO" title="Ingresó a Pañol" className="bg-slate-950 text-emerald-400 font-semibold">RECIBIDO</option>
+                                      <option value="RECIB.COMP.DIRECT" title="Imputado a Buque" className="bg-slate-950 text-cyan-400 font-semibold">RECIB.COMP.DIRECT</option>
+                                      <option value="PEDIDO INCOMPLETO" title="Parcial" className="bg-slate-950 text-orange-400 font-semibold">PEDIDO INCOMPLETO</option>
+                                      <option value="RECIBIDO 2" title="Material de Cliente" className="bg-slate-950 text-slate-300 font-semibold">RECIBIDO 2</option>
+                                      <option value="CANCELADOS" title="Orden cancelada" className="bg-slate-950 text-rose-400 font-semibold">CANCELADOS</option>
+                                      <option value="SE COMPRA?" title="Duda" className="bg-slate-950 text-pink-400 font-semibold">SE COMPRA?</option>
                                     </>
                                   )}
                                 </select>
@@ -2212,7 +2330,7 @@ export default function Compras() {
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 whitespace-nowrap ${cp.className}`}
+                                className={`py-1.5 px-1.5 whitespace-nowrap ${cp.className}`}
                               >
                                 <button
                                   type="button"
@@ -2221,16 +2339,16 @@ export default function Compras() {
                                   title="Clic para cambiar urgencia (Sin Apuro -> Urgente -> Próx. Salida)"
                                 >
                                   {urgency === 'URGENTE' ? (
-                                    <span className="inline-block px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 font-extrabold text-[10px] animate-pulse">
+                                    <span className="inline-block px-1 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 font-extrabold text-[9px] animate-pulse">
                                       URGENTE
                                     </span>
                                   ) : urgency === 'PROXIMA_SALIDA' ? (
-                                    <span className="inline-block px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[10px]">
-                                      PRÓX. SALIDA
+                                    <span className="inline-block px-1 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[9px]">
+                                      PRÓX. SAL.
                                     </span>
                                   ) : (
-                                    <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] hover:border-slate-600">
-                                      Sin Apuro
+                                    <span className="inline-block px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[9px] hover:border-slate-600">
+                                      Normal
                                     </span>
                                   )}
                                 </button>
@@ -2247,14 +2365,14 @@ export default function Compras() {
                           })()}
 
                           {/* 13. Doc (Gestor Multidocumento con Contador) */}
-                          <td className="py-2 px-3 text-center whitespace-nowrap">
+                          <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
                             <button
                               type="button"
                               onClick={() => {
                                 setSelectedOrderForDocs(po)
                                 setShowOrderDocsModal(true)
                               }}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
                                 lineDocs.length > 0
                                   ? 'bg-cyan-950 border border-cyan-500/60 text-cyan-300 hover:bg-cyan-900 shadow-sm'
                                   : 'text-slate-500 hover:text-cyan-400 hover:bg-slate-800/80 border border-transparent'
@@ -2262,45 +2380,139 @@ export default function Compras() {
                               title={lineDocs.length > 0 ? `${lineDocs.length} archivo(s) adjunto(s). Clic para ver / agregar más.` : 'Adjuntar cotización, ficha técnica o fotos'}
                             >
                               <Paperclip className="w-3 h-3" />
-                              <span>{lineDocs.length > 0 ? `${lineDocs.length} arch.` : 'Adjuntar'}</span>
+                              <span>{lineDocs.length > 0 ? lineDocs.length : ''}</span>
                             </button>
                           </td>
 
-                          {/* 14. Conciliado (Solo Modo Completo) */}
+                          {/* 14. Fecha de Entrega (Entre Doc y Conciliado — Editable a mano con Calendario, distinta de la del flete) */}
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'delivery_date')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                onDoubleClick={() => activateComprasCell(po, 'delivery_date')}
+                                className={`py-1.5 px-1.5 text-center whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
+                                title="Doble clic para abrir calendario y cargar Fecha de Entrega (independiente de la fecha de flete)"
+                              >
+                                {inlineEdit.orderId === po.id && inlineEdit.field === 'delivery_date' ? (
+                                  <input
+                                    type="date"
+                                    ref={(el) => {
+                                      if (el && !el.dataset.pickerOpened) {
+                                        el.dataset.pickerOpened = '1'
+                                        el.focus()
+                                        try {
+                                          if (typeof el.showPicker === 'function') el.showPicker()
+                                        } catch {}
+                                      }
+                                    }}
+                                    onClick={(e) => {
+                                      try {
+                                        if (typeof e.target.showPicker === 'function') e.target.showPicker()
+                                      } catch {}
+                                    }}
+                                    value={inlineEdit.value}
+                                    onChange={(e) => {
+                                      const val = e.target.value
+                                      setInlineEdit({ ...inlineEdit, value: val })
+                                      if (val) saveInlineEdit(po.id, 'delivery_date', val)
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveInlineEdit(po.id, 'delivery_date', inlineEdit.value || null)
+                                      if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                    }}
+                                    onBlur={() => {
+                                      saveInlineEdit(po.id, 'delivery_date', inlineEdit.value || null)
+                                    }}
+                                    className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none cursor-pointer"
+                                  />
+                                ) : po.delivery_date ? (
+                                  <span className="text-emerald-300 font-semibold text-[10px] bg-emerald-950/50 border border-emerald-800/50 px-1.5 py-0.5 rounded">
+                                    {po.delivery_date}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-600 hover:text-slate-400 text-[10px]">—</span>
+                                )}
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                    title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
+
+                          {/* 15. Conciliado Ultra-Compacto (Círculo Violeta con detalle al hacer clic) */}
                           {viewMode === 'completa' && (
-                            <td className="py-2 px-3 text-center whitespace-nowrap">
+                            <td className="py-1.5 px-1 text-center whitespace-nowrap">
                               {po.is_reconciled ? (
-                                <span
-                                  className="inline-flex items-center gap-1 text-purple-400 font-bold text-[10px] bg-purple-950/80 px-1.5 py-0.5 rounded border border-purple-800/50"
-                                  title={`Factura: ${po.invoice_number || 'S/D'} (Conciliado por ${po.reconciled_by || 'Supervisor'})`}
-                                >
-                                  <Check className="w-3 h-3 stroke-[3]" />
-                                  <span>Facturado</span>
-                                </span>
-                              ) : (
                                 <button
+                                  type="button"
                                   onClick={() => {
                                     setReconcileTarget({
+                                      mode: 'detail',
                                       supplierId: po.supplier_id,
                                       orderId: po.id,
                                       orderDate: po.order_date,
-                                      supplierName: sup?.name
+                                      supplierName: sup?.name || 'Proveedor',
+                                      existingInvoice: po.invoice_number || '',
+                                      reconciledBy: po.reconciled_by || 'Supervisor',
+                                      reconciledAt: po.reconciled_at
                                     })
                                     setShowReconcileModal(true)
                                   }}
-                                  className="text-slate-500 hover:text-purple-400 text-[10px] underline cursor-pointer"
-                                  title="Conciliar hasta este pedido con factura"
+                                  className="w-5 h-5 rounded-full bg-purple-500/20 border border-purple-400 flex items-center justify-center mx-auto cursor-pointer hover:scale-125 transition-transform"
+                                  title={`🟣 CONCILIADO — Factura: ${po.invoice_number || 'S/D'} • Por: ${po.reconciled_by || 'Supervisor'}${po.reconciled_at ? ' (' + new Date(po.reconciled_at).toLocaleDateString('es-AR') + ')' : ''}. Clic para ver detalle.`}
                                 >
-                                  Conciliar
+                                  <span className="w-2.5 h-2.5 rounded-full bg-purple-400 shadow-[0_0_6px_#c084fc]" />
                                 </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReconcileTarget({
+                                      mode: 'single',
+                                      supplierId: po.supplier_id,
+                                      orderId: po.id,
+                                      orderDate: po.order_date,
+                                      supplierName: sup?.name || 'Proveedor'
+                                    })
+                                    setShowReconcileModal(true)
+                                  }}
+                                  className="w-3.5 h-3.5 rounded-full border border-slate-700 hover:border-purple-400 hover:bg-purple-950/60 mx-auto block cursor-pointer transition-colors"
+                                  title="Sin conciliar. Clic para conciliar o selecciona varias filas y usa el botón Conciliar del menú inferior."
+                                />
                               )}
                             </td>
                           )}
 
-                          {/* 15. Acciones */}
-                          <td className="py-2 px-3 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1">
+                          {/* 16. Acciones (Camión de Flete + Editar + Eliminar) */}
+                          <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-0.5">
                               <button
+                                type="button"
+                                onClick={() => {
+                                  setFreightTargetOrder(po)
+                                  setShowFreightModal(true)
+                                }}
+                                className={`p-1 rounded transition-colors cursor-pointer ${
+                                  hasFreight
+                                    ? 'text-amber-300 bg-amber-950/70 border border-amber-500/50 hover:bg-amber-900'
+                                    : 'text-slate-400 hover:text-cyan-300 hover:bg-slate-800'
+                                }`}
+                                title={
+                                  hasFreight
+                                    ? `🚚 Flete: ${po.freight_transport_name || 'S/D'} | Solicitud: ${po.freight_request_date || '—'} | Est. Entrega: ${po.freight_estimated_date || '—'} (Clic para editar)`
+                                    : 'Asignar datos de Flete (Transporte, Fecha Solicitud y Fecha Entrega Estimada)'
+                                }
+                              >
+                                <Truck className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => {
                                   setEditingOrder(po)
                                   setShowOrderModal(true)
@@ -2311,6 +2523,7 @@ export default function Compras() {
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleDeleteOrder(po.id)}
                                 className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
                                 title="Eliminar pedido"
@@ -2432,6 +2645,30 @@ export default function Compras() {
                     >
                       <XCircle className="w-3.5 h-3.5 text-rose-400" />
                       <span>Omitir Alta Catálogo ({selectedOrderIds.size})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const selectedRows = purchaseOrders.filter((p) => selectedOrderIds.has(p.id))
+                        const firstRow = selectedRows[0]
+                        const sup = suppliers.find((s) => s.id === firstRow?.supplier_id)
+                        setReconcileTarget({
+                          mode: 'selected',
+                          selectedIds: Array.from(selectedOrderIds),
+                          supplierId: firstRow?.supplier_id || null,
+                          orderId: firstRow?.id || null,
+                          orderDate: firstRow?.order_date || new Date().toISOString().split('T')[0],
+                          supplierName: sup?.name || 'Filas Seleccionadas',
+                          existingInvoice: firstRow?.invoice_number || ''
+                        })
+                        setShowReconcileModal(true)
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs shadow-md shadow-purple-600/25 transition-all cursor-pointer"
+                      title="Desplegar menú de conciliación para todas las filas seleccionadas"
+                    >
+                      <span>🟣</span>
+                      <span>Conciliar ({selectedOrderIds.size})</span>
                     </button>
                   </>
                 )}
@@ -2872,10 +3109,19 @@ export default function Compras() {
             setPendingMaterialOrder(null)
           }}
           onDismissed={async (orderId) => {
+            const targetPo = purchaseOrders.find((p) => p.id === orderId)
+            grid.pushUndoAction([
+              {
+                rowId: orderId,
+                colId: 'no_catalog_required',
+                oldValue: Boolean(targetPo?.no_catalog_required),
+                newValue: true
+              }
+            ])
             setPurchaseOrders((prev) =>
               prev.map((p) => (p.id === orderId ? { ...p, no_catalog_required: true } : p))
             )
-            showFeedbackMsg('success', 'Se descartó la solicitud de alta en catálogo para este pedido.')
+            showFeedbackMsg('success', 'Se descartó el alta en catálogo (en rojo). Podés deshacer con Ctrl+Z.')
             setShowNewMaterialModal(false)
             setPendingMaterialOrder(null)
           }}
@@ -2971,24 +3217,99 @@ export default function Compras() {
             setShowReconcileModal(false)
             setReconcileTarget(null)
           }}
-          onSuccess={async ({ invoiceNumber, orderIds }) => {
-            const updates = {
-              is_reconciled: true,
-              invoice_number: invoiceNumber,
-              reconciled_at: new Date().toISOString(),
-              reconciled_by: profile?.full_name || user?.email?.split('@')[0] || 'Supervisor'
-            }
+          onSuccess={async ({ invoiceNumber, orderIds, action = 'reconcile' }) => {
+            const isUnreconcile = action === 'unreconcile'
+            const updates = isUnreconcile
+              ? {
+                  is_reconciled: false,
+                  invoice_number: null,
+                  reconciled_at: null,
+                  reconciled_by: null
+                }
+              : {
+                  is_reconciled: true,
+                  invoice_number: invoiceNumber,
+                  reconciled_at: new Date().toISOString(),
+                  reconciled_by: profile?.full_name || user?.email?.split('@')[0] || 'Supervisor'
+                }
+
+            const undoChanges = orderIds.map((id) => {
+              const prevOrder = purchaseOrders.find((p) => p.id === id)
+              return {
+                rowId: id,
+                colId: 'reconciliation',
+                oldValue: {
+                  is_reconciled: Boolean(prevOrder?.is_reconciled),
+                  invoice_number: prevOrder?.invoice_number || null,
+                  reconciled_at: prevOrder?.reconciled_at || null,
+                  reconciled_by: prevOrder?.reconciled_by || null
+                },
+                newValue: updates
+              }
+            })
+            grid.pushUndoAction(undoChanges)
 
             for (const id of orderIds) {
               await supabase.from('purchase_orders').update(updates).eq('id', id)
             }
 
             setPurchaseOrders((prev) => prev.map((p) => (orderIds.includes(p.id) ? { ...p, ...updates } : p)))
-            showFeedbackMsg('success', `Se conciliaron ${orderIds.length} compras de ${reconcileTarget.supplierName} con factura ${invoiceNumber}.`)
+            if (reconcileTarget.mode === 'selected') {
+              setSelectedOrderIds(new Set())
+            }
+            if (isUnreconcile) {
+              showFeedbackMsg('success', `Se quitó la conciliación de ${orderIds.length} registro(s).`)
+            } else {
+              showFeedbackMsg('success', `Se conciliaron ${orderIds.length} compras con comprobante ${invoiceNumber}.`)
+            }
             setShowReconcileModal(false)
             setReconcileTarget(null)
           }}
           purchaseOrders={purchaseOrders}
+        />
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 4B: DATOS DE FLETE Y TRANSPORTE (ICONO CAMIÓN) */}
+      {/* ========================================================= */}
+      {showFreightModal && freightTargetOrder && (
+        <FreightModal
+          order={freightTargetOrder}
+          onClose={() => {
+            setShowFreightModal(false)
+            setFreightTargetOrder(null)
+          }}
+          onSuccess={async (freightUpdates) => {
+            grid.pushUndoAction([
+              {
+                rowId: freightTargetOrder.id,
+                colId: 'freight',
+                oldValue: {
+                  freight_transport_name: freightTargetOrder.freight_transport_name || null,
+                  freight_request_date: freightTargetOrder.freight_request_date || null,
+                  freight_estimated_date: freightTargetOrder.freight_estimated_date || null
+                },
+                newValue: freightUpdates
+              }
+            ])
+
+            const { error } = await supabase
+              .from('purchase_orders')
+              .update({ ...freightUpdates, updated_at: new Date().toISOString() })
+              .eq('id', freightTargetOrder.id)
+
+            if (error) {
+              showFeedbackMsg('error', 'Error al guardar datos de flete: ' + error.message)
+              return
+            }
+
+            setPurchaseOrders((prev) =>
+              prev.map((p) => (p.id === freightTargetOrder.id ? { ...p, ...freightUpdates } : p))
+            )
+            showFeedbackMsg('success', 'Datos de flete y transporte guardados correctamente.')
+            setShowFreightModal(false)
+            setFreightTargetOrder(null)
+          }}
         />
       )}
 
@@ -4307,24 +4628,33 @@ function DocActionModal({ doc, onClose, onSuccess }) {
 
 // MODAL 4: CONCILIAR CON FACTURA ("LÍNEA MORADA")
 function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
-  const [invoiceNumber, setInvoiceNumber] = useState('')
-  const [reconcileAllPrior, setReconcileAllPrior] = useState(true)
+  const isDetailMode = target?.mode === 'detail'
+  const isSelectedMode = target?.mode === 'selected'
+  const [invoiceNumber, setInvoiceNumber] = useState(target?.currentInvoice || '')
+  const [reconcileAllPrior, setReconcileAllPrior] = useState(!isSelectedMode && !isDetailMode)
 
   const eligibleOrders = useMemo(() => {
+    if (isSelectedMode && Array.isArray(target?.selectedIds)) {
+      return purchaseOrders.filter((po) => target.selectedIds.includes(po.id))
+    }
+    if (isDetailMode) {
+      return purchaseOrders.filter((po) => po.id === target.orderId)
+    }
     return purchaseOrders.filter((po) => {
-      if (po.supplier_id !== target.supplierId) return false
+      if (target.supplierId && po.supplier_id !== target.supplierId) return false
       if (po.is_reconciled) return false
       if (reconcileAllPrior) return po.order_date <= target.orderDate
       return po.id === target.orderId
     })
-  }, [purchaseOrders, target, reconcileAllPrior])
+  }, [purchaseOrders, target, reconcileAllPrior, isSelectedMode, isDetailMode])
 
   function handleSubmit(e) {
     e.preventDefault()
     if (!invoiceNumber.trim()) return alert('Debe ingresar el número de factura o remito.')
     onSuccess({
       invoiceNumber: invoiceNumber.trim(),
-      orderIds: eligibleOrders.map((o) => o.id)
+      orderIds: eligibleOrders.map((o) => o.id),
+      action: 'reconcile'
     })
   }
 
@@ -4334,16 +4664,43 @@ function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span className="text-purple-400">🟣</span> Conciliación con Factura ("Línea Morada")
+              <span className="text-purple-400">🟣</span>
+              {isDetailMode ? 'Detalle de Conciliación' : 'Conciliación con Factura'}
             </h3>
-            <p className="text-xs text-slate-400">Auditoría contable para {target.supplierName}</p>
+            <p className="text-xs text-slate-400">
+              {isSelectedMode
+                ? `Aplicación masiva sobre ${eligibleOrders.length} fila(s) seleccionada(s)`
+                : `Auditoría contable para ${target.supplierName || 'Proveedor'}`}
+            </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
         </div>
+
+        {isDetailMode && (
+          <div className="bg-purple-950/40 border border-purple-700/60 rounded-xl p-3 text-xs space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-purple-300 font-bold">Estado actual:</span>
+              <span className="px-2 py-0.5 rounded-full bg-purple-600/30 text-purple-200 font-bold text-[10px]">
+                🟣 CONCILIADO
+              </span>
+            </div>
+            <p className="text-slate-300">
+              Comprobante: <strong className="text-white font-mono">{target.currentInvoice || 'S/N'}</strong>
+            </p>
+            {target.reconciledAt && (
+              <p className="text-[11px] text-slate-400">
+                Fecha: {new Date(target.reconciledAt).toLocaleString('es-AR')}
+                {target.reconciledBy ? ` • Por: ${target.reconciledBy}` : ''}
+              </p>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Número de Factura o Remito Proveedor</label>
+            <label className="block text-slate-400 mb-1 font-semibold">
+              {isDetailMode ? 'Modificar Número de Factura o Remito' : 'Número de Factura o Remito Proveedor'}
+            </label>
             <input
               type="text"
               placeholder="Ej: FC-A-0004-9844"
@@ -4354,27 +4711,70 @@ function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
             />
           </div>
 
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-            <label className="flex items-center gap-2 text-slate-300 font-semibold cursor-pointer">
-              <input
-                type="checkbox"
-                checked={reconcileAllPrior}
-                onChange={(e) => setReconcileAllPrior(e.target.checked)}
-                className="rounded border-slate-700 text-purple-600 focus:ring-purple-500"
-              />
-              <span>Conciliar hasta aquí (incluir todas las anteriores pendientes)</span>
-            </label>
-            <p className="text-[11px] text-purple-300">
-              Se marcarán <strong className="text-white">{eligibleOrders.length} compras</strong> de este proveedor como
-              conciliadas bajo este comprobante.
-            </p>
-          </div>
+          {!isSelectedMode && !isDetailMode && target.supplierId && (
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+              <label className="flex items-center gap-2 text-slate-300 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={reconcileAllPrior}
+                  onChange={(e) => setReconcileAllPrior(e.target.checked)}
+                  className="rounded border-slate-700 text-purple-600 focus:ring-purple-500"
+                />
+                <span>Conciliar hasta aquí (incluir todas las anteriores pendientes del proveedor)</span>
+              </label>
+              <p className="text-[11px] text-purple-300">
+                Se marcarán <strong className="text-white">{eligibleOrders.length} compras</strong> de este proveedor como
+                conciliadas bajo este comprobante.
+              </p>
+            </div>
+          )}
 
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancelar</button>
-            <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white font-bold rounded-lg">
-              Confirmar Conciliación
-            </button>
+          {isSelectedMode && (
+            <div className="bg-purple-950/30 p-3 rounded-xl border border-purple-800/60 space-y-1.5">
+              <p className="text-[11px] text-purple-200 font-semibold">
+                Se aplicará la conciliación a las <strong className="text-white">{eligibleOrders.length} filas tildadas</strong>:
+              </p>
+              <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                {eligibleOrders.map((po) => (
+                  <div key={po.id} className="flex items-center justify-between text-[10px] text-slate-300 bg-slate-950/70 px-2 py-1 rounded">
+                    <span className="truncate font-semibold">{po.material_name}</span>
+                    <span className="text-slate-400 font-mono shrink-0 ml-2">{po.supplier?.name || 'S/Prov'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-800">
+            {isDetailMode ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onSuccess({
+                    invoiceNumber: null,
+                    orderIds: [target.orderId],
+                    action: 'unreconcile'
+                  })
+                }
+                className="px-3 py-2 bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold rounded-lg cursor-pointer"
+              >
+                Quitar Conciliación
+              </button>
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg cursor-pointer">
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={eligibleOrders.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 disabled:opacity-50 text-white font-bold rounded-lg cursor-pointer"
+              >
+                {isDetailMode ? 'Actualizar Comprobante' : `Confirmar (${eligibleOrders.length})`}
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -5782,6 +6182,125 @@ function InlineSupplierPicker({ suppliers, currentSupplierId, onSelect, onCancel
             </button>
           ))
         )}
+      </div>
+    </div>
+  )
+}
+
+// MODAL 4B: ASIGNAR DATOS DE FLETE Y TRANSPORTE (ICONO CAMIÓN EN ACCIONES)
+function FreightModal({ order, onClose, onSuccess }) {
+  const todayIso = new Date().toISOString().split('T')[0]
+  const [transportName, setTransportName] = useState(order?.freight_transport_name || '')
+  const [requestDate, setRequestDate] = useState(order?.freight_request_date || todayIso)
+  const [estimatedDate, setEstimatedDate] = useState(order?.freight_estimated_date || '')
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    onSuccess({
+      freight_transport_name: transportName.trim() || null,
+      freight_request_date: requestDate || null,
+      freight_estimated_date: estimatedDate || null
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Truck className="w-5 h-5 text-amber-400" />
+              Datos de Flete / Transporte
+            </h3>
+            <p className="text-xs text-slate-400 truncate max-w-[320px]">
+              Material: <strong className="text-slate-200">{order?.material_name}</strong>
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-slate-300 mb-1 font-bold">Nombre del Transporte / Comisionista</label>
+            <input
+              type="text"
+              autoFocus
+              placeholder="Ej: Cruz del Sur / Expreso Tas / Flete propio..."
+              value={transportName}
+              onChange={(e) => setTransportName(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-400"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-300 mb-1 font-bold">Fecha de Solicitud</label>
+              <input
+                type="date"
+                value={requestDate}
+                onClick={(e) => {
+                  if (typeof e.currentTarget.showPicker === 'function') {
+                    try { e.currentTarget.showPicker() } catch { /* ignore */ }
+                  }
+                }}
+                onChange={(e) => setRequestDate(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-white font-mono focus:outline-none focus:border-amber-400 cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-500 mt-0.5 block">Por defecto hoy (editable)</span>
+            </div>
+
+            <div>
+              <label className="block text-slate-300 mb-1 font-bold">Fecha Entrega Estimada (Flete)</label>
+              <input
+                type="date"
+                value={estimatedDate}
+                onClick={(e) => {
+                  if (typeof e.currentTarget.showPicker === 'function') {
+                    try { e.currentTarget.showPicker() } catch { /* ignore */ }
+                  }
+                }}
+                onChange={(e) => setEstimatedDate(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-amber-200 font-mono focus:outline-none focus:border-amber-400 cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-500 mt-0.5 block">Independiente de F. Entrega tabla</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-800">
+            {(order?.freight_transport_name || order?.freight_request_date || order?.freight_estimated_date) ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onSuccess({
+                    freight_transport_name: null,
+                    freight_request_date: null,
+                    freight_estimated_date: null
+                  })
+                }
+                className="px-3 py-2 bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold rounded-lg cursor-pointer"
+              >
+                Limpiar Flete
+              </button>
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg shadow-lg shadow-amber-500/20 cursor-pointer"
+              >
+                Guardar Flete
+              </button>
+            </div>
+          </div>
+        </form>
       </div>
     </div>
   )

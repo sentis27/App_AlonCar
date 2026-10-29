@@ -595,6 +595,95 @@ export function useSpreadsheetGrid({
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
   }, [isDraggingFill, fillRange, activeCell, executeFillDown])
 
+  // Listener global de teclado para que Ctrl+Z, Ctrl+Y y Ctrl+F funcionen siempre
+  // incluso después de cerrar un modal (ej. Modal ALTA) o hacer clic fuera de la tabla
+  useEffect(() => {
+    function handleGlobalKeyDown(e) {
+      if (e.defaultPrevented) return
+      const isEditingInput = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target?.tagName)
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        if (onFocusSearch) {
+          e.preventDefault()
+          onFocusSearch()
+        }
+        return
+      }
+
+      if (isEditingInput) return
+
+      if ((e.ctrlKey || e.metaKey) && ((e.key === 'y' || e.key === 'Y') || ((e.key === 'z' || e.key === 'Z') && e.shiftKey))) {
+        e.preventDefault()
+        redo()
+        return
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [undo, redo, onFocusSearch])
+
+  // Estadísticas en vivo del rango seleccionado (Estilo Excel: Suma, Promedio, Recuento)
+  const selectionStats = (() => {
+    if (!selectionRange || rows.length === 0 || columns.length === 0) return null
+    const minR = Math.max(0, Math.min(selectionRange.startRow, selectionRange.endRow))
+    const maxR = Math.min(rows.length - 1, Math.max(selectionRange.startRow, selectionRange.endRow))
+    const minC = Math.max(0, Math.min(selectionRange.startCol, selectionRange.endCol))
+    const maxC = Math.min(columns.length - 1, Math.max(selectionRange.startCol, selectionRange.endCol))
+
+    const totalCells = (maxR - minR + 1) * (maxC - minC + 1)
+    if (totalCells <= 1) return null
+
+    let count = 0
+    let numericCount = 0
+    let sum = 0
+    let min = Infinity
+    let max = -Infinity
+
+    for (let r = minR; r <= maxR; r++) {
+      const row = rows[r]
+      if (!row) continue
+      for (let c = minC; c <= maxC; c++) {
+        const colDef = columns[c]
+        if (!colDef) continue
+        const val = readCellValue(row, colDef)
+        if (val !== null && val !== undefined && val !== '') {
+          count++
+          if (typeof val === 'number' && !Number.isNaN(val)) {
+            numericCount++
+            sum += val
+            if (val < min) min = val
+            if (val > max) max = val
+          } else if (typeof val === 'string') {
+            const cleaned = val.replace(/[^0-9.-]/g, '')
+            if (cleaned !== '' && !Number.isNaN(Number(cleaned)) && !/^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+              const num = Number(cleaned)
+              numericCount++
+              sum += num
+              if (num < min) min = num
+              if (num > max) max = num
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      totalCells,
+      count,
+      numericCount,
+      sum: numericCount > 0 ? sum : null,
+      avg: numericCount > 0 ? sum / numericCount : null,
+      min: numericCount > 0 ? min : null,
+      max: numericCount > 0 ? max : null
+    }
+  })()
+
   const isCellActive = useCallback((rowIndex, colIndex) => {
     return Boolean(activeCell && activeCell.rowIndex === rowIndex && activeCell.colIndex === colIndex)
   }, [activeCell])
@@ -636,6 +725,7 @@ export function useSpreadsheetGrid({
   return {
     activeCell,
     activeCellBadge,
+    selectionStats,
     setActiveCell,
     selectionRange,
     setSelectionRange,
