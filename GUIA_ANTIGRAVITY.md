@@ -43,6 +43,10 @@ Apertura de Sesión y Pre-Tarea
    - Cita docs/01_infraestructura/03_seguridad_credenciales.md
    - Alerta si algo se ve inseguro
 
+5. ¿Es sobre desarrollo de pantallas o módulos del ERP?
+   - Consulta obligatoria: docs/02_producto/ESTANDARES_MODULOS_UI_UX.md.
+   - Cumplir el estándar estricto: arquitectura de 4 zonas cromáticas (.alon-zone-*), radar de KPIs compacto sin repetir colores y con título destacado (16px), regla universal de calendario en toda fecha, cálculo en vivo (Suma/Promedio/Recuento) al seleccionar celdas, ícono GPS de celda activa y atajos de hoja de cálculo (Esc para limpiar búsqueda/filtros, flechas, Ctrl+D, Ctrl+Z, tirador fill-handle).
+
 Durante la Tarea
 Sé específico:
 ❌ "El sistema es complejo"

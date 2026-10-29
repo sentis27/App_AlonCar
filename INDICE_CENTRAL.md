@@ -25,6 +25,7 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | :--- | :--- | :--- |
 | `docs/02_producto/README.md` | Catálogo central de bitácora (Decisiones, Errores, Conceptos, Procesos) | Todos |
 | `docs/02_producto/registro_paso_a_paso.md` | Guía educativa: por qué proteger credenciales, cómo funciona el sistema | Usuarios finales / Clientes |
+| docs/02_producto/ESTANDARES_MODULOS_UI_UX.md | Guía Maestra de Estándares de Arquitectura, UI y UX (4 Zonas, KPIs compactos multicolores, Calendario y Excel Grid) | Devs / Agentes IA |
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)
 Diseño de los 6 módulos del ERP.

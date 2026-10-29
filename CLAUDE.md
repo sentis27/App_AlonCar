@@ -81,6 +81,11 @@ Instrucciones para agentes de IA (Claude Code, Antigravity) trabajando en App_Al
 - `.agents/skills/caveman/` — compresión de output, leer antes de iniciar sesión larga
 - `.agents/skills/rtk/` — compresión de comandos Bash, leer si hay outputs largos de terminal
 
+## Estándares Mandatorios de Módulos (UI/UX)
+
+- Consultar obligatoriamente `docs/02_producto/ESTANDARES_MODULOS_UI_UX.md` antes de crear o modificar cualquier módulo o pantalla del ERP.
+- Respetar siempre: arquitectura visual de 4 zonas cromáticas (`.alon-zone-*`), radar de KPIs compacto sin repetir colores y con título destacado, regla universal de calendario en toda carga o edición de fecha, barra de cálculos en vivo (Suma, Promedio, Recuento) al seleccionar celdas numéricas, ícono GPS en celda activa y atajos de hoja de cálculo (`Esc` para limpiar búsqueda/filtros al instante, navegación con flechas, `Ctrl+D`, `Ctrl+Z`, `Ctrl+Y`, tirador fill-handle).
+
 ## Agentes especializados
 
 - `automation-governance-architect` — activa automáticamente ante modificaciones a workflows en producción, y cuando el usuario lo pide explícitamente. Aplica en Claude Code y Antigravity.
