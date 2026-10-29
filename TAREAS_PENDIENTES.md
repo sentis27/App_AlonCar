@@ -118,16 +118,22 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - **Catálogo de Proveedores con Doble Vista y Multirubro:** Vista lista con sticky header vs tarjetas/cards, KPIs interactivos (Total, Sin Teléfono, Sin Email, Sin Rubro, Gases P-02), combobox multirubro (`trades TEXT[]`) y buscador rápido in-situ `InlineSupplierPicker` por iniciales para +300 proveedores.
   - **Alta Formal de Material en B.D. Maestra (`NewMaterialModal`) y KPI 5 "Alta Catálogo":** 3 únicas categorías (`MATERIALES`, `CONSUMIBLES`, `ELEM.SEGURIDAD`), unidad de medida desplegable, % de seguridad desplegable (6% por defecto), subida de foto a Storage, descarte individual/masivo (`no_catalog_required`) y solicitud de apertura de nuevo rubro con alerta y homologación 1-clic en `/admin`.
   - **Carga Multi-Adjunto Dinámica (`+ Agregar otro adjunto`):** Filas independientes con su propio selector de Tipo de Documento, archivo y descripción en `OrderAttachmentsModal` y `UploadDocModal`.
+
   - **Ergonomía de Hoja de Cálculo (Google Sheets / Excel Grid — useSpreadsheetGrid):**
-    - Coordenadas de celda activa y selección de rango vertical/horizontal (`Shift + Flechas` o arrastre con mouse).
+    - Coordenadas de celda activa con indicador GPS en ribbon y selección de rango vertical/horizontal (`Shift + Flechas` o arrastre con mouse).
+    - Barra reactiva de métricas en vivo en ribbon (`Cant`, `Suma`, `Promedio`, `Mín`, `Máx` al seleccionar rangos numéricos como en Excel).
     - Tirador de esquina inferior derecha (*Fill Handle*) con arrastre y doble clic de auto-rellenado.
-    - Atajos rápidos: `Ctrl + C` (copiar), `Ctrl + V` (pegar en celda o rango), `Ctrl + D` (rellenar hacia abajo), `Ctrl + Z` (pila de deshacer de 50 pasos por sesión y usuario con reversión en Supabase), `Ctrl + F` (foco al buscador de la tabla).
+    - Atajos rápidos: `Ctrl + C` (copiar), `Ctrl + V` (pegar en celda o rango), `Ctrl + D` (rellenar hacia abajo), `Ctrl + Z` / `Ctrl + Y` (pila global de deshacer/rehacer de 50 pasos por sesión y usuario con reversión en Supabase), `Ctrl + F` (foco al buscador de la tabla), `Esc` (limpia búsquedas y filtros activos).
     - Botón visible `[ ↩ Deshacer (Ctrl+Z) ]` y badge con atajos en barra de herramientas.
-  - **Ergonomía de Hoja de Cálculo (Google Sheets / Excel Grid — useSpreadsheetGrid):**
-    - Coordenadas de celda activa y selección de rango vertical/horizontal (`Shift + Flechas` o arrastre con mouse).
-    - Tirador de esquina inferior derecha (*Fill Handle*) con arrastre y doble clic de auto-rellenado.
-    - Atajos rápidos: `Ctrl + C` (copiar), `Ctrl + V` (pegar en celda o rango), `Ctrl + D` (rellenar hacia abajo), `Ctrl + Z` (pila de deshacer de 50 pasos por sesión y usuario con reversión en Supabase), `Ctrl + F` (foco al buscador de la tabla).
-    - Botón visible `[ ↩ Deshacer (Ctrl+Z) ]` y badge con atajos en barra de herramientas.
+  - **Refinamiento Operativo y Arquitectura Compras (Migración 0029 + Fit-to-Viewport):**
+    - **Depuración de Estados:** Eliminado el estado obsoleto `SOLICITUD` (migrado a `PEDIR`) y reordenado el catálogo `STATUS_OPTIONS` en orden de ciclo de vida (`PEDIR`, `PEDIDO`, `COTIZAR`, `COTIZA.SOLICITUD`, `COTIZACION`, `COTIZA.APROBADA`, `COTIZA.RECHAZADA`, `RECIBIDO`, `RECIB.COMP.DIRECT`, `RECIBIDO 2`, `PEDIDO INCOMPLETO`, `SE COMPRA?`, `CANCELADOS`, `NO VENDEN`). Celdas compactadas sin texto entre paréntesis y con tooltip completo al pasar el mouse.
+    - **Conciliación Ultracompacta y por Lote:** Columna `Conc.` reducida a ancho mínimo con círculo violeta (`🟣`), visualización de comprobante/auditor al clic y botón flotante rápido `🟣 Conciliar ({N})` en menú inferior para aplicar a todas las filas seleccionadas de una sola vez.
+    - **Logística y Flete:** Icono de camión (`🚚`) en columna `Acciones` para registrar transporte/comisionista, fecha de solicitud (por defecto hoy, editable) y fecha de entrega estimada del flete con soporte de reversión (`Ctrl+Z`).
+    - **Columna F. Entrega:** Nueva columna `F. Entrega` (`delivery_date`) visible en la tabla general entre `Doc` y `Conc.`, editable in-situ con calendario interactivo y desacoplada de las fechas del flete.
+    - **Alerta "Sin Alta en Catálogo":** Resaltado en rojo (`text-rose-400 font-bold`) para pedidos donde se descartó el alta, evitando confusiones al intentar ingresarlos en Pañol, con soporte completo de deshacer vía `Ctrl+Z`.
+    - **Calendarios Nativos:** Activación automática de `el.showPicker()` al hacer doble clic en celdas de fecha (`Fecha / Quincena` y `F. Entrega`).
+    - **Cumplimiento Fit-to-Viewport:** Eliminación del desborde horizontal de la tabla y registro de la regla de ancho de pantalla en `ESTANDARES_MODULOS_UI_UX.md`.
+    - **Radar de KPIs Compras:** 8 tarjetas de métricas con casillas compactas, tipografía 16px destacada para rápida localización visual, 8 colores distintos sin repetición y sin la palabra redundante "Filtrar".
 
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
