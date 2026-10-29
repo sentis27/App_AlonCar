@@ -51,10 +51,25 @@ export function useSpreadsheetGrid({
     }
   })
 
+  // Pila de Rehacer (Redo Stack)
+  const [redoStack, setRedoStack] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('aloncar_grid_redo_stack')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+
   const gridContainerRef = useRef(null)
 
   // Sincronizar undoStack con sessionStorage (máx 50 pasos)
   const pushUndoAction = useCallback((action) => {
+    setRedoStack([])
+    try {
+      sessionStorage.removeItem('aloncar_grid_redo_stack')
+    } catch {}
+
     setUndoStack((prev) => {
       const next = [action, ...prev].slice(0, maxUndoSteps)
       try {
@@ -79,6 +94,14 @@ export function useSpreadsheetGrid({
       sessionStorage.setItem('aloncar_grid_undo_stack', JSON.stringify(remainingStack))
     } catch {}
 
+    setRedoStack((prev) => {
+      const nextRedo = [lastAction, ...prev].slice(0, maxUndoSteps)
+      try {
+        sessionStorage.setItem('aloncar_grid_redo_stack', JSON.stringify(nextRedo))
+      } catch {}
+      return nextRedo
+    })
+
     if (onBatchUpdate && lastAction.previousValues) {
       // Revertir en Supabase y estado local
       const entries = Object.entries(lastAction.previousValues)
@@ -93,7 +116,53 @@ export function useSpreadsheetGrid({
         showFeedback('success', `Deshecho: Se restauraron ${entries.length} registro(s) en ${lastAction.colLabel || lastAction.colKey}.`)
       }
     }
-  }, [undoStack, onBatchUpdate, showFeedback])
+  }, [undoStack, onBatchUpdate, maxUndoSteps, showFeedback])
+
+  // Rehacer el último cambio deshecho (Ctrl + Y o Ctrl + Shift + Z)
+  const redo = useCallback(async () => {
+    if (redoStack.length === 0) {
+      if (showFeedback) showFeedback('info', 'No hay más acciones para rehacer.')
+      return
+    }
+
+    const [actionToRedo, ...remainingRedo] = redoStack
+    setRedoStack(remainingRedo)
+    try {
+      sessionStorage.setItem('aloncar_grid_redo_stack', JSON.stringify(remainingRedo))
+    } catch {}
+
+    setUndoStack((prev) => {
+      const nextUndo = [actionToRedo, ...prev].slice(0, maxUndoSteps)
+      try {
+        sessionStorage.setItem('aloncar_grid_undo_stack', JSON.stringify(nextUndo))
+      } catch {}
+      return nextUndo
+    })
+
+    if (onBatchUpdate) {
+      const targetIds = Object.keys(actionToRedo.previousValues || {})
+      if (actionToRedo.newValuesMap) {
+        await onBatchUpdate({
+          colKey: actionToRedo.colKey,
+          revertMap: actionToRedo.newValuesMap,
+          isRevert: true,
+          actionLabel: actionToRedo.actionLabel || 'rehacer'
+        })
+      } else {
+        await onBatchUpdate({
+          colKey: actionToRedo.colKey,
+          newValue: actionToRedo.newValue,
+          targetIds,
+          isRevert: false,
+          actionLabel: 'Rehacer'
+        })
+      }
+
+      if (showFeedback) {
+        showFeedback('success', `Rehecho: Se re-aplicó el cambio en ${actionToRedo.colLabel || actionToRedo.colKey}.`)
+      }
+    }
+  }, [redoStack, onBatchUpdate, maxUndoSteps, showFeedback])
 
   // Ejecutar Fill Down (Ctrl + D o al soltar el tirador)
   const executeFillDown = useCallback(async (startRowIdx, endRowIdx, colIdx) => {
@@ -278,6 +347,13 @@ export function useSpreadsheetGrid({
     if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault()
       if (onFocusSearch) onFocusSearch()
+      return
+    }
+
+    // Ctrl + Y o Ctrl + Shift + Z: Rehacer
+    if ((e.ctrlKey || e.metaKey) && ((e.key === 'y' || e.key === 'Y') || ((e.key === 'z' || e.key === 'Z') && e.shiftKey))) {
+      e.preventDefault()
+      redo()
       return
     }
 
@@ -524,6 +600,9 @@ export function useSpreadsheetGrid({
     pushUndoAction,
     canUndo: undoStack.length > 0,
     undo,
+    redoStack,
+    canRedo: redoStack.length > 0,
+    redo,
     copyActiveCell,
     pasteToActiveOrRange,
     executeFillDown,

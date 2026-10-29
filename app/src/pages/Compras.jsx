@@ -38,6 +38,7 @@ import {
   ShieldAlert,
   Check,
   RotateCcw,
+  RotateCw,
   FileCheck,
   CheckSquare,
   Square,
@@ -1383,7 +1384,7 @@ export default function Compras() {
                 </button>
               )}
 
-              {/* Botón Deshacer (Ctrl+Z) y Atajos */}
+              {/* Botón Deshacer (Ctrl+Z) / Rehacer (Ctrl+Y) y Atajos */}
               {grid.canUndo && (
                 <button
                   type="button"
@@ -1396,6 +1397,18 @@ export default function Compras() {
                 </button>
               )}
 
+              {grid.canRedo && (
+                <button
+                  type="button"
+                  onClick={grid.redo}
+                  className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1.5 transition-all cursor-pointer animate-in fade-in"
+                  title="Rehacer el cambio deshecho (Ctrl + Y)"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span>Rehacer (Ctrl+Y)</span>
+                </button>
+              )}
+
               <div className="hidden 2xl:flex items-center gap-1.5 text-[10px] text-slate-500 font-mono bg-slate-950 px-2 py-1 rounded border border-slate-800">
                 <span className="text-cyan-400 font-bold">⌨️ Grid:</span>
                 <span>Ctrl+C/V</span>
@@ -1403,6 +1416,8 @@ export default function Compras() {
                 <span>Ctrl+D</span>
                 <span>•</span>
                 <span>Ctrl+Z</span>
+                <span>•</span>
+                <span>Ctrl+Y</span>
                 <span>•</span>
                 <span>Ctrl+F</span>
               </div>

@@ -87,7 +87,10 @@ Para dotar a las tablas del sistema de la máxima agilidad operativa sin inventa
 - **`Ctrl + C` (Copiar):** Copia el valor de la celda activa a la memoria del grid y al portapapeles del sistema operativo.
 - **`Ctrl + V` (Pegar):** Pega el valor en la celda activa o en todo el rango de celdas seleccionadas verticalmente.
 - **`Ctrl + D` (Rellenar hacia abajo / *Fill Down*):** Clona el valor de la primera celda del rango en todas las celdas inferiores seleccionadas.
-- **`Ctrl + Z` (Deshacer / *Undo*):**
+- **`Ctrl + Z` (Deshacer / *Undo*) y `Ctrl + Y` (Rehacer / *Redo*):**
+  - Mantiene pilas sincronizadas de hasta **50 pasos** en memoria de sesión por usuario.
+  - **`Ctrl + Y` / `Ctrl + Shift + Z`:** Permite re-aplicar instantáneamente las modificaciones que se hubieran deshecho, tanto en pantalla como en Supabase.
+  - Botones conmutables visibles **`[ ↩ Deshacer (Ctrl+Z) ]`** y **`[ ↪ Rehacer (Ctrl+Y) ]`** en la barra superior.
   - Mantiene una pila histórica de hasta **50 pasos de deshacer** en memoria de sesión (`sessionStorage`).
   - **Aislada por usuario:** Cada usuario solo deshace sus propios cambios sin interferir con otros compradores.
   - **Reversión instantánea:** Restaura tanto el estado visual como los datos en Supabase en un único lote agrupado.

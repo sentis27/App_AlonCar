@@ -122,7 +122,7 @@ Para eliminar clics innecesarios y operar a la velocidad de una planilla de cál
 - **Comandos Rápidos:**
   - **`Ctrl + C` / `Ctrl + V`:** Copiar y pegar datos en celdas individuales o rangos completos.
   - **`Ctrl + D`:** Rellena hacia abajo (*Fill Down*) replicando el valor de la celda superior en todas las celdas seleccionadas por debajo.
-  - **`Ctrl + Z` (Deshacer):** Pila histórica de hasta 50 pasos por sesión y usuario; revierte visualmente y en Supabase en un único lote. Cuenta con botón de acceso visible **`[ ↩ Deshacer (Ctrl+Z) ]`**.
+  - **`Ctrl + Z` (Deshacer) / `Ctrl + Y` (Rehacer):** Pila histórica bidireccional de hasta 50 pasos por sesión y usuario; revierte o re-aplica cambios visualmente y en Supabase en un único lote. Cuenta con botones visibles **`[ ↩ Deshacer (Ctrl+Z) ]`** y **`[ ↪ Rehacer (Ctrl+Y) ]`**.
   - **`Ctrl + F`:** Atajo al buscador de compras seleccionando el texto para filtrar al instante sin usar el mouse.
 
 ---
