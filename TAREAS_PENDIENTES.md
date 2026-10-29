@@ -118,6 +118,16 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - **Catálogo de Proveedores con Doble Vista y Multirubro:** Vista lista con sticky header vs tarjetas/cards, KPIs interactivos (Total, Sin Teléfono, Sin Email, Sin Rubro, Gases P-02), combobox multirubro (`trades TEXT[]`) y buscador rápido in-situ `InlineSupplierPicker` por iniciales para +300 proveedores.
   - **Alta Formal de Material en B.D. Maestra (`NewMaterialModal`) y KPI 5 "Alta Catálogo":** 3 únicas categorías (`MATERIALES`, `CONSUMIBLES`, `ELEM.SEGURIDAD`), unidad de medida desplegable, % de seguridad desplegable (6% por defecto), subida de foto a Storage, descarte individual/masivo (`no_catalog_required`) y solicitud de apertura de nuevo rubro con alerta y homologación 1-clic en `/admin`.
   - **Carga Multi-Adjunto Dinámica (`+ Agregar otro adjunto`):** Filas independientes con su propio selector de Tipo de Documento, archivo y descripción en `OrderAttachmentsModal` y `UploadDocModal`.
+  - **Ergonomía de Hoja de Cálculo (Google Sheets / Excel Grid — useSpreadsheetGrid):**
+    - Coordenadas de celda activa y selección de rango vertical/horizontal (`Shift + Flechas` o arrastre con mouse).
+    - Tirador de esquina inferior derecha (*Fill Handle*) con arrastre y doble clic de auto-rellenado.
+    - Atajos rápidos: `Ctrl + C` (copiar), `Ctrl + V` (pegar en celda o rango), `Ctrl + D` (rellenar hacia abajo), `Ctrl + Z` (pila de deshacer de 50 pasos por sesión y usuario con reversión en Supabase), `Ctrl + F` (foco al buscador de la tabla).
+    - Botón visible `[ ↩ Deshacer (Ctrl+Z) ]` y badge con atajos en barra de herramientas.
+  - **Ergonomía de Hoja de Cálculo (Google Sheets / Excel Grid — useSpreadsheetGrid):**
+    - Coordenadas de celda activa y selección de rango vertical/horizontal (`Shift + Flechas` o arrastre con mouse).
+    - Tirador de esquina inferior derecha (*Fill Handle*) con arrastre y doble clic de auto-rellenado.
+    - Atajos rápidos: `Ctrl + C` (copiar), `Ctrl + V` (pegar en celda o rango), `Ctrl + D` (rellenar hacia abajo), `Ctrl + Z` (pila de deshacer de 50 pasos por sesión y usuario con reversión en Supabase), `Ctrl + F` (foco al buscador de la tabla).
+    - Botón visible `[ ↩ Deshacer (Ctrl+Z) ]` y badge con atajos en barra de herramientas.
 
 - [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
@@ -434,5 +444,5 @@ Cuando cambies una prioridad:
 markdown- [ ] **AHORA CRÍTICA** — Descripción (era Media)
 Responsable: Tú + Antigravity (colaborativo)
 
-Última actualización: 2026-10-28
+Última actualización: 2026-10-29
 Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales

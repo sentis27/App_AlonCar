@@ -115,6 +115,16 @@ La cabecera de la tabla permanece congelada en la parte superior (`sticky top-0 
   - `[ 🚫 Omitir Alta Catálogo (N) ]`: Descarta en bloque el aviso de alta para materiales puntuales/descartables (`no_catalog_required = true`).
   - `[ ✅ Recibir (N) ]`: Recepción masiva.
 
+### 2.6. Motor de Hoja de Cálculo (Google Sheets / Excel Grid — `useSpreadsheetGrid`)
+Para eliminar clics innecesarios y operar a la velocidad de una planilla de cálculo profesional:
+- **Navegación Fluida:** Flechas (`↑`, `↓`, `←`, `→`) para caminar entre celdas; `Shift + Flechas` o arrastre con mouse para seleccionar rangos verticales u horizontales.
+- **Tirador de Arrastre (*Fill Handle*):** Cuadradito cian en la esquina inferior derecha (`cursor: crosshair`) para arrastrar hacia abajo y clonar datos, con soporte de **doble clic para auto-rellenar** hasta la última fila contigua.
+- **Comandos Rápidos:**
+  - **`Ctrl + C` / `Ctrl + V`:** Copiar y pegar datos en celdas individuales o rangos completos.
+  - **`Ctrl + D`:** Rellena hacia abajo (*Fill Down*) replicando el valor de la celda superior en todas las celdas seleccionadas por debajo.
+  - **`Ctrl + Z` (Deshacer):** Pila histórica de hasta 50 pasos por sesión y usuario; revierte visualmente y en Supabase en un único lote. Cuenta con botón de acceso visible **`[ ↩ Deshacer (Ctrl+Z) ]`**.
+  - **`Ctrl + F`:** Atajo al buscador de compras seleccionando el texto para filtrar al instante sin usar el mouse.
+
 ---
 
 ## 3. Circuitos Especiales y Modales

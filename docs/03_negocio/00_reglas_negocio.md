@@ -67,13 +67,36 @@ El formulario de Pañol permite seleccionar la OT una sola vez y agregar una gri
   6. 🟢 **6. Recibidos:** `RECIBIDO`, `RECIB.COMP.DIRECT`, `RECIBIDO 2`, `COMP.FACTURADA`.
   7. 🚨 **7. Gases P-02:** Reposición crítica de cilindros (Air Liquide / Praxair Linde).
 
-### 4.2. Edición Rápida en Celda por Doble Clic con Buscador de Proveedores (Estilo Excel / Sheets)
-Para evitar la lentitud de abrir modales en tareas rutinarias con muchos datos:
-- **$/U Proveedor:** Doble clic $\rightarrow$ celda se convierte en input numérico in-situ $\rightarrow$ `Enter` o `Blur` guarda inmediatamente en Supabase y actualiza totales.
-- **Proveedor (Buscador Reactivo para +300 Proveedores):** Doble clic $\rightarrow$ despliega el selector flotante `InlineSupplierPicker` con campo de búsqueda instantánea por iniciales, rubro o CUIT $\rightarrow$ clic o `Enter` guarda al instante.
-- **Cantidad:** Doble clic $\rightarrow$ input numérico $\rightarrow$ `Enter` guarda.
-- **Solicita:** Doble clic $\rightarrow$ input de texto $\rightarrow$ `Enter` guarda.
-- **Urgencia:** Un solo clic conmuta cíclicamente: `Sin Apuro` $\rightarrow$ `Urgente` $\rightarrow$ `Próxima Salida`.
+### 4.2. Ergonomía Transversal de Hoja de Cálculo (Estándar Google Sheets / Excel Grid)
+Para dotar a las tablas del sistema de la máxima agilidad operativa sin inventar interfaces complejas, se implementa el motor de grilla interactiva (`useSpreadsheetGrid`):
+
+#### A. Navegación y Selección de Celdas
+- **Celda Activa:** Clic simple en cualquier celda la enfoca con un marco vibrante cian (`ring-2 ring-cyan-400 bg-cyan-950/40`).
+- **Navegación con Flechas:** Las teclas `↑`, `↓`, `←`, `→` mueven el foco celda por celda de forma idéntica a Excel/Sheets.
+- **Selección de Rango:**
+  - **Teclado:** `Shift + Flechas` expande o contrae la selección vertical u horizontal de celdas.
+  - **Mouse:** Clic y arrastre sobre una columna selecciona el rango deseado sin seleccionar la fila entera.
+
+#### B. El Tirador de Esquina (*Fill Handle*)
+- En la esquina inferior derecha de la celda activa se proyecta el **cuadradito azul/cian (`■`)**.
+- Al pasar el mouse, el puntero cambia a una **cruz delgada (`cursor: crosshair`)**.
+- **Arrastre hacia abajo:** Sombrea las celdas inferiores con borde punteado y, al soltar, clona el valor de la celda superior en todas las celdas recorridas.
+- **Doble clic en el tirador:** Auto-rellena hacia abajo automáticamente hasta la última fila con datos contiguos de la tabla.
+
+#### C. Atajos de Teclado Universales
+- **`Ctrl + C` (Copiar):** Copia el valor de la celda activa a la memoria del grid y al portapapeles del sistema operativo.
+- **`Ctrl + V` (Pegar):** Pega el valor en la celda activa o en todo el rango de celdas seleccionadas verticalmente.
+- **`Ctrl + D` (Rellenar hacia abajo / *Fill Down*):** Clona el valor de la primera celda del rango en todas las celdas inferiores seleccionadas.
+- **`Ctrl + Z` (Deshacer / *Undo*):**
+  - Mantiene una pila histórica de hasta **50 pasos de deshacer** en memoria de sesión (`sessionStorage`).
+  - **Aislada por usuario:** Cada usuario solo deshace sus propios cambios sin interferir con otros compradores.
+  - **Reversión instantánea:** Restaura tanto el estado visual como los datos en Supabase en un único lote agrupado.
+  - Accionable mediante teclado (`Ctrl + Z`) o mediante el botón visible **`[ ↩ Deshacer (Ctrl+Z) ]`** en la barra de herramientas.
+- **`Ctrl + F` (Búsqueda Rápida en Tabla):** Intercepta el buscador de Chrome/Edge y enfoca inmediatamente el input de búsqueda de compras seleccionando el texto para filtrar sin tocar el mouse.
+
+#### D. Edición In-Situ
+- **Doble clic / F2 / Enter:** Abre el editor de celda (input numérico, texto, selector de proveedor con buscador por iniciales o selector de estado).
+- **Escape:** Cancela la edición o desactiva el rango de selección.
 
 ### 4.3. Carga de Pedidos Multi-Material
 - **Cabecera Compartida:** Selección única de Buque, Orden de Trabajo (OT con descripción técnica completa visible), Fecha de Pedido (doble clic abre calendario nativo `showPicker()`), Solicitante (por defecto "PAÑOL" u operario con permiso de retiro) y Nivel de Urgencia.

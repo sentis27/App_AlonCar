@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import {
   XCircle,
   Split,
@@ -233,6 +234,7 @@ export default function Compras() {
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState('')
+  const searchInputRef = useRef(null)
   const [filterSupplier, setFilterSupplier] = useState('TODOS')
   const [filterStatus, setFilterStatus] = useState('TODOS')
   const [filterFortnight, setFilterFortnight] = useState('TODAS')
@@ -539,11 +541,161 @@ export default function Compras() {
     })
   }, [purchaseOrders, searchQuery, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter, suppliers, ships])
 
+  // =========================================================================
+  // HOJA DE CÁLCULO INTELIGENTE (ESTÁNDAR EXCEL / GOOGLE SHEETS)
+  // Atajos: Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z, Ctrl+F, Navegación con Flechas y Tirador
+  // =========================================================================
+  const spreadsheetColumns = useMemo(() => {
+    const cols = [
+      { key: 'charge_type', label: 'Destino', readOnly: false },
+      { key: 'order_date', label: 'Fecha / Quincena', readOnly: true },
+      { key: 'ship_id', label: 'Buque / OT', readOnly: true },
+      { key: 'requested_by_name', label: 'Solicita', readOnly: false },
+      { key: 'material_name_raw', label: 'Material', readOnly: true },
+      { key: 'quantity', label: 'Cant.', readOnly: false }
+    ]
+    if (viewMode === 'completa') {
+      cols.push(
+        { key: 'supplier_quoted_price', label: '$/U Proveedor', readOnly: false },
+        { key: 'system_unit_price', label: '$/U Sistema', readOnly: true }
+      )
+    }
+    cols.push(
+      { key: 'supplier_id', label: 'Proveedor', readOnly: false },
+      { key: 'status', label: 'Estado', readOnly: false },
+      { key: 'urgency', label: 'Urgencia', readOnly: false }
+    )
+    return cols
+  }, [viewMode])
+
+  // Actualización batch para comandos de hoja de cálculo (Ctrl+D, Ctrl+V, Drag Fill, Ctrl+Z)
+  const handleSpreadsheetBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    if (isRevert && revertMap) {
+      // Reversión atómica por Ctrl+Z agrupada por valor
+      const grouped = {}
+      for (const [id, oldVal] of Object.entries(revertMap)) {
+        const key = String(oldVal ?? '')
+        if (!grouped[key]) grouped[key] = { value: oldVal, ids: [] }
+        grouped[key].ids.push(id)
+      }
+
+      setPurchaseOrders((prev) =>
+        prev.map((p) => {
+          if (revertMap[p.id] !== undefined) {
+            return { ...p, [colKey]: revertMap[p.id] }
+          }
+          return p
+        })
+      )
+
+      try {
+        await Promise.all(
+          Object.values(grouped).map((group) =>
+            supabase
+              .from('purchase_orders')
+              .update({ [colKey]: group.value, updated_at: new Date().toISOString() })
+              .in('id', group.ids)
+          )
+        )
+      } catch (err) {
+        console.error('Error al revertir en Supabase:', err)
+        showFeedbackMsg('error', 'Error al revertir: ' + err.message)
+        fetchData()
+      }
+      return
+    }
+
+    if (targetIds && targetIds.length > 0) {
+      // Optimistic local update
+      setPurchaseOrders((prev) =>
+        prev.map((p) => {
+          if (targetIds.includes(p.id)) {
+            return { ...p, [colKey]: newValue }
+          }
+          return p
+        })
+      )
+
+      try {
+        const { error } = await supabase
+          .from('purchase_orders')
+          .update({ [colKey]: newValue, updated_at: new Date().toISOString() })
+          .in('id', targetIds)
+        if (error) throw error
+      } catch (err) {
+        console.error('Error en batch update de compras:', err)
+        showFeedbackMsg('error', 'Error al actualizar en lote: ' + err.message)
+        fetchData()
+      }
+    }
+  }, [fetchData])
+
+  // Hook central de Hoja de Cálculo
+  const grid = useSpreadsheetGrid({
+    rows: filteredOrders,
+    columns: spreadsheetColumns,
+    getRowId: (row) => row.id,
+    onBatchUpdate: handleSpreadsheetBatchUpdate,
+    onFocusSearch: () => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    },
+    canEditCell: (row, colKey, newValue) => {
+      if (colKey === 'status' && newValue === 'PEDIDO INCOMPLETO') {
+        showFeedbackMsg('error', 'El estado "PEDIDO INCOMPLETO" requiere recepción parcial individual con remito.')
+        return false
+      }
+      return true
+    },
+    showFeedback: showFeedbackMsg
+  })
+
+  // Helper para propiedades y eventos de celda spreadsheet
+  function getSpreadsheetCellProps(rowIndex, colKey) {
+    const colIdx = spreadsheetColumns.findIndex((c) => c.key === colKey)
+    if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
+
+    const isActive = grid.isCellActive(rowIndex, colIdx)
+    const isSelected = grid.isCellSelected(rowIndex, colIdx)
+    const isFillPreview = grid.isCellInFillPreview(rowIndex, colIdx)
+    const renderHandle = grid.shouldRenderFillHandle(rowIndex, colIdx)
+
+    return {
+      renderHandle,
+      domProps: {
+        onClick: (e) => grid.handleCellClick(rowIndex, colIdx, e),
+        onMouseDown: (e) => grid.handleCellMouseDown(rowIndex, colIdx, e),
+        onMouseEnter: () => grid.handleCellMouseEnter(rowIndex, colIdx)
+      },
+      className: `relative select-none transition-colors ${
+        isActive
+          ? 'ring-2 ring-cyan-400 bg-cyan-950/40 z-20 outline-none'
+          : isFillPreview
+          ? 'bg-cyan-900/40 border-y border-dashed border-cyan-400'
+          : isSelected
+          ? 'bg-cyan-900/30'
+          : ''
+      }`
+    }
+  }
+
   // Guardar edición rápida inline (Doble Clic estilo Excel/Sheets)
   async function saveInlineEdit(orderId, field, newValue) {
     setInlineEdit({ orderId: null, field: null, value: '' })
     const targetOrder = purchaseOrders.find((p) => p.id === orderId)
     if (!targetOrder || targetOrder[field] === newValue) return
+
+    // Registrar en pila de deshacer (Ctrl+Z)
+    if (grid?.pushUndoAction) {
+      grid.pushUndoAction({
+        colKey: field,
+        colLabel: field,
+        actionLabel: 'Edición en celda',
+        previousValues: { [orderId]: targetOrder[field] },
+        newValue,
+        timestamp: Date.now()
+      })
+    }
 
     // Optimistic update
     setPurchaseOrders((prev) =>
@@ -726,6 +878,18 @@ export default function Compras() {
           await supabase.from('materials').update({ current_stock: newStock }).eq('id', mat.id)
           setMaterials((prev) => prev.map((m) => (m.id === mat.id ? { ...m, current_stock: newStock } : m)))
         }
+      }
+
+      // Registrar en pila de deshacer (Ctrl+Z)
+      if (grid?.pushUndoAction) {
+        grid.pushUndoAction({
+          colKey: 'status',
+          colLabel: 'Estado',
+          actionLabel: 'Cambio de estado',
+          previousValues: { [orderId]: order.status },
+          newValue: newStatus,
+          timestamp: Date.now()
+        })
       }
 
       const { error } = await supabase.from('purchase_orders').update(updates).eq('id', orderId)
@@ -1121,12 +1285,16 @@ export default function Compras() {
             <div className="relative flex-1 min-w-[220px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
+                ref={searchInputRef}
                 type="text"
-                placeholder="Buscar por material, proveedor, buque, solicitante, factura..."
+                placeholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-14 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
+              <span className="absolute right-8 top-2 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
+                Ctrl+F
+              </span>
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-500 hover:text-white">✕</button>
               )}
@@ -1214,6 +1382,30 @@ export default function Compras() {
                   <span>🟣 Ocultar Conciliados</span>
                 </button>
               )}
+
+              {/* Botón Deshacer (Ctrl+Z) y Atajos */}
+              {grid.canUndo && (
+                <button
+                  type="button"
+                  onClick={grid.undo}
+                  className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1.5 transition-all cursor-pointer animate-in fade-in"
+                  title="Deshacer el último cambio (Ctrl + Z)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Deshacer (Ctrl+Z)</span>
+                </button>
+              )}
+
+              <div className="hidden 2xl:flex items-center gap-1.5 text-[10px] text-slate-500 font-mono bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                <span className="text-cyan-400 font-bold">⌨️ Grid:</span>
+                <span>Ctrl+C/V</span>
+                <span>•</span>
+                <span>Ctrl+D</span>
+                <span>•</span>
+                <span>Ctrl+Z</span>
+                <span>•</span>
+                <span>Ctrl+F</span>
+              </div>
             </div>
           </div>
 
@@ -1221,7 +1413,12 @@ export default function Compras() {
           {/* GRILLA MAESTRA DE COMPRAS CON STICKY HEADERS */}
           {/* ========================================================= */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
-            <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative">
+            <div
+              tabIndex={0}
+              onKeyDown={grid.handleKeyDown}
+              ref={grid.gridContainerRef}
+              className="overflow-x-auto max-h-[600px] overflow-y-auto relative focus:outline-none"
+            >
               <table className="w-full text-left text-xs border-collapse">
                 {/* STICKY HEADER TIPO EXCEL (NUEVO ORDEN SOLICITADO) */}
                 <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm">
@@ -1283,7 +1480,7 @@ export default function Compras() {
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((po) => {
+                    filteredOrders.map((po, rowIndex) => {
                       const isSelected = selectedOrderIds.has(po.id)
                       const sup = suppliers.find((s) => s.id === po.supplier_id)
                       const shp = ships.find((s) => s.id === po.ship_id)
@@ -1323,256 +1520,430 @@ export default function Compras() {
                           </td>
 
                           {/* 2. Destino */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            {po.charge_type === 'DIRECT' ? (
-                              <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-bold text-[10px]">
-                                DIRECTO
-                              </span>
-                            ) : po.charge_type === 'VIA_PANOL' ? (
-                              <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold text-[10px]">
-                                PAÑOL / STOCK
-                              </span>
-                            ) : (
-                              <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px]">
-                                {po.charge_type}
-                              </span>
-                            )}
-                          </td>
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'charge_type')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 whitespace-nowrap ${cp.className}`}
+                              >
+                                {po.charge_type === 'DIRECT' ? (
+                                  <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-bold text-[10px]">
+                                    DIRECTO
+                                  </span>
+                                ) : po.charge_type === 'VIA_PANOL' ? (
+                                  <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold text-[10px]">
+                                    PAÑOL / STOCK
+                                  </span>
+                                ) : (
+                                  <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px]">
+                                    {po.charge_type}
+                                  </span>
+                                )}
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                    title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
 
                           {/* 3. Fecha / Quincena */}
-                          <td className="py-2 px-3 whitespace-nowrap font-mono">
-                            <div className="text-slate-200">{po.order_date}</div>
-                            <div className="text-[10px] text-slate-500">{po.fortnight_period}</div>
-                          </td>
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'order_date')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 whitespace-nowrap font-mono ${cp.className}`}
+                              >
+                                <div className="text-slate-200">{po.order_date}</div>
+                                <div className="text-[10px] text-slate-500">{po.fortnight_period}</div>
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
 
                           {/* 4. Buque / OT */}
-                          <td className="py-2 px-3">
-                            <div className="font-semibold text-slate-200 truncate max-w-[130px]" title={shp?.name || 'ASTILLERO'}>
-                              {shp?.name || 'ASTILLERO'}
-                            </div>
-                            <div className="text-[10px] text-slate-400 truncate max-w-[130px]" title={wo?.title || 'STOCK'}>
-                              {wo?.title || 'STOCK GENERAL'}
-                            </div>
-                          </td>
-
-                          {/* 5. Solicita (Editable con Doble Clic) */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            {inlineEdit.orderId === po.id && inlineEdit.field === 'requested_by_name' ? (
-                              <input
-                                type="text"
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)
-                                  if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
-                                }}
-                                onBlur={() => saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)}
-                                className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
-                              />
-                            ) : (
-                              <div
-                                onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'requested_by_name', value: po.requested_by_name || 'PAÑOL' })}
-                                className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all"
-                                title="Doble clic para editar solicitante"
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'ship_id')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 ${cp.className}`}
                               >
-                                {po.requested_by_name || 'PAÑOL'}
-                              </div>
-                            )}
-                          </td>
+                                <div className="font-semibold text-slate-200 truncate max-w-[130px]" title={shp?.name || 'ASTILLERO'}>
+                                  {shp?.name || 'ASTILLERO'}
+                                </div>
+                                <div className="text-[10px] text-slate-400 truncate max-w-[130px]" title={wo?.title || 'STOCK'}>
+                                  {wo?.title || 'STOCK GENERAL'}
+                                </div>
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
+
+                          {/* 5. Solicita (Editable con Doble Clic o Fill Down) */}
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'requested_by_name')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 whitespace-nowrap ${cp.className}`}
+                              >
+                                {inlineEdit.orderId === po.id && inlineEdit.field === 'requested_by_name' ? (
+                                  <input
+                                    type="text"
+                                    autoFocus
+                                    value={inlineEdit.value}
+                                    onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)
+                                      if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                    }}
+                                    onBlur={() => saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)}
+                                    className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                  />
+                                ) : (
+                                  <div
+                                    onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'requested_by_name', value: po.requested_by_name || 'PAÑOL' })}
+                                    className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all"
+                                    title="Doble clic para editar solicitante"
+                                  >
+                                    {po.requested_by_name || 'PAÑOL'}
+                                  </div>
+                                )}
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                    title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
 
                           {/* 6. Material Solicitado */}
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-white">{po.material_name_raw}</span>
-                              {po.is_new_material && !po.no_catalog_required && isSupervisorOrAdmin && (
-                                <button
-                                  onClick={() => {
-                                    setPendingMaterialOrder(po)
-                                    setShowNewMaterialModal(true)
-                                  }}
-                                  className="px-1.5 py-0.2 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer"
-                                  title="Material sin registro. Clic para formalizar alta o descartar."
-                                >
-                                  <AlertTriangle className="w-2.5 h-2.5" />
-                                  <span>Alta</span>
-                                </button>
-                              )}
-                            </div>
-                            {po.observations && (
-                              <p className="text-[10px] text-slate-400 italic truncate max-w-[200px]" title={po.observations}>
-                                {po.observations}
-                              </p>
-                            )}
-                          </td>
-
-                          {/* 7. Cantidad (Editable con Doble Clic) */}
-                          <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
-                            {inlineEdit.orderId === po.id && inlineEdit.field === 'quantity' ? (
-                              <input
-                                type="number"
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1)
-                                  if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
-                                }}
-                                onBlur={() => saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1)}
-                                className="w-20 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
-                              />
-                            ) : (
-                              <div
-                                onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'quantity', value: po.quantity || 1 })}
-                                className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all font-mono inline-block text-right"
-                                title="Doble clic para editar cantidad"
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'material_name_raw')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 ${cp.className}`}
                               >
-                                <span className="font-bold text-white">{po.quantity}</span>{' '}
-                                <span className="text-[10px] text-slate-500">{po.unit_measure || 'unidad'}</span>
-                              </div>
-                            )}
-                          </td>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium text-white">{po.material_name_raw}</span>
+                                  {po.is_new_material && !po.no_catalog_required && isSupervisorOrAdmin && (
+                                    <button
+                                      onClick={() => {
+                                        setPendingMaterialOrder(po)
+                                        setShowNewMaterialModal(true)
+                                      }}
+                                      className="px-1.5 py-0.2 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                      title="Material sin registro. Clic para formalizar alta o descartar."
+                                    >
+                                      <AlertTriangle className="w-2.5 h-2.5" />
+                                      <span>Alta</span>
+                                    </button>
+                                  )}
+                                </div>
+                                {po.observations && (
+                                  <p className="text-[10px] text-slate-400 italic truncate max-w-[200px]" title={po.observations}>
+                                    {po.observations}
+                                  </p>
+                                )}
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
 
-                          {/* Columnas Financieras (Solo Modo Completo) */}
-                          {viewMode === 'completa' && (
-                            <>
-                              {/* 8. $/U Proveedor (Editable con Doble Clic) */}
-                              <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
-                                {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_quoted_price' ? (
+                          {/* 7. Cantidad (Editable con Doble Clic o Fill Down) */}
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'quantity')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 text-right whitespace-nowrap font-mono ${cp.className}`}
+                              >
+                                {inlineEdit.orderId === po.id && inlineEdit.field === 'quantity' ? (
                                   <input
                                     type="number"
                                     autoFocus
                                     value={inlineEdit.value}
                                     onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
                                     onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0)
+                                      if (e.key === 'Enter') saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1)
                                       if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
                                     }}
-                                    onBlur={() => saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0)}
-                                    className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
+                                    onBlur={() => saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1)}
+                                    className="w-20 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
                                   />
                                 ) : (
                                   <div
-                                    onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_quoted_price', value: po.supplier_quoted_price || '' })}
-                                    className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right"
-                                    title="Doble clic para editar $/U cotizado"
+                                    onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'quantity', value: po.quantity || 1 })}
+                                    className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all font-mono inline-block text-right"
+                                    title="Doble clic para editar cantidad"
                                   >
-                                    {po.supplier_quoted_price ? (
-                                      <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span>
-                                    ) : (
-                                      <span className="text-slate-600">—</span>
-                                    )}
+                                    <span className="font-bold text-white">{po.quantity}</span>{' '}
+                                    <span className="text-[10px] text-slate-500">{po.unit_measure || 'unidad'}</span>
                                   </div>
                                 )}
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                    title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                  />
+                                )}
                               </td>
+                            )
+                          })()}
+
+                          {/* Columnas Financieras (Solo Modo Completo) */}
+                          {viewMode === 'completa' && (
+                            <>
+                              {/* 8. $/U Proveedor (Editable con Doble Clic o Fill Down) */}
+                              {(() => {
+                                const cp = getSpreadsheetCellProps(rowIndex, 'supplier_quoted_price')
+                                return (
+                                  <td
+                                    {...cp.domProps}
+                                    className={`py-2 px-3 text-right whitespace-nowrap font-mono ${cp.className}`}
+                                  >
+                                    {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_quoted_price' ? (
+                                      <input
+                                        type="number"
+                                        autoFocus
+                                        value={inlineEdit.value}
+                                        onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0)
+                                          if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                        }}
+                                        onBlur={() => saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0)}
+                                        className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
+                                      />
+                                    ) : (
+                                      <div
+                                        onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_quoted_price', value: po.supplier_quoted_price || '' })}
+                                        className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right"
+                                        title="Doble clic para editar $/U cotizado"
+                                      >
+                                        {po.supplier_quoted_price ? (
+                                          <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span>
+                                        ) : (
+                                          <span className="text-slate-600">—</span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {cp.renderHandle && (
+                                      <div
+                                        onMouseDown={grid.handleFillHandleMouseDown}
+                                        onDoubleClick={grid.handleFillHandleDoubleClick}
+                                        className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                        title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                      />
+                                    )}
+                                  </td>
+                                )
+                              })()}
 
                               {/* 9. $/U Sistema + Semáforo */}
-                              <td className="py-2 px-3 text-right whitespace-nowrap font-mono">
-                                <div className="text-slate-400">
-                                  {po.system_unit_price ? `$${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}
-                                </div>
-                                {deltaPct !== null && (
-                                  <div
-                                    className={`text-[9px] font-bold flex items-center justify-end gap-0.5 ${
-                                      deltaPct > 0 ? 'text-rose-400' : 'text-emerald-400'
-                                    }`}
+                              {(() => {
+                                const cp = getSpreadsheetCellProps(rowIndex, 'system_unit_price')
+                                return (
+                                  <td
+                                    {...cp.domProps}
+                                    className={`py-2 px-3 text-right whitespace-nowrap font-mono ${cp.className}`}
                                   >
-                                    {deltaPct > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                                    <span>{deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`}</span>
-                                  </div>
-                                )}
-                              </td>
+                                    <div className="text-slate-400">
+                                      {po.system_unit_price ? `${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}
+                                    </div>
+                                    {deltaPct !== null && (
+                                      <div
+                                        className={`text-[9px] font-bold flex items-center justify-end gap-0.5 ${
+                                          deltaPct > 0 ? 'text-rose-400' : 'text-emerald-400'
+                                        }`}
+                                      >
+                                        {deltaPct > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                                        <span>{deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`}</span>
+                                      </div>
+                                    )}
+                                    {cp.renderHandle && (
+                                      <div
+                                        onMouseDown={grid.handleFillHandleMouseDown}
+                                        onDoubleClick={grid.handleFillHandleDoubleClick}
+                                        className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                      />
+                                    )}
+                                  </td>
+                                )
+                              })()}
                             </>
                           )}
 
-                          {/* 10. Proveedor (Visible en Ambos Modos y Editable con Doble Clic + Buscador por Iniciales) */}
-                          <td className="py-2 px-3 relative">
-                            {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_id' ? (
-                              <InlineSupplierPicker
-                                suppliers={suppliers}
-                                currentSupplierId={po.supplier_id}
-                                onSelect={(selectedSupId) => saveInlineEdit(po.id, 'supplier_id', selectedSupId)}
-                                onCancel={() => setInlineEdit({ orderId: null, field: null, value: '' })}
-                              />
-                            ) : (
-                              <div
-                                onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_id', value: po.supplier_id || '' })}
-                                className="cursor-pointer hover:bg-slate-800/80 px-1.5 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[140px]"
-                                title="Doble clic para buscar y asignar proveedor por iniciales"
+                          {/* 10. Proveedor (Visible en Ambos Modos y Editable con Doble Clic + Buscador por Iniciales o Fill Down) */}
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'supplier_id')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 relative ${cp.className}`}
                               >
-                                <span className="font-semibold text-slate-200">{sup?.name || <span className="text-slate-600 italic">Asignar...</span>}</span>
-                              </div>
-                            )}
-                          </td>
+                                {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_id' ? (
+                                  <InlineSupplierPicker
+                                    suppliers={suppliers}
+                                    currentSupplierId={po.supplier_id}
+                                    onSelect={(selectedSupId) => saveInlineEdit(po.id, 'supplier_id', selectedSupId)}
+                                    onCancel={() => setInlineEdit({ orderId: null, field: null, value: '' })}
+                                  />
+                                ) : (
+                                  <div
+                                    onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_id', value: po.supplier_id || '' })}
+                                    className="cursor-pointer hover:bg-slate-800/80 px-1.5 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[140px]"
+                                    title="Doble clic para buscar y asignar proveedor por iniciales"
+                                  >
+                                    <span className="font-semibold text-slate-200">{sup?.name || <span className="text-slate-600 italic">Asignar...</span>}</span>
+                                  </div>
+                                )}
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                    title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
 
-                          {/* 11. Estado (Editable en Ambos Modos — Solo teñir los nombres, fondo neutro) */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            <select
-                              value={po.status}
-                              onChange={(e) => handleQuickStatusChange(po.id, e.target.value)}
-                              className={`bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-cyan-500 rounded px-1.5 py-0.5 text-[11px] font-bold focus:outline-none transition-colors cursor-pointer ${
-                                po.status === 'SE COMPRA?'
-                                  ? 'text-pink-400'
-                                  : po.status === 'PEDIDO INCOMPLETO'
-                                  ? 'text-orange-400'
-                                  : po.status === 'RECIBIDO'
-                                  ? 'text-emerald-400'
-                                  : po.status === 'RECIB.COMP.DIRECT'
-                                  ? 'text-cyan-400'
-                                  : po.status === 'PEDIDO'
-                                  ? 'text-blue-400'
-                                  : po.status === 'PEDIR' || po.status === 'SOLICITUD'
-                                  ? 'text-amber-400'
-                                  : ['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)
-                                  ? 'text-purple-400'
-                                  : po.status === 'CANCELADOS' || po.status === 'COTIZA.RECHAZADA'
-                                  ? 'text-rose-400'
-                                  : 'text-slate-300'
-                              }`}
-                            >
-                              {viewMode === 'completa' ? (
-                                STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
-                                  <option key={st.value} value={st.value} className={`bg-slate-950 font-semibold ${st.textColor || 'text-slate-200'}`}>
-                                    {st.label}
-                                  </option>
-                                ))
-                              ) : (
-                                <>
-                                  <option value="PEDIR" className="bg-slate-950 text-amber-400 font-semibold">PEDIR (Por Emitir)</option>
-                                  <option value="RECIBIDO" className="bg-slate-950 text-emerald-400 font-semibold">✅ RECIBIDO (A Pañol / Stock)</option>
-                                  <option value="RECIB.COMP.DIRECT" className="bg-slate-950 text-cyan-400 font-semibold">🚢 RECIB.COMP.DIRECT (A Buque)</option>
-                                  <option value="PEDIDO INCOMPLETO" className="bg-slate-950 text-orange-400 font-semibold">⚠️ PEDIDO INCOMPLETO (Recepción Parcial)</option>
-                                  <option value="RECIBIDO 2" className="bg-slate-950 text-slate-300 font-semibold">📦 RECIBIDO 2 (Mat. de Cliente)</option>
-                                  <option value="CANCELADOS" className="bg-slate-950 text-rose-400 font-semibold">❌ CANCELADOS</option>
-                                  <option value="SE COMPRA?" className="bg-slate-950 text-pink-400 font-semibold">❓ SE COMPRA? (Duda Técnica)</option>
-                                </>
-                              )}
-                            </select>
-                          </td>
+                          {/* 11. Estado (Editable en Ambos Modos — Solo teñir los nombres, fondo neutro o Fill Down) */}
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'status')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 whitespace-nowrap ${cp.className}`}
+                              >
+                                <select
+                                  value={po.status}
+                                  onChange={(e) => handleQuickStatusChange(po.id, e.target.value)}
+                                  className={`bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-cyan-500 rounded px-1.5 py-0.5 text-[11px] font-bold focus:outline-none transition-colors cursor-pointer ${
+                                    po.status === 'SE COMPRA?'
+                                      ? 'text-pink-400'
+                                      : po.status === 'PEDIDO INCOMPLETO'
+                                      ? 'text-orange-400'
+                                      : po.status === 'RECIBIDO'
+                                      ? 'text-emerald-400'
+                                      : po.status === 'RECIBIDO 2'
+                                      ? 'text-slate-300'
+                                      : po.status === 'RECIB.COMP.DIRECT'
+                                      ? 'text-cyan-400'
+                                      : po.status === 'PEDIDO'
+                                      ? 'text-blue-400'
+                                      : po.status === 'PEDIR' || po.status === 'SOLICITUD'
+                                      ? 'text-amber-400'
+                                      : ['COTIZACION', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZA.APROBADA'].includes(po.status)
+                                      ? 'text-purple-400'
+                                      : po.status === 'CANCELADOS' || po.status === 'COTIZA.RECHAZADA'
+                                      ? 'text-rose-400'
+                                      : 'text-slate-300'
+                                  }`}
+                                >
+                                  {viewMode === 'completa' ? (
+                                    STATUS_OPTIONS.filter((s) => s.value !== 'TODOS').map((st) => (
+                                      <option key={st.value} value={st.value} className={`bg-slate-950 font-semibold ${st.textColor || 'text-slate-200'}`}>
+                                        {st.label}
+                                      </option>
+                                    ))
+                                  ) : (
+                                    <>
+                                      <option value="PEDIR" className="bg-slate-950 text-amber-400 font-semibold">PEDIR (Por Emitir)</option>
+                                      <option value="RECIBIDO" className="bg-slate-950 text-emerald-400 font-semibold">✅ RECIBIDO (A Pañol / Stock)</option>
+                                      <option value="RECIB.COMP.DIRECT" className="bg-slate-950 text-cyan-400 font-semibold">🚢 RECIB.COMP.DIRECT (A Buque)</option>
+                                      <option value="PEDIDO INCOMPLETO" className="bg-slate-950 text-orange-400 font-semibold">⚠️ PEDIDO INCOMPLETO (Recepción Parcial)</option>
+                                      <option value="RECIBIDO 2" className="bg-slate-950 text-slate-300 font-semibold">📦 RECIBIDO 2 (Mat. de Cliente)</option>
+                                      <option value="CANCELADOS" className="bg-slate-950 text-rose-400 font-semibold">❌ CANCELADOS</option>
+                                      <option value="SE COMPRA?" className="bg-slate-950 text-pink-400 font-semibold">❓ SE COMPRA? (Duda Técnica)</option>
+                                    </>
+                                  )}
+                                </select>
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                    title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
 
-                          {/* 12. Urgencia (Conmutable en 1 Clic / Doble Clic) */}
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleCycleUrgency(po.id, urgency)}
-                              className="cursor-pointer transition-transform hover:scale-105"
-                              title="Clic para cambiar urgencia (Sin Apuro -> Urgente -> Próx. Salida)"
-                            >
-                              {urgency === 'URGENTE' ? (
-                                <span className="inline-block px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 font-extrabold text-[10px] animate-pulse">
-                                  URGENTE
-                                </span>
-                              ) : urgency === 'PROXIMA_SALIDA' ? (
-                                <span className="inline-block px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[10px]">
-                                  PRÓX. SALIDA
-                                </span>
-                              ) : (
-                                <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] hover:border-slate-600">
-                                  Sin Apuro
-                                </span>
-                              )}
-                            </button>
-                          </td>
+                          {/* 12. Urgencia (Conmutable en 1 Clic / Doble Clic o Fill Down) */}
+                          {(() => {
+                            const cp = getSpreadsheetCellProps(rowIndex, 'urgency')
+                            return (
+                              <td
+                                {...cp.domProps}
+                                className={`py-2 px-3 whitespace-nowrap ${cp.className}`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleCycleUrgency(po.id, urgency)}
+                                  className="cursor-pointer transition-transform hover:scale-105"
+                                  title="Clic para cambiar urgencia (Sin Apuro -> Urgente -> Próx. Salida)"
+                                >
+                                  {urgency === 'URGENTE' ? (
+                                    <span className="inline-block px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 font-extrabold text-[10px] animate-pulse">
+                                      URGENTE
+                                    </span>
+                                  ) : urgency === 'PROXIMA_SALIDA' ? (
+                                    <span className="inline-block px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[10px]">
+                                      PRÓX. SALIDA
+                                    </span>
+                                  ) : (
+                                    <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] hover:border-slate-600">
+                                      Sin Apuro
+                                    </span>
+                                  )}
+                                </button>
+                                {cp.renderHandle && (
+                                  <div
+                                    onMouseDown={grid.handleFillHandleMouseDown}
+                                    onDoubleClick={grid.handleFillHandleDoubleClick}
+                                    className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                    title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                  />
+                                )}
+                              </td>
+                            )
+                          })()}
 
                           {/* 13. Doc (Gestor Multidocumento con Contador) */}
                           <td className="py-2 px-3 text-center whitespace-nowrap">
