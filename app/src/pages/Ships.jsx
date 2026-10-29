@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Ship,
@@ -38,10 +38,13 @@ import {
   Upload,
   FileUp,
   BellOff,
-  UserPlus
+  UserPlus,
+  Undo2,
+  Redo2
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 
 // Componentes predeterminados de la Ficha Técnica Dinámica Naval
 const DEFAULT_TECH_COMPONENTS = [
@@ -239,12 +242,14 @@ export default function Ships() {
     return ships.filter(s => s.orphan_owner_alert)
   }, [ships])
 
-  // KPI Calculations (locaciones limpias)
+  // KPI Calculations (locaciones limpias + radar de costos sin OT)
   const totalShips = ships.length
   const varaderoCount = ships.filter(s => cleanLocation(s.current_location) === 'VARADERO' && s.is_active !== false).length
   const muelleCount = ships.filter(s => cleanLocation(s.current_location) === 'MUELLE' && s.is_active !== false).length
   const puertoCount = ships.filter(s => cleanLocation(s.current_location).includes('PUERTO') && s.is_active !== false).length
   const pendingRequestsCount = ships.filter(s => s.info_request_status && s.info_request_status !== 'completo').length
+  const shipsWithOrphanCostsCount = ships.filter(s => (getShipOtMetrics[s.id]?.orphanTotal || 0) > 0).length
+  const totalOrphanCostsCount = orphanLabor.length + orphanTerceros.length + orphanCompras.length
 
   // Manejo de clic interactivo en KPI para filtrar
   const handleKpiClick = (type) => {
@@ -254,16 +259,29 @@ export default function Ships() {
       setRoleQuickFilter('todos')
     } else if (type === 'VARADERO') {
       setRequestFilter('todos')
+      if (roleQuickFilter === 'sin_ot') setRoleQuickFilter('todos')
       setLocationFilter(prev => prev === 'VARADERO' ? 'todos' : 'VARADERO')
+      setActiveTab('buques')
     } else if (type === 'MUELLE') {
       setRequestFilter('todos')
+      if (roleQuickFilter === 'sin_ot') setRoleQuickFilter('todos')
       setLocationFilter(prev => prev === 'MUELLE' ? 'todos' : 'MUELLE')
+      setActiveTab('buques')
     } else if (type === 'PUERTO') {
       setRequestFilter('todos')
+      if (roleQuickFilter === 'sin_ot') setRoleQuickFilter('todos')
       setLocationFilter(prev => prev === 'PUERTO' ? 'todos' : 'PUERTO')
+      setActiveTab('buques')
     } else if (type === 'pendientes') {
       setLocationFilter('todos')
+      if (roleQuickFilter === 'sin_ot') setRoleQuickFilter('todos')
       setRequestFilter(prev => prev === 'pendientes' ? 'todos' : 'pendientes')
+      setActiveTab('buques')
+    } else if (type === 'sin_ot') {
+      setLocationFilter('todos')
+      setRequestFilter('todos')
+      setRoleQuickFilter(prev => prev === 'sin_ot' ? 'todos' : 'sin_ot')
+      setActiveTab('buques')
     }
   }
 
@@ -286,7 +304,7 @@ export default function Ships() {
       const matchRequest = requestFilter === 'todos' ||
         (requestFilter === 'pendientes' ? (s.info_request_status && s.info_request_status !== 'completo') : s.info_request_status === 'completo')
 
-      // Filtro rápido por rol activo
+      // Filtro rápido por rol activo o alerta de costos sin OT
       let matchRole = true
       if (roleQuickFilter === 'mis_pendientes') {
         if (activeRolePerspective === 'maria_jose') {
@@ -298,11 +316,13 @@ export default function Ships() {
         }
       } else if (roleQuickFilter === 'huerfanos') {
         matchRole = Boolean(s.orphan_owner_alert)
+      } else if (roleQuickFilter === 'sin_ot') {
+        matchRole = (getShipOtMetrics[s.id]?.orphanTotal || 0) > 0
       }
 
       return matchSearch && matchLocation && matchRequest && matchRole
     })
-  }, [ships, searchTerm, locationFilter, requestFilter, roleQuickFilter, activeRolePerspective])
+  }, [ships, searchTerm, locationFilter, requestFilter, roleQuickFilter, activeRolePerspective, getShipOtMetrics])
 
   // Movimientos filtrados para el Calendario
   const filteredStays = useMemo(() => {
@@ -310,9 +330,459 @@ export default function Ships() {
       const term = searchTerm.toLowerCase()
       const shipName = cleanShipName(st.ships?.name || '')
       const locClean = cleanLocation(st.location)
-      return !term || shipName.toLowerCase().includes(term) || locClean.toLowerCase().includes(term)
+      return !term || shipName.toLowerCase().includes(term) || locClean.toLowerCase().includes(term) || (st.start_date || '').includes(term)
     })
   }, [stays, searchTerm])
+
+  // Armadores filtrados para Empresas Propietarias
+  const filteredOwners = useMemo(() => {
+    return owners.filter(ow => {
+      const term = searchTerm.toLowerCase()
+      return !term ||
+        (ow.name || '').toLowerCase().includes(term) ||
+        (ow.armador_name || '').toLowerCase().includes(term) ||
+        (ow.armador_phone || '').toLowerCase().includes(term) ||
+        (ow.email_principal || '').toLowerCase().includes(term) ||
+        (ow.email_secundario || '').toLowerCase().includes(term) ||
+        (ow.cuit || '').toLowerCase().includes(term)
+    })
+  }, [owners, searchTerm])
+
+  // ==========================================================================
+  // MODO HOJA DE CÁLCULO (GOOGLE SHEETS / EXCEL) EN LAS 3 PESTAÑAS DE BARCOS
+  // ==========================================================================
+  const shipsSearchInputRef = useRef(null)
+  const [inlineShipEdit, setInlineShipEdit] = useState(null)   // { rowId, colKey, value }
+  const [inlineStayEdit, setInlineStayEdit] = useState(null)   // { rowId, colKey, value }
+  const [inlineOwnerEdit, setInlineOwnerEdit] = useState(null) // { rowId, colKey, value }
+
+  const showShipsGridFeedback = useCallback((type, text) => {
+    setStatusMessage({ type, text })
+    setTimeout(() => setStatusMessage(null), 3500)
+  }, [])
+
+  // --- 1. GRID BUQUES (Tab 1) ---
+  const shipsGridColumns = useMemo(() => [
+    { key: 'name', label: 'Buque', getValue: (s) => cleanShipName(s.name) },
+    { key: 'vessel_type', label: 'Tipo', getValue: (s) => s.vessel_type || 'Pesquero' },
+    { key: 'current_location', label: 'Locación', getValue: (s) => cleanLocation(s.current_location) },
+    {
+      key: 'owner_id',
+      label: 'Armador / Empresa',
+      getValue: (s) => s.owner_id || '',
+      formatDisplay: (val) => owners.find(o => o.id === val)?.name || 'Sin asignar'
+    }
+  ], [owners])
+
+  const applyShipSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
+    const targetShip = ships.find(s => s.id === rowId)
+    if (!targetShip) return null
+
+    let dbPatch = {}
+    let localPatch = {}
+    let returnedVal = rawValue
+
+    if (colKey === 'name') {
+      const cleaned = cleanShipName(rawValue).toUpperCase().trim()
+      if (!cleaned) return null
+      dbPatch = { name: cleaned }
+      localPatch = { name: cleaned }
+      returnedVal = cleaned
+    } else if (colKey === 'vessel_type') {
+      const vt = String(rawValue || '').trim() || 'Pesquero'
+      dbPatch = { vessel_type: vt }
+      localPatch = { vessel_type: vt }
+      returnedVal = vt
+    } else if (colKey === 'current_location') {
+      const loc = cleanLocation(rawValue).toUpperCase()
+      dbPatch = { current_location: loc }
+      localPatch = { current_location: loc }
+      returnedVal = loc
+    } else if (colKey === 'owner_id') {
+      const nextOwnerId = rawValue ? String(rawValue).trim() : null
+      const nextOwnerObj = nextOwnerId ? (owners.find(o => o.id === nextOwnerId) || null) : null
+      dbPatch = {
+        owner_id: nextOwnerId,
+        ...(nextOwnerId ? { orphan_owner_alert: false, orphan_owner_previous_name: null } : {})
+      }
+      localPatch = {
+        ...dbPatch,
+        owners: nextOwnerObj
+      }
+      returnedVal = nextOwnerId || ''
+    } else {
+      return null
+    }
+
+    setShips(prev => prev.map(s => (s.id === rowId ? { ...s, ...localPatch } : s)))
+    const { error } = await supabase.from('ships').update(dbPatch).eq('id', rowId)
+    if (error) throw error
+    return returnedVal
+  }, [ships, owners])
+
+  const handleShipsBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    try {
+      if (isRevert && revertMap) {
+        for (const [id, oldVal] of Object.entries(revertMap)) {
+          await applyShipSinglePatch(id, colKey, oldVal)
+        }
+      } else if (Array.isArray(targetIds)) {
+        for (const id of targetIds) {
+          await applyShipSinglePatch(id, colKey, newValue)
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      showShipsGridFeedback('error', `Error actualizando buques: ${err.message}`)
+      loadInitialData()
+    }
+  }, [applyShipSinglePatch, showShipsGridFeedback])
+
+  const shipsGrid = useSpreadsheetGrid({
+    rows: filteredShips,
+    columns: shipsGridColumns,
+    getRowId: (s) => s.id,
+    storageKey: 'aloncar_grid_ships',
+    onBatchUpdate: handleShipsBatchUpdate,
+    onFocusSearch: () => {
+      shipsSearchInputRef.current?.focus()
+      shipsSearchInputRef.current?.select()
+    },
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef) return
+      const initVal = typeof colDef.getValue === 'function' ? colDef.getValue(row) : (row[colDef.key] ?? '')
+      setInlineShipEdit({ rowId: row.id, colKey: colDef.key, value: initVal })
+    },
+    showFeedback: showShipsGridFeedback
+  })
+
+  const commitInlineShipEdit = async (overrideValue = undefined) => {
+    if (!inlineShipEdit) return
+    const { rowId, colKey } = inlineShipEdit
+    const nextRaw = overrideValue !== undefined ? overrideValue : inlineShipEdit.value
+    const ship = ships.find(s => s.id === rowId)
+    setInlineShipEdit(null)
+    if (!ship) return
+
+    const colDef = shipsGridColumns.find(c => c.key === colKey)
+    const oldVal = colDef?.getValue ? colDef.getValue(ship) : (ship[colKey] ?? '')
+    if (String(oldVal ?? '') === String(nextRaw ?? '')) return
+
+    try {
+      const savedVal = await applyShipSinglePatch(rowId, colKey, nextRaw)
+      if (savedVal !== null) {
+        shipsGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Editar ${colDef?.label || colKey} en ${cleanShipName(ship.name)}`,
+          previousValues: { [rowId]: oldVal },
+          newValue: savedVal,
+          timestamp: Date.now()
+        })
+        showShipsGridFeedback('success', `Buque "${cleanShipName(ship.name)}" actualizado. (Ctrl+Z para deshacer)`)
+      }
+    } catch (err) {
+      console.error(err)
+      showShipsGridFeedback('error', `Error al guardar celda de buque: ${err.message}`)
+      loadInitialData()
+    }
+  }
+
+  function getShipsCellProps(rowIndex, colKey) {
+    const colIdx = shipsGridColumns.findIndex(c => c.key === colKey)
+    if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
+    const isActive = shipsGrid.isCellActive(rowIndex, colIdx)
+    const isSelected = shipsGrid.isCellSelected(rowIndex, colIdx)
+    const isFillPreview = shipsGrid.isCellInFillPreview(rowIndex, colIdx)
+    const renderHandle = shipsGrid.shouldRenderFillHandle(rowIndex, colIdx)
+    return {
+      renderHandle,
+      domProps: {
+        onClick: (e) => shipsGrid.handleCellClick(rowIndex, colIdx, e),
+        onMouseDown: (e) => shipsGrid.handleCellMouseDown(rowIndex, colIdx, e),
+        onMouseEnter: () => shipsGrid.handleCellMouseEnter(rowIndex, colIdx)
+      },
+      className: `relative select-none transition-colors ${
+        isActive
+          ? 'ring-2 ring-cyan-400 bg-cyan-950/40 z-20 outline-none'
+          : isFillPreview
+          ? 'bg-cyan-900/40 border-y border-dashed border-cyan-400'
+          : isSelected
+          ? 'bg-cyan-900/30'
+          : ''
+      }`
+    }
+  }
+
+  // --- 2. GRID ESTADÍAS & MOVIMIENTOS (Tab 2) ---
+  const staysGridColumns = useMemo(() => [
+    { key: 'location', label: 'Locación', getValue: (st) => cleanLocation(st.location) },
+    { key: 'start_date', label: 'Comienzo', getValue: (st) => st.start_date || '' },
+    { key: 'end_date', label: 'Fin', getValue: (st) => st.end_date || '' }
+  ], [])
+
+  const applyStaySinglePatch = useCallback(async (rowId, colKey, rawValue) => {
+    const targetStay = stays.find(st => st.id === rowId)
+    if (!targetStay) return null
+
+    let dbPatch = {}
+    let returnedVal = rawValue
+
+    if (colKey === 'location') {
+      const cleanLoc = cleanLocation(rawValue).toUpperCase()
+      dbPatch = { location: cleanLoc }
+      returnedVal = cleanLoc
+    } else if (colKey === 'start_date') {
+      const dt = String(rawValue || '').trim()
+      if (!dt) return null
+      dbPatch = { start_date: dt }
+      returnedVal = dt
+    } else if (colKey === 'end_date') {
+      const dt = String(rawValue || '').trim() || null
+      dbPatch = { end_date: dt }
+      returnedVal = dt || ''
+    } else {
+      return null
+    }
+
+    setStays(prev => prev.map(st => (st.id === rowId ? { ...st, ...dbPatch } : st)))
+    const { error } = await supabase.from('ship_stays').update(dbPatch).eq('id', rowId)
+    if (error) throw error
+
+    // Si se modificó la locación de una estadía activa (sin fecha de fin), actualizar locación actual del buque
+    if (colKey === 'location' && !targetStay.end_date && targetStay.ship_id) {
+      setShips(prev => prev.map(s => (s.id === targetStay.ship_id ? { ...s, current_location: dbPatch.location } : s)))
+      await supabase.from('ships').update({ current_location: dbPatch.location }).eq('id', targetStay.ship_id)
+    }
+
+    return returnedVal
+  }, [stays])
+
+  const handleStaysBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    try {
+      if (isRevert && revertMap) {
+        for (const [id, oldVal] of Object.entries(revertMap)) {
+          await applyStaySinglePatch(id, colKey, oldVal)
+        }
+      } else if (Array.isArray(targetIds)) {
+        for (const id of targetIds) {
+          await applyStaySinglePatch(id, colKey, newValue)
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      showShipsGridFeedback('error', `Error actualizando estadías: ${err.message}`)
+      loadInitialData()
+    }
+  }, [applyStaySinglePatch, showShipsGridFeedback])
+
+  const staysGrid = useSpreadsheetGrid({
+    rows: filteredStays,
+    columns: staysGridColumns,
+    getRowId: (st) => st.id,
+    storageKey: 'aloncar_grid_ship_stays',
+    onBatchUpdate: handleStaysBatchUpdate,
+    onFocusSearch: () => {
+      shipsSearchInputRef.current?.focus()
+      shipsSearchInputRef.current?.select()
+    },
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef) return
+      const initVal = typeof colDef.getValue === 'function' ? colDef.getValue(row) : (row[colDef.key] ?? '')
+      setInlineStayEdit({ rowId: row.id, colKey: colDef.key, value: initVal })
+    },
+    showFeedback: showShipsGridFeedback
+  })
+
+  const commitInlineStayEdit = async (overrideValue = undefined) => {
+    if (!inlineStayEdit) return
+    const { rowId, colKey } = inlineStayEdit
+    const nextRaw = overrideValue !== undefined ? overrideValue : inlineStayEdit.value
+    const stay = stays.find(st => st.id === rowId)
+    setInlineStayEdit(null)
+    if (!stay) return
+
+    const colDef = staysGridColumns.find(c => c.key === colKey)
+    const oldVal = colDef?.getValue ? colDef.getValue(stay) : (stay[colKey] ?? '')
+    if (String(oldVal ?? '') === String(nextRaw ?? '')) return
+
+    try {
+      const savedVal = await applyStaySinglePatch(rowId, colKey, nextRaw)
+      if (savedVal !== null) {
+        staysGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Editar ${colDef?.label || colKey} en estadía`,
+          previousValues: { [rowId]: oldVal },
+          newValue: savedVal,
+          timestamp: Date.now()
+        })
+        showShipsGridFeedback('success', `Estadía de "${cleanShipName(stay.ships?.name)}" actualizada. (Ctrl+Z para deshacer)`)
+      }
+    } catch (err) {
+      console.error(err)
+      showShipsGridFeedback('error', `Error al guardar estadía: ${err.message}`)
+      loadInitialData()
+    }
+  }
+
+  function getStaysCellProps(rowIndex, colKey) {
+    const colIdx = staysGridColumns.findIndex(c => c.key === colKey)
+    if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
+    const isActive = staysGrid.isCellActive(rowIndex, colIdx)
+    const isSelected = staysGrid.isCellSelected(rowIndex, colIdx)
+    const isFillPreview = staysGrid.isCellInFillPreview(rowIndex, colIdx)
+    const renderHandle = staysGrid.shouldRenderFillHandle(rowIndex, colIdx)
+    return {
+      renderHandle,
+      domProps: {
+        onClick: (e) => staysGrid.handleCellClick(rowIndex, colIdx, e),
+        onMouseDown: (e) => staysGrid.handleCellMouseDown(rowIndex, colIdx, e),
+        onMouseEnter: () => staysGrid.handleCellMouseEnter(rowIndex, colIdx)
+      },
+      className: `relative select-none transition-colors ${
+        isActive
+          ? 'ring-2 ring-cyan-400 bg-cyan-950/40 z-20 outline-none'
+          : isFillPreview
+          ? 'bg-cyan-900/40 border-y border-dashed border-cyan-400'
+          : isSelected
+          ? 'bg-cyan-900/30'
+          : ''
+      }`
+    }
+  }
+
+  // --- 3. GRID ARMADORES (Tab 3) ---
+  const ownersGridColumns = useMemo(() => [
+    { key: 'name', label: 'Empresa / Razón Social', getValue: (o) => o.name || '' },
+    { key: 'armador_name', label: 'Nombre del Armador', getValue: (o) => o.armador_name || '' },
+    { key: 'armador_phone', label: 'Teléfono Directo', getValue: (o) => o.armador_phone || '' },
+    { key: 'email_principal', label: 'Correo Principal', getValue: (o) => o.email_principal || '' }
+  ], [])
+
+  const applyOwnerSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
+    const targetOwner = owners.find(o => o.id === rowId)
+    if (!targetOwner) return null
+
+    let dbPatch = {}
+    let returnedVal = rawValue
+
+    if (colKey === 'name') {
+      const trimmed = String(rawValue || '').trim()
+      if (!trimmed) return null
+      dbPatch = { name: trimmed }
+      returnedVal = trimmed
+    } else if (['armador_name', 'armador_phone', 'email_principal'].includes(colKey)) {
+      const trimmed = String(rawValue || '').trim()
+      dbPatch = { [colKey]: trimmed || null }
+      returnedVal = trimmed
+    } else {
+      return null
+    }
+
+    setOwners(prev => prev.map(o => (o.id === rowId ? { ...o, ...dbPatch } : o)))
+    setShips(prev =>
+      prev.map(s => (s.owner_id === rowId && s.owners ? { ...s, owners: { ...s.owners, ...dbPatch } } : s))
+    )
+
+    const { error } = await supabase.from('owners').update(dbPatch).eq('id', rowId)
+    if (error) throw error
+    return returnedVal
+  }, [owners])
+
+  const handleOwnersBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    try {
+      if (isRevert && revertMap) {
+        for (const [id, oldVal] of Object.entries(revertMap)) {
+          await applyOwnerSinglePatch(id, colKey, oldVal)
+        }
+      } else if (Array.isArray(targetIds)) {
+        for (const id of targetIds) {
+          await applyOwnerSinglePatch(id, colKey, newValue)
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      showShipsGridFeedback('error', `Error actualizando armadores: ${err.message}`)
+      loadInitialData()
+    }
+  }, [applyOwnerSinglePatch, showShipsGridFeedback])
+
+  const ownersGrid = useSpreadsheetGrid({
+    rows: filteredOwners,
+    columns: ownersGridColumns,
+    getRowId: (o) => o.id,
+    storageKey: 'aloncar_grid_owners',
+    onBatchUpdate: handleOwnersBatchUpdate,
+    onFocusSearch: () => {
+      shipsSearchInputRef.current?.focus()
+      shipsSearchInputRef.current?.select()
+    },
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef) return
+      const initVal = typeof colDef.getValue === 'function' ? colDef.getValue(row) : (row[colDef.key] ?? '')
+      setInlineOwnerEdit({ rowId: row.id, colKey: colDef.key, value: initVal })
+    },
+    showFeedback: showShipsGridFeedback
+  })
+
+  const commitInlineOwnerEdit = async (overrideValue = undefined) => {
+    if (!inlineOwnerEdit) return
+    const { rowId, colKey } = inlineOwnerEdit
+    const nextRaw = overrideValue !== undefined ? overrideValue : inlineOwnerEdit.value
+    const owner = owners.find(o => o.id === rowId)
+    setInlineOwnerEdit(null)
+    if (!owner) return
+
+    const colDef = ownersGridColumns.find(c => c.key === colKey)
+    const oldVal = colDef?.getValue ? colDef.getValue(owner) : (owner[colKey] ?? '')
+    if (String(oldVal ?? '') === String(nextRaw ?? '')) return
+
+    try {
+      const savedVal = await applyOwnerSinglePatch(rowId, colKey, nextRaw)
+      if (savedVal !== null) {
+        ownersGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Editar ${colDef?.label || colKey} en ${owner.name}`,
+          previousValues: { [rowId]: oldVal },
+          newValue: savedVal,
+          timestamp: Date.now()
+        })
+        showShipsGridFeedback('success', `Armador "${owner.name}" actualizado. (Ctrl+Z para deshacer)`)
+      }
+    } catch (err) {
+      console.error(err)
+      showShipsGridFeedback('error', `Error al guardar armador: ${err.message}`)
+      loadInitialData()
+    }
+  }
+
+  function getOwnersCellProps(rowIndex, colKey) {
+    const colIdx = ownersGridColumns.findIndex(c => c.key === colKey)
+    if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
+    const isActive = ownersGrid.isCellActive(rowIndex, colIdx)
+    const isSelected = ownersGrid.isCellSelected(rowIndex, colIdx)
+    const isFillPreview = ownersGrid.isCellInFillPreview(rowIndex, colIdx)
+    const renderHandle = ownersGrid.shouldRenderFillHandle(rowIndex, colIdx)
+    return {
+      renderHandle,
+      domProps: {
+        onClick: (e) => ownersGrid.handleCellClick(rowIndex, colIdx, e),
+        onMouseDown: (e) => ownersGrid.handleCellMouseDown(rowIndex, colIdx, e),
+        onMouseEnter: () => ownersGrid.handleCellMouseEnter(rowIndex, colIdx)
+      },
+      className: `relative select-none transition-colors ${
+        isActive
+          ? 'ring-2 ring-cyan-400 bg-cyan-950/40 z-20 outline-none'
+          : isFillPreview
+          ? 'bg-cyan-900/40 border-y border-dashed border-cyan-400'
+          : isSelected
+          ? 'bg-cyan-900/30'
+          : ''
+      }`
+    }
+  }
 
   // ==========================================================================
   // HANDLERS: BARCO (CREAR / EDITAR / BAJA LÓGICA)
@@ -859,160 +1329,164 @@ export default function Ships() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* CABECERA & CONTROL DE TERMINALES DE TRABAJO */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-            <Link to="/" className="hover:text-primary transition-colors">Inicio</Link>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span className="text-slate-300">Activos Navales</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span className="text-primary font-medium">Módulo M1: Barcos, Ficha Técnica & Estadías</span>
-          </div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-            <Ship className="w-8 h-8 text-primary" />
-            <span>Barcos & Obras en Varadero</span>
-          </h1>
-        </div>
-
-        {/* SELECTOR DE TERMINALES DE TRABAJO POR PUESTO */}
-        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
-          <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1 text-xs shadow-inner">
-            <span className="text-[10px] uppercase font-bold text-slate-400 px-2 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Terminal Activa:
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveRolePerspective('admin')
-                setRoleQuickFilter('todos')
-              }}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeRolePerspective === 'admin'
-                  ? 'bg-primary text-slate-950 shadow-md ring-1 ring-primary/50'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Terminal Jorge Sentis: Creación de buques, solicitudes con notas claras y control de auditoría"
-            >
-              <span>👑 Terminal Admin</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveRolePerspective('maria_jose')
-                setRoleQuickFilter('todos')
-              }}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeRolePerspective === 'maria_jose'
-                  ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/50'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Terminal María José: Armadores, contactos comerciales, resolución de huérfanos y calendario de estadías"
-            >
-              <span>📋 Terminal María José</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveRolePerspective('jefe_obra')
-                setRoleQuickFilter('todos')
-              }}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeRolePerspective === 'jefe_obra'
-                  ? 'bg-emerald-400 text-slate-950 shadow-md ring-1 ring-emerald-400/50'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Terminal Jefe de Obra: Medidas, válvulas, planos de anguilera (.dwg/.pdf), informe de pintado e inspección de OTs"
-            >
-              <span>🛠️ Terminal Jefe de Obra</span>
-            </button>
-          </div>
-
-          {/* Botón Nuevo Barco (Visible para Administrador) */}
-          {activeRolePerspective === 'admin' && (
-            <button
-              type="button"
-              onClick={handleOpenNewShip}
-              className="px-4 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,254,0.25)] transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Nuevo Buque</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* BANNER DINÁMICO DE LA TERMINAL DE TRABAJO (NAVAJA SUIZA POR PUESTO) */}
-      <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition-all ${
-        activeRolePerspective === 'admin'
-          ? 'bg-cyan-950/20 border-cyan-500/30 text-cyan-200'
-          : activeRolePerspective === 'maria_jose'
-          ? 'bg-amber-950/20 border-amber-500/30 text-amber-200'
-          : 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
-      }`}>
-        <div className="flex items-start sm:items-center gap-2.5">
-          {activeRolePerspective === 'admin' && <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5 sm:mt-0" />}
-          {activeRolePerspective === 'maria_jose' && <Building2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />}
-          {activeRolePerspective === 'jefe_obra' && <Wrench className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />}
+      {/* ========================================================================= */}
+      {/* ZONA 1 (CONTEXTO): CABECERA & CONTROL DE TERMINALES DE TRABAJO            */}
+      {/* ========================================================================= */}
+      <div className="alon-zone-context rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
           <div>
-            <strong className="font-extrabold text-white mr-1.5">
-              {activeRolePerspective === 'admin' && 'Terminal Administrador (Jorge Sentis):'}
-              {activeRolePerspective === 'maria_jose' && 'Terminal Administración & Comercial (María José):'}
-              {activeRolePerspective === 'jefe_obra' && 'Terminal Técnica & Operativa (Jefes de Obra):'}
-            </strong>
-            <span>
-              {activeRolePerspective === 'admin' && 'Herramientas: Alta de buques, tipos personalizables, solicitudes con notas, eliminación auditada de armadores y control general.'}
-              {activeRolePerspective === 'maria_jose' && 'Herramientas: Armadores, teléfonos, emails dobles, fechas de estadías en varadero/muelle y resolución de barcos huérfanos.'}
-              {activeRolePerspective === 'jefe_obra' && 'Herramientas: Medidas de casco, inventario de válvulas/tanques/pocetes, subida de Plano de Anguilera (.dwg/.pdf) e Informe de Pintado (.pdf).'}
-            </span>
+            <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+              <Link to="/" className="hover:text-primary transition-colors">Inicio</Link>
+              <ChevronRight className="w-3.5 h-3.5" />
+              <span className="text-slate-300">Activos Navales</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+              <span className="text-primary font-medium">Módulo M1: Barcos, Ficha Técnica & Estadías</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+              <Ship className="w-8 h-8 text-primary" />
+              <span>Barcos & Obras en Varadero</span>
+            </h1>
+          </div>
+
+          {/* SELECTOR DE TERMINALES DE TRABAJO POR PUESTO */}
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1 text-xs shadow-inner">
+              <span className="text-[10px] uppercase font-bold text-slate-400 px-2 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Terminal Activa:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveRolePerspective('admin')
+                  setRoleQuickFilter('todos')
+                }}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeRolePerspective === 'admin'
+                    ? 'bg-primary text-slate-950 shadow-md ring-1 ring-primary/50'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Terminal Jorge Sentis: Creación de buques, solicitudes con notas claras y control de auditoría"
+              >
+                <span>👑 Terminal Admin</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveRolePerspective('maria_jose')
+                  setRoleQuickFilter('todos')
+                }}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeRolePerspective === 'maria_jose'
+                    ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/50'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Terminal María José: Armadores, contactos comerciales, resolución de huérfanos y calendario de estadías"
+              >
+                <span>📋 Terminal María José</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveRolePerspective('jefe_obra')
+                  setRoleQuickFilter('todos')
+                }}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeRolePerspective === 'jefe_obra'
+                    ? 'bg-emerald-400 text-slate-950 shadow-md ring-1 ring-emerald-400/50'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Terminal Jefe de Obra: Medidas, válvulas, planos de anguilera (.dwg/.pdf), informe de pintado e inspección de OTs"
+              >
+                <span>🛠️ Terminal Jefe de Obra</span>
+              </button>
+            </div>
+
+            {/* Botón Nuevo Barco (Visible para Administrador) */}
+            {activeRolePerspective === 'admin' && (
+              <button
+                type="button"
+                onClick={handleOpenNewShip}
+                className="px-4 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,254,0.25)] transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Nuevo Buque</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Acceso rápido específico para la terminal */}
-        <div className="flex items-center gap-2 shrink-0">
-          {activeRolePerspective === 'maria_jose' && (
-            <>
-              {orphanShips.length > 0 && (
+        {/* BANNER DINÁMICO DE LA TERMINAL DE TRABAJO (NAVAJA SUIZA POR PUESTO) */}
+        <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition-all ${
+          activeRolePerspective === 'admin'
+            ? 'bg-cyan-950/20 border-cyan-500/30 text-cyan-200'
+            : activeRolePerspective === 'maria_jose'
+            ? 'bg-amber-950/20 border-amber-500/30 text-amber-200'
+            : 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+        }`}>
+          <div className="flex items-start sm:items-center gap-2.5">
+            {activeRolePerspective === 'admin' && <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5 sm:mt-0" />}
+            {activeRolePerspective === 'maria_jose' && <Building2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />}
+            {activeRolePerspective === 'jefe_obra' && <Wrench className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />}
+            <div>
+              <strong className="font-extrabold text-white mr-1.5">
+                {activeRolePerspective === 'admin' && 'Terminal Administrador (Jorge Sentis):'}
+                {activeRolePerspective === 'maria_jose' && 'Terminal Administración & Comercial (María José):'}
+                {activeRolePerspective === 'jefe_obra' && 'Terminal Técnica & Operativa (Jefes de Obra):'}
+              </strong>
+              <span>
+                {activeRolePerspective === 'admin' && 'Herramientas: Alta de buques, tipos personalizables, solicitudes con notas, eliminación auditada de armadores y control general.'}
+                {activeRolePerspective === 'maria_jose' && 'Herramientas: Armadores, teléfonos, emails dobles, fechas de estadías en varadero/muelle y resolución de barcos huérfanos.'}
+                {activeRolePerspective === 'jefe_obra' && 'Herramientas: Medidas de casco, inventario de válvulas/tanques/pocetes, subida de Plano de Anguilera (.dwg/.pdf) e Informe de Pintado (.pdf).'}
+              </span>
+            </div>
+          </div>
+
+          {/* Acceso rápido específico para la terminal */}
+          <div className="flex items-center gap-2 shrink-0">
+            {activeRolePerspective === 'maria_jose' && (
+              <>
+                {orphanShips.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setRoleQuickFilter(prev => prev === 'huerfanos' ? 'todos' : 'huerfanos')}
+                    className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] cursor-pointer transition-all flex items-center gap-1 ${
+                      roleQuickFilter === 'huerfanos'
+                        ? 'bg-rose-500 text-white border-rose-400'
+                        : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3 h-3 text-rose-300" />
+                    <span>{orphanShips.length} Huérfanos</span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setRoleQuickFilter(prev => prev === 'huerfanos' ? 'todos' : 'huerfanos')}
-                  className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] cursor-pointer transition-all flex items-center gap-1 ${
-                    roleQuickFilter === 'huerfanos'
-                      ? 'bg-rose-500 text-white border-rose-400'
-                      : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                  onClick={() => setRoleQuickFilter(prev => prev === 'mis_pendientes' ? 'todos' : 'mis_pendientes')}
+                  className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] cursor-pointer transition-all ${
+                    roleQuickFilter === 'mis_pendientes'
+                      ? 'bg-amber-400 text-slate-950 border-amber-300'
+                      : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
                   }`}
                 >
-                  <AlertTriangle className="w-3 h-3 text-rose-300" />
-                  <span>{orphanShips.length} Huérfanos</span>
+                  {roleQuickFilter === 'mis_pendientes' ? '✓ Mostrando pendientes María José' : '⚡ Filtrar pendientes de María José'}
                 </button>
-              )}
+              </>
+            )}
+
+            {activeRolePerspective === 'jefe_obra' && (
               <button
                 type="button"
                 onClick={() => setRoleQuickFilter(prev => prev === 'mis_pendientes' ? 'todos' : 'mis_pendientes')}
                 className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] cursor-pointer transition-all ${
                   roleQuickFilter === 'mis_pendientes'
-                    ? 'bg-amber-400 text-slate-950 border-amber-300'
-                    : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                    ? 'bg-emerald-400 text-slate-950 border-emerald-300'
+                    : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
                 }`}
               >
-                {roleQuickFilter === 'mis_pendientes' ? '✓ Mostrando pendientes María José' : '⚡ Filtrar pendientes de María José'}
+                {roleQuickFilter === 'mis_pendientes' ? '✓ Mostrando pendientes Jefe de Obra' : '⚡ Filtrar pendientes de Jefe de Obra'}
               </button>
-            </>
-          )}
-
-          {activeRolePerspective === 'jefe_obra' && (
-            <button
-              type="button"
-              onClick={() => setRoleQuickFilter(prev => prev === 'mis_pendientes' ? 'todos' : 'mis_pendientes')}
-              className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] cursor-pointer transition-all ${
-                roleQuickFilter === 'mis_pendientes'
-                  ? 'bg-emerald-400 text-slate-950 border-emerald-300'
-                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
-              }`}
-            >
-              {roleQuickFilter === 'mis_pendientes' ? '✓ Mostrando pendientes Jefe de Obra' : '⚡ Filtrar pendientes de Jefe de Obra'}
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -1067,289 +1541,410 @@ export default function Ships() {
         </div>
       )}
 
-      {/* KPIS CLICKEABLES INTERACTIVOS (Locaciones limpias: VARADERO / MUELLE / ALDANA) */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* KPI 1: Total Buques */}
-        <div
-          onClick={() => handleKpiClick('todos')}
-          className={`p-4 rounded-2xl border cursor-pointer transition-all relative group ${
-            locationFilter === 'todos' && requestFilter === 'todos' && roleQuickFilter === 'todos'
-              ? 'bg-slate-900 border-primary/60 ring-2 ring-primary/30 shadow-lg'
-              : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
-          }`}
-          title="Clic para ver todos los buques registrados"
-        >
-          <div className="text-[11px] font-bold uppercase text-slate-400 flex items-center justify-between gap-1.5 mb-1">
-            <span className="flex items-center gap-1.5">
-              <Ship className="w-3.5 h-3.5 text-cyan-400" /> Total Buques
-            </span>
-            {locationFilter === 'todos' && requestFilter === 'todos' && (
-              <span className="text-[9px] px-1 py-0.2 rounded bg-primary/20 text-primary font-mono font-bold">ACTIVO</span>
-            )}
-          </div>
-          <div className="text-2xl font-black text-white font-mono">{totalShips}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5 group-hover:text-cyan-400 transition-colors">
-            Clic para quitar filtros
-          </div>
-        </div>
-
-        {/* KPI 2: En Varadero */}
-        <div
-          onClick={() => handleKpiClick('VARADERO')}
-          className={`p-4 rounded-2xl border cursor-pointer transition-all relative group ${
-            locationFilter === 'VARADERO'
-              ? 'bg-cyan-950/70 border-cyan-400 ring-2 ring-cyan-400/50 shadow-lg'
-              : 'bg-cyan-950/20 border-cyan-500/30 hover:border-cyan-400/60 hover:bg-cyan-950/30'
-          }`}
-          title="Clic para filtrar solo barcos en Varadero (Puesta en seco)"
-        >
-          <div className="text-[11px] font-bold uppercase text-cyan-300 flex items-center justify-between gap-1.5 mb-1">
-            <span className="flex items-center gap-1.5">
-              <Anchor className="w-3.5 h-3.5 text-cyan-400" /> En Varadero
-            </span>
-            {locationFilter === 'VARADERO' && (
-              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
-            )}
-          </div>
-          <div className="text-2xl font-black text-cyan-200 font-mono">{varaderoCount}</div>
-          <div className="text-[10px] text-cyan-400/70 mt-0.5 group-hover:text-cyan-300">
-            {locationFilter === 'VARADERO' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
-          </div>
-        </div>
-
-        {/* KPI 3: En Muelle */}
-        <div
-          onClick={() => handleKpiClick('MUELLE')}
-          className={`p-4 rounded-2xl border cursor-pointer transition-all relative group ${
-            locationFilter === 'MUELLE'
-              ? 'bg-blue-950/70 border-blue-400 ring-2 ring-blue-400/50 shadow-lg'
-              : 'bg-blue-950/20 border-blue-500/30 hover:border-blue-400/60 hover:bg-blue-950/30'
-          }`}
-          title="Clic para filtrar barcos a flote en Muelle"
-        >
-          <div className="text-[11px] font-bold uppercase text-blue-300 flex items-center justify-between gap-1.5 mb-1">
-            <span className="flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-blue-400" /> En Muelle
-            </span>
-            {locationFilter === 'MUELLE' && (
-              <span className="text-[9px] px-1 py-0.2 rounded bg-blue-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
-            )}
-          </div>
-          <div className="text-2xl font-black text-blue-200 font-mono">{muelleCount}</div>
-          <div className="text-[10px] text-blue-400/70 mt-0.5 group-hover:text-blue-300">
-            {locationFilter === 'MUELLE' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
-          </div>
-        </div>
-
-        {/* KPI 4: Puertos Aldana */}
-        <div
-          onClick={() => handleKpiClick('PUERTO')}
-          className={`p-4 rounded-2xl border cursor-pointer transition-all relative group ${
-            locationFilter === 'PUERTO'
-              ? 'bg-purple-950/70 border-purple-400 ring-2 ring-purple-400/50 shadow-lg'
-              : 'bg-purple-950/20 border-purple-500/30 hover:border-purple-400/60 hover:bg-purple-950/30'
-          }`}
-          title="Clic para filtrar barcos en apostaderos y puertos externos de Aldana"
-        >
-          <div className="text-[11px] font-bold uppercase text-purple-300 flex items-center justify-between gap-1.5 mb-1">
-            <span className="flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-purple-400" /> Puertos Aldana
-            </span>
-            {locationFilter === 'PUERTO' && (
-              <span className="text-[9px] px-1 py-0.2 rounded bg-purple-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
-            )}
-          </div>
-          <div className="text-2xl font-black text-purple-200 font-mono">{puertoCount}</div>
-          <div className="text-[10px] text-purple-400/70 mt-0.5 group-hover:text-purple-300">
-            {locationFilter === 'PUERTO' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
-          </div>
-        </div>
-
-        {/* KPI 5: Solicitudes Pendientes */}
-        <div
-          onClick={() => handleKpiClick('pendientes')}
-          className={`p-4 rounded-2xl border cursor-pointer transition-all relative group ${
-            requestFilter === 'pendientes'
-              ? 'bg-amber-950/70 border-amber-400 ring-2 ring-amber-400/50 shadow-lg'
-              : 'bg-amber-950/20 border-amber-500/30 hover:border-amber-400/60 hover:bg-amber-950/30'
-          }`}
-          title="Clic para ver buques con solicitud de carga pendiente (María José o Jefes de Obra)"
-        >
-          <div className="text-[11px] font-bold uppercase text-amber-300 flex items-center justify-between gap-1.5 mb-1">
-            <span className="flex items-center gap-1.5">
-              <BellRing className="w-3.5 h-3.5 text-amber-400" /> Solicitudes
-            </span>
-            {requestFilter === 'pendientes' && (
-              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
-            )}
-          </div>
-          <div className="text-2xl font-black text-amber-200 font-mono">{pendingRequestsCount}</div>
-          <div className="text-[10px] text-amber-400/70 mt-0.5 group-hover:text-amber-300">
-            {requestFilter === 'pendientes' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
-          </div>
-        </div>
-      </div>
-
-      {/* NAVEGACIÓN ENTRE PESTAÑAS PRINCIPALES */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('buques')}
-            className={`px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
-              activeTab === 'buques'
-                ? 'bg-primary text-slate-950 shadow-md ring-1 ring-primary/40'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+      {/* ========================================================================= */}
+      {/* ZONA 2 (RADAR DE KPIs): LOCACIONES LIMPIAS + ALERTA COSTOS SIN OT         */}
+      {/* ========================================================================= */}
+      <div className="alon-zone-kpis rounded-2xl p-4 shadow-xl">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* KPI 1: Total Buques */}
+          <div
+            onClick={() => handleKpiClick('todos')}
+            className={`p-3.5 rounded-2xl border cursor-pointer transition-all relative group ${
+              locationFilter === 'todos' && requestFilter === 'todos' && roleQuickFilter === 'todos'
+                ? 'bg-slate-900 border-primary/60 ring-2 ring-primary/30 shadow-lg'
+                : 'bg-slate-950/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
             }`}
+            title="Clic para ver todos los buques registrados"
           >
-            <Ship className="w-4 h-4" />
-            <span>1. Buques & Fichas Técnicas ({ships.length})</span>
-          </button>
+            <div className="text-[11px] font-bold uppercase text-slate-400 flex items-center justify-between gap-1.5 mb-1">
+              <span className="flex items-center gap-1.5">
+                <Ship className="w-3.5 h-3.5 text-cyan-400" /> Total Buques
+              </span>
+              {locationFilter === 'todos' && requestFilter === 'todos' && roleQuickFilter === 'todos' && (
+                <span className="text-[9px] px-1 py-0.2 rounded bg-primary/20 text-primary font-mono font-bold">ACTIVO</span>
+              )}
+            </div>
+            <div className="text-2xl font-black text-white font-mono">{totalShips}</div>
+            <div className="text-[10px] text-slate-500 mt-0.5 group-hover:text-cyan-400 transition-colors">
+              Clic para quitar filtros
+            </div>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('movimientos')}
-            className={`px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
-              activeTab === 'movimientos'
-                ? 'bg-cyan-500 text-slate-950 shadow-md ring-1 ring-cyan-400/40'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          {/* KPI 2: En Varadero */}
+          <div
+            onClick={() => handleKpiClick('VARADERO')}
+            className={`p-3.5 rounded-2xl border cursor-pointer transition-all relative group ${
+              locationFilter === 'VARADERO'
+                ? 'bg-cyan-950/70 border-cyan-400 ring-2 ring-cyan-400/50 shadow-lg'
+                : 'bg-cyan-950/20 border-cyan-500/30 hover:border-cyan-400/60 hover:bg-cyan-950/30'
             }`}
+            title="Clic para filtrar solo barcos en Varadero (Puesta en seco)"
           >
-            <Calendar className="w-4 h-4" />
-            <span>2. Calendario de Movimientos (Estadías) ({stays.length})</span>
-          </button>
+            <div className="text-[11px] font-bold uppercase text-cyan-300 flex items-center justify-between gap-1.5 mb-1">
+              <span className="flex items-center gap-1.5">
+                <Anchor className="w-3.5 h-3.5 text-cyan-400" /> En Varadero
+              </span>
+              {locationFilter === 'VARADERO' && (
+                <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
+              )}
+            </div>
+            <div className="text-2xl font-black text-cyan-200 font-mono">{varaderoCount}</div>
+            <div className="text-[10px] text-cyan-400/70 mt-0.5 group-hover:text-cyan-300">
+              {locationFilter === 'VARADERO' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
+            </div>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('armadores')}
-            className={`px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
-              activeTab === 'armadores'
-                ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/40'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          {/* KPI 3: En Muelle */}
+          <div
+            onClick={() => handleKpiClick('MUELLE')}
+            className={`p-3.5 rounded-2xl border cursor-pointer transition-all relative group ${
+              locationFilter === 'MUELLE'
+                ? 'bg-blue-950/70 border-blue-400 ring-2 ring-blue-400/50 shadow-lg'
+                : 'bg-blue-950/20 border-blue-500/30 hover:border-blue-400/60 hover:bg-blue-950/30'
             }`}
+            title="Clic para filtrar barcos a flote en Muelle"
           >
-            <Users className="w-4 h-4" />
-            <span>3. Armadores & Empresas Propietarias ({owners.length})</span>
-          </button>
-        </div>
+            <div className="text-[11px] font-bold uppercase text-blue-300 flex items-center justify-between gap-1.5 mb-1">
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-blue-400" /> En Muelle
+              </span>
+              {locationFilter === 'MUELLE' && (
+                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
+              )}
+            </div>
+            <div className="text-2xl font-black text-blue-200 font-mono">{muelleCount}</div>
+            <div className="text-[10px] text-blue-400/70 mt-0.5 group-hover:text-blue-300">
+              {locationFilter === 'MUELLE' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
+            </div>
+          </div>
 
-        {/* SWITCHER DE VISTA: FILAS (TABLA) VS FICHAS (TARJETAS) */}
-        <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
-          <button
-            type="button"
-            onClick={() => {
-              if (activeTab === 'buques') setViewModeShips('tabla')
-              if (activeTab === 'movimientos') setViewModeStays('tabla')
-              if (activeTab === 'armadores') setViewModeOwners('tabla')
-            }}
-            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
-              (activeTab === 'buques' && viewModeShips === 'tabla') ||
-              (activeTab === 'movimientos' && viewModeStays === 'tabla') ||
-              (activeTab === 'armadores' && viewModeOwners === 'tabla')
-                ? 'bg-primary text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white'
+          {/* KPI 4: Puertos Aldana */}
+          <div
+            onClick={() => handleKpiClick('PUERTO')}
+            className={`p-3.5 rounded-2xl border cursor-pointer transition-all relative group ${
+              locationFilter === 'PUERTO'
+                ? 'bg-purple-950/70 border-purple-400 ring-2 ring-purple-400/50 shadow-lg'
+                : 'bg-purple-950/20 border-purple-500/30 hover:border-purple-400/60 hover:bg-purple-950/30'
             }`}
-            title="Vista tipo tabla con renglones"
+            title="Clic para filtrar barcos en apostaderos y puertos externos de Aldana"
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Vista Filas</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (activeTab === 'buques') setViewModeShips('tarjetas')
-              if (activeTab === 'movimientos') setViewModeStays('tarjetas')
-              if (activeTab === 'armadores') setViewModeOwners('tarjetas')
-            }}
-            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
-              (activeTab === 'buques' && viewModeShips === 'tarjetas') ||
-              (activeTab === 'movimientos' && viewModeStays === 'tarjetas') ||
-              (activeTab === 'armadores' && viewModeOwners === 'tarjetas')
-                ? 'bg-primary text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white'
+            <div className="text-[11px] font-bold uppercase text-purple-300 flex items-center justify-between gap-1.5 mb-1">
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-purple-400" /> Puertos Aldana
+              </span>
+              {locationFilter === 'PUERTO' && (
+                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
+              )}
+            </div>
+            <div className="text-2xl font-black text-purple-200 font-mono">{puertoCount}</div>
+            <div className="text-[10px] text-purple-400/70 mt-0.5 group-hover:text-purple-300">
+              {locationFilter === 'PUERTO' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
+            </div>
+          </div>
+
+          {/* KPI 5: Solicitudes Pendientes */}
+          <div
+            onClick={() => handleKpiClick('pendientes')}
+            className={`p-3.5 rounded-2xl border cursor-pointer transition-all relative group ${
+              requestFilter === 'pendientes'
+                ? 'bg-amber-950/70 border-amber-400 ring-2 ring-amber-400/50 shadow-lg'
+                : 'bg-amber-950/20 border-amber-500/30 hover:border-amber-400/60 hover:bg-amber-950/30'
             }`}
-            title="Vista tipo fichas / tarjetas individuales"
+            title="Clic para ver buques con solicitud de carga pendiente (María José o Jefes de Obra)"
           >
-            <ClipboardList className="w-3.5 h-3.5" />
-            <span>Vista Fichas</span>
-          </button>
+            <div className="text-[11px] font-bold uppercase text-amber-300 flex items-center justify-between gap-1.5 mb-1">
+              <span className="flex items-center gap-1.5">
+                <BellRing className="w-3.5 h-3.5 text-amber-400" /> Solicitudes
+              </span>
+              {requestFilter === 'pendientes' && (
+                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
+              )}
+            </div>
+            <div className="text-2xl font-black text-amber-200 font-mono">{pendingRequestsCount}</div>
+            <div className="text-[10px] text-amber-400/70 mt-0.5 group-hover:text-amber-300">
+              {requestFilter === 'pendientes' ? '⚡ Clic para deseleccionar' : 'Clic para filtrar'}
+            </div>
+          </div>
+
+          {/* KPI 6: ⚠️ Costos sin OT */}
+          <div
+            onClick={() => handleKpiClick('sin_ot')}
+            className={`p-3.5 rounded-2xl border cursor-pointer transition-all relative group ${
+              roleQuickFilter === 'sin_ot'
+                ? 'bg-rose-950/80 border-rose-400 ring-2 ring-rose-400/50 shadow-lg'
+                : shipsWithOrphanCostsCount > 0
+                ? 'bg-rose-950/30 border-rose-500/40 hover:border-rose-400/70 hover:bg-rose-950/40'
+                : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+            }`}
+            title="Clic para filtrar buques que tienen horas, terceros o compras imputadas sin Orden de Trabajo asignada"
+          >
+            <div className="text-[11px] font-bold uppercase flex items-center justify-between gap-1 mb-1">
+              <span className={`flex items-center gap-1 ${shipsWithOrphanCostsCount > 0 ? 'text-rose-300' : 'text-slate-400'}`}>
+                <AlertTriangle className={`w-3.5 h-3.5 ${shipsWithOrphanCostsCount > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-500'}`} />
+                Costos sin OT
+              </span>
+              {roleQuickFilter === 'sin_ot' && (
+                <span className="text-[9px] px-1 py-0.2 rounded bg-rose-400 text-slate-950 font-mono font-bold">FILTRANDO</span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-2xl font-black font-mono ${shipsWithOrphanCostsCount > 0 ? 'text-rose-300' : 'text-emerald-400'}`}>
+                {shipsWithOrphanCostsCount}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                buques ({totalOrphanCostsCount} reg.)
+              </span>
+            </div>
+            <div className="text-[9px] text-rose-300/80 font-mono mt-0.5 truncate">
+              Hs:{orphanLabor.length} · 3ros:{orphanTerceros.length} · Comp:{orphanCompras.length}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* PESTAÑA 1: BUQUES & FICHAS TÉCNICAS (VISTA FILAS / VISTA TARJETAS)       */}
+      {/* ZONA 3 (BARRA DE BÚSQUEDA, FILTROS Y PESTAÑAS): CONTROL DECK              */}
+      {/* ========================================================================= */}
+      <div className="alon-zone-toolbar rounded-2xl p-4 shadow-lg space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('buques')}
+              className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
+                activeTab === 'buques'
+                  ? 'bg-primary text-slate-950 shadow-md ring-1 ring-primary/40'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Ship className="w-4 h-4" />
+              <span>1. Buques & Fichas Técnicas ({ships.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('movimientos')}
+              className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
+                activeTab === 'movimientos'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md ring-1 ring-cyan-400/40'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>2. Calendario de Movimientos ({stays.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('armadores')}
+              className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
+                activeTab === 'armadores'
+                  ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/40'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>3. Armadores & Empresas ({owners.length})</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Deshacer / Rehacer según pestaña activa */}
+            {(() => {
+              const currentGrid = activeTab === 'buques' ? shipsGrid : activeTab === 'movimientos' ? staysGrid : ownersGrid
+              const isTableActive =
+                (activeTab === 'buques' && viewModeShips === 'tabla') ||
+                (activeTab === 'movimientos' && viewModeStays === 'tabla') ||
+                (activeTab === 'armadores' && viewModeOwners === 'tabla')
+              if (!isTableActive) return null
+              return (
+                <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1">
+                  <button
+                    type="button"
+                    disabled={!currentGrid.canUndo}
+                    onClick={currentGrid.undo}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    title="Deshacer en planilla actual (Ctrl + Z)"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!currentGrid.canRedo}
+                    onClick={currentGrid.redo}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    title="Rehacer en planilla actual (Ctrl + Y)"
+                  >
+                    <Redo2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )
+            })()}
+
+            {/* SWITCHER DE VISTA: FILAS (TABLA) VS FICHAS (TARJETAS) */}
+            <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 p-1 rounded-xl text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeTab === 'buques') setViewModeShips('tabla')
+                  if (activeTab === 'movimientos') setViewModeStays('tabla')
+                  if (activeTab === 'armadores') setViewModeOwners('tabla')
+                }}
+                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                  (activeTab === 'buques' && viewModeShips === 'tabla') ||
+                  (activeTab === 'movimientos' && viewModeStays === 'tabla') ||
+                  (activeTab === 'armadores' && viewModeOwners === 'tabla')
+                    ? 'bg-primary text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Vista tipo planilla editable con renglones"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Vista Filas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeTab === 'buques') setViewModeShips('tarjetas')
+                  if (activeTab === 'movimientos') setViewModeStays('tarjetas')
+                  if (activeTab === 'armadores') setViewModeOwners('tarjetas')
+                }}
+                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                  (activeTab === 'buques' && viewModeShips === 'tarjetas') ||
+                  (activeTab === 'movimientos' && viewModeStays === 'tarjetas') ||
+                  (activeTab === 'armadores' && viewModeOwners === 'tarjetas')
+                    ? 'bg-primary text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Vista tipo fichas / tarjetas individuales"
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span>Vista Fichas</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* BARRA DE BÚSQUEDA Y FILTROS TRANSVERSALES */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              ref={shipsSearchInputRef}
+              type="text"
+              placeholder={
+                activeTab === 'buques'
+                  ? 'Buscar por buque, tipo, armador, matrícula o locación (Ctrl+F)...'
+                  : activeTab === 'movimientos'
+                  ? 'Buscar estadía por buque, locación o fecha (Ctrl+F)...'
+                  : 'Buscar empresa armadora, contacto, teléfono, email o CUIT (Ctrl+F)...'
+              }
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {activeTab === 'buques' && (
+              <>
+                <select
+                  value={locationFilter}
+                  onChange={(e) => setLocationFilter(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-bold"
+                >
+                  <option value="todos">Todas las Locaciones</option>
+                  <option value="VARADERO">Varadero</option>
+                  <option value="MUELLE">Muelle</option>
+                  <option value="PUERTO">Puertos Aldana</option>
+                </select>
+
+                <select
+                  value={requestFilter}
+                  onChange={(e) => setRequestFilter(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-bold"
+                >
+                  <option value="todos">Todos los Estados</option>
+                  <option value="pendientes">⚠️ Con Solicitud Activa</option>
+                  <option value="completos">✅ Datos Completos</option>
+                </select>
+              </>
+            )}
+
+            {(locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos' || searchTerm) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setLocationFilter('todos')
+                  setRequestFilter('todos')
+                  setRoleQuickFilter('todos')
+                  setSearchTerm('')
+                }}
+                className="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                title="Limpiar todos los filtros"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Limpiar</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* PESTAÑA 1: BUQUES & FICHAS TÉCNICAS (ZONA 4 PLANILLA / VISTA TARJETAS)    */}
       {/* ========================================================================= */}
       {activeTab === 'buques' && (
         <div className="space-y-4">
-          {/* BARRA DE BÚSQUEDA Y FILTROS */}
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Buscar por buque, tipo, armador, matrícula o locación..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-bold"
-              >
-                <option value="todos">Todas las Locaciones</option>
-                <option value="VARADERO">Varadero</option>
-                <option value="MUELLE">Muelle</option>
-                <option value="PUERTO">Puertos Aldana</option>
-              </select>
-
-              <select
-                value={requestFilter}
-                onChange={(e) => setRequestFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-bold"
-              >
-                <option value="todos">Todos los Estados</option>
-                <option value="pendientes">⚠️ Con Solicitud Activa</option>
-                <option value="completos">✅ Datos Completos</option>
-              </select>
-
-              {(locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos' || searchTerm) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocationFilter('todos')
-                    setRequestFilter('todos')
-                    setRoleQuickFilter('todos')
-                    setSearchTerm('')
-                  }}
-                  className="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                  title="Limpiar todos los filtros"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Limpiar</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* VISTA FILAS / TABLA (Estilo Órdenes de Trabajo) */}
+          {/* ZONA 4 (PLANILLA EDITABLE): VISTA FILAS / TABLA DE BUQUES */}
           {viewModeShips === 'tabla' && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
+            <div
+              ref={shipsGrid.gridContainerRef}
+              tabIndex={0}
+              onKeyDown={shipsGrid.handleKeyDown}
+              className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
+            >
+              <div className="alon-grid-ribbon">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold uppercase tracking-wider text-[10px]">
+                    Planilla Flota Naval
+                  </span>
+                  {shipsGrid.activeCellBadge ? (
+                    <span className="text-cyan-300 font-bold">{shipsGrid.activeCellBadge}</span>
+                  ) : (
+                    <span>Seleccioná una celda para navegar con flechas</span>
+                  )}
+                </div>
+                <div className="hidden md:flex items-center gap-3 text-[10px] text-slate-400">
+                  <span>Doble clic o Enter/F2: editar celda</span>
+                  <span>&bull;</span>
+                  <span>Arrastrar ■ / Ctrl+D: rellenar abajo</span>
+                  <span>&bull;</span>
+                  <span>Ctrl+Z / Ctrl+Y: deshacer/rehacer</span>
+                </div>
+              </div>
+
               <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead className="sticky top-0 z-20 bg-slate-950 shadow-sm backdrop-blur-md">
-                    <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3 px-3 bg-slate-950">Buque</th>
-                      <th className="py-3 px-3 bg-slate-950">Tipo</th>
-                      <th className="py-3 px-3 bg-slate-950">Locación</th>
-                      <th className="py-3 px-3 bg-slate-950">Dimensiones</th>
-                      <th className="py-3 px-3 bg-slate-950">OTs Activas</th>
-                      <th className="py-3 px-3 bg-slate-950">Armador / Empresa</th>
-                      <th className="py-3 px-3 bg-slate-950">Estado / Solicitud</th>
-                      <th className="py-3 px-3 text-right bg-slate-950">Acciones</th>
+                  <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
+                    <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-3">Buque ✎</th>
+                      <th className="py-3 px-3">Tipo ✎</th>
+                      <th className="py-3 px-3">Locación ✎</th>
+                      <th className="py-3 px-3">Dimensiones</th>
+                      <th className="py-3 px-3">OTs Activas</th>
+                      <th className="py-3 px-3">Armador / Empresa ✎</th>
+                      <th className="py-3 px-3">Estado / Solicitud</th>
+                      <th className="py-3 px-3 text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -1360,11 +1955,15 @@ export default function Ships() {
                         </td>
                       </tr>
                     ) : (
-                      filteredShips.map(ship => {
+                      filteredShips.map((ship, rowIndex) => {
                         const cleanName = cleanShipName(ship.name)
                         const locClean = cleanLocation(ship.current_location)
                         const hasPendingReq = ship.info_request_status && ship.info_request_status !== 'completo'
                         const otMetrics = getShipOtMetrics[ship.id] || { total: 0, active: 0, shipWos: [], activeWos: [] }
+                        const cpName = getShipsCellProps(rowIndex, 'name')
+                        const cpType = getShipsCellProps(rowIndex, 'vessel_type')
+                        const cpLoc = getShipsCellProps(rowIndex, 'current_location')
+                        const cpOwner = getShipsCellProps(rowIndex, 'owner_id')
 
                         return (
                           <tr
@@ -1377,44 +1976,135 @@ export default function Ships() {
                                 : ''
                             }`}
                           >
-                            {/* 1. Buque (Nombre, Matrícula, Inactivo) */}
-                            <td className="py-3.5 px-3">
-                              <div className="flex items-center gap-2">
-                                <Ship className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                                <div>
-                                  <div className="font-extrabold text-sm text-white tracking-tight flex items-center gap-1.5">
-                                    <span>{cleanName}</span>
-                                    {ship.is_active === false && (
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-950/80 text-rose-300 border border-rose-700 font-bold">
-                                        Inactivo
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                                    {ship.matricula ? `Mat: ${ship.matricula}` : 'Sin matrícula'}
+                            {/* 1. Buque (Doble clic editable) */}
+                            <td
+                              {...cpName.domProps}
+                              onDoubleClick={() => setInlineShipEdit({ rowId: ship.id, colKey: 'name', value: cleanName })}
+                              className={`py-3.5 px-3 cursor-pointer ${cpName.className}`}
+                              title="Doble clic para renombrar buque"
+                            >
+                              {inlineShipEdit?.rowId === ship.id && inlineShipEdit?.colKey === 'name' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={inlineShipEdit.value}
+                                  onChange={(e) => setInlineShipEdit({ ...inlineShipEdit, value: e.target.value })}
+                                  onBlur={() => commitInlineShipEdit()}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineShipEdit()
+                                    if (e.key === 'Escape') setInlineShipEdit(null)
+                                  }}
+                                  className="w-full bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-xs font-extrabold text-white uppercase focus:outline-none"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Ship className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <div className="font-extrabold text-sm text-white tracking-tight flex items-center gap-1.5">
+                                      <span>{cleanName}</span>
+                                      {ship.is_active === false && (
+                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-950/80 text-rose-300 border border-rose-700 font-bold">
+                                          Inactivo
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                      {ship.matricula ? `Mat: ${ship.matricula}` : 'Sin matrícula'}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
+                              )}
+                              {cpName.renderHandle && (
+                                <div
+                                  onMouseDown={shipsGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={shipsGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
-                            {/* 2. Tipo de Embarcación */}
-                            <td className="py-3.5 px-3">
-                              <span className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700/80 text-slate-200 font-bold text-[11px]">
-                                {ship.vessel_type || 'Pesquero'}
-                              </span>
+                            {/* 2. Tipo de Embarcación (Doble clic editable) */}
+                            <td
+                              {...cpType.domProps}
+                              onDoubleClick={() => setInlineShipEdit({ rowId: ship.id, colKey: 'vessel_type', value: ship.vessel_type || 'Pesquero' })}
+                              className={`py-3.5 px-3 cursor-pointer ${cpType.className}`}
+                              title="Doble clic para cambiar Tipo de Embarcación"
+                            >
+                              {inlineShipEdit?.rowId === ship.id && inlineShipEdit?.colKey === 'vessel_type' ? (
+                                <select
+                                  autoFocus
+                                  value={inlineShipEdit.value}
+                                  onChange={(e) => commitInlineShipEdit(e.target.value)}
+                                  onBlur={() => setInlineShipEdit(null)}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Escape') setInlineShipEdit(null)
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-[11px] font-bold text-white focus:outline-none"
+                                >
+                                  {Array.from(new Set([...PREDEFINED_VESSEL_TYPES, ship.vessel_type].filter(Boolean))).map(vt => (
+                                    <option key={vt} value={vt}>{vt}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700/80 text-slate-200 font-bold text-[11px]">
+                                  {ship.vessel_type || 'Pesquero'}
+                                </span>
+                              )}
+                              {cpType.renderHandle && (
+                                <div
+                                  onMouseDown={shipsGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={shipsGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
-                            {/* 3. Locación Actual Limpia */}
-                            <td className="py-3.5 px-3 font-mono">
-                              <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold ${
-                                locClean === 'VARADERO'
-                                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800'
-                                  : locClean === 'MUELLE'
-                                  ? 'bg-blue-950/80 text-blue-300 border-blue-800'
-                                  : 'bg-purple-950/80 text-purple-300 border-purple-800'
-                              }`}>
-                                {locClean}
-                              </span>
+                            {/* 3. Locación Actual Limpia (Doble clic editable) */}
+                            <td
+                              {...cpLoc.domProps}
+                              onDoubleClick={() => setInlineShipEdit({ rowId: ship.id, colKey: 'current_location', value: locClean })}
+                              className={`py-3.5 px-3 font-mono cursor-pointer ${cpLoc.className}`}
+                              title="Doble clic para cambiar Locación Actual"
+                            >
+                              {inlineShipEdit?.rowId === ship.id && inlineShipEdit?.colKey === 'current_location' ? (
+                                <select
+                                  autoFocus
+                                  value={inlineShipEdit.value}
+                                  onChange={(e) => commitInlineShipEdit(e.target.value)}
+                                  onBlur={() => setInlineShipEdit(null)}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Escape') setInlineShipEdit(null)
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-[11px] font-bold text-white focus:outline-none"
+                                >
+                                  {Array.from(new Set([...STANDARD_LOCATIONS, locClean].filter(Boolean))).map(loc => (
+                                    <option key={loc} value={loc}>{loc}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold ${
+                                  locClean === 'VARADERO'
+                                    ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800'
+                                    : locClean === 'MUELLE'
+                                    ? 'bg-blue-950/80 text-blue-300 border-blue-800'
+                                    : 'bg-purple-950/80 text-purple-300 border-purple-800'
+                                }`}>
+                                  {locClean}
+                                </span>
+                              )}
+                              {cpLoc.renderHandle && (
+                                <div
+                                  onMouseDown={shipsGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={shipsGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
                             {/* 4. Dimensiones Navales */}
@@ -1460,9 +2150,31 @@ export default function Ships() {
                               </div>
                             </td>
 
-                            {/* 6. Armador / Contacto o Aviso Huérfano */}
-                            <td className="py-3.5 px-3">
-                              {ship.orphan_owner_alert ? (
+                            {/* 6. Armador / Contacto o Aviso Huérfano (Doble clic editable) */}
+                            <td
+                              {...cpOwner.domProps}
+                              onDoubleClick={() => setInlineShipEdit({ rowId: ship.id, colKey: 'owner_id', value: ship.owner_id || '' })}
+                              className={`py-3.5 px-3 cursor-pointer ${cpOwner.className}`}
+                              title="Doble clic para asignar o cambiar Empresa Armadora"
+                            >
+                              {inlineShipEdit?.rowId === ship.id && inlineShipEdit?.colKey === 'owner_id' ? (
+                                <select
+                                  autoFocus
+                                  value={inlineShipEdit.value}
+                                  onChange={(e) => commitInlineShipEdit(e.target.value)}
+                                  onBlur={() => setInlineShipEdit(null)}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Escape') setInlineShipEdit(null)
+                                  }}
+                                  className="w-full max-w-[190px] bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-[11px] font-bold text-white focus:outline-none"
+                                >
+                                  <option value="">— Sin asignar —</option>
+                                  {owners.map(ow => (
+                                    <option key={ow.id} value={ow.id}>{ow.name}</option>
+                                  ))}
+                                </select>
+                              ) : ship.orphan_owner_alert ? (
                                 <div className="space-y-1">
                                   <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold inline-flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3 text-rose-400" />
@@ -1471,14 +2183,20 @@ export default function Ships() {
                                   <div className="flex items-center gap-1.5 pt-0.5">
                                     <button
                                       type="button"
-                                      onClick={() => setModalAssignOrphan({ isOpen: true, ship, selectedOwnerId: '' })}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setModalAssignOrphan({ isOpen: true, ship, selectedOwnerId: '' })
+                                      }}
                                       className="px-2 py-0.5 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 text-[10px] font-extrabold cursor-pointer"
                                     >
                                       Asignar
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => handleDismissOrphanAlert(ship)}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleDismissOrphanAlert(ship)
+                                      }}
                                       className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer"
                                       title="Apagar alerta si no se conoce el armador"
                                     >
@@ -1499,6 +2217,7 @@ export default function Ships() {
                                   {ship.owners?.armador_phone && (
                                     <a
                                       href={`tel:${ship.owners.armador_phone}`}
+                                      onClick={(e) => e.stopPropagation()}
                                       className="text-[10px] text-slate-400 hover:text-cyan-300 font-mono flex items-center gap-1 mt-0.5"
                                     >
                                       <Phone className="w-2.5 h-2.5 text-cyan-400" />
@@ -1506,6 +2225,14 @@ export default function Ships() {
                                     </a>
                                   )}
                                 </div>
+                              )}
+                              {cpOwner.renderHandle && (
+                                <div
+                                  onMouseDown={shipsGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={shipsGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
                               )}
                             </td>
 
@@ -1790,7 +2517,7 @@ export default function Ships() {
       {/* ========================================================================= */}
       {activeTab === 'movimientos' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+          <div className="alon-zone-toolbar flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl shadow-lg">
             <div>
               <h2 className="text-base font-extrabold text-white flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-cyan-400" />
@@ -1810,19 +2537,44 @@ export default function Ships() {
             </button>
           </div>
 
-          {/* VISTA FILAS / TABLA (ESTADÍAS) */}
+          {/* ZONA 4 (PLANILLA EDITABLE): VISTA FILAS / TABLA DE ESTADÍAS */}
           {viewModeStays === 'tabla' && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-xl">
+            <div
+              ref={staysGrid.gridContainerRef}
+              tabIndex={0}
+              onKeyDown={staysGrid.handleKeyDown}
+              className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
+            >
+              <div className="alon-grid-ribbon">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold uppercase tracking-wider text-[10px]">
+                    Planilla Estadías
+                  </span>
+                  {staysGrid.activeCellBadge ? (
+                    <span className="text-cyan-300 font-bold">{staysGrid.activeCellBadge}</span>
+                  ) : (
+                    <span>Seleccioná Locación, Comienzo o Fin para editar rápido</span>
+                  )}
+                </div>
+                <div className="hidden md:flex items-center gap-3 text-[10px] text-slate-400">
+                  <span>Doble clic o Enter/F2: editar celda</span>
+                  <span>&bull;</span>
+                  <span>Arrastrar ■ / Ctrl+D: rellenar abajo</span>
+                  <span>&bull;</span>
+                  <span>Ctrl+Z / Ctrl+Y: deshacer/rehacer</span>
+                </div>
+              </div>
+
               <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead className="sticky top-0 z-20 bg-slate-950 shadow-sm backdrop-blur-md">
-                    <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3 px-4 bg-slate-950">Locación</th>
-                      <th className="py-3 px-4 bg-slate-950">Buque</th>
-                      <th className="py-3 px-4 text-center bg-slate-950">Comienzo</th>
-                      <th className="py-3 px-4 text-center bg-slate-950">Fin</th>
-                      <th className="py-3 px-4 text-center text-cyan-300 bg-slate-950">Días de Estadía</th>
-                      <th className="py-3 px-4 text-center bg-slate-950">Acciones</th>
+                  <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
+                    <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Locación ✎</th>
+                      <th className="py-3 px-4">Buque</th>
+                      <th className="py-3 px-4 text-center">Comienzo ✎</th>
+                      <th className="py-3 px-4 text-center">Fin ✎</th>
+                      <th className="py-3 px-4 text-center text-cyan-300">Días de Estadía</th>
+                      <th className="py-3 px-4 text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
@@ -1833,53 +2585,143 @@ export default function Ships() {
                         </td>
                       </tr>
                     ) : (
-                      filteredStays.map(stay => {
+                      filteredStays.map((stay, rowIndex) => {
                         const isOngoing = !stay.end_date
                         const days = calculateStayDays(stay.start_date, stay.end_date)
                         const locClean = cleanLocation(stay.location)
+                        const cpLoc = getStaysCellProps(rowIndex, 'location')
+                        const cpStart = getStaysCellProps(rowIndex, 'start_date')
+                        const cpEnd = getStaysCellProps(rowIndex, 'end_date')
 
                         return (
                           <tr key={stay.id} className="hover:bg-slate-800/40 transition-colors">
-                            {/* Locación Limpia */}
-                            <td className="py-3 px-4 font-bold">
-                              <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono ${
-                                locClean === 'VARADERO'
-                                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800'
-                                  : locClean === 'MUELLE'
-                                  ? 'bg-blue-950/80 text-blue-300 border-blue-800'
-                                  : 'bg-amber-950/80 text-amber-300 border-amber-800'
-                              }`}>
-                                {locClean}
-                              </span>
+                            {/* 1. Locación Limpia (Doble clic editable) */}
+                            <td
+                              {...cpLoc.domProps}
+                              onDoubleClick={() => setInlineStayEdit({ rowId: stay.id, colKey: 'location', value: locClean })}
+                              className={`py-3 px-4 font-bold cursor-pointer ${cpLoc.className}`}
+                              title="Doble clic para cambiar Locación de Estadía"
+                            >
+                              {inlineStayEdit?.rowId === stay.id && inlineStayEdit?.colKey === 'location' ? (
+                                <select
+                                  autoFocus
+                                  value={inlineStayEdit.value}
+                                  onChange={(e) => commitInlineStayEdit(e.target.value)}
+                                  onBlur={() => setInlineStayEdit(null)}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Escape') setInlineStayEdit(null)
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-[11px] font-mono font-bold text-white focus:outline-none"
+                                >
+                                  {Array.from(new Set([...STANDARD_LOCATIONS, locClean].filter(Boolean))).map(loc => (
+                                    <option key={loc} value={loc}>{loc}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono ${
+                                  locClean === 'VARADERO'
+                                    ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800'
+                                    : locClean === 'MUELLE'
+                                    ? 'bg-blue-950/80 text-blue-300 border-blue-800'
+                                    : 'bg-amber-950/80 text-amber-300 border-amber-800'
+                                }`}>
+                                  {locClean}
+                                </span>
+                              )}
+                              {cpLoc.renderHandle && (
+                                <div
+                                  onMouseDown={staysGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={staysGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
-                            {/* Barco */}
+                            {/* 2. Barco */}
                             <td className="py-3 px-4 font-extrabold text-white text-sm">
                               {cleanShipName(stay.ships?.name)}
                             </td>
 
-                            {/* Fecha Comienzo */}
-                            <td className="py-3 px-4 text-center font-mono text-slate-200">
-                              {stay.start_date}
+                            {/* 3. Fecha Comienzo (Doble clic editable) */}
+                            <td
+                              {...cpStart.domProps}
+                              onDoubleClick={() => setInlineStayEdit({ rowId: stay.id, colKey: 'start_date', value: stay.start_date || '' })}
+                              className={`py-3 px-4 text-center font-mono text-slate-200 cursor-pointer ${cpStart.className}`}
+                              title="Doble clic para editar fecha de ingreso"
+                            >
+                              {inlineStayEdit?.rowId === stay.id && inlineStayEdit?.colKey === 'start_date' ? (
+                                <input
+                                  type="date"
+                                  autoFocus
+                                  value={inlineStayEdit.value}
+                                  onChange={(e) => setInlineStayEdit({ ...inlineStayEdit, value: e.target.value })}
+                                  onBlur={() => commitInlineStayEdit()}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineStayEdit()
+                                    if (e.key === 'Escape') setInlineStayEdit(null)
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-2 py-1 text-xs text-white focus:outline-none"
+                                />
+                              ) : (
+                                stay.start_date
+                              )}
+                              {cpStart.renderHandle && (
+                                <div
+                                  onMouseDown={staysGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={staysGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
-                            {/* Fecha Fin */}
-                            <td className="py-3 px-4 text-center font-mono">
-                              {stay.end_date ? (
+                            {/* 4. Fecha Fin (Doble clic editable) */}
+                            <td
+                              {...cpEnd.domProps}
+                              onDoubleClick={() => setInlineStayEdit({ rowId: stay.id, colKey: 'end_date', value: stay.end_date || '' })}
+                              className={`py-3 px-4 text-center font-mono cursor-pointer ${cpEnd.className}`}
+                              title="Doble clic para editar fecha de salida (vacío = En curso)"
+                            >
+                              {inlineStayEdit?.rowId === stay.id && inlineStayEdit?.colKey === 'end_date' ? (
+                                <input
+                                  type="date"
+                                  autoFocus
+                                  value={inlineStayEdit.value}
+                                  onChange={(e) => setInlineStayEdit({ ...inlineStayEdit, value: e.target.value })}
+                                  onBlur={() => commitInlineStayEdit()}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineStayEdit()
+                                    if (e.key === 'Escape') setInlineStayEdit(null)
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-2 py-1 text-xs text-white focus:outline-none"
+                                />
+                              ) : stay.end_date ? (
                                 <span className="text-slate-200">{stay.end_date}</span>
                               ) : (
                                 <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold">
                                   En curso (=HOY)
                                 </span>
                               )}
+                              {cpEnd.renderHandle && (
+                                <div
+                                  onMouseDown={staysGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={staysGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
-                            {/* Días Calculados */}
+                            {/* 5. Días Calculados */}
                             <td className="py-3 px-4 text-center font-mono font-black text-sm text-cyan-300">
                               {days} {days === 1 ? 'día' : 'días'}
                             </td>
 
-                            {/* Acciones */}
+                            {/* 6. Acciones */}
                             <td className="py-3 px-4 text-center">
                               <div className="flex items-center justify-center gap-1.5">
                                 {isOngoing && (
@@ -1995,7 +2837,7 @@ export default function Ships() {
       {/* ========================================================================= */}
       {activeTab === 'armadores' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+          <div className="alon-zone-toolbar flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl shadow-lg">
             <div>
               <h2 className="text-base font-extrabold text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-amber-400" />
@@ -2015,80 +2857,229 @@ export default function Ships() {
             </button>
           </div>
 
-          {/* VISTA FILAS / TABLA (ARMADORES) */}
+          {/* ZONA 4 (PLANILLA EDITABLE): VISTA FILAS / TABLA DE ARMADORES */}
           {viewModeOwners === 'tabla' && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-xl">
+            <div
+              ref={ownersGrid.gridContainerRef}
+              tabIndex={0}
+              onKeyDown={ownersGrid.handleKeyDown}
+              className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
+            >
+              <div className="alon-grid-ribbon">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold uppercase tracking-wider text-[10px]">
+                    Planilla Armadores
+                  </span>
+                  {ownersGrid.activeCellBadge ? (
+                    <span className="text-cyan-300 font-bold">{ownersGrid.activeCellBadge}</span>
+                  ) : (
+                    <span>Seleccioná una celda de Empresa, Armador, Teléfono o Correo para editar</span>
+                  )}
+                </div>
+                <div className="hidden md:flex items-center gap-3 text-[10px] text-slate-400">
+                  <span>Doble clic o Enter/F2: editar celda</span>
+                  <span>&bull;</span>
+                  <span>Arrastrar ■ / Ctrl+D: rellenar abajo</span>
+                  <span>&bull;</span>
+                  <span>Ctrl+Z / Ctrl+Y: deshacer/rehacer</span>
+                </div>
+              </div>
+
               <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead className="sticky top-0 z-20 bg-slate-950 shadow-sm backdrop-blur-md">
-                    <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3 px-4 bg-slate-950">Empresa / Razón Social</th>
-                      <th className="py-3 px-4 bg-slate-950">Nombre del Armador</th>
-                      <th className="py-3 px-4 bg-slate-950">Teléfono Directo</th>
-                      <th className="py-3 px-4 bg-slate-950">Correos (Principal / Facturación)</th>
-                      <th className="py-3 px-4 bg-slate-950">Flota Vinculada</th>
-                      <th className="py-3 px-4 text-right bg-slate-950">Acciones</th>
+                  <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
+                    <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Empresa / Razón Social ✎</th>
+                      <th className="py-3 px-4">Nombre del Armador ✎</th>
+                      <th className="py-3 px-4">Teléfono Directo ✎</th>
+                      <th className="py-3 px-4">Correos (Principal ✎ / Facturación)</th>
+                      <th className="py-3 px-4">Flota Vinculada</th>
+                      <th className="py-3 px-4 text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
-                    {owners.length === 0 ? (
+                    {filteredOwners.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="text-center py-8 text-slate-500">
-                          No hay empresas armadoras registradas. Tocá &ldquo;+ Nueva Empresa Armadora&rdquo;.
+                          No hay empresas armadoras que coincidan con la búsqueda. Tocá &ldquo;+ Nueva Empresa Armadora&rdquo;.
                         </td>
                       </tr>
                     ) : (
-                      owners.map(owner => {
+                      filteredOwners.map((owner, rowIndex) => {
                         const ownerShips = ships.filter(s => s.owner_id === owner.id)
+                        const cpName = getOwnersCellProps(rowIndex, 'name')
+                        const cpArmador = getOwnersCellProps(rowIndex, 'armador_name')
+                        const cpPhone = getOwnersCellProps(rowIndex, 'armador_phone')
+                        const cpEmail = getOwnersCellProps(rowIndex, 'email_principal')
 
                         return (
                           <tr key={owner.id} className="hover:bg-slate-800/40 transition-colors">
-                            {/* Empresa */}
-                            <td className="py-3.5 px-4">
-                              <div className="flex items-center gap-2">
-                                <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
-                                <div>
-                                  <strong className="text-white text-sm block">{owner.name}</strong>
-                                  {owner.cuit && <span className="text-[10px] text-slate-400 font-mono">CUIT: {owner.cuit}</span>}
+                            {/* 1. Empresa (Doble clic editable) */}
+                            <td
+                              {...cpName.domProps}
+                              onDoubleClick={() => setInlineOwnerEdit({ rowId: owner.id, colKey: 'name', value: owner.name || '' })}
+                              className={`py-3.5 px-4 cursor-pointer ${cpName.className}`}
+                              title="Doble clic para editar Razón Social"
+                            >
+                              {inlineOwnerEdit?.rowId === owner.id && inlineOwnerEdit?.colKey === 'name' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={inlineOwnerEdit.value}
+                                  onChange={(e) => setInlineOwnerEdit({ ...inlineOwnerEdit, value: e.target.value })}
+                                  onBlur={() => commitInlineOwnerEdit()}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineOwnerEdit()
+                                    if (e.key === 'Escape') setInlineOwnerEdit(null)
+                                  }}
+                                  className="w-full bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-xs font-extrabold text-white focus:outline-none"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
+                                  <div>
+                                    <strong className="text-white text-sm block">{owner.name}</strong>
+                                    {owner.cuit && <span className="text-[10px] text-slate-400 font-mono">CUIT: {owner.cuit}</span>}
+                                  </div>
                                 </div>
-                              </div>
+                              )}
+                              {cpName.renderHandle && (
+                                <div
+                                  onMouseDown={ownersGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={ownersGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
-                            {/* Armador */}
-                            <td className="py-3.5 px-4 text-amber-300 font-medium">
-                              {owner.armador_name || 'No informado'}
+                            {/* 2. Armador (Doble clic editable) */}
+                            <td
+                              {...cpArmador.domProps}
+                              onDoubleClick={() => setInlineOwnerEdit({ rowId: owner.id, colKey: 'armador_name', value: owner.armador_name || '' })}
+                              className={`py-3.5 px-4 text-amber-300 font-medium cursor-pointer ${cpArmador.className}`}
+                              title="Doble clic para editar Nombre del Armador"
+                            >
+                              {inlineOwnerEdit?.rowId === owner.id && inlineOwnerEdit?.colKey === 'armador_name' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={inlineOwnerEdit.value}
+                                  onChange={(e) => setInlineOwnerEdit({ ...inlineOwnerEdit, value: e.target.value })}
+                                  onBlur={() => commitInlineOwnerEdit()}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineOwnerEdit()
+                                    if (e.key === 'Escape') setInlineOwnerEdit(null)
+                                  }}
+                                  className="w-full bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
+                                />
+                              ) : (
+                                owner.armador_name || 'No informado'
+                              )}
+                              {cpArmador.renderHandle && (
+                                <div
+                                  onMouseDown={ownersGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={ownersGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
-                            {/* Teléfono */}
-                            <td className="py-3.5 px-4 font-mono">
-                              {owner.armador_phone ? (
-                                <a href={`tel:${owner.armador_phone}`} className="text-cyan-400 hover:underline flex items-center gap-1 font-bold">
+                            {/* 3. Teléfono (Doble clic editable) */}
+                            <td
+                              {...cpPhone.domProps}
+                              onDoubleClick={() => setInlineOwnerEdit({ rowId: owner.id, colKey: 'armador_phone', value: owner.armador_phone || '' })}
+                              className={`py-3.5 px-4 font-mono cursor-pointer ${cpPhone.className}`}
+                              title="Doble clic para editar Teléfono Directo"
+                            >
+                              {inlineOwnerEdit?.rowId === owner.id && inlineOwnerEdit?.colKey === 'armador_phone' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={inlineOwnerEdit.value}
+                                  onChange={(e) => setInlineOwnerEdit({ ...inlineOwnerEdit, value: e.target.value })}
+                                  onBlur={() => commitInlineOwnerEdit()}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineOwnerEdit()
+                                    if (e.key === 'Escape') setInlineOwnerEdit(null)
+                                  }}
+                                  className="w-full bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-xs font-mono text-white focus:outline-none"
+                                />
+                              ) : owner.armador_phone ? (
+                                <a
+                                  href={`tel:${owner.armador_phone}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-cyan-400 hover:underline flex items-center gap-1 font-bold"
+                                >
                                   <Phone className="w-3 h-3" />
                                   <span>{owner.armador_phone}</span>
                                 </a>
                               ) : (
                                 <span className="text-slate-500">S/D</span>
                               )}
-                            </td>
-
-                            {/* Mails */}
-                            <td className="py-3.5 px-4 text-[11px] font-mono space-y-0.5">
-                              {owner.email_principal && (
-                                <div className="text-slate-200 truncate max-w-[200px]" title={owner.email_principal}>
-                                  ✉️ {owner.email_principal}
-                                </div>
-                              )}
-                              {owner.email_secundario && (
-                                <div className="text-slate-400 truncate max-w-[200px]" title={owner.email_secundario}>
-                                  📧 {owner.email_secundario}
-                                </div>
-                              )}
-                              {!owner.email_principal && !owner.email_secundario && (
-                                <span className="text-slate-500">Sin emails</span>
+                              {cpPhone.renderHandle && (
+                                <div
+                                  onMouseDown={ownersGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={ownersGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
                               )}
                             </td>
 
-                            {/* Flota de buques vinculada */}
+                            {/* 4. Mails (Correo Principal editable con doble clic) */}
+                            <td
+                              {...cpEmail.domProps}
+                              onDoubleClick={() => setInlineOwnerEdit({ rowId: owner.id, colKey: 'email_principal', value: owner.email_principal || '' })}
+                              className={`py-3.5 px-4 text-[11px] font-mono space-y-0.5 cursor-pointer ${cpEmail.className}`}
+                              title="Doble clic para editar Correo Principal"
+                            >
+                              {inlineOwnerEdit?.rowId === owner.id && inlineOwnerEdit?.colKey === 'email_principal' ? (
+                                <input
+                                  type="email"
+                                  autoFocus
+                                  value={inlineOwnerEdit.value}
+                                  onChange={(e) => setInlineOwnerEdit({ ...inlineOwnerEdit, value: e.target.value })}
+                                  onBlur={() => commitInlineOwnerEdit()}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineOwnerEdit()
+                                    if (e.key === 'Escape') setInlineOwnerEdit(null)
+                                  }}
+                                  className="w-full bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-xs font-mono text-white focus:outline-none"
+                                />
+                              ) : (
+                                <>
+                                  {owner.email_principal && (
+                                    <div className="text-slate-200 truncate max-w-[200px]" title={owner.email_principal}>
+                                      ✉️ {owner.email_principal}
+                                    </div>
+                                  )}
+                                  {owner.email_secundario && (
+                                    <div className="text-slate-400 truncate max-w-[200px]" title={owner.email_secundario}>
+                                      📧 {owner.email_secundario}
+                                    </div>
+                                  )}
+                                  {!owner.email_principal && !owner.email_secundario && (
+                                    <span className="text-slate-500">Sin emails</span>
+                                  )}
+                                </>
+                              )}
+                              {cpEmail.renderHandle && (
+                                <div
+                                  onMouseDown={ownersGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={ownersGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
+                            </td>
+
+                            {/* 5. Flota de buques vinculada */}
                             <td className="py-3.5 px-4">
                               <div className="flex flex-wrap gap-1 max-w-[220px]">
                                 {ownerShips.length === 0 ? (
@@ -2103,7 +3094,7 @@ export default function Ships() {
                               </div>
                             </td>
 
-                            {/* Acciones (Editar y Eliminar Definitivamente) */}
+                            {/* 6. Acciones (Editar y Eliminar Definitivamente) */}
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
@@ -2137,7 +3128,7 @@ export default function Ships() {
           {/* VISTA FICHAS / TARJETAS (ARMADORES) */}
           {viewModeOwners === 'tarjetas' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {owners.map(owner => {
+              {filteredOwners.map(owner => {
                 const ownerShips = ships.filter(s => s.owner_id === owner.id)
                 return (
                   <div key={owner.id} className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3 flex flex-col justify-between">

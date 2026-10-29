@@ -6,12 +6,14 @@ import { useState, useEffect, useRef, useCallback } from 'react'
  * Hook transversal para dotar a cualquier tabla de la plataforma Alon Car
  * de la ergonomía, navegación y atajos rápidos de Google Sheets / Microsoft Excel:
  * - Navegación con flechas (↑ ↓ ← →) entre celdas
+ * - Enter o F2 sobre celda activa para abrir edición rápida (igual que doble clic)
  * - Selección de celdas y rangos (Shift + Flechas o Arrastre con Mouse)
- * - Cuadradito "Tirador" de esquina (Fill Handle) para arrastrar y rellenar hacia abajo
+ * - Cuadradito "Tirador" de esquina (Fill Handle ■) para arrastrar y rellenar hacia abajo
  * - Doble clic en el tirador para auto-rellenar hasta el final
  * - Ctrl + C (Copiar) / Ctrl + V (Pegar en celda o rango)
  * - Ctrl + D (Fill Down: clonar valor de la primera celda hacia abajo)
- * - Ctrl + Z (Deshacer histórico de hasta 50 pasos, aislado por usuario)
+ * - Ctrl + Z (Deshacer histórico de hasta 50 pasos, aislado por módulo y sesión)
+ * - Ctrl + Y / Ctrl + Shift + Z (Rehacer)
  * - Ctrl + F (Enfocar buscador rápido de la tabla sin abrir la búsqueda de Chrome)
  */
 export function useSpreadsheetGrid({
@@ -20,10 +22,15 @@ export function useSpreadsheetGrid({
   getRowId = (row) => row.id,
   onBatchUpdate,
   onFocusSearch,
+  onCellActivate,
   canEditCell = () => true,
   maxUndoSteps = 50,
+  storageKey = 'aloncar_grid',
   showFeedback
 }) {
+  const undoStorageKey = `${storageKey}_undo_stack`
+  const redoStorageKey = `${storageKey}_redo_stack`
+
   // Coordenadas de Celda Activa { rowIndex, colIndex, rowId, colKey }
   const [activeCell, setActiveCell] = useState(null)
 
@@ -38,13 +45,13 @@ export function useSpreadsheetGrid({
   const [isDraggingFill, setIsDraggingFill] = useState(false)
   const [fillRange, setFillRange] = useState(null) // { colIndex, fromRow, toRow }
 
-  // Portapapeles Interno { colKey, value }
+  // Portapapeles Interno { colKey, value, displayLabel }
   const [internalClipboard, setInternalClipboard] = useState(null)
 
-  // Pila de Deshacer (Undo Stack) aislada en memoria de la sesión
+  // Pila de Deshacer (Undo Stack) aislada en memoria de la sesión por módulo
   const [undoStack, setUndoStack] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('aloncar_grid_undo_stack')
+      const saved = sessionStorage.getItem(undoStorageKey)
       return saved ? JSON.parse(saved) : []
     } catch {
       return []
@@ -54,7 +61,7 @@ export function useSpreadsheetGrid({
   // Pila de Rehacer (Redo Stack)
   const [redoStack, setRedoStack] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('aloncar_grid_redo_stack')
+      const saved = sessionStorage.getItem(redoStorageKey)
       return saved ? JSON.parse(saved) : []
     } catch {
       return []
@@ -63,47 +70,68 @@ export function useSpreadsheetGrid({
 
   const gridContainerRef = useRef(null)
 
+  // Helper para obtener el valor real (simple o compuesto, ej. Barco + OT) de una celda
+  const readCellValue = useCallback((row, colDef) => {
+    if (!row || !colDef) return undefined
+    if (typeof colDef.getValue === 'function') {
+      return colDef.getValue(row)
+    }
+    return row[colDef.key]
+  }, [])
+
+  // Helper para mostrar etiqueta legible en mensajes de feedback y portapapeles de texto
+  const formatCellDisplay = useCallback((val, row, colDef) => {
+    if (colDef && typeof colDef.formatDisplay === 'function') {
+      return colDef.formatDisplay(val, row)
+    }
+    if (val === null || val === undefined || val === '') return '—'
+    if (typeof val === 'object') {
+      if (val.label) return String(val.label)
+      return JSON.stringify(val)
+    }
+    return String(val)
+  }, [])
+
   // Sincronizar undoStack con sessionStorage (máx 50 pasos)
   const pushUndoAction = useCallback((action) => {
     setRedoStack([])
     try {
-      sessionStorage.removeItem('aloncar_grid_redo_stack')
+      sessionStorage.removeItem(redoStorageKey)
     } catch {}
 
     setUndoStack((prev) => {
       const next = [action, ...prev].slice(0, maxUndoSteps)
       try {
-        sessionStorage.setItem('aloncar_grid_undo_stack', JSON.stringify(next))
+        sessionStorage.setItem(undoStorageKey, JSON.stringify(next))
       } catch (e) {
         console.warn('Error guardando undo en sessionStorage:', e)
       }
       return next
     })
-  }, [maxUndoSteps])
+  }, [maxUndoSteps, undoStorageKey, redoStorageKey])
 
   // Deshacer el último cambio (Ctrl + Z)
   const undo = useCallback(async () => {
     if (undoStack.length === 0) {
-      if (showFeedback) showFeedback('info', 'No hay más acciones para deshacer.')
+      if (showFeedback) showFeedback('info', 'No hay más acciones para deshacer en esta planilla.')
       return
     }
 
     const [lastAction, ...remainingStack] = undoStack
     setUndoStack(remainingStack)
     try {
-      sessionStorage.setItem('aloncar_grid_undo_stack', JSON.stringify(remainingStack))
+      sessionStorage.setItem(undoStorageKey, JSON.stringify(remainingStack))
     } catch {}
 
     setRedoStack((prev) => {
       const nextRedo = [lastAction, ...prev].slice(0, maxUndoSteps)
       try {
-        sessionStorage.setItem('aloncar_grid_redo_stack', JSON.stringify(nextRedo))
+        sessionStorage.setItem(redoStorageKey, JSON.stringify(nextRedo))
       } catch {}
       return nextRedo
     })
 
     if (onBatchUpdate && lastAction.previousValues) {
-      // Revertir en Supabase y estado local
       const entries = Object.entries(lastAction.previousValues)
       await onBatchUpdate({
         colKey: lastAction.colKey,
@@ -113,28 +141,28 @@ export function useSpreadsheetGrid({
       })
 
       if (showFeedback) {
-        showFeedback('success', `Deshecho: Se restauraron ${entries.length} registro(s) en ${lastAction.colLabel || lastAction.colKey}.`)
+        showFeedback('success', `Deshecho (Ctrl+Z): Se restauraron ${entries.length} celda(s) en ${lastAction.colLabel || lastAction.colKey}.`)
       }
     }
-  }, [undoStack, onBatchUpdate, maxUndoSteps, showFeedback])
+  }, [undoStack, onBatchUpdate, maxUndoSteps, showFeedback, undoStorageKey, redoStorageKey])
 
   // Rehacer el último cambio deshecho (Ctrl + Y o Ctrl + Shift + Z)
   const redo = useCallback(async () => {
     if (redoStack.length === 0) {
-      if (showFeedback) showFeedback('info', 'No hay más acciones para rehacer.')
+      if (showFeedback) showFeedback('info', 'No hay más acciones para rehacer en esta planilla.')
       return
     }
 
     const [actionToRedo, ...remainingRedo] = redoStack
     setRedoStack(remainingRedo)
     try {
-      sessionStorage.setItem('aloncar_grid_redo_stack', JSON.stringify(remainingRedo))
+      sessionStorage.setItem(redoStorageKey, JSON.stringify(remainingRedo))
     } catch {}
 
     setUndoStack((prev) => {
       const nextUndo = [actionToRedo, ...prev].slice(0, maxUndoSteps)
       try {
-        sessionStorage.setItem('aloncar_grid_undo_stack', JSON.stringify(nextUndo))
+        sessionStorage.setItem(undoStorageKey, JSON.stringify(nextUndo))
       } catch {}
       return nextUndo
     })
@@ -159,17 +187,17 @@ export function useSpreadsheetGrid({
       }
 
       if (showFeedback) {
-        showFeedback('success', `Rehecho: Se re-aplicó el cambio en ${actionToRedo.colLabel || actionToRedo.colKey}.`)
+        showFeedback('success', `Rehecho (Ctrl+Y): Se re-aplicó el cambio en ${actionToRedo.colLabel || actionToRedo.colKey}.`)
       }
     }
-  }, [redoStack, onBatchUpdate, maxUndoSteps, showFeedback])
+  }, [redoStack, onBatchUpdate, maxUndoSteps, showFeedback, undoStorageKey, redoStorageKey])
 
-  // Ejecutar Fill Down (Ctrl + D o al soltar el tirador)
+  // Ejecutar Fill Down (Ctrl + D o al soltar el tirador ■)
   const executeFillDown = useCallback(async (startRowIdx, endRowIdx, colIdx) => {
     if (rows.length === 0 || colIdx < 0 || colIdx >= columns.length) return
     const colDef = columns[colIdx]
     if (!colDef || colDef.readOnly) {
-      if (showFeedback) showFeedback('error', 'Esta columna no permite rellenar hacia abajo.')
+      if (showFeedback) showFeedback('error', 'Esta columna es de solo lectura y no permite rellenar hacia abajo.')
       return
     }
 
@@ -180,7 +208,8 @@ export function useSpreadsheetGrid({
     const sourceRow = rows[minRow]
     if (!sourceRow) return
 
-    const sourceValue = sourceRow[colDef.key]
+    const sourceValue = readCellValue(sourceRow, colDef)
+    const displayStr = formatCellDisplay(sourceValue, sourceRow, colDef)
     const targetRows = rows.slice(minRow + 1, maxRow + 1)
     if (targetRows.length === 0) return
 
@@ -195,7 +224,7 @@ export function useSpreadsheetGrid({
     const previousValues = {}
     validRows.forEach((r) => {
       const id = getRowId(r)
-      previousValues[id] = r[colDef.key]
+      previousValues[id] = readCellValue(r, colDef)
     })
 
     const targetIds = validRows.map(getRowId)
@@ -222,9 +251,9 @@ export function useSpreadsheetGrid({
     }
 
     if (showFeedback) {
-      showFeedback('success', `Rellenadas ${validRows.length} fila(s) con "${sourceValue ?? '—'}".`)
+      showFeedback('success', `Rellenadas ${validRows.length} fila(s) con "${displayStr}".`)
     }
-  }, [rows, columns, getRowId, canEditCell, pushUndoAction, onBatchUpdate, showFeedback])
+  }, [rows, columns, getRowId, canEditCell, pushUndoAction, onBatchUpdate, showFeedback, readCellValue, formatCellDisplay])
 
   // Copiar valor de la celda activa (Ctrl + C)
   const copyActiveCell = useCallback(() => {
@@ -233,69 +262,76 @@ export function useSpreadsheetGrid({
     const colDef = columns[activeCell.colIndex]
     if (!row || !colDef) return
 
-    const val = row[colDef.key]
+    const val = readCellValue(row, colDef)
+    const displayLabel = formatCellDisplay(val, row, colDef)
     setInternalClipboard({
       colKey: colDef.key,
       value: val,
-      colLabel: colDef.label
+      colLabel: colDef.label,
+      displayLabel
     })
 
     // También copiar al portapapeles nativo como texto
     try {
-      if (val !== undefined && val !== null) {
-        navigator.clipboard.writeText(String(val)).catch(() => {})
+      if (displayLabel && displayLabel !== '—') {
+        navigator.clipboard.writeText(displayLabel).catch(() => {})
       }
     } catch {}
 
     if (showFeedback) {
-      showFeedback('info', `Copiado: "${val ?? '—'}" de ${colDef.label || colDef.key}`)
+      showFeedback('info', `Copiado: "${displayLabel}" (${colDef.label || colDef.key})`)
     }
-  }, [activeCell, rows, columns, showFeedback])
+  }, [activeCell, rows, columns, showFeedback, readCellValue, formatCellDisplay])
 
   // Pegar valor en celda activa o rango seleccionado (Ctrl + V)
   const pasteToActiveOrRange = useCallback(async () => {
-    if (!activeCell || !internalClipboard) {
-      // Intentar leer texto del clipboard nativo si no hay memoria interna
-      try {
-        const text = await navigator.clipboard.readText()
-        if (text && activeCell) {
-          const colDef = columns[activeCell.colIndex]
-          if (colDef && !colDef.readOnly) {
-            const startR = selectionRange ? Math.min(selectionRange.startRow, selectionRange.endRow) : activeCell.rowIndex
-            const endR = selectionRange ? Math.max(selectionRange.startRow, selectionRange.endRow) : activeCell.rowIndex
-            const targetRows = rows.slice(startR, endR + 1)
-            const validRows = targetRows.filter((r) => canEditCell(r, colDef.key, text))
-            if (validRows.length > 0) {
-              const previousValues = {}
-              validRows.forEach((r) => { previousValues[getRowId(r)] = r[colDef.key] })
-              pushUndoAction({
-                colKey: colDef.key,
-                colLabel: colDef.label || colDef.key,
-                actionLabel: 'Pegar (Ctrl+V)',
-                previousValues,
-                newValue: text,
-                timestamp: Date.now()
-              })
-              if (onBatchUpdate) {
-                await onBatchUpdate({
-                  colKey: colDef.key,
-                  newValue: text,
-                  targetIds: validRows.map(getRowId),
-                  isRevert: false,
-                  actionLabel: 'Pegar'
-                })
-              }
-              if (showFeedback) showFeedback('success', `Pegado en ${validRows.length} celda(s).`)
-            }
-          }
-        }
-      } catch {}
-      return
-    }
-
+    if (!activeCell) return
     const colDef = columns[activeCell.colIndex]
     if (!colDef || colDef.readOnly) {
       if (showFeedback) showFeedback('error', 'Esta columna es de solo lectura.')
+      return
+    }
+
+    // Si es columna compuesta (ej. Barco/OT) y el portapapeles interno proviene de otra columna incompatible, bloquear
+    if (internalClipboard && typeof colDef.getValue === 'function' && internalClipboard.colKey !== colDef.key) {
+      if (showFeedback) showFeedback('error', `Para pegar en "${colDef.label}", primero copia (Ctrl+C) una celda de "${colDef.label}".`)
+      return
+    }
+
+    if (!internalClipboard) {
+      // Intentar leer texto del clipboard nativo si no hay memoria interna y no es celda compuesta
+      if (typeof colDef.getValue === 'function') return
+      try {
+        const text = await navigator.clipboard.readText()
+        if (text) {
+          const startR = selectionRange ? Math.min(selectionRange.startRow, selectionRange.endRow) : activeCell.rowIndex
+          const endR = selectionRange ? Math.max(selectionRange.startRow, selectionRange.endRow) : activeCell.rowIndex
+          const targetRows = rows.slice(startR, endR + 1)
+          const validRows = targetRows.filter((r) => canEditCell(r, colDef.key, text))
+          if (validRows.length > 0) {
+            const previousValues = {}
+            validRows.forEach((r) => { previousValues[getRowId(r)] = readCellValue(r, colDef) })
+            pushUndoAction({
+              colKey: colDef.key,
+              colLabel: colDef.label || colDef.key,
+              actionLabel: 'Pegar (Ctrl+V)',
+              previousValues,
+              newValue: text,
+              timestamp: Date.now()
+            })
+            if (onBatchUpdate) {
+              await onBatchUpdate({
+                colKey: colDef.key,
+                newValue: text,
+                targetIds: validRows.map(getRowId),
+                isRevert: false,
+                actionLabel: 'Pegar'
+              })
+            }
+            if (showFeedback) showFeedback('success', `Pegado en ${validRows.length} celda(s).`)
+          }
+        }
+      } catch {}
       return
     }
 
@@ -311,7 +347,7 @@ export function useSpreadsheetGrid({
 
     const previousValues = {}
     validRows.forEach((r) => {
-      previousValues[getRowId(r)] = r[colDef.key]
+      previousValues[getRowId(r)] = readCellValue(r, colDef)
     })
 
     pushUndoAction({
@@ -334,13 +370,13 @@ export function useSpreadsheetGrid({
     }
 
     if (showFeedback) {
-      showFeedback('success', `Pegado "${internalClipboard.value ?? '—'}" en ${validRows.length} celda(s).`)
+      showFeedback('success', `Pegado "${internalClipboard.displayLabel || '—'}" en ${validRows.length} celda(s).`)
     }
-  }, [activeCell, internalClipboard, columns, selectionRange, rows, canEditCell, getRowId, pushUndoAction, onBatchUpdate, showFeedback])
+  }, [activeCell, internalClipboard, columns, selectionRange, rows, canEditCell, getRowId, pushUndoAction, onBatchUpdate, showFeedback, readCellValue])
 
   // Manejador Central de Teclado (Navegación + Atajos)
   const handleKeyDown = useCallback((e) => {
-    // Si el usuario está escribiendo dentro de un input, select o textarea activo, no interceptamos flechas comunes
+    // Si el usuario está escribiendo dentro de un input, select o textarea activo, no interceptamos flechas comunes ni Enter
     const isEditingInput = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)
 
     // Ctrl + F: Enfocar buscador de la tabla
@@ -351,14 +387,14 @@ export function useSpreadsheetGrid({
     }
 
     // Ctrl + Y o Ctrl + Shift + Z: Rehacer
-    if ((e.ctrlKey || e.metaKey) && ((e.key === 'y' || e.key === 'Y') || ((e.key === 'z' || e.key === 'Z') && e.shiftKey))) {
+    if ((e.ctrlKey || e.metaKey) && ((e.key === 'y' || e.key === 'Y') || ((e.key === 'z' || e.key === 'Z') && e.shiftKey)) && !isEditingInput) {
       e.preventDefault()
       redo()
       return
     }
 
     // Ctrl + Z: Deshacer
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey && !isEditingInput) {
       e.preventDefault()
       undo()
       return
@@ -379,7 +415,7 @@ export function useSpreadsheetGrid({
     }
 
     // Ctrl + D: Fill Down (Rellenar hacia abajo en rango seleccionado)
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D') && !isEditingInput) {
       e.preventDefault()
       if (!activeCell) return
 
@@ -399,13 +435,24 @@ export function useSpreadsheetGrid({
         // Estilo Excel individual: si solo hay 1 celda seleccionada, copia la celda de ARRIBA a la actual
         executeFillDown(startRow - 1, startRow, colIdx)
       } else {
-        if (showFeedback) showFeedback('info', 'Selecciona varias filas hacia abajo (Shift+↓ o mouse) para rellenar.')
+        if (showFeedback) showFeedback('info', 'Selecciona varias filas hacia abajo (Shift+↓ o mouse) para rellenar con Ctrl+D.')
       }
       return
     }
 
-    // Escape: limpiar selección de rango o salir
-    if (e.key === 'Escape') {
+    // Enter o F2 sobre celda activa: abrir editor de celda (igual que doble clic en Google Sheets)
+    if ((e.key === 'Enter' || e.key === 'F2') && !isEditingInput && activeCell && onCellActivate) {
+      const row = rows[activeCell.rowIndex]
+      const colDef = columns[activeCell.colIndex]
+      if (row && colDef && !colDef.readOnly) {
+        e.preventDefault()
+        onCellActivate(row, colDef, activeCell.rowIndex, activeCell.colIndex)
+        return
+      }
+    }
+
+    // Escape: limpiar selección de rango
+    if (e.key === 'Escape' && !isEditingInput) {
       if (selectionRange) {
         setSelectionRange(null)
       }
@@ -423,8 +470,10 @@ export function useSpreadsheetGrid({
 
       const numRows = rows.length
       const numCols = columns.length
-      let newRow = activeCell.rowIndex
-      let newCol = activeCell.colIndex
+      if (numRows === 0 || numCols === 0) return
+
+      let newRow = Math.min(numRows - 1, Math.max(0, activeCell.rowIndex))
+      let newCol = Math.min(numCols - 1, Math.max(0, activeCell.colIndex))
 
       if (e.key === 'ArrowUp') newRow = Math.max(0, newRow - 1)
       if (e.key === 'ArrowDown') newRow = Math.min(numRows - 1, newRow + 1)
@@ -432,7 +481,6 @@ export function useSpreadsheetGrid({
       if (e.key === 'ArrowRight') newCol = Math.min(numCols - 1, newCol + 1)
 
       if (e.shiftKey) {
-        // Expandir / contraer selección con Shift + Flechas (Rango de selección)
         const anchorRow = selectionRange ? selectionRange.startRow : activeCell.rowIndex
         const anchorCol = selectionRange ? selectionRange.startCol : activeCell.colIndex
         setSelectionRange({
@@ -442,7 +490,6 @@ export function useSpreadsheetGrid({
           endCol: newCol
         })
       } else {
-        // Movimiento simple: actualiza celda activa y limpia rango
         setSelectionRange(null)
         setActiveCell({
           rowIndex: newRow,
@@ -452,7 +499,7 @@ export function useSpreadsheetGrid({
         })
       }
     }
-  }, [activeCell, selectionRange, rows, columns, getRowId, onFocusSearch, undo, copyActiveCell, pasteToActiveOrRange, executeFillDown, showFeedback])
+  }, [activeCell, selectionRange, rows, columns, getRowId, onFocusSearch, onCellActivate, undo, redo, copyActiveCell, pasteToActiveOrRange, executeFillDown, showFeedback])
 
   // Mouse: Clic en celda
   const handleCellClick = useCallback((rowIndex, colIndex, e) => {
@@ -461,7 +508,6 @@ export function useSpreadsheetGrid({
     if (!row || !colDef) return
 
     if (e.shiftKey && activeCell) {
-      // Shift + Clic = Seleccionar Rango
       setSelectionRange({
         startRow: activeCell.rowIndex,
         endRow: rowIndex,
@@ -483,7 +529,7 @@ export function useSpreadsheetGrid({
   const handleCellMouseDown = useCallback((rowIndex, colIndex, e) => {
     if (e.button !== 0) return // Solo clic izquierdo
     if (e.target.closest('.fill-handle')) return // No interferir con el tirador
-    if (['SELECT', 'INPUT', 'BUTTON'].includes(e.target.tagName)) return // Dejar interactuar con el control
+    if (['SELECT', 'INPUT', 'BUTTON', 'TEXTAREA'].includes(e.target.tagName)) return // Dejar interactuar con el control
 
     setIsMouseDown(true)
     setDragAnchor({ rowIndex, colIndex })
@@ -492,14 +538,12 @@ export function useSpreadsheetGrid({
   // Mouse: Arrastre sobre otra celda
   const handleCellMouseEnter = useCallback((rowIndex, colIndex) => {
     if (isDraggingFill && activeCell) {
-      // Arrastre del tirador: limitamos a la misma columna de la celda activa
       setFillRange({
         colIndex: activeCell.colIndex,
         fromRow: activeCell.rowIndex,
         toRow: rowIndex
       })
     } else if (isMouseDown && dragAnchor) {
-      // Arrastre normal de selección de celdas
       setSelectionRange({
         startRow: dragAnchor.rowIndex,
         endRow: rowIndex,
@@ -551,12 +595,10 @@ export function useSpreadsheetGrid({
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
   }, [isDraggingFill, fillRange, activeCell, executeFillDown])
 
-  // Función utilitaria para verificar si una celda está activa
   const isCellActive = useCallback((rowIndex, colIndex) => {
-    return activeCell && activeCell.rowIndex === rowIndex && activeCell.colIndex === colIndex
+    return Boolean(activeCell && activeCell.rowIndex === rowIndex && activeCell.colIndex === colIndex)
   }, [activeCell])
 
-  // Función utilitaria para verificar si una celda está dentro del rango seleccionado
   const isCellSelected = useCallback((rowIndex, colIndex) => {
     if (!selectionRange) return false
     const minR = Math.min(selectionRange.startRow, selectionRange.endRow)
@@ -566,20 +608,17 @@ export function useSpreadsheetGrid({
     return rowIndex >= minR && rowIndex <= maxR && colIndex >= minC && colIndex <= maxC
   }, [selectionRange])
 
-  // Función utilitaria para verificar si una celda está en previsualización de Fill Down
   const isCellInFillPreview = useCallback((rowIndex, colIndex) => {
     if (!fillRange) return false
     if (colIndex !== fillRange.colIndex) return false
-    const minR = Math.min(fillRange.fromRow, fillRange.toRow)
     const maxR = Math.max(fillRange.fromRow, fillRange.toRow)
     return rowIndex > fillRange.fromRow && rowIndex <= maxR
   }, [fillRange])
 
-  // ¿Es la celda extrema inferior-derecha de la selección donde debe renderizarse el tirador?
   const shouldRenderFillHandle = useCallback((rowIndex, colIndex) => {
     if (!activeCell) return false
     const colDef = columns[colIndex]
-    if (colDef?.readOnly) return false // No mostrar tirador en columnas de solo lectura
+    if (colDef?.readOnly) return false
 
     if (selectionRange) {
       const maxR = Math.max(selectionRange.startRow, selectionRange.endRow)
@@ -589,8 +628,14 @@ export function useSpreadsheetGrid({
     return activeCell.rowIndex === rowIndex && activeCell.colIndex === colIndex
   }, [activeCell, selectionRange, columns])
 
+  // Etiqueta activa para mostrar en la cinta superior de la hoja de cálculo
+  const activeCellBadge = activeCell && columns[activeCell.colIndex]
+    ? `Fila ${activeCell.rowIndex + 1} · ${columns[activeCell.colIndex].label || columns[activeCell.colIndex].key}`
+    : null
+
   return {
     activeCell,
+    activeCellBadge,
     setActiveCell,
     selectionRange,
     setSelectionRange,

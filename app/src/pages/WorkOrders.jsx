@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   ClipboardList,
   Plus,
@@ -23,11 +23,15 @@ import {
   UserPlus,
   Info,
   Lock,
-  ExternalLink
+  ExternalLink,
+  AlertTriangle,
+  Undo2,
+  Redo2
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 
 // Grupos del Catálogo de Trabajos (OT.ABC)
 const GRUPOS_CATALOGO = ['Renovación', 'Intermediaria']
@@ -233,6 +237,7 @@ export default function WorkOrders() {
   const [thirdPartyServices, setThirdPartyServices] = useState([])
   const [laborLogs, setLaborLogs] = useState([])
   const [inventoryTx, setInventoryTx] = useState([])
+  const [purchaseOrders, setPurchaseOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
 
@@ -360,15 +365,16 @@ export default function WorkOrders() {
   async function loadData() {
     try {
       setLoading(true)
-      const [shipsRes, wosRes, itemsRes, workersRes, tplRes, tpRes, logsRes, invRes] = await Promise.all([
+      const [shipsRes, wosRes, itemsRes, workersRes, tplRes, tpRes, logsRes, invRes, poRes] = await Promise.all([
         supabase.from('ships').select('*').order('name'),
         supabase.from('work_orders').select('*, ships(name, client_name)').order('created_at', { ascending: false }),
         supabase.from('work_items').select('*').order('created_at', { ascending: true }),
         supabase.from('workers').select('*').order('name'),
         supabase.from('ot_templates').select('*').order('sort_order').order('name'),
         supabase.from('third_party_services').select('*').order('created_at', { ascending: false }),
-        supabase.from('labor_logs').select('id, work_order_id, work_item_id, hours_worked, hours_normal, hours_extra_50, hours_extra_100, worker_name, date_logged'),
-        supabase.from('inventory_transactions').select('id, work_order_id, work_item_id, transaction_date, quantity_withdrawn, contractor_name')
+        supabase.from('labor_logs').select('id, ship_id, work_order_id, work_item_id, hours_worked, hours_normal, hours_extra_50, hours_extra_100, worker_name, date_logged'),
+        supabase.from('inventory_transactions').select('id, work_order_id, work_item_id, transaction_date, quantity_withdrawn, contractor_name'),
+        supabase.from('purchase_orders').select('id, ship_id, work_order_id, charge_type')
       ])
 
       if (shipsRes.data) setShips(shipsRes.data)
@@ -379,6 +385,7 @@ export default function WorkOrders() {
       if (tpRes.data) setThirdPartyServices(tpRes.data)
       if (logsRes.data) setLaborLogs(logsRes.data)
       if (invRes.data) setInventoryTx(invRes.data)
+      if (poRes.data) setPurchaseOrders(poRes.data)
     } catch (err) {
       console.error('Error cargando datos de OTs:', err)
       setStatusMessage({ type: 'error', text: 'Error al cargar datos del módulo de Órdenes de Trabajo.' })
@@ -728,15 +735,32 @@ export default function WorkOrders() {
     })
   }, [unifiedRows, selectedShipFilter, selectedOtFilter, selectedStatusFilter, selectedForemanFilter, selectedContractorFilter, searchQuery])
 
-  // Métricas operativas globales (Sin PRC $0 en Terceros)
+  // Métricas operativas globales + Radar de Imputaciones sin OT (Horas, Terceros, Compras)
   const stats = useMemo(() => {
     const enEjecucion = unifiedRows.filter(r => r.status === 'En ejecución').length
     const pendientes = unifiedRows.filter(r => r.status === 'Pendiente de inicio').length
     const pdteRemito = unifiedRows.filter(r => r.status === 'Pendiente remito' || r.status === 'Remito realizado/Pdte firma' || r.status === 'Finalizado').length
     const facturados = unifiedRows.filter(r => r.status === 'Facturado').length
     const barcosActivos = new Set(unifiedRows.filter(r => r.status === 'En ejecución').map(r => r.wo?.ship_id)).size
-    return { enEjecucion, pendientes, pdteRemito, facturados, barcosActivos }
-  }, [unifiedRows])
+
+    const matchShip = (shipId) => selectedShipFilter === 'todos' || shipId === selectedShipFilter
+    const horasSinOt = laborLogs.filter(l => !l.work_order_id && matchShip(l.ship_id)).length
+    const tercerosSinOt = thirdPartyServices.filter(t => !t.work_order_id && matchShip(t.ship_id)).length
+    const comprasSinOt = purchaseOrders.filter(p => !p.work_order_id && matchShip(p.ship_id)).length
+    const totalSinOt = horasSinOt + tercerosSinOt + comprasSinOt
+
+    return {
+      enEjecucion,
+      pendientes,
+      pdteRemito,
+      facturados,
+      barcosActivos,
+      horasSinOt,
+      tercerosSinOt,
+      comprasSinOt,
+      totalSinOt
+    }
+  }, [unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, selectedShipFilter])
 
   // Abrir Modal para Crear Nuevo Trabajo / OT (Fecha de creación sale automática de HOY)
   const handleOpenNewWorkModal = (preselectedWo = null) => {
@@ -1925,12 +1949,188 @@ export default function WorkOrders() {
     }
   }
 
+  // ============================================================================
+  // MODO HOJA DE CÁLCULO (GOOGLE SHEETS / EXCEL) EN PLANILLA UNIFICADA DE OTs
+  // ============================================================================
+  const woSearchInputRef = useRef(null)
+  const [inlineWoEdit, setInlineWoEdit] = useState(null) // { rowId, colKey, value }
+
+  const showWoGridFeedback = useCallback((type, text) => {
+    setStatusMessage({ type, text })
+    setTimeout(() => setStatusMessage(null), 3200)
+  }, [])
+
+  // Regla DEC-011: OTs facturadas/cerradas sin permiso post-cierre quedan bloqueadas contra edición directa
+  const isRowLockedDec011 = useCallback((row) => {
+    if (!row?.wo) return false
+    if (row.wo.is_locked) return true
+    if (row.wo.status === 'Facturada' && !row.wo.allow_post_billing_costs) return true
+    return false
+  }, [])
+
+  const woGridColumns = useMemo(() => [
+    { key: 'description', label: 'Descripción del Trabajo' },
+    { key: 'foreman_name', label: 'Jefe de Obra' },
+    { key: 'work_type', label: 'Tipo de Trabajo' },
+    { key: 'status', label: 'Estado del Trabajo' }
+  ], [])
+
+  const applyWoSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
+    const targetRow = unifiedRows.find(r => r.id === rowId)
+    if (!targetRow) return null
+
+    if (isRowLockedDec011(targetRow)) {
+      showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${targetRow.wo?.ot_number} está Facturada y Cerrada.`)
+      return null
+    }
+
+    let cleanVal = rawValue
+    if (colKey === 'description') {
+      cleanVal = String(rawValue ?? '').trim()
+    } else if (colKey === 'work_type') {
+      const upper = String(rawValue ?? 'HORA').trim().toUpperCase()
+      cleanVal = TIPOS_DE_TRABAJO.some(t => t.value === upper) ? upper : targetRow.work_type
+    } else if (colKey === 'status') {
+      const valid = ESTADOS_TRABAJO.some(s => s.value === rawValue)
+      cleanVal = valid ? rawValue : targetRow.status
+    } else if (colKey === 'foreman_name') {
+      cleanVal = String(rawValue ?? '').trim() || targetRow.foreman_name
+    }
+
+    if (targetRow.isPlaceholder) {
+      // Actualizar directamente en contenedor work_orders
+      if (colKey === 'status') {
+        // Si editan estado en un contenedor vacío, crear su primer work_item
+        const { data: insData, error: insErr } = await supabase
+          .from('work_items')
+          .insert([{
+            work_order_id: targetRow.work_order_id,
+            description: targetRow.description || targetRow.wo?.title || '',
+            status: cleanVal,
+            foreman_name: targetRow.foreman_name || foremenList[0] || 'ALE CAMADELLI',
+            work_type: targetRow.work_type || 'HORA',
+            assignment_type: targetRow.assignment_type || 'Presupuesto General',
+            contractors: targetRow.contractors || [],
+            updated_at: new Date().toISOString()
+          }])
+          .select()
+        if (insErr) throw insErr
+        if (insData?.[0]) setWorkItems(prev => [...prev, insData[0]])
+      } else {
+        const woPatch = { [colKey]: cleanVal }
+        setWorkOrders(prev => prev.map(w => (w.id === targetRow.work_order_id ? { ...w, ...woPatch } : w)))
+        const { error } = await supabase
+          .from('work_orders')
+          .update(woPatch)
+          .eq('id', targetRow.work_order_id)
+        if (error) throw error
+      }
+      return cleanVal
+    }
+
+    // Actualizar work_item real
+    const itemPatch = { [colKey]: cleanVal, updated_at: new Date().toISOString() }
+    setWorkItems(prev => prev.map(i => (i.id === rowId ? { ...i, ...itemPatch } : i)))
+
+    const { error } = await supabase
+      .from('work_items')
+      .update(itemPatch)
+      .eq('id', rowId)
+    if (error) throw error
+
+    // Si se modificó la descripción y existe un PRC vinculado en Terceros, sincronizar direct_observations
+    if (colKey === 'description' && targetRow.thirdPartyRecord) {
+      await supabase
+        .from('third_party_services')
+        .update({ direct_observations: cleanVal || 'Sin descripción cargada en la OT', updated_at: new Date().toISOString() })
+        .eq('id', targetRow.thirdPartyRecord.id)
+      setThirdPartyServices(prev =>
+        prev.map(tp => (tp.id === targetRow.thirdPartyRecord.id ? { ...tp, direct_observations: cleanVal } : tp))
+      )
+    }
+
+    return cleanVal
+  }, [unifiedRows, isRowLockedDec011, showWoGridFeedback, foremenList])
+
+  const handleWoBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    try {
+      if (isRevert && revertMap) {
+        for (const [id, oldVal] of Object.entries(revertMap)) {
+          await applyWoSinglePatch(id, colKey, oldVal)
+        }
+      } else if (Array.isArray(targetIds)) {
+        for (const id of targetIds) {
+          await applyWoSinglePatch(id, colKey, newValue)
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      showWoGridFeedback('error', `Error actualizando trabajos: ${err.message}`)
+      loadData()
+    }
+  }, [applyWoSinglePatch, showWoGridFeedback])
+
+  const woGrid = useSpreadsheetGrid({
+    rows: filteredRows,
+    columns: woGridColumns,
+    getRowId: (r) => r.id,
+    storageKey: 'aloncar_grid_workorders',
+    canEditCell: (row) => !isRowLockedDec011(row),
+    onBatchUpdate: handleWoBatchUpdate,
+    onFocusSearch: () => woSearchInputRef.current?.focus(),
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef) return
+      if (isRowLockedDec011(row)) {
+        showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+        return
+      }
+      setInlineWoEdit({
+        rowId: row.id,
+        colKey: colDef.key,
+        value: row[colDef.key] ?? ''
+      })
+    },
+    showFeedback: showWoGridFeedback
+  })
+
+  const commitInlineWoEdit = async (overrideValue = undefined) => {
+    if (!inlineWoEdit) return
+    const { rowId, colKey } = inlineWoEdit
+    const nextRawVal = overrideValue !== undefined ? overrideValue : inlineWoEdit.value
+    const row = unifiedRows.find(r => r.id === rowId)
+    setInlineWoEdit(null)
+    if (!row || isRowLockedDec011(row)) return
+
+    const oldVal = row[colKey]
+    if (String(oldVal ?? '') === String(nextRawVal ?? '')) return
+
+    try {
+      const savedVal = await applyWoSinglePatch(rowId, colKey, nextRawVal)
+      if (savedVal !== null) {
+        const colDef = woGridColumns.find(c => c.key === colKey)
+        woGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Editar ${colDef?.label || colKey} en ${row.wo?.ot_number || 'OT'}`,
+          previousValues: { [rowId]: oldVal },
+          newValue: savedVal,
+          timestamp: Date.now()
+        })
+        showWoGridFeedback('success', `Celda actualizada en ${row.wo?.ot_number || 'OT'}. (Ctrl+Z para deshacer)`)
+      }
+    } catch (err) {
+      console.error(err)
+      showWoGridFeedback('error', `Error al guardar celda: ${err.message}`)
+      loadData()
+    }
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200 pb-16">
       {/* ========================================================= */}
-      {/* 1. ENCABEZADO Y ACCIONES PRINCIPALES                      */}
+      {/* ZONA 1 (CONTEXTO): ENCABEZADO Y ACCIONES PRINCIPALES      */}
       {/* ========================================================= */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+      <div className="alon-zone-context rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2 py-0.5 rounded bg-primary/10 border border-primary/30 text-primary text-[10px] font-bold uppercase tracking-widest">
@@ -1988,69 +2188,130 @@ export default function WorkOrders() {
       )}
 
       {/* ========================================================= */}
-      {/* 2. MÉTRICAS OPERATIVAS SUPERIORES (5 KPIs)                */}
+      {/* ZONA 2 (RADAR DE KPIs): 6 INDICADORES + IMPUTACIONES S/OT */}
       {/* ========================================================= */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
-            <span>Trabajos en Ejecución</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+      <div className="alon-zone-kpis rounded-2xl p-4 shadow-xl">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* KPI ALERTA: IMPUTACIONES SIN OT EN EL ERP */}
+          <div className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
+            stats.totalSinOt > 0
+              ? 'bg-rose-950/40 border-rose-500/50 shadow-md shadow-rose-950/30'
+              : 'bg-slate-950/80 border-slate-800'
+          }`}>
+            <div className="flex items-center justify-between text-[11px] font-bold">
+              <span className={stats.totalSinOt > 0 ? 'text-rose-300' : 'text-slate-400'}>
+                ⚠️ Imputaciones sin OT
+              </span>
+              <AlertTriangle className={`w-3.5 h-3.5 ${stats.totalSinOt > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-600'}`} />
+            </div>
+            <div className="mt-1.5 flex items-baseline gap-1.5">
+              <span className={`text-2xl font-black font-mono ${stats.totalSinOt > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                {stats.totalSinOt}
+              </span>
+              <span className="text-[10px] text-slate-400">pendientes</span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[9px] font-mono font-bold">
+              <Link to="/horas" className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700" title="Ir a Horas sin OT">
+                Hs: {stats.horasSinOt}
+              </Link>
+              <Link to="/terceros" className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-purple-300 border border-slate-700" title="Ir a Terceros sin OT">
+                3ros: {stats.tercerosSinOt}
+              </Link>
+              <Link to="/compras" className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-700" title="Ir a Compras sin OT">
+                Comp: {stats.comprasSinOt}
+              </Link>
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-emerald-400 font-mono">{stats.enEjecucion}</span>
-            <span className="text-[10px] text-slate-500">activos p/ costos</span>
-          </div>
-        </div>
 
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
-            <span>Pendientes Inicio</span>
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
+          <div
+            onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'En ejecución' ? 'todos' : 'En ejecución')}
+            className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+              selectedStatusFilter === 'En ejecución'
+                ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-400'
+                : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+              <span>Trabajos en Ejecución</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-emerald-400 font-mono">{stats.enEjecucion}</span>
+              <span className="text-[10px] text-slate-500">activos p/ costos</span>
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-amber-400 font-mono">{stats.pendientes}</span>
-            <span className="text-[10px] text-slate-500">por iniciar</span>
-          </div>
-        </div>
 
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
-            <span>Finalizados / Remito</span>
-            <span className="w-2 h-2 rounded-full bg-cyan-400" />
+          <div
+            onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'Pendiente de inicio' ? 'todos' : 'Pendiente de inicio')}
+            className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+              selectedStatusFilter === 'Pendiente de inicio'
+                ? 'bg-amber-950/50 border-amber-500 ring-1 ring-amber-400'
+                : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+              <span>Pendientes Inicio</span>
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-amber-400 font-mono">{stats.pendientes}</span>
+              <span className="text-[10px] text-slate-500">por iniciar</span>
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-cyan-300 font-mono">{stats.pdteRemito}</span>
-            <span className="text-[10px] text-slate-500">en cierre</span>
-          </div>
-        </div>
 
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
-            <span>Facturados</span>
-            <span className="w-2 h-2 rounded-full bg-purple-400" />
+          <div
+            onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'Finalizado' ? 'todos' : 'Finalizado')}
+            className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+              selectedStatusFilter === 'Finalizado'
+                ? 'bg-cyan-950/50 border-cyan-500 ring-1 ring-cyan-400'
+                : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+              <span>Finalizados / Remito</span>
+              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-cyan-300 font-mono">{stats.pdteRemito}</span>
+              <span className="text-[10px] text-slate-500">en cierre</span>
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-purple-300 font-mono">{stats.facturados}</span>
-            <span className="text-[10px] text-slate-500">cerrados</span>
-          </div>
-        </div>
 
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
-            <span>Barcos en Obra</span>
-            <Ship className="w-3.5 h-3.5 text-cyan-400" />
+          <div
+            onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'Facturado' ? 'todos' : 'Facturado')}
+            className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
+              selectedStatusFilter === 'Facturado'
+                ? 'bg-purple-950/50 border-purple-500 ring-1 ring-purple-400'
+                : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+              <span>Facturados</span>
+              <span className="w-2 h-2 rounded-full bg-purple-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-purple-300 font-mono">{stats.facturados}</span>
+              <span className="text-[10px] text-slate-500">cerrados</span>
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-white font-mono">{stats.barcosActivos}</span>
-            <span className="text-[10px] text-slate-500">buques activos</span>
+
+          <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+              <span>Barcos en Obra</span>
+              <Ship className="w-3.5 h-3.5 text-cyan-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-white font-mono">{stats.barcosActivos}</span>
+              <span className="text-[10px] text-slate-500">buques activos</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* ========================================================= */}
-      {/* 3. PESTAÑAS DE VISTA Y FILTROS EN CASCADA                 */}
+      {/* ZONA 3 (BÚSQUEDA Y FILTROS): PESTAÑAS Y FILTROS CASCADA   */}
       {/* ========================================================= */}
-      <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3.5">
+      <div className="alon-zone-toolbar p-4 rounded-2xl shadow-lg space-y-3.5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center p-1 bg-slate-950 rounded-xl border border-slate-800 gap-1">
             <button
@@ -2093,25 +2354,51 @@ export default function WorkOrders() {
             </button>
           </div>
 
-          {/* Buscador */}
-          <div className="relative w-full lg:max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Buscar barco, OT, descripción, contratista, jefe de obra..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+          {/* Deshacer / Rehacer + Buscador */}
+          <div className="flex items-center gap-2 w-full lg:w-auto">
+            {activeMainTab === 'unificado' && (
+              <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-xl p-1 shrink-0">
+                <button
+                  type="button"
+                  disabled={!woGrid.canUndo}
+                  onClick={woGrid.undo}
+                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                  title="Deshacer en Planilla OTs (Ctrl + Z)"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!woGrid.canRedo}
+                  onClick={woGrid.redo}
+                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                  title="Rehacer en Planilla OTs (Ctrl + Y)"
+                >
+                  <Redo2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
+
+            <div className="relative w-full lg:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+              <input
+                ref={woSearchInputRef}
+                type="text"
+                placeholder="Buscar barco, OT, descripción, jefe (Ctrl+F)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -2209,287 +2496,497 @@ export default function WorkOrders() {
           <p className="text-sm font-semibold">Cargando trabajos y órdenes de trabajo...</p>
         </div>
       ) : activeMainTab === 'unificado' ? (
-        <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-2xl bg-slate-900/90 shadow-xl">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
-              <tr>
-                <th className="py-3 px-3 bg-slate-950">Barco</th>
-                <th className="py-3 px-3 bg-slate-950">Orden de Trabajo (Estado Calculado)</th>
-                <th className="py-3 px-3 min-w-[155px] bg-slate-950">Fechas OT (Creac. / Inicio / Fin)</th>
-                <th className="py-3 px-3 min-w-[240px] bg-slate-950">Descripción del Trabajo</th>
-                <th className="py-3 px-3 bg-slate-950">Contratista(s) / Permiso 3ros</th>
-                <th className="py-3 px-3 bg-slate-950">Jefe de Obra</th>
-                <th className="py-3 px-2.5 bg-slate-950">Tipo / Facturación</th>
-                <th className="py-3 px-3 text-center bg-slate-950">Estado del Trabajo</th>
-                <th className="py-3 px-2.5 text-center bg-slate-950">Alertas / 3ros</th>
-                <th className="py-3 px-3 text-right bg-slate-950">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-medium">
-              {filteredRows.length === 0 ? (
+        <div
+          ref={woGrid.gridContainerRef}
+          tabIndex={0}
+          onKeyDown={woGrid.handleKeyDown}
+          className="alon-zone-grid rounded-2xl shadow-xl overflow-hidden focus:outline-none"
+        >
+          <div className="alon-grid-ribbon px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
+                {woGrid.activeCellBadge || 'PLANILLA UNIFICADA OTs'}
+              </span>
+              <span className="text-slate-400">
+                Doble clic o Enter en Descripción, Jefe de Obra, Tipo o Estado para editar · Arrastrá ■ o Ctrl+D para clonar · Ctrl+Z/Y
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-emerald-400">
+              {woGrid.undoStack.length > 0 ? `${woGrid.undoStack.length} cambio(s) en memoria` : `${filteredRows.length} trabajos visibles`}
+            </span>
+          </div>
+
+          <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-500">
-                    No hay trabajos registrados para los filtros seleccionados. Hacé clic en <strong>&quot;+ Cargar Trabajo / Nueva OT&quot;</strong> para comenzar.
-                  </td>
+                  <th className="py-3 px-3">Barco</th>
+                  <th className="py-3 px-3">Orden de Trabajo (Estado Calculado)</th>
+                  <th className="py-3 px-3 min-w-[155px]">Fechas OT (Creac. / Inicio / Fin)</th>
+                  <th className="py-3 px-3 min-w-[240px]">Descripción del Trabajo ✎</th>
+                  <th className="py-3 px-3">Contratista(s) / Permiso 3ros</th>
+                  <th className="py-3 px-3">Jefe de Obra ✎</th>
+                  <th className="py-3 px-2.5">Tipo / Facturación ✎</th>
+                  <th className="py-3 px-3 text-center">Estado del Trabajo ✎</th>
+                  <th className="py-3 px-2.5 text-center">Alertas / 3ros</th>
+                  <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
-              ) : (
-                filteredRows.map(row => {
-                  const stConfig = ESTADOS_TRABAJO.find(s => s.value === row.status) || ESTADOS_TRABAJO[0]
-                  const alerts = evaluateWorkItemAlerts(row, row.wo)
-                  const contractors = row.contractors || []
-                  const tp = row.thirdPartyRecord
-                  const dates = row.otDates || {}
-                  const visibleComment = cleanWorkItemComment(row.comments)
-                  const rowIsEliminada = isWorkItemEliminada(row, row.wo)
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-medium">
+                {filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="py-12 text-center text-slate-500">
+                      No hay trabajos registrados para los filtros seleccionados. Hacé clic en <strong>&quot;+ Cargar Trabajo / Nueva OT&quot;</strong> para comenzar.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.map((row, rowIndex) => {
+                    const stConfig = ESTADOS_TRABAJO.find(s => s.value === row.status) || ESTADOS_TRABAJO[0]
+                    const alerts = evaluateWorkItemAlerts(row, row.wo)
+                    const contractors = row.contractors || []
+                    const tp = row.thirdPartyRecord
+                    const dates = row.otDates || {}
+                    const visibleComment = cleanWorkItemComment(row.comments)
+                    const rowIsEliminada = isWorkItemEliminada(row, row.wo)
+                    const isLocked = isRowLockedDec011(row)
 
-                  return (
-                    <tr 
-                      key={row.id} 
-                      onDoubleClick={() => handleOpenEditWorkModal(row)}
-                      className="hover:bg-slate-800/30 transition-colors align-top cursor-pointer select-none"
-                      title="Doble clic para editar este trabajo / OT"
-                    >
-                      {/* 1. Barco (Nombre limpio sin texto extra) */}
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-1.5 font-bold text-white">
-                          <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                          <span>{row.wo?.ships?.name || 'Sin barco'}</span>
-                        </div>
-                      </td>
+                    const getWoCellClass = (colIdx, baseClass = '') => {
+                      const active = woGrid.isCellActive(rowIndex, colIdx)
+                      const fill = woGrid.isCellInFillPreview(rowIndex, colIdx)
+                      const sel = woGrid.isCellSelected(rowIndex, colIdx)
+                      return `${baseClass} relative ${isLocked ? 'cursor-not-allowed' : 'cursor-cell'} ${
+                        active ? 'ring-2 ring-inset ring-emerald-400 bg-emerald-950/30' :
+                        fill ? 'bg-emerald-500/20 ring-1 ring-inset ring-emerald-400/60' :
+                        sel ? 'bg-cyan-500/15' : ''
+                      }`
+                    }
 
-                      {/* 2. Orden de Trabajo + Estado Calculado + Botón Separar OT */}
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono text-[11px] font-black text-primary px-1.5 py-0.5 rounded bg-primary/10 border border-primary/30">
-                            {row.wo?.ot_number || 'OT-1'}
-                          </span>
-                          <span className="font-extrabold text-white">{row.wo?.title}</span>
-                        </div>
-                        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${row.computedOt.color}`}>
-                            OT: {row.computedOt.label}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenNewWorkModal(row.wo)}
-                            className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
-                            title="Agregar otro trabajo dentro de esta misma OT"
-                          >
-                            + Trabajo
-                          </button>
-                          {!row.isPlaceholder && (
+                    const isEditingCol = (colKey) =>
+                      Boolean(inlineWoEdit && inlineWoEdit.rowId === row.id && inlineWoEdit.colKey === colKey)
+
+                    return (
+                      <tr
+                        key={row.id}
+                        className="hover:bg-slate-800/30 transition-colors align-top select-none"
+                      >
+                        {/* 1. Barco (Nombre limpio sin texto extra) */}
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1.5 font-bold text-white">
+                            <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            <span>{row.wo?.ships?.name || 'Sin barco'}</span>
+                          </div>
+                        </td>
+
+                        {/* 2. Orden de Trabajo + Estado Calculado + Botón Separar OT */}
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[11px] font-black text-primary px-1.5 py-0.5 rounded bg-primary/10 border border-primary/30">
+                              {row.wo?.ot_number || 'OT-1'}
+                            </span>
+                            <span className="font-extrabold text-white">{row.wo?.title}</span>
+                            {isLocked && (
+                              <Lock className="w-3 h-3 text-purple-400" title="OT Facturada y Cerrada (DEC-011)" />
+                            )}
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${row.computedOt.color}`}>
+                              OT: {row.computedOt.label}
+                            </span>
                             <button
                               type="button"
-                              onClick={() => handleOpenSeparateModal(row)}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold inline-flex items-center gap-1 cursor-pointer"
-                              title="Separar este trabajo en una OT propia o moverlo a otra OT del barco"
+                              onClick={() => handleOpenNewWorkModal(row.wo)}
+                              className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
+                              title="Agregar otro trabajo dentro de esta misma OT"
                             >
-                              <GitBranch className="w-2.5 h-2.5" />
-                              <span>Separar OT</span>
+                              + Trabajo
                             </button>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* 3. Las 3 Fechas de la OT (Creación, Inicio Real y Fin Real) */}
-                      <td className="py-3 px-3 font-mono text-[10px] space-y-1">
-                        <div className="flex items-center justify-between gap-2 text-slate-300">
-                          <span className="text-slate-500">Creac.:</span>
-                          <span className="font-bold">{formatShortDate(dates.createdDate)}</span>
-                        </div>
-                        <div
-                          className="flex items-center justify-between gap-2 text-emerald-300"
-                          title={
-                            dates.startDate
-                              ? `Primer dato cargado en el sistema (${dates.startSource}): ${formatShortDate(dates.startDate, true)}`
-                              : 'Sin datos cargados aún en Horas, Materiales ni Terceros'
-                          }
-                        >
-                          <span className="text-slate-500">Inicio:</span>
-                          <span className="font-bold">
-                            {dates.startDate ? `${formatShortDate(dates.startDate)} (${dates.startSource?.slice(0, 3)})` : '—'}
-                          </span>
-                        </div>
-                        <div
-                          className="flex items-center justify-between gap-2 text-cyan-300"
-                          title={
-                            dates.endDate
-                              ? `Último dato cargado a esta OT (${dates.endSource}): ${formatShortDate(dates.endDate, true)}`
-                              : 'Sin datos cargados aún'
-                          }
-                        >
-                          <span className="text-slate-500">Final:</span>
-                          <span className="font-bold">
-                            {dates.endDate ? `${formatShortDate(dates.endDate)} (${dates.endSource?.slice(0, 3)})` : '—'}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* 4. Descripción del Trabajo */}
-                      <td className="py-3 px-3 max-w-md">
-                        {row.description ? (
-                          <div className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed line-clamp-3 hover:line-clamp-none">
-                            {row.description}
+                            {!row.isPlaceholder && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSeparateModal(row)}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold inline-flex items-center gap-1 cursor-pointer"
+                                title="Separar este trabajo en una OT propia o moverlo a otra OT del barco"
+                              >
+                                <GitBranch className="w-2.5 h-2.5" />
+                                <span>Separar OT</span>
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-amber-400/80 italic text-xs">Sin descripción cargada</span>
-                        )}
-                        {visibleComment && (
-                          <div className="mt-1 text-[10px] text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                            💬 <strong>Comentario:</strong> {visibleComment}
+                        </td>
+
+                        {/* 3. Las 3 Fechas de la OT (Creación, Inicio Real y Fin Real) */}
+                        <td className="py-3 px-3 font-mono text-[10px] space-y-1">
+                          <div className="flex items-center justify-between gap-2 text-slate-300">
+                            <span className="text-slate-500">Creac.:</span>
+                            <span className="font-bold">{formatShortDate(dates.createdDate)}</span>
                           </div>
-                        )}
-                      </td>
-
-                      {/* 5. Contratistas */}
-                      <td className="py-3 px-3">
-                        {contractors.length === 0 ? (
-                          <span className="text-slate-500 italic text-[11px]">Sin asignar</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {contractors.map(c => {
-                              const is3ros = hasThirdPartyPermission(c)
-                              return (
-                                <span
-                                  key={c}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-[10px] font-mono font-bold text-slate-200"
-                                >
-                                  <span>{c}</span>
-                                  {is3ros && (
-                                    <span
-                                      className="text-[8px] px-1 rounded bg-purple-950 text-purple-300 border border-purple-600 font-black"
-                                      title="Habilitado para Terceros (3ros) en Padrón"
-                                    >
-                                      3ros
-                                    </span>
-                                  )}
-                                </span>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* 6. Jefe de Obra */}
-                      <td className="py-3 px-3">
-                        <span className="font-bold text-amber-300 flex items-center gap-1 text-xs">
-                          <User className="w-3 h-3 shrink-0" />
-                          <span>{row.foreman_name || 'Sin asignar'}</span>
-                        </span>
-                      </td>
-
-                      {/* 7. Tipo y Facturación */}
-                      <td className="py-3 px-2.5">
-                        <span className="font-mono font-bold text-cyan-300 text-[11px] block">
-                          {row.work_type || 'HORA'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block">
-                          {row.assignment_type === 'Adicional / Específico'
-                            ? `Adic. (${row.specific_budget_id || 'S/N'})`
-                            : 'Presup. Gral.'}
-                        </span>
-                      </td>
-
-                      {/* 8. Estado del Trabajo (Editable inline + Leyenda Eliminada abajo si corresponde) */}
-                      <td className="py-3 px-3 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <select
-                            value={row.status}
-                            onChange={(e) => handleQuickItemStatusChange(row, e.target.value)}
-                            className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer focus:outline-none ${stConfig.color}`}
+                          <div
+                            className="flex items-center justify-between gap-2 text-emerald-300"
+                            title={
+                              dates.startDate
+                                ? `Primer dato cargado en el sistema (${dates.startSource}): ${formatShortDate(dates.startDate, true)}`
+                                : 'Sin datos cargados aún en Horas, Materiales ni Terceros'
+                            }
                           >
-                            {ESTADOS_TRABAJO.map(st => (
-                              <option key={st.value} value={st.value} className="bg-slate-950 text-white">
-                                {st.value}
-                              </option>
+                            <span className="text-slate-500">Inicio:</span>
+                            <span className="font-bold">
+                              {dates.startDate ? `${formatShortDate(dates.startDate)} (${dates.startSource?.slice(0, 3)})` : '—'}
+                            </span>
+                          </div>
+                          <div
+                            className="flex items-center justify-between gap-2 text-cyan-300"
+                            title={
+                              dates.endDate
+                                ? `Último dato cargado a esta OT (${dates.endSource}): ${formatShortDate(dates.endDate, true)}`
+                                : 'Sin datos cargados aún'
+                            }
+                          >
+                            <span className="text-slate-500">Final:</span>
+                            <span className="font-bold">
+                              {dates.endDate ? `${formatShortDate(dates.endDate)} (${dates.endSource?.slice(0, 3)})` : '—'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Col 0: Descripción del Trabajo */}
+                        <td
+                          onClick={(e) => woGrid.handleCellClick(rowIndex, 0, e)}
+                          onMouseDown={(e) => woGrid.handleCellMouseDown(rowIndex, 0, e)}
+                          onMouseEnter={() => woGrid.handleCellMouseEnter(rowIndex, 0)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            if (isLocked) {
+                              showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+                              return
+                            }
+                            setInlineWoEdit({ rowId: row.id, colKey: 'description', value: row.description || '' })
+                          }}
+                          title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic para editar descripción'}
+                          className={getWoCellClass(0, 'py-3 px-3 max-w-md')}
+                        >
+                          {isEditingCol('description') ? (
+                            <textarea
+                              rows={2}
+                              autoFocus
+                              value={inlineWoEdit.value}
+                              onChange={(e) => setInlineWoEdit(prev => ({ ...prev, value: e.target.value }))}
+                              onBlur={() => commitInlineWoEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault()
+                                  commitInlineWoEdit()
+                                }
+                                if (e.key === 'Escape') setInlineWoEdit(null)
+                              }}
+                              className="w-full min-w-[210px] bg-slate-950 border border-emerald-400 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
+                            />
+                          ) : row.description ? (
+                            <div className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed line-clamp-3 hover:line-clamp-none">
+                              {row.description}
+                            </div>
+                          ) : (
+                            <span className="text-amber-400/80 italic text-xs">Sin descripción cargada</span>
+                          )}
+                          {visibleComment && (
+                            <div className="mt-1 text-[10px] text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                              💬 <strong>Comentario:</strong> {visibleComment}
+                            </div>
+                          )}
+                          {!isLocked && woGrid.shouldRenderFillHandle(rowIndex, 0) && (
+                            <div
+                              onMouseDown={woGrid.handleFillHandleMouseDown}
+                              onDoubleClick={woGrid.handleFillHandleDoubleClick}
+                              className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                            />
+                          )}
+                        </td>
+
+                        {/* 5. Contratistas */}
+                        <td className="py-3 px-3">
+                          {contractors.length === 0 ? (
+                            <span className="text-slate-500 italic text-[11px]">Sin asignar</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {contractors.map(c => {
+                                const is3ros = hasThirdPartyPermission(c)
+                                return (
+                                  <span
+                                    key={c}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-[10px] font-mono font-bold text-slate-200"
+                                  >
+                                    <span>{c}</span>
+                                    {is3ros && (
+                                      <span
+                                        className="text-[8px] px-1 rounded bg-purple-950 text-purple-300 border border-purple-600 font-black"
+                                        title="Habilitado para Terceros (3ros) en Padrón"
+                                      >
+                                        3ros
+                                      </span>
+                                    )}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Col 1: Jefe de Obra */}
+                        <td
+                          onClick={(e) => woGrid.handleCellClick(rowIndex, 1, e)}
+                          onMouseDown={(e) => woGrid.handleCellMouseDown(rowIndex, 1, e)}
+                          onMouseEnter={() => woGrid.handleCellMouseEnter(rowIndex, 1)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            if (isLocked) {
+                              showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+                              return
+                            }
+                            setInlineWoEdit({ rowId: row.id, colKey: 'foreman_name', value: row.foreman_name || foremenList[0] || '' })
+                          }}
+                          title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic para cambiar Jefe de Obra'}
+                          className={getWoCellClass(1, 'py-3 px-3')}
+                        >
+                          {isEditingCol('foreman_name') ? (
+                            <select
+                              autoFocus
+                              value={inlineWoEdit.value}
+                              onChange={(e) => commitInlineWoEdit(e.target.value)}
+                              onBlur={() => commitInlineWoEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Escape') setInlineWoEdit(null)
+                              }}
+                              className="bg-slate-950 border border-emerald-400 rounded px-2 py-1 text-xs text-amber-300 font-bold focus:outline-none"
+                            >
+                              {foremenList.map(f => (
+                                <option key={f} value={f}>{f}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="font-bold text-amber-300 flex items-center gap-1 text-xs">
+                              <User className="w-3 h-3 shrink-0" />
+                              <span>{row.foreman_name || 'Sin asignar'}</span>
+                            </span>
+                          )}
+                          {!isLocked && woGrid.shouldRenderFillHandle(rowIndex, 1) && (
+                            <div
+                              onMouseDown={woGrid.handleFillHandleMouseDown}
+                              onDoubleClick={woGrid.handleFillHandleDoubleClick}
+                              className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                            />
+                          )}
+                        </td>
+
+                        {/* Col 2: Tipo y Facturación */}
+                        <td
+                          onClick={(e) => woGrid.handleCellClick(rowIndex, 2, e)}
+                          onMouseDown={(e) => woGrid.handleCellMouseDown(rowIndex, 2, e)}
+                          onMouseEnter={() => woGrid.handleCellMouseEnter(rowIndex, 2)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            if (isLocked) {
+                              showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+                              return
+                            }
+                            setInlineWoEdit({ rowId: row.id, colKey: 'work_type', value: row.work_type || 'HORA' })
+                          }}
+                          title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic para cambiar Tipo de Trabajo'}
+                          className={getWoCellClass(2, 'py-3 px-2.5')}
+                        >
+                          {isEditingCol('work_type') ? (
+                            <select
+                              autoFocus
+                              value={inlineWoEdit.value}
+                              onChange={(e) => commitInlineWoEdit(e.target.value)}
+                              onBlur={() => commitInlineWoEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Escape') setInlineWoEdit(null)
+                              }}
+                              className="bg-slate-950 border border-emerald-400 rounded px-1.5 py-1 text-[11px] text-cyan-300 font-mono font-bold focus:outline-none"
+                            >
+                              {TIPOS_DE_TRABAJO.map(t => (
+                                <option key={t.value} value={t.value}>{t.value}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <>
+                              <span className="font-mono font-bold text-cyan-300 text-[11px] block">
+                                {row.work_type || 'HORA'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block">
+                                {row.assignment_type === 'Adicional / Específico'
+                                  ? `Adic. (${row.specific_budget_id || 'S/N'})`
+                                  : 'Presup. Gral.'}
+                              </span>
+                            </>
+                          )}
+                          {!isLocked && woGrid.shouldRenderFillHandle(rowIndex, 2) && (
+                            <div
+                              onMouseDown={woGrid.handleFillHandleMouseDown}
+                              onDoubleClick={woGrid.handleFillHandleDoubleClick}
+                              className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                            />
+                          )}
+                        </td>
+
+                        {/* Col 3: Estado del Trabajo */}
+                        <td
+                          onClick={(e) => woGrid.handleCellClick(rowIndex, 3, e)}
+                          onMouseDown={(e) => woGrid.handleCellMouseDown(rowIndex, 3, e)}
+                          onMouseEnter={() => woGrid.handleCellMouseEnter(rowIndex, 3)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            if (isLocked) {
+                              showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+                              return
+                            }
+                            setInlineWoEdit({ rowId: row.id, colKey: 'status', value: row.status })
+                          }}
+                          title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic o selector para cambiar Estado del Trabajo'}
+                          className={getWoCellClass(3, 'py-3 px-3 text-center')}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            {isEditingCol('status') ? (
+                              <select
+                                autoFocus
+                                value={inlineWoEdit.value}
+                                onChange={(e) => commitInlineWoEdit(e.target.value)}
+                                onBlur={() => commitInlineWoEdit()}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === 'Escape') setInlineWoEdit(null)
+                                }}
+                                className="text-[10px] font-bold px-2.5 py-1 rounded-lg border border-emerald-400 bg-slate-950 text-white focus:outline-none"
+                              >
+                                {ESTADOS_TRABAJO.map(st => (
+                                  <option key={st.value} value={st.value} className="bg-slate-950 text-white">
+                                    {st.value}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <select
+                                disabled={isLocked}
+                                value={row.status}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  const nextVal = e.target.value
+                                  const oldVal = row.status
+                                  applyWoSinglePatch(row.id, 'status', nextVal).then((saved) => {
+                                    if (saved !== null) {
+                                      woGrid.pushUndoAction({
+                                        label: `Cambiar estado en ${row.wo?.ot_number || 'OT'}`,
+                                        patches: [{ rowId: row.id, colKey: 'status', oldValue: oldVal, newValue: saved }]
+                                      })
+                                      showWoGridFeedback('success', `Estado actualizado a "${saved}". (Ctrl+Z deshacer)`)
+                                    }
+                                  })
+                                }}
+                                className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${stConfig.color}`}
+                              >
+                                {ESTADOS_TRABAJO.map(st => (
+                                  <option key={st.value} value={st.value} className="bg-slate-950 text-white">
+                                    {st.value}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {row.status === 'Desestimado' && rowIsEliminada && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-700/80 text-[9px] font-black uppercase tracking-wider"
+                                title="Esta OT / trabajo fue desestimada por eliminación (se conserva el registro para no alterar el número consecutivo)"
+                              >
+                                🗑️ Eliminada
+                              </span>
+                            )}
+                          </div>
+                          {!isLocked && woGrid.shouldRenderFillHandle(rowIndex, 3) && (
+                            <div
+                              onMouseDown={woGrid.handleFillHandleMouseDown}
+                              onDoubleClick={woGrid.handleFillHandleDoubleClick}
+                              className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                            />
+                          )}
+                        </td>
+
+                        {/* 9. Alertas y Vinculación PRC Terceros */}
+                        <td className="py-3 px-2.5 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            {tp && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingThirdParty(tp)}
+                                className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-500 text-[9px] font-black hover:bg-purple-900 cursor-pointer flex items-center gap-1"
+                                title="Ver/Editar Observaciones Directas y Específicas en Terceros"
+                              >
+                                <span>PRC 3ros (${Number(tp.amount_ars || 0).toLocaleString('es-AR')})</span>
+                              </button>
+                            )}
+                            {alerts.map(a => (
+                              <span
+                                key={a.code}
+                                title={a.label}
+                                className={`text-[9px] px-1.5 py-0.5 rounded border font-black ${a.color}`}
+                              >
+                                ⚠️ {a.code}
+                              </span>
                             ))}
-                          </select>
-                          {row.status === 'Desestimado' && rowIsEliminada && (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-700/80 text-[9px] font-black uppercase tracking-wider"
-                              title="Esta OT / trabajo fue desestimada por eliminación (se conserva el registro para no alterar el número consecutivo)"
-                            >
-                              🗑️ Eliminada
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                            {!tp && alerts.length === 0 && (
+                              <span className="text-[10px] text-emerald-400 font-bold">✓ OK</span>
+                            )}
+                          </div>
+                        </td>
 
-                      {/* 9. Alertas y Vinculación PRC Terceros */}
-                      <td className="py-3 px-2.5 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          {tp && (
+                        {/* 10. Acciones */}
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
-                              onClick={() => setEditingThirdParty(tp)}
-                              className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-500 text-[9px] font-black hover:bg-purple-900 cursor-pointer flex items-center gap-1"
-                              title="Ver/Editar Observaciones Directas y Específicas en Terceros"
+                              onClick={() => handleOpenEditWorkModal(row)}
+                              className="p-1.5 text-slate-400 hover:text-primary rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                              title="Editar este trabajo"
                             >
-                              <span>PRC 3ros (${Number(tp.amount_ars || 0).toLocaleString('es-AR')})</span>
+                              <Pencil className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                          {alerts.map(a => (
-                            <span
-                              key={a.code}
-                              title={a.label}
-                              className={`text-[9px] px-1.5 py-0.5 rounded border font-black ${a.color}`}
-                            >
-                              ⚠️ {a.code}
-                            </span>
-                          ))}
-                          {!tp && alerts.length === 0 && (
-                            <span className="text-[10px] text-emerald-400 font-bold">✓ OK</span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* 10. Acciones */}
-                      <td className="py-3 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditWorkModal(row)}
-                            className="p-1.5 text-slate-400 hover:text-primary rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-                            title="Editar este trabajo"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          {!row.isPlaceholder && (
+                            {!row.isPlaceholder && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSeparateModal(row)}
+                                className="p-1.5 text-amber-400/80 hover:text-amber-300 rounded-lg hover:bg-amber-500/10 transition-colors cursor-pointer"
+                                title="Separar / Independizar este trabajo en su propia OT o moverlo a otra OT"
+                              >
+                                <GitBranch className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => handleOpenSeparateModal(row)}
-                              className="p-1.5 text-amber-400/80 hover:text-amber-300 rounded-lg hover:bg-amber-500/10 transition-colors cursor-pointer"
-                              title="Separar / Independizar este trabajo en su propia OT o moverlo a otra OT"
+                              onClick={() => setSelectedWoDetail(row.wo)}
+                              className="p-1.5 text-slate-400 hover:text-cyan-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                              title="Ver Ficha de la OT y Bitácora (Botón Ampliar)"
                             >
-                              <GitBranch className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setSelectedWoDetail(row.wo)}
-                            className="p-1.5 text-slate-400 hover:text-cyan-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-                            title="Ver Ficha de la OT y Bitácora (Botón Ampliar)"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          {!row.isPlaceholder && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteWorkItem(row)}
-                              className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
-                              title="Desestimar por eliminación (conserva el consecutivo)"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
+                            {!row.isPlaceholder && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteWorkItem(row)}
+                                className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                title="Desestimar por eliminación (conserva el consecutivo)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : activeMainTab === 'ots' ? (
         /* ========================================================= */
@@ -2671,7 +3168,7 @@ export default function WorkOrders() {
         /* ========================================================= */
         /* 4C. VISTA DE TERCEROS VINCULADOS (DOBLE OBSERVACIÓN + CASCADA) */
         /* ========================================================= */
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="alon-zone-grid rounded-2xl p-5 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <h2 className="text-base font-black text-white flex items-center gap-2">

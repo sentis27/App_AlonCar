@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { 
   Clock, 
@@ -9,6 +9,7 @@ import {
   CheckCircle2, 
   AlertCircle, 
   RotateCcw, 
+  RotateCw,
   Save, 
   Calendar,
   Users,
@@ -36,6 +37,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import {
   OFFICIAL_RUBROS_CATALOG,
@@ -215,6 +217,9 @@ export default function LaborLogs() {
   const [filterWorker, setFilterWorker] = useState('')
   const [filterDate, setFilterDate] = useState('')
   const [filterShip, setFilterShip] = useState('')
+  const [activeKpiFilter, setActiveKpiFilter] = useState('todos')
+  const [inlineLogEdit, setInlineLogEdit] = useState({ id: null, field: null, value: '' })
+  const logSearchInputRef = useRef(null)
 
   // Control Diario
   const [auditDate, setAuditDate] = useState(new Date().toISOString().split('T')[0])
@@ -356,6 +361,7 @@ export default function LaborLogs() {
   }, [shipWorkItemsAll])
 
   // PASO 2 DE LA CASCADA: Contratistas / Grupos habilitados en trabajos "En ejecución" del barco seleccionado
+  // Si el barco aún no tiene OT abierta, habilita ASTILLERO.GENERAL y padrón para permitir carga con OT en blanco
   const enabledContractorsForShip = useMemo(() => {
     if (!selectedShipId) return []
     const set = new Set()
@@ -369,8 +375,14 @@ export default function LaborLogs() {
         })
       }
     })
+    if (set.size === 0) {
+      set.add('ASTILLERO.GENERAL')
+      dbWorkers
+        .filter(w => w.admin_center === 'CONTRATISTA' || w.admin_center === 'TALLER')
+        .forEach(w => { if (w.work_group) set.add(w.work_group) })
+    }
     return Array.from(set).sort()
-  }, [selectedShipId, activeWorkItemsForShip])
+  }, [selectedShipId, activeWorkItemsForShip, dbWorkers])
 
   // Sincronizar fila de cuadrilla según el Contratista / Grupo habilitado elegido en el Paso 2
   const syncCrewWithContractor = (newContractor) => {
@@ -942,7 +954,8 @@ export default function LaborLogs() {
       const { error } = await supabase
         .from('labor_logs')
         .update({
-          work_order_id: editingForm.work_order_id,
+          ship_id: editingForm.ship_id || (editingForm.work_order_id ? woByIdMap[editingForm.work_order_id]?.ship_id : null) || null,
+          work_order_id: editingForm.work_order_id || null,
           worker_name: editingForm.worker_name,
           worker_type: editingForm.worker_type,
           rubro: editingForm.rubro,
@@ -1189,8 +1202,13 @@ export default function LaborLogs() {
       const h100 = parseFloat(quickLogWorker.hours_extra_100) || 0
       const hTotal = hNorm + h50 + h100
 
+      const targetWoId = quickLogWorker.work_order_id || null
+      const targetShipId = quickLogWorker.ship_id || (targetWoId ? woByIdMap[targetWoId]?.ship_id : null) || ships[0]?.id || null
+      const isMissingWo = !targetWoId
+
       const { error } = await supabase.from('labor_logs').insert([{
-        work_order_id: quickLogWorker.work_order_id,
+        ship_id: targetShipId,
+        work_order_id: targetWoId,
         hours_worked: hTotal,
         hours_normal: hNorm,
         hours_extra_50: h50,
@@ -1202,7 +1220,8 @@ export default function LaborLogs() {
         work_type: 'HORA',
         cost_center: 'CLIENTE',
         notes: quickLogWorker.notes || null,
-        approval_status: 'Aprobado'
+        approval_status: isMissingWo ? 'R' : 'Aprobado',
+        review_reason: isMissingWo ? 'Falta Cargar OT (Pendiente de apertura)' : null
       }])
 
       if (error) throw error
@@ -1362,16 +1381,60 @@ export default function LaborLogs() {
   const totalTalleresActivos = unifiedDailyList.filter(i => i.type === 'Taller' && i.totalDay > 0).length
   const totalContratistasActivos = unifiedDailyList.filter(i => i.type === 'Contratista' && i.totalDay > 0).length
 
-  // Métricas separadas: R (Rojo = Alerta Operario) y RR (Amarillo = Alerta Supervisor)
-  const countR = recentLogs.filter(l => l.approval_status === 'R').length
-  const countRR = recentLogs.filter(l => l.approval_status === 'RR').length
-  const logsRequiringReview = recentLogs.filter(l => l.approval_status === 'R' || l.approval_status === 'RR')
+  // Métricas del Radar Operativo de 5 KPIs (GS-001 / TAB-002 Alertas)
+  const countSinOt = useMemo(() => recentLogs.filter(l => !l.work_order_id).length, [recentLogs])
+  const countR = useMemo(() => recentLogs.filter(l => l.approval_status === 'R').length, [recentLogs])
+  const countRR = useMemo(() => recentLogs.filter(l => l.approval_status === 'RR').length, [recentLogs])
+  const countSinPrc = useMemo(
+    () => recentLogs.filter(l => (l.cost_center === 'PRESUPUESTO' || l.work_type === 'PRESUPUESTO') && !l.prc_number).length,
+    [recentLogs]
+  )
+  const logsRequiringReview = useMemo(
+    () => recentLogs.filter(l => l.approval_status === 'R' || l.approval_status === 'RR'),
+    [recentLogs]
+  )
   const reviewCount = logsRequiringReview.length
 
-  // Imputaciones del día auditado para selección rápida
+  // Detectar pares (operario Astillero + fecha) con jornada incompleta (<9h normal, o <8h si Feriado) en todo el historial reciente
+  const incompleteWorkerDateKeys = useMemo(() => {
+    const grouped = new Map()
+    recentLogs.forEach(l => {
+      if ((l.worker_type || 'Astillero') !== 'Astillero' || !l.worker_name || !l.date_logged) return
+      const key = `${l.worker_name}__${l.date_logged}`
+      if (!grouped.has(key)) grouped.set(key, { sumNormal: 0, isFeriado: false })
+      const entry = grouped.get(key)
+      entry.sumNormal += parseFloat(l.hours_normal ?? l.hours_worked) || 0
+      if ((l.rubro || '').toLowerCase().includes('feriado')) entry.isFeriado = true
+    })
+    const incompleteKeys = new Set()
+    grouped.forEach((val, key) => {
+      const target = val.isFeriado ? 8 : 9
+      if (val.sumNormal > 0 && val.sumNormal < target) {
+        incompleteKeys.add(key)
+      }
+    })
+    return incompleteKeys
+  }, [recentLogs])
+
+  const incompletasGlobalCount = incompleteWorkerDateKeys.size
+
+  // Imputaciones del día auditado para selección rápida y badges "Hoy"
   const allAuditDateLogIds = logsForAuditDate.map(l => l.id)
+  const auditDateSinOtCount = logsForAuditDate.filter(l => !l.work_order_id).length
   const auditDateRCount = logsForAuditDate.filter(l => l.approval_status === 'R').length
   const auditDateRRCount = logsForAuditDate.filter(l => l.approval_status === 'RR').length
+  const auditDateSinPrcCount = logsForAuditDate.filter(
+    l => (l.cost_center === 'PRESUPUESTO' || l.work_type === 'PRESUPUESTO') && !l.prc_number
+  ).length
+
+  // Conmutador unificado de KPI (filtra tanto Pestaña 1 como Pestaña 2)
+  const toggleHorasKpi = useCallback((kpiKey) => {
+    setActiveKpiFilter(prev => {
+      const next = prev === kpiKey ? 'todos' : kpiKey
+      setDailyFilterType(next)
+      return next
+    })
+  }, [])
 
   // Lista filtrada para la Ventanita / Modal de Horas que Requieren Revisión
   const filteredReviewLogs = logsRequiringReview.filter(log => {
@@ -1424,13 +1487,352 @@ export default function LaborLogs() {
     return Array.from(map.values())
   }, [astilleroSource, recentLogs])
 
-  // Registros filtrados reactivos en la pestaña de detalle
-  const filteredLogs = recentLogs.filter(log => {
-    const matchWorker = !filterWorker || log.worker_name?.toLowerCase().includes(filterWorker.toLowerCase())
-    const matchDate = !filterDate || log.date_logged === filterDate
-    const matchShip = !filterShip || log.work_orders?.ships?.name === filterShip
-    return matchWorker && matchDate && matchShip
+  // Registros filtrados reactivos en la pestaña de detalle (sincronizados con el Radar de 5 KPIs)
+  const filteredLogs = useMemo(() => {
+    return recentLogs.filter(log => {
+      const shipName = log.ships?.name || log.work_orders?.ships?.name || ''
+      const matchWorker = !filterWorker ||
+        log.worker_name?.toLowerCase().includes(filterWorker.toLowerCase()) ||
+        log.rubro?.toLowerCase().includes(filterWorker.toLowerCase()) ||
+        shipName.toLowerCase().includes(filterWorker.toLowerCase()) ||
+        log.work_orders?.ot_number?.toLowerCase().includes(filterWorker.toLowerCase()) ||
+        log.work_orders?.title?.toLowerCase().includes(filterWorker.toLowerCase())
+      const matchDate = !filterDate || log.date_logged === filterDate
+      const matchShip = !filterShip || shipName === filterShip
+
+      if (!matchWorker || !matchDate || !matchShip) return false
+
+      if (activeKpiFilter === 'sin_ot') return !log.work_order_id
+      if (activeKpiFilter === 'revision_R') return log.approval_status === 'R'
+      if (activeKpiFilter === 'corregidas_RR') return log.approval_status === 'RR'
+      if (activeKpiFilter === 'incompleta') return incompleteWorkerDateKeys.has(`${log.worker_name}__${log.date_logged}`)
+      if (activeKpiFilter === 'sin_prc') return (log.cost_center === 'PRESUPUESTO' || log.work_type === 'PRESUPUESTO') && !log.prc_number
+      return true
+    })
+  }, [recentLogs, filterWorker, filterDate, filterShip, activeKpiFilter, incompleteWorkerDateKeys])
+
+  // Helper para reconstruir relaciones locales de barco y OT al editar en vivo sin recargar
+  const buildLocalRelationsForLog = useCallback((shipId, workOrderId) => {
+    const woObj = workOrderId ? workOrders.find(w => w.id === workOrderId) : null
+    const resolvedShipId = shipId || woObj?.ship_id || null
+    const shipObj = resolvedShipId ? ships.find(s => s.id === resolvedShipId) : null
+    return {
+      ship_id: resolvedShipId,
+      work_order_id: workOrderId || null,
+      ships: shipObj ? { name: shipObj.name } : null,
+      work_orders: woObj
+        ? {
+            title: woObj.title,
+            ot_number: woObj.ot_number,
+            ship_id: woObj.ship_id,
+            ships: shipObj ? { name: shipObj.name } : null
+          }
+        : null
+    }
+  }, [ships, workOrders])
+
+  // Columnas de Hoja de Cálculo para la planilla principal de Horas
+  const horasSpreadsheetColumns = useMemo(() => [
+    { key: 'date_logged', label: 'Fecha', readOnly: false },
+    {
+      key: 'ship_wo',
+      label: 'Barco / OT',
+      readOnly: false,
+      getValue: (row) => ({
+        ship_id: row.ship_id || row.work_orders?.ship_id || null,
+        work_order_id: row.work_order_id || null
+      }),
+      formatDisplay: (val, row) => {
+        const sName = cleanShipName(row?.ships?.name || row?.work_orders?.ships?.name || '') || 'Sin Buque'
+        const otLabel = row?.work_orders?.ot_number || row?.work_orders?.title || 'Sin OT'
+        return `${sName} / ${otLabel}`
+      }
+    },
+    { key: 'worker_name', label: 'Operario', readOnly: false },
+    { key: 'rubro', label: 'Rubro', readOnly: false },
+    { key: 'hours_normal', label: 'Norm', readOnly: false },
+    { key: 'hours_extra_50', label: '50%', readOnly: false },
+    { key: 'hours_extra_100', label: '100%', readOnly: false },
+    { key: 'approval_status', label: 'Estado', readOnly: false }
+  ], [])
+
+  const showGridFeedback = useCallback((type, text) => {
+    setStatusMessage({ type: type === 'error' ? 'error' : 'success', text })
+    setTimeout(() => setStatusMessage(null), 4000)
+  }, [])
+
+  // Actualización en lote para Ctrl+D, Ctrl+V, Drag Fill, Delete, Ctrl+Z, Ctrl+Y en Horas
+  const handleHorasBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    if (isRevert && revertMap) {
+      setRecentLogs(prev =>
+        prev.map(l => {
+          if (revertMap[l.id] === undefined) return l
+          const oldVal = revertMap[l.id]
+          if (colKey === 'ship_wo' && oldVal && typeof oldVal === 'object') {
+            return { ...l, ...buildLocalRelationsForLog(oldVal.ship_id, oldVal.work_order_id) }
+          }
+          if (['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(colKey)) {
+            const nextLog = { ...l, [colKey]: parseFloat(oldVal) || 0 }
+            const total = (parseFloat(nextLog.hours_normal) || 0) + (parseFloat(nextLog.hours_extra_50) || 0) + (parseFloat(nextLog.hours_extra_100) || 0)
+            return { ...nextLog, hours_worked: total }
+          }
+          return { ...l, [colKey]: oldVal }
+        })
+      )
+      try {
+        await Promise.all(
+          Object.entries(revertMap).map(([id, oldVal]) => {
+            const targetLog = recentLogs.find(x => x.id === id)
+            let payload = {}
+            if (colKey === 'ship_wo' && oldVal && typeof oldVal === 'object') {
+              payload.ship_id = oldVal.ship_id ?? null
+              payload.work_order_id = oldVal.work_order_id ?? null
+            } else if (['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(colKey)) {
+              const num = parseFloat(oldVal) || 0
+              const n = colKey === 'hours_normal' ? num : (parseFloat(targetLog?.hours_normal) || 0)
+              const h50 = colKey === 'hours_extra_50' ? num : (parseFloat(targetLog?.hours_extra_50) || 0)
+              const h100 = colKey === 'hours_extra_100' ? num : (parseFloat(targetLog?.hours_extra_100) || 0)
+              payload[colKey] = num
+              payload.hours_worked = n + h50 + h100
+            } else {
+              payload[colKey] = oldVal
+            }
+            return supabase.from('labor_logs').update(payload).eq('id', id)
+          })
+        )
+      } catch (err) {
+        console.error('Error al revertir Horas:', err)
+        showGridFeedback('error', 'Error al revertir: ' + err.message)
+        loadInitialData()
+      }
+      return
+    }
+
+    if (!targetIds || targetIds.length === 0) return
+    const targetSet = new Set(targetIds)
+
+    setRecentLogs(prev =>
+      prev.map(l => {
+        if (!targetSet.has(l.id)) return l
+        if (colKey === 'ship_wo' && newValue && typeof newValue === 'object') {
+          return {
+            ...l,
+            ...buildLocalRelationsForLog(newValue.ship_id, newValue.work_order_id),
+            ...(!newValue.work_order_id ? { approval_status: 'R', review_reason: 'Falta Cargar OT (Pendiente de apertura)' } : {})
+          }
+        }
+        if (['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(colKey)) {
+          const num = parseFloat(newValue) || 0
+          const nextLog = { ...l, [colKey]: num }
+          const total = (parseFloat(nextLog.hours_normal) || 0) + (parseFloat(nextLog.hours_extra_50) || 0) + (parseFloat(nextLog.hours_extra_100) || 0)
+          return { ...nextLog, hours_worked: total }
+        }
+        if (colKey === 'rubro') {
+          const isFeriado = String(newValue || '').toLowerCase().includes('feriado')
+          if (isFeriado && (l.worker_type || 'Astillero') === 'Astillero') {
+            return { ...l, rubro: newValue, hours_normal: 8, hours_extra_50: 0, hours_extra_100: 0, hours_worked: 8 }
+          }
+          return { ...l, rubro: newValue }
+        }
+        return { ...l, [colKey]: newValue }
+      })
+    )
+
+    try {
+      if (['hours_normal', 'hours_extra_50', 'hours_extra_100', 'rubro'].includes(colKey)) {
+        await Promise.all(
+          targetIds.map(id => {
+            const targetLog = recentLogs.find(x => x.id === id)
+            let rowPayload = {}
+            if (colKey === 'rubro') {
+              const isFeriado = String(newValue || '').toLowerCase().includes('feriado')
+              rowPayload.rubro = newValue
+              if (isFeriado && (targetLog?.worker_type || 'Astillero') === 'Astillero') {
+                rowPayload.hours_normal = 8
+                rowPayload.hours_extra_50 = 0
+                rowPayload.hours_extra_100 = 0
+                rowPayload.hours_worked = 8
+              }
+            } else {
+              const num = parseFloat(newValue) || 0
+              const n = colKey === 'hours_normal' ? num : (parseFloat(targetLog?.hours_normal) || 0)
+              const h50 = colKey === 'hours_extra_50' ? num : (parseFloat(targetLog?.hours_extra_50) || 0)
+              const h100 = colKey === 'hours_extra_100' ? num : (parseFloat(targetLog?.hours_extra_100) || 0)
+              rowPayload[colKey] = num
+              rowPayload.hours_worked = n + h50 + h100
+            }
+            return supabase.from('labor_logs').update(rowPayload).eq('id', id)
+          })
+        )
+      } else {
+        let payload = {}
+        if (colKey === 'ship_wo' && newValue && typeof newValue === 'object') {
+          payload.ship_id = newValue.ship_id ?? null
+          payload.work_order_id = newValue.work_order_id ?? null
+          if (!newValue.work_order_id) {
+            payload.approval_status = 'R'
+            payload.review_reason = 'Falta Cargar OT (Pendiente de apertura)'
+          }
+        } else {
+          payload[colKey] = newValue
+        }
+        const { error } = await supabase.from('labor_logs').update(payload).in('id', targetIds)
+        if (error) throw error
+      }
+      showGridFeedback('success', `Se actualizaron ${targetIds.length} imputación(es).`)
+    } catch (err) {
+      console.error('Error en lote Horas:', err)
+      showGridFeedback('error', 'Error al actualizar imputaciones: ' + err.message)
+      loadInitialData()
+    }
+  }, [recentLogs, buildLocalRelationsForLog, showGridFeedback])
+
+  const activateHorasCell = useCallback((log, colKey) => {
+    if (!log) return
+    if (colKey === 'ship_wo') {
+      setShipPickerModal({
+        isOpen: true,
+        logId: log.id,
+        rowIndex: null,
+        currentShipId: log.ship_id || log.work_orders?.ship_id || '',
+        currentWorkOrderId: log.work_order_id || '',
+        workerName: log.worker_name || ''
+      })
+      return
+    }
+    if (colKey === 'date_logged') {
+      setInlineLogEdit({ id: log.id, field: 'date_logged', value: log.date_logged || '' })
+      return
+    }
+    if (colKey === 'worker_name') {
+      setInlineLogEdit({ id: log.id, field: 'worker_name', value: log.worker_name || '' })
+      return
+    }
+    if (colKey === 'rubro') {
+      setInlineLogEdit({ id: log.id, field: 'rubro', value: log.rubro || 'General' })
+      return
+    }
+    if (colKey === 'hours_normal') {
+      setInlineLogEdit({ id: log.id, field: 'hours_normal', value: log.hours_normal ?? log.hours_worked ?? 0 })
+      return
+    }
+    if (colKey === 'hours_extra_50') {
+      setInlineLogEdit({ id: log.id, field: 'hours_extra_50', value: log.hours_extra_50 ?? 0 })
+      return
+    }
+    if (colKey === 'hours_extra_100') {
+      setInlineLogEdit({ id: log.id, field: 'hours_extra_100', value: log.hours_extra_100 ?? 0 })
+    }
+  }, [])
+
+  const horasGrid = useSpreadsheetGrid({
+    rows: filteredLogs,
+    columns: horasSpreadsheetColumns,
+    getRowId: (row) => row.id,
+    storageKey: 'aloncar_grid_horas',
+    onBatchUpdate: handleHorasBatchUpdate,
+    onCellActivate: (row, colDef) => activateHorasCell(row, colDef.key),
+    onFocusSearch: () => {
+      logSearchInputRef.current?.focus()
+      logSearchInputRef.current?.select()
+    },
+    showFeedback: showGridFeedback
   })
+
+  function getHorasCellProps(rowIndex, colKey) {
+    const colIdx = horasSpreadsheetColumns.findIndex(c => c.key === colKey)
+    if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
+
+    const isActive = horasGrid.isCellActive(rowIndex, colIdx)
+    const isSelected = horasGrid.isCellSelected(rowIndex, colIdx)
+    const isFillPreview = horasGrid.isCellInFillPreview(rowIndex, colIdx)
+    const renderHandle = horasGrid.shouldRenderFillHandle(rowIndex, colIdx)
+
+    return {
+      renderHandle,
+      domProps: {
+        onClick: (e) => horasGrid.handleCellClick(rowIndex, colIdx, e),
+        onMouseDown: (e) => horasGrid.handleCellMouseDown(rowIndex, colIdx, e),
+        onMouseEnter: () => horasGrid.handleCellMouseEnter(rowIndex, colIdx)
+      },
+      className: `relative select-none transition-colors ${
+        isActive
+          ? 'ring-2 ring-cyan-400 bg-cyan-950/40 z-20 outline-none'
+          : isFillPreview
+          ? 'bg-cyan-900/40 border-y border-dashed border-cyan-400'
+          : isSelected
+          ? 'bg-cyan-900/30'
+          : ''
+      }`
+    }
+  }
+
+  // Guardar edición rápida en celda individual (Doble Clic en Últimas Horas o Control Diario)
+  async function saveInlineLogEdit(logId, field, newValue) {
+    setInlineLogEdit({ id: null, field: null, value: '' })
+    const targetLog = recentLogs.find(l => l.id === logId)
+    if (!targetLog) return
+
+    let cleanedVal = newValue
+    if (['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(field)) {
+      cleanedVal = Math.max(0, parseFloat(newValue) || 0)
+    } else if (typeof newValue === 'string') {
+      cleanedVal = newValue.trim()
+      if (!cleanedVal && ['worker_name', 'rubro', 'date_logged'].includes(field)) return
+    }
+
+    if (targetLog[field] === cleanedVal) return
+
+    if (horasGrid?.pushUndoAction) {
+      horasGrid.pushUndoAction({
+        colKey: field,
+        colLabel: field,
+        actionLabel: 'Edición en celda',
+        previousValues: { [logId]: targetLog[field] },
+        newValue: cleanedVal,
+        timestamp: Date.now()
+      })
+    }
+
+    const extraPayload = {}
+    if (['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(field)) {
+      const n = field === 'hours_normal' ? cleanedVal : (parseFloat(targetLog.hours_normal ?? targetLog.hours_worked) || 0)
+      const h50 = field === 'hours_extra_50' ? cleanedVal : (parseFloat(targetLog.hours_extra_50) || 0)
+      const h100 = field === 'hours_extra_100' ? cleanedVal : (parseFloat(targetLog.hours_extra_100) || 0)
+      extraPayload.hours_worked = n + h50 + h100
+    } else if (field === 'rubro') {
+      const isFeriado = String(cleanedVal).toLowerCase().includes('feriado')
+      if (isFeriado && (targetLog.worker_type || 'Astillero') === 'Astillero') {
+        extraPayload.hours_normal = 8
+        extraPayload.hours_extra_50 = 0
+        extraPayload.hours_extra_100 = 0
+        extraPayload.hours_worked = 8
+      }
+    } else if (field === 'worker_name') {
+      const known = allKnownWorkers.find(w => w.name.toLowerCase() === String(cleanedVal).toLowerCase())
+      if (known) {
+        cleanedVal = known.name
+        extraPayload.worker_type = known.type
+      }
+    }
+
+    setRecentLogs(prev =>
+      prev.map(l => (l.id === logId ? { ...l, [field]: cleanedVal, ...extraPayload } : l))
+    )
+
+    try {
+      const { error } = await supabase
+        .from('labor_logs')
+        .update({ [field]: cleanedVal, ...extraPayload })
+        .eq('id', logId)
+      if (error) throw error
+      showGridFeedback('success', 'Imputación actualizada.')
+    } catch (err) {
+      console.error('Error guardando celda en Horas:', err)
+      showGridFeedback('error', 'Error al guardar: ' + err.message)
+      setRecentLogs(prev => prev.map(l => (l.id === logId ? targetLog : l)))
+    }
+  }
 
   // Métricas reactivas estilo Sheets / Excel para Horas (Suma y promedio de filas seleccionadas o visibles)
   const hoursStats = useMemo(() => {
@@ -1498,8 +1900,8 @@ export default function LaborLogs() {
 
   return (
     <div className="space-y-6 w-full pb-28">
-      {/* CABECERA & NAVEGACIÓN DE PESTAÑAS */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+      {/* ZONA 1: CABECERA & NAVEGACIÓN DE PESTAÑAS */}
+      <div className="alon-zone-context flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
             <Link to="/" className="hover:text-primary transition-colors">Inicio</Link>
@@ -1553,6 +1955,185 @@ export default function LaborLogs() {
           >
             <Table className="w-3.5 h-3.5" />
             <span>3. Sábana Quincenal</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* ZONA 2: RADAR OPERATIVO DE 5 KPIs EN VIVO (SIEMPRE VISIBLE) */}
+      {/* ========================================================= */}
+      <div className="alon-zone-kpis p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-wider text-amber-400">
+              📊 RADAR DE KPIs Y ALERTAS OPERATIVAS (TAB-002 ALERTAS)
+            </span>
+            <span className="text-[10px] text-slate-400 font-mono">
+              Clic en cualquier indicador para filtrar la planilla en vivo
+            </span>
+          </div>
+          {(activeKpiFilter !== 'todos' || dailyFilterType !== 'todos') && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveKpiFilter('todos')
+                setDailyFilterType('todos')
+              }}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Quitar Filtro KPI</span>
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* KPI 1: Falta Cargar OT */}
+          <button
+            type="button"
+            onClick={() => toggleHorasKpi('sin_ot')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeKpiFilter === 'sin_ot'
+                ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20 ring-2 ring-amber-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-400" />
+                Falta Cargar OT
+              </span>
+              {auditDateSinOtCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                  Hoy: {auditDateSinOtCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-amber-300 font-mono">{countSinOt}</span>
+              <span className="text-xs text-slate-400">imputaciones sin OT</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {activeKpiFilter === 'sin_ot' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar líneas sin OT'}
+            </p>
+          </button>
+
+          {/* KPI 2: Requiere Revisión R */}
+          <button
+            type="button"
+            onClick={() => toggleHorasKpi('revision_R')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeKpiFilter === 'revision_R'
+                ? 'bg-rose-950/80 border-rose-400 shadow-lg shadow-rose-500/20 ring-2 ring-rose-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-rose-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                Requiere Revisión (R)
+              </span>
+              {auditDateRCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-400/20 text-rose-300 font-bold border border-rose-400/30">
+                  Hoy: {auditDateRCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-rose-300 font-mono">{countR}</span>
+              <span className="text-xs text-slate-400">alertas para operario</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {activeKpiFilter === 'revision_R' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar estado R'}
+            </p>
+          </button>
+
+          {/* KPI 3: Horas Corregidas RR */}
+          <button
+            type="button"
+            onClick={() => toggleHorasKpi('corregidas_RR')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeKpiFilter === 'corregidas_RR'
+                ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20 ring-2 ring-amber-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-amber-300" />
+                Horas Corregidas (RR)
+              </span>
+              {auditDateRRCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                  Hoy: {auditDateRRCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-amber-300 font-mono">{countRR}</span>
+              <span className="text-xs text-slate-400">pendiente visto bueno</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {activeKpiFilter === 'corregidas_RR' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar estado RR'}
+            </p>
+          </button>
+
+          {/* KPI 4: Jornada Incompleta (<9h / <8h Feriado) */}
+          <button
+            type="button"
+            onClick={() => toggleHorasKpi('incompleta')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeKpiFilter === 'incompleta'
+                ? 'bg-orange-950/80 border-orange-400 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-orange-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-orange-400" />
+                Jornada Incompleta
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-400/20 text-orange-300 font-bold border border-orange-400/30">
+                &lt;9hs / Hoy: {incompletasAstillero}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-orange-300 font-mono">{incompletasGlobalCount}</span>
+              <span className="text-xs text-slate-400">jornadas astillero &lt;9h</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {activeKpiFilter === 'incompleta' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar jornadas <9hs'}
+            </p>
+          </button>
+
+          {/* KPI 5: Sin PRC Vinculado */}
+          <button
+            type="button"
+            onClick={() => toggleHorasKpi('sin_prc')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeKpiFilter === 'sin_prc'
+                ? 'bg-purple-950/80 border-purple-400 shadow-lg shadow-purple-500/20 ring-2 ring-purple-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-purple-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-purple-400" />
+                Sin PRC Vinculado
+              </span>
+              {auditDateSinPrcCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-400/20 text-purple-300 font-bold border border-purple-400/30">
+                  Hoy: {auditDateSinPrcCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-purple-300 font-mono">{countSinPrc}</span>
+              <span className="text-xs text-slate-400">presupuesto sin PRC</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {activeKpiFilter === 'sin_prc' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar sin PRC'}
+            </p>
           </button>
         </div>
       </div>
@@ -1748,8 +2329,8 @@ export default function LaborLogs() {
           )}
 
           <form onSubmit={handleSubmitBatch} className="space-y-6">
-            {/* CABECERA OT CON FILTRO EN CASCADA (1. BARCO -> 2. CONTRATISTA HABILITADO -> 3. OT EN EJECUCIÓN) */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 backdrop-blur-xl shadow-xl space-y-4">
+            {/* ZONA CARGA: CABECERA OT CON FILTRO EN CASCADA (1. BARCO -> 2. CONTRATISTA -> 3. OT OPCIONAL) */}
+            <div className="alon-zone-entry p-5 md:p-6 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2.5">
                   <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
@@ -1824,29 +2405,30 @@ export default function LaborLogs() {
                   </select>
                 </div>
 
-                {/* PASO 3: Orden de Trabajo (OT) donde se habilita a ese contratista */}
+                {/* PASO 3: Orden de Trabajo (OT - Opcional) */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
                     <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center justify-center">
                       3
                     </span>
                     <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
-                    OT Habilitada ({availableWorkOrders.length})
+                    OT ({availableWorkOrders.length} hab. / Opcional)
                   </label>
                   <select
                     value={selectedWorkOrderId}
                     onChange={(e) => setSelectedWorkOrderId(e.target.value)}
-                    className="w-full bg-slate-950/80 border border-emerald-500/40 rounded-lg px-3 py-2 text-xs text-white font-semibold focus:outline-none focus:border-emerald-400"
+                    className={`w-full bg-slate-950/80 border rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-emerald-400 ${
+                      !selectedWorkOrderId ? 'border-amber-500/60 text-amber-300' : 'border-emerald-500/40 text-white'
+                    }`}
                   >
-                    {availableWorkOrders.length === 0 ? (
-                      <option value="">🔒 Sin OTs habilitadas en ejecución</option>
-                    ) : (
-                      availableWorkOrders.map(wo => (
-                        <option key={wo.id} value={wo.id} className="bg-slate-900">
-                          {wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}
-                        </option>
-                      ))
-                    )}
+                    <option value="" className="bg-slate-900 text-amber-300 font-bold">
+                      -- ⚠️ Dejar OT en blanco (Pendiente de apertura) --
+                    </option>
+                    {availableWorkOrders.map(wo => (
+                      <option key={wo.id} value={wo.id} className="bg-slate-900 text-white">
+                        {wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1955,8 +2537,8 @@ export default function LaborLogs() {
               )}
             </div>
 
-            {/* GRILLA DE CUADRILLA */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 backdrop-blur-xl shadow-xl space-y-4">
+            {/* ZONA CARGA: GRILLA DE CUADRILLA */}
+            <div className="alon-zone-entry p-5 md:p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div>
                   <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
@@ -2549,191 +3131,539 @@ export default function LaborLogs() {
             </div>
           </form>
 
-          {/* HISTORIAL RECIENTE CON FILTROS */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-lg space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-              <h3 className="text-xs uppercase tracking-wider font-bold text-slate-300 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-cyan-400" />
-                Últimas Horas Registradas en la Nube
-              </h3>
+          {/* ZONA 3 & ZONA 4: PLANILLA INTERACTIVA DE HORAS REGISTRADAS (MODO HOJA DE CÁLCULO) */}
+          <div className="space-y-3">
+            {/* ZONA 3: BARRA DE BÚSQUEDA, FILTROS Y ATAJOS DE PLANILLA */}
+            <div className="alon-zone-toolbar p-3.5 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Buscar operario..."
-                  value={filterWorker}
-                  onChange={(e) => setFilterWorker(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
-                />
+                <Clock className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-xs uppercase tracking-wider font-bold text-white">
+                  Planilla de Horas Registradas ({filteredLogs.length})
+                </h3>
+                {activeKpiFilter !== 'todos' && (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold">
+                    Filtro KPI: {activeKpiFilter}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
+                  <input
+                    ref={logSearchInputRef}
+                    type="text"
+                    placeholder="Buscar operario, buque, OT, rubro... (Ctrl+F)"
+                    value={filterWorker}
+                    onChange={(e) => setFilterWorker(e.target.value)}
+                    className="bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary min-w-[230px]"
+                  />
+                </div>
                 <input
                   type="date"
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-primary"
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
                 />
-                {(filterWorker || filterDate) && (
+                {(filterWorker || filterDate || activeKpiFilter !== 'todos') && (
                   <button
                     type="button"
-                    onClick={() => { setFilterWorker(''); setFilterDate(''); }}
-                    className="p-1 text-slate-400 hover:text-white"
+                    onClick={() => { setFilterWorker(''); setFilterDate(''); setActiveKpiFilter('todos'); setDailyFilterType('todos'); }}
+                    className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                     title="Limpiar filtros"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5" />
+                    <span>Limpiar</span>
+                  </button>
+                )}
+
+                {horasGrid.canUndo && (
+                  <button
+                    type="button"
+                    onClick={horasGrid.undo}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1.5 cursor-pointer"
+                    title="Deshacer último cambio (Ctrl+Z)"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Deshacer (Ctrl+Z)</span>
+                  </button>
+                )}
+                {horasGrid.canRedo && (
+                  <button
+                    type="button"
+                    onClick={horasGrid.redo}
+                    className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1.5 cursor-pointer"
+                    title="Rehacer cambio (Ctrl+Y)"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>Rehacer (Ctrl+Y)</span>
                   </button>
                 )}
               </div>
             </div>
 
+            {/* ZONA 4: HOJA DE CÁLCULO DE HORAS */}
             {filteredLogs.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 text-xs">
-                No hay registros que coincidan con los filtros.
+              <div className="alon-zone-grid text-center py-10 text-slate-400 text-xs space-y-2">
+                <p>No hay imputaciones que coincidan con los filtros seleccionados.</p>
+                {activeKpiFilter === 'incompleta' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('control_diario')
+                      setDailyFilterType('incompleta')
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/50 text-orange-300 font-bold cursor-pointer"
+                  >
+                    Ir a Control Diario de Nómina (Operarios con jornada incompleta hoy) &rarr;
+                  </button>
+                )}
               </div>
             ) : (
-              <div className="overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
-                    <tr>
-                      <th className="py-2.5 px-2 text-center w-8 bg-slate-950">
-                        <input
-                          type="checkbox"
-                          checked={filteredLogs.length > 0 && filteredLogs.every(l => selectedLogIds.has(l.id))}
-                          onChange={() => toggleSelectAllLogs(filteredLogs.map(l => l.id))}
-                          className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                          title="Seleccionar todas las imputaciones visibles"
-                        />
-                      </th>
-                      <th className="py-2.5 px-3 bg-slate-950">Fecha</th>
-                      <th className="py-2.5 px-3 bg-slate-950">Barco / OT</th>
-                      <th className="py-2.5 px-3 bg-slate-950">Operario / Tipo</th>
-                      <th className="py-2.5 px-3 bg-slate-950">Rubro</th>
-                      <th className="py-2.5 px-2 text-center bg-slate-950">Norm</th>
-                      <th className="py-2.5 px-2 text-center text-cyan-400 bg-slate-950">50%</th>
-                      <th className="py-2.5 px-2 text-center text-amber-400 bg-slate-950">100%</th>
-                      <th className="py-2.5 px-3 text-center text-primary font-bold bg-slate-950">Total</th>
-                      <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {filteredLogs.map(log => {
-                      const isSelected = selectedLogIds.has(log.id)
-                      return (
-                      <tr 
-                        key={log.id} 
-                        onClick={(e) => {
-                          if (e.target.closest('button') || e.target.closest('select') || e.target.tagName === 'INPUT') return
-                          toggleSelectLog(log.id)
-                        }}
-                        className={`transition-colors cursor-pointer select-none ${
-                          isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'
-                        }`}
-                      >
-                        <td className="py-2 px-2 text-center">
+              <div className="alon-zone-grid">
+                <div className="alon-grid-ribbon">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px]">
+                      {horasGrid.activeCellBadge ? `CELDA ${horasGrid.activeCellBadge}` : 'MODO PLANILLA'}
+                    </span>
+                    <span className="text-slate-400">
+                      Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier casilla (Fecha, Barco/OT, Operario, Rubro, Horas) para editar • <strong className="text-slate-200">Ctrl+C/V/D • Ctrl+Z/Y</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
+                    <span>Undo: {horasGrid.undoStack?.length || 0}/50</span>
+                    <span>•</span>
+                    <span>{filteredLogs.length} filas</span>
+                  </div>
+                </div>
+
+                <div
+                  tabIndex={0}
+                  onKeyDown={horasGrid.handleKeyDown}
+                  ref={horasGrid.gridContainerRef}
+                  className="overflow-y-auto max-h-[calc(100vh-300px)] focus:outline-none"
+                >
+                  <table className="w-full text-left text-xs text-slate-300 border-collapse">
+                    <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
+                      <tr>
+                        <th className="py-2.5 px-2 text-center w-8">
                           <input
                             type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleSelectLog(log.id)}
+                            checked={filteredLogs.length > 0 && filteredLogs.every(l => selectedLogIds.has(l.id))}
+                            onChange={() => toggleSelectAllLogs(filteredLogs.map(l => l.id))}
                             className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                            title="Seleccionar todas las imputaciones visibles"
                           />
-                        </td>
-                        <td className="py-2 px-3 font-mono text-slate-400">{log.date_logged}</td>
-                        <td className="py-2 px-3">
-                          <span className="font-semibold text-white block">{log.work_orders?.ships?.name || 'Barco'}</span>
-                          <span className="text-[11px] text-slate-400">{log.work_orders?.title || 'OT'}</span>
-                        </td>
-                        <td className="py-2 px-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-medium text-slate-200">{log.worker_name}</span>
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-                              log.worker_type === 'Astillero' 
-                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60' 
-                                : log.worker_type === 'Taller'
-                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
-                                : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
-                            }`}>
-                              {log.worker_type || 'Astillero'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-3">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px]">
-                            {log.rubro || 'General'}
-                          </span>
-                        </td>
-                        <td className="py-2 px-2 text-center font-mono">{log.hours_normal || (log.hours_worked || 0)}</td>
-                        <td className="py-2 px-2 text-center font-mono text-cyan-400">{log.hours_extra_50 || 0}</td>
-                        <td className="py-2 px-2 text-center font-mono text-amber-400">{log.hours_extra_100 || 0}</td>
-                        <td className="py-2 px-3 text-center font-mono font-bold text-primary">{log.hours_worked} hs</td>
-                        <td className="py-2 px-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <select
-                              value={log.approval_status || ''}
-                              onChange={(e) => handleUpdateApprovalStatus(log.id, e.target.value)}
-                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none ${
-                                log.approval_status === 'S' || log.approval_status === 'Aprobado'
-                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-600'
-                                  : log.approval_status === 'R'
-                                  ? 'bg-rose-950 text-rose-300 border-rose-500 shadow-sm shadow-rose-900/50'
-                                  : log.approval_status === 'RR'
-                                  ? 'bg-amber-950 text-amber-300 border-amber-500'
-                                  : log.approval_status === 'RRR'
-                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-500'
-                                  : 'bg-slate-900 text-slate-400 border-slate-700'
-                              }`}
-                              title={`Estado de revisión de ${log.worker_name}`}
-                            >
-                              <option value="">-</option>
-                              <option value="S">S (Aprobado)</option>
-                              <option value="R">R (Revisión)</option>
-                              <option value="RR">RR (Corregido)</option>
-                              <option value="RRR">RRR (Aprobado Fin)</option>
-                            </select>
-                            {log.review_reason && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setReviewReasonModal({
-                                    isOpen: true,
-                                    logId: log.id,
-                                    workerName: log.worker_name,
-                                    dateLogged: log.date_logged,
-                                    shipWo: `${log.work_orders?.ships?.name || ''} - ${log.work_orders?.title || ''}`,
-                                    targetStatus: log.approval_status || 'R',
-                                    reason: log.review_reason || '',
-                                    response: log.worker_response || ''
-                                  })
-                                }}
-                                className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-900/40 transition-colors"
-                                title={`Motivo de observación (R): ${log.review_reason}`}
-                              >
-                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleEditFromDaily(log)}
-                              className="p-1 text-slate-400 hover:text-primary rounded hover:bg-slate-800"
-                              title="Editar"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteLog(log.id, log.worker_name)}
-                              className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
+                        </th>
+                        <th className="py-2.5 px-3">Fecha</th>
+                        <th className="py-2.5 px-3">Barco / OT</th>
+                        <th className="py-2.5 px-3">Operario / Tipo</th>
+                        <th className="py-2.5 px-3">Rubro</th>
+                        <th className="py-2.5 px-2 text-center">Norm</th>
+                        <th className="py-2.5 px-2 text-center text-cyan-400">50%</th>
+                        <th className="py-2.5 px-2 text-center text-amber-400">100%</th>
+                        <th className="py-2.5 px-3 text-center text-primary font-bold">Total</th>
+                        <th className="py-2.5 px-2 text-center">Estado</th>
+                        <th className="py-2.5 px-3 text-right">Acciones</th>
                       </tr>
-                    )})}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {filteredLogs.map((log, rowIndex) => {
+                        const isSelected = selectedLogIds.has(log.id)
+                        const shipDisplayName = cleanShipName(log.ships?.name || log.work_orders?.ships?.name || '') || 'Sin Buque'
+                        const otNumber = log.work_orders?.ot_number
+                        const otTitle = log.work_orders?.title
+
+                        return (
+                          <tr
+                            key={log.id}
+                            className={`transition-colors select-none ${
+                              isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'
+                            }`}
+                          >
+                            {/* Checkbox */}
+                            <td className="py-2 px-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectLog(log.id)}
+                                className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                              />
+                            </td>
+
+                            {/* 1. Fecha (Doble clic editable) */}
+                            {(() => {
+                              const cp = getHorasCellProps(rowIndex, 'date_logged')
+                              return (
+                                <td
+                                  {...cp.domProps}
+                                  onDoubleClick={() => activateHorasCell(log, 'date_logged')}
+                                  className={`py-2 px-3 font-mono text-slate-300 cursor-pointer whitespace-nowrap ${cp.className}`}
+                                  title="Doble clic para editar Fecha"
+                                >
+                                  {inlineLogEdit.id === log.id && inlineLogEdit.field === 'date_logged' ? (
+                                    <input
+                                      type="date"
+                                      autoFocus
+                                      value={inlineLogEdit.value}
+                                      onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveInlineLogEdit(log.id, 'date_logged', inlineLogEdit.value)
+                                        if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                      }}
+                                      onBlur={() => saveInlineLogEdit(log.id, 'date_logged', inlineLogEdit.value)}
+                                      className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                    />
+                                  ) : (
+                                    <span>{log.date_logged}</span>
+                                  )}
+                                  {cp.renderHandle && (
+                                    <div
+                                      onMouseDown={horasGrid.handleFillHandleMouseDown}
+                                      onDoubleClick={horasGrid.handleFillHandleDoubleClick}
+                                      className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md"
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })()}
+
+                            {/* 2. Barco / OT (Doble clic abre ShipWorkOrderPickerModal) */}
+                            {(() => {
+                              const cp = getHorasCellProps(rowIndex, 'ship_wo')
+                              return (
+                                <td
+                                  {...cp.domProps}
+                                  onDoubleClick={() => activateHorasCell(log, 'ship_wo')}
+                                  className={`py-2 px-3 cursor-pointer ${cp.className}`}
+                                  title="Doble clic para cambiar Buque u Orden de Trabajo"
+                                >
+                                  <span className="font-semibold text-white block truncate max-w-[160px]">{shipDisplayName}</span>
+                                  {log.work_order_id ? (
+                                    <span className="text-[11px] text-slate-400 block truncate max-w-[160px]">
+                                      {otNumber ? <strong className="text-cyan-300 font-mono mr-1">{otNumber}</strong> : null}
+                                      {otTitle || 'OT'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-amber-400 font-bold">⚠️ Sin OT (Doble clic)</span>
+                                  )}
+                                  {cp.renderHandle && (
+                                    <div
+                                      onMouseDown={horasGrid.handleFillHandleMouseDown}
+                                      onDoubleClick={horasGrid.handleFillHandleDoubleClick}
+                                      className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md"
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })()}
+
+                            {/* 3. Operario / Tipo (Doble clic editable) */}
+                            {(() => {
+                              const cp = getHorasCellProps(rowIndex, 'worker_name')
+                              return (
+                                <td
+                                  {...cp.domProps}
+                                  onDoubleClick={() => activateHorasCell(log, 'worker_name')}
+                                  className={`py-2 px-3 cursor-pointer ${cp.className}`}
+                                  title="Doble clic para cambiar Operario"
+                                >
+                                  {inlineLogEdit.id === log.id && inlineLogEdit.field === 'worker_name' ? (
+                                    <input
+                                      type="text"
+                                      list="all-workers-datalist"
+                                      autoFocus
+                                      value={inlineLogEdit.value}
+                                      onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveInlineLogEdit(log.id, 'worker_name', inlineLogEdit.value)
+                                        if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                      }}
+                                      onBlur={() => saveInlineLogEdit(log.id, 'worker_name', inlineLogEdit.value)}
+                                      className="w-full min-w-[140px] bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                    />
+                                  ) : (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-medium text-slate-200">{log.worker_name}</span>
+                                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                                        log.worker_type === 'Astillero'
+                                          ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
+                                          : log.worker_type === 'Taller'
+                                          ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                          : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                                      }`}>
+                                        {log.worker_type || 'Astillero'}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {cp.renderHandle && (
+                                    <div
+                                      onMouseDown={horasGrid.handleFillHandleMouseDown}
+                                      onDoubleClick={horasGrid.handleFillHandleDoubleClick}
+                                      className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md"
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })()}
+
+                            {/* 4. Rubro (Doble clic editable — aplica regla 8hs si es Feriado en Astillero) */}
+                            {(() => {
+                              const cp = getHorasCellProps(rowIndex, 'rubro')
+                              return (
+                                <td
+                                  {...cp.domProps}
+                                  onDoubleClick={() => activateHorasCell(log, 'rubro')}
+                                  className={`py-2 px-3 cursor-pointer ${cp.className}`}
+                                  title="Doble clic para editar Rubro"
+                                >
+                                  {inlineLogEdit.id === log.id && inlineLogEdit.field === 'rubro' ? (
+                                    <input
+                                      type="text"
+                                      list="rubros-list-carga"
+                                      autoFocus
+                                      value={inlineLogEdit.value}
+                                      onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveInlineLogEdit(log.id, 'rubro', inlineLogEdit.value)
+                                        if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                      }}
+                                      onBlur={() => saveInlineLogEdit(log.id, 'rubro', inlineLogEdit.value)}
+                                      className="w-32 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                    />
+                                  ) : (
+                                    <span className={`px-2 py-0.5 rounded text-[11px] ${
+                                      (log.rubro || '').toLowerCase().includes('feriado')
+                                        ? 'bg-amber-950 text-amber-300 border border-amber-700/80 font-bold'
+                                        : 'bg-slate-800 text-slate-300'
+                                    }`}>
+                                      {log.rubro || 'General'}
+                                    </span>
+                                  )}
+                                  {cp.renderHandle && (
+                                    <div
+                                      onMouseDown={horasGrid.handleFillHandleMouseDown}
+                                      onDoubleClick={horasGrid.handleFillHandleDoubleClick}
+                                      className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md"
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })()}
+
+                            {/* 5. Norm (Doble clic editable) */}
+                            {(() => {
+                              const cp = getHorasCellProps(rowIndex, 'hours_normal')
+                              return (
+                                <td
+                                  {...cp.domProps}
+                                  onDoubleClick={() => activateHorasCell(log, 'hours_normal')}
+                                  className={`py-2 px-2 text-center font-mono cursor-pointer ${cp.className}`}
+                                  title="Doble clic para editar Horas Normales"
+                                >
+                                  {inlineLogEdit.id === log.id && inlineLogEdit.field === 'hours_normal' ? (
+                                    <input
+                                      type="number"
+                                      step="0.5"
+                                      min="0"
+                                      max="24"
+                                      autoFocus
+                                      value={inlineLogEdit.value}
+                                      onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveInlineLogEdit(log.id, 'hours_normal', inlineLogEdit.value)
+                                        if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                      }}
+                                      onBlur={() => saveInlineLogEdit(log.id, 'hours_normal', inlineLogEdit.value)}
+                                      className="w-14 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-center text-xs text-white focus:outline-none font-mono"
+                                    />
+                                  ) : (
+                                    <span>{log.hours_normal ?? log.hours_worked ?? 0}</span>
+                                  )}
+                                  {cp.renderHandle && (
+                                    <div
+                                      onMouseDown={horasGrid.handleFillHandleMouseDown}
+                                      onDoubleClick={horasGrid.handleFillHandleDoubleClick}
+                                      className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md"
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })()}
+
+                            {/* 6. 50% (Doble clic editable) */}
+                            {(() => {
+                              const cp = getHorasCellProps(rowIndex, 'hours_extra_50')
+                              return (
+                                <td
+                                  {...cp.domProps}
+                                  onDoubleClick={() => activateHorasCell(log, 'hours_extra_50')}
+                                  className={`py-2 px-2 text-center font-mono text-cyan-400 cursor-pointer ${cp.className}`}
+                                  title="Doble clic para editar Horas 50%"
+                                >
+                                  {inlineLogEdit.id === log.id && inlineLogEdit.field === 'hours_extra_50' ? (
+                                    <input
+                                      type="number"
+                                      step="0.5"
+                                      min="0"
+                                      max="24"
+                                      autoFocus
+                                      value={inlineLogEdit.value}
+                                      onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveInlineLogEdit(log.id, 'hours_extra_50', inlineLogEdit.value)
+                                        if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                      }}
+                                      onBlur={() => saveInlineLogEdit(log.id, 'hours_extra_50', inlineLogEdit.value)}
+                                      className="w-14 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-center text-xs text-white focus:outline-none font-mono"
+                                    />
+                                  ) : (
+                                    <span>{log.hours_extra_50 || 0}</span>
+                                  )}
+                                  {cp.renderHandle && (
+                                    <div
+                                      onMouseDown={horasGrid.handleFillHandleMouseDown}
+                                      onDoubleClick={horasGrid.handleFillHandleDoubleClick}
+                                      className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md"
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })()}
+
+                            {/* 7. 100% (Doble clic editable) */}
+                            {(() => {
+                              const cp = getHorasCellProps(rowIndex, 'hours_extra_100')
+                              return (
+                                <td
+                                  {...cp.domProps}
+                                  onDoubleClick={() => activateHorasCell(log, 'hours_extra_100')}
+                                  className={`py-2 px-2 text-center font-mono text-amber-400 cursor-pointer ${cp.className}`}
+                                  title="Doble clic para editar Horas 100%"
+                                >
+                                  {inlineLogEdit.id === log.id && inlineLogEdit.field === 'hours_extra_100' ? (
+                                    <input
+                                      type="number"
+                                      step="0.5"
+                                      min="0"
+                                      max="24"
+                                      autoFocus
+                                      value={inlineLogEdit.value}
+                                      onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveInlineLogEdit(log.id, 'hours_extra_100', inlineLogEdit.value)
+                                        if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                      }}
+                                      onBlur={() => saveInlineLogEdit(log.id, 'hours_extra_100', inlineLogEdit.value)}
+                                      className="w-14 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-center text-xs text-white focus:outline-none font-mono"
+                                    />
+                                  ) : (
+                                    <span>{log.hours_extra_100 || 0}</span>
+                                  )}
+                                  {cp.renderHandle && (
+                                    <div
+                                      onMouseDown={horasGrid.handleFillHandleMouseDown}
+                                      onDoubleClick={horasGrid.handleFillHandleDoubleClick}
+                                      className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md"
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })()}
+
+                            {/* Total (calculado automáticamente) */}
+                            <td className="py-2 px-3 text-center font-mono font-bold text-primary whitespace-nowrap">
+                              {log.hours_worked} hs
+                            </td>
+
+                            {/* 8. Estado */}
+                            {(() => {
+                              const cp = getHorasCellProps(rowIndex, 'approval_status')
+                              return (
+                                <td {...cp.domProps} className={`py-2 px-2 text-center ${cp.className}`}>
+                                  <div className="flex items-center justify-center gap-1">
+                                    <select
+                                      value={log.approval_status || ''}
+                                      onChange={(e) => handleUpdateApprovalStatus(log.id, e.target.value)}
+                                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none bg-slate-950 ${
+                                        log.approval_status === 'S' || log.approval_status === 'Aprobado'
+                                          ? 'text-emerald-400 border-emerald-700/60'
+                                          : log.approval_status === 'R'
+                                          ? 'text-rose-400 border-rose-500/70'
+                                          : log.approval_status === 'RR'
+                                          ? 'text-amber-400 border-amber-500/70'
+                                          : log.approval_status === 'RRR'
+                                          ? 'text-cyan-400 border-cyan-500/70'
+                                          : 'text-slate-400 border-slate-700'
+                                      }`}
+                                      title={`Estado de revisión de ${log.worker_name}`}
+                                    >
+                                      <option value="">-</option>
+                                      <option value="S">S (Aprobado)</option>
+                                      <option value="R">R (Revisión)</option>
+                                      <option value="RR">RR (Corregido)</option>
+                                      <option value="RRR">RRR (Aprobado Fin)</option>
+                                    </select>
+                                    {log.review_reason && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setReviewReasonModal({
+                                            isOpen: true,
+                                            logId: log.id,
+                                            workerName: log.worker_name,
+                                            dateLogged: log.date_logged,
+                                            shipWo: `${shipDisplayName} - ${otTitle || 'Sin OT'}`,
+                                            targetStatus: log.approval_status || 'R',
+                                            reason: log.review_reason || '',
+                                            response: log.worker_response || ''
+                                          })
+                                        }}
+                                        className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-900/40 transition-colors"
+                                        title={`Motivo de observación (R): ${log.review_reason}`}
+                                      >
+                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  {cp.renderHandle && (
+                                    <div
+                                      onMouseDown={horasGrid.handleFillHandleMouseDown}
+                                      onDoubleClick={horasGrid.handleFillHandleDoubleClick}
+                                      className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md"
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })()}
+
+                            {/* Acciones */}
+                            <td className="py-2 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditFromDaily(log)}
+                                  className="p-1 text-slate-400 hover:text-primary rounded hover:bg-slate-800"
+                                  title="Editar en ventana"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteLog(log.id, log.worker_name)}
+                                  className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -2744,9 +3674,9 @@ export default function LaborLogs() {
       {/* PESTAÑA 2: CONTROL DIARIO DE JORNADA (MODO LISTA)         */}
       {/* ========================================================= */}
       {activeTab === 'control_diario' && (
-        <div className="space-y-6">
-          {/* BARRA DE FECHA Y RESUMEN KPI */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 backdrop-blur-xl shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="space-y-4">
+          {/* ZONA 3: BARRA DE FECHA Y BÚSQUEDA DE CONTROL DIARIO */}
+          <div className="alon-zone-toolbar p-4 md:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3">
                 <Calendar className="w-5 h-5 text-primary" />
@@ -2772,181 +3702,10 @@ export default function LaborLogs() {
                 Ir a Hoy
               </button>
             </div>
-
-                      </div>
-
-          {/* ZONA 2: RADAR OPERATIVO & ALERTAS EN VIVO (TAB-002 ALERTAS - ESTANDARIZADO) */}
-          <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-cyan-400">📊 RADAR OPERATIVO & ALERTAS EN VIVO</span>
-                <span className="text-[10px] text-slate-500 font-mono">Control Diario de Inconsistencias (GS-001)</span>
-              </div>
-              {dailyFilterType !== 'todos' && (
-                <button
-                  type="button"
-                  onClick={() => setDailyFilterType('todos')}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Ver toda la nómina</span>
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              {/* Alerta 1: Falta Cargar OT (Ámbar) */}
-              <button
-                type="button"
-                onClick={() => setDailyFilterType(dailyFilterType === 'sin_ot' ? 'todos' : 'sin_ot')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  dailyFilterType === 'sin_ot'
-                    ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20 ring-2 ring-amber-400'
-                    : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40 hover:bg-slate-850'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                    <AlertCircle className="w-4 h-4 text-amber-400" />
-                    Falta Cargar OT
-                  </span>
-                  {auditDateSinOtCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
-                      Hoy: {auditDateSinOtCount}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-2xl font-black text-amber-300 font-mono">{countSinOt}</span>
-                  <span className="text-xs text-slate-400">imputaciones sin OT</span>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {dailyFilterType === 'sin_ot' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar sin OT'}
-                </p>
-              </button>
-
-              {/* Alerta 2: Requiere Revisión R (Rojo / Rose) */}
-              <button
-                type="button"
-                onClick={() => setDailyFilterType(dailyFilterType === 'revision_R' ? 'todos' : 'revision_R')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  dailyFilterType === 'revision_R'
-                    ? 'bg-rose-950/80 border-rose-400 shadow-lg shadow-rose-500/20 ring-2 ring-rose-400'
-                    : 'bg-slate-900/80 border-slate-800 hover:border-rose-500/40 hover:bg-slate-850'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4 text-rose-400" />
-                    Requiere Revisión (R)
-                  </span>
-                  {auditDateRCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-400/20 text-rose-300 font-bold border border-rose-400/30">
-                      Hoy: {auditDateRCount}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-2xl font-black text-rose-300 font-mono">{countR}</span>
-                  <span className="text-xs text-slate-400">alertas para operario</span>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {dailyFilterType === 'revision_R' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar estado R'}
-                </p>
-              </button>
-
-              {/* Alerta 3: Horas Corregidas RR (Amarillo) */}
-              <button
-                type="button"
-                onClick={() => setDailyFilterType(dailyFilterType === 'corregidas_RR' ? 'todos' : 'corregidas_RR')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  dailyFilterType === 'corregidas_RR'
-                    ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20 ring-2 ring-amber-400'
-                    : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40 hover:bg-slate-850'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-amber-300" />
-                    Horas Corregidas (RR)
-                  </span>
-                  {auditDateRRCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
-                      Hoy: {auditDateRRCount}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-2xl font-black text-amber-300 font-mono">{countRR}</span>
-                  <span className="text-xs text-slate-400">pendiente visto bueno</span>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {dailyFilterType === 'corregidas_RR' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar estado RR'}
-                </p>
-              </button>
-
-              {/* Alerta 4: Jornada Incompleta (Naranja) */}
-              <button
-                type="button"
-                onClick={() => setDailyFilterType(dailyFilterType === 'incompleta' ? 'todos' : 'incompleta')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  dailyFilterType === 'incompleta'
-                    ? 'bg-orange-950/80 border-orange-400 shadow-lg shadow-orange-500/20 ring-2 ring-orange-400'
-                    : 'bg-slate-900/80 border-slate-800 hover:border-orange-500/40 hover:bg-slate-850'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-orange-400" />
-                    Jornada Incompleta
-                  </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-400/20 text-orange-300 font-bold border border-orange-400/30">
-                    &lt;9hs
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-2xl font-black text-orange-300 font-mono">{incompletasAstillero}</span>
-                  <span className="text-xs text-slate-400">operarios astillero hoy</span>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {dailyFilterType === 'incompleta' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar incompletas'}
-                </p>
-              </button>
-
-              {/* Alerta 5: Sin PRC (Púrpura) */}
-              <button
-                type="button"
-                onClick={() => setDailyFilterType(dailyFilterType === 'sin_prc' ? 'todos' : 'sin_prc')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  dailyFilterType === 'sin_prc'
-                    ? 'bg-purple-950/80 border-purple-400 shadow-lg shadow-purple-500/20 ring-2 ring-purple-400'
-                    : 'bg-slate-900/80 border-slate-800 hover:border-purple-500/40 hover:bg-slate-850'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-purple-400" />
-                    Sin PRC Vinculado
-                  </span>
-                  {auditDateSinPrcCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-400/20 text-purple-300 font-bold border border-purple-400/30">
-                      Hoy: {auditDateSinPrcCount}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-2xl font-black text-purple-300 font-mono">{countSinPrc}</span>
-                  <span className="text-xs text-slate-400">presupuesto sin PRC</span>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {dailyFilterType === 'sin_prc' ? '✓ Filtro activo (Clic para ver todos)' : 'Clic para filtrar sin PRC'}
-                </p>
-              </button>
-            </div>
           </div>
 
-          {/* TABLA PRINCIPAL DE CONTROL DIARIO EN MODO LISTA */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-4">
+          {/* ZONA 4: TABLA PRINCIPAL DE CONTROL DIARIO EN MODO LISTA */}
+          <div className="alon-zone-grid p-5 md:p-6 space-y-4">
             {/* BARRA DE FILTROS & BÚSQUEDA */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div>
@@ -3131,13 +3890,7 @@ export default function LaborLogs() {
                       return (
                         <tr 
                           key={`${item.worker.name}-${item.type}`} 
-                          onClick={(e) => {
-                            if (e.target.closest('button') || e.target.closest('select') || e.target.tagName === 'INPUT') return
-                            if (item.logs && item.logs.length > 0) {
-                              toggleSelectAllLogs(item.logs.map(l => l.id))
-                            }
-                          }}
-                          className={`transition-colors cursor-pointer select-none ${
+                          className={`transition-colors select-none ${
                             isSelected 
                               ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' 
                               : isSinCarga ? 'bg-rose-950/10 hover:bg-rose-950/20' : isIncompleta ? 'bg-amber-950/10 hover:bg-amber-950/20' : 'hover:bg-slate-800/30'
@@ -3302,7 +4055,7 @@ export default function LaborLogs() {
                             )}
                           </td>
 
-                          {/* Rubro(s) */}
+                          {/* Rubro(s) (Doble clic editable) */}
                           <td className="py-2.5 px-3 align-top">
                             {item.logs.length === 0 ? (
                               <span className="text-slate-600 text-[11px]">-</span>
@@ -3311,17 +4064,37 @@ export default function LaborLogs() {
                                 {item.logs.map(l => {
                                   const isLogFeriado = (l.rubro || '').toLowerCase().includes('feriado')
                                   return (
-                                    <div key={l.id} className="h-6 flex items-center">
-                                      <span 
-                                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium truncate max-w-[130px] ${
-                                          isLogFeriado 
-                                            ? 'bg-amber-950 text-amber-300 border border-amber-700/80 font-bold' 
-                                            : 'bg-slate-800 text-slate-300'
-                                        }`}
-                                        title={l.rubro || 'General'}
-                                      >
-                                        {l.rubro || 'General'}
-                                      </span>
+                                    <div
+                                      key={l.id}
+                                      onDoubleClick={() => activateHorasCell(l, 'rubro')}
+                                      className="h-6 flex items-center cursor-pointer"
+                                      title="Doble clic para editar Rubro"
+                                    >
+                                      {inlineLogEdit.id === l.id && inlineLogEdit.field === 'rubro' ? (
+                                        <input
+                                          type="text"
+                                          list="rubros-list-carga"
+                                          autoFocus
+                                          value={inlineLogEdit.value}
+                                          onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') saveInlineLogEdit(l.id, 'rubro', inlineLogEdit.value)
+                                            if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                          }}
+                                          onBlur={() => saveInlineLogEdit(l.id, 'rubro', inlineLogEdit.value)}
+                                          className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none"
+                                        />
+                                      ) : (
+                                        <span 
+                                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium truncate max-w-[130px] hover:ring-1 hover:ring-cyan-400 ${
+                                            isLogFeriado 
+                                              ? 'bg-amber-950 text-amber-300 border border-amber-700/80 font-bold' 
+                                              : 'bg-slate-800 text-slate-300'
+                                          }`}
+                                        >
+                                          {l.rubro || 'General'}
+                                        </span>
+                                      )}
                                     </div>
                                   )
                                 })}
@@ -3329,26 +4102,121 @@ export default function LaborLogs() {
                             )}
                           </td>
 
-                          {/* Horas Normales */}
+                          {/* Horas Normales (Doble clic editable) */}
                           <td className="py-2.5 px-2 text-center font-mono align-top">
-                            {item.totalNormal > 0 ? (
-                              <span>
-                                {item.totalNormal}
-                                {item.targetHours && <span className="text-slate-500 text-[10px]">/{item.targetHours}h</span>}
-                              </span>
-                            ) : (
+                            {item.logs.length === 0 ? (
                               <span className="text-slate-600">-</span>
+                            ) : (
+                              <div className="space-y-2 py-0.5">
+                                {item.logs.map(l => (
+                                  <div
+                                    key={l.id}
+                                    onDoubleClick={() => activateHorasCell(l, 'hours_normal')}
+                                    className="h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
+                                    title="Doble clic para editar Horas Normales"
+                                  >
+                                    {inlineLogEdit.id === l.id && inlineLogEdit.field === 'hours_normal' ? (
+                                      <input
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        max="24"
+                                        autoFocus
+                                        value={inlineLogEdit.value}
+                                        onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') saveInlineLogEdit(l.id, 'hours_normal', inlineLogEdit.value)
+                                          if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                        }}
+                                        onBlur={() => saveInlineLogEdit(l.id, 'hours_normal', inlineLogEdit.value)}
+                                        className="w-12 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
+                                      />
+                                    ) : (
+                                      <span>
+                                        {l.hours_normal ?? l.hours_worked ?? 0}
+                                        {item.logs.length === 1 && item.targetHours && <span className="text-slate-500 text-[10px]">/{item.targetHours}h</span>}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </td>
 
-                          {/* 50% */}
+                          {/* 50% (Doble clic editable) */}
                           <td className="py-2.5 px-2 text-center font-mono text-cyan-400 align-top">
-                            {item.total50 > 0 ? item.total50 : <span className="text-slate-600">-</span>}
+                            {item.logs.length === 0 ? (
+                              <span className="text-slate-600">-</span>
+                            ) : (
+                              <div className="space-y-2 py-0.5">
+                                {item.logs.map(l => (
+                                  <div
+                                    key={l.id}
+                                    onDoubleClick={() => activateHorasCell(l, 'hours_extra_50')}
+                                    className="h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
+                                    title="Doble clic para editar Horas 50%"
+                                  >
+                                    {inlineLogEdit.id === l.id && inlineLogEdit.field === 'hours_extra_50' ? (
+                                      <input
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        max="24"
+                                        autoFocus
+                                        value={inlineLogEdit.value}
+                                        onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') saveInlineLogEdit(l.id, 'hours_extra_50', inlineLogEdit.value)
+                                          if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                        }}
+                                        onBlur={() => saveInlineLogEdit(l.id, 'hours_extra_50', inlineLogEdit.value)}
+                                        className="w-12 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
+                                      />
+                                    ) : (
+                                      <span>{l.hours_extra_50 || '-'}</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </td>
 
-                          {/* 100% */}
+                          {/* 100% (Doble clic editable) */}
                           <td className="py-2.5 px-2 text-center font-mono text-amber-400 align-top">
-                            {item.total100 > 0 ? item.total100 : <span className="text-slate-600">-</span>}
+                            {item.logs.length === 0 ? (
+                              <span className="text-slate-600">-</span>
+                            ) : (
+                              <div className="space-y-2 py-0.5">
+                                {item.logs.map(l => (
+                                  <div
+                                    key={l.id}
+                                    onDoubleClick={() => activateHorasCell(l, 'hours_extra_100')}
+                                    className="h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
+                                    title="Doble clic para editar Horas 100%"
+                                  >
+                                    {inlineLogEdit.id === l.id && inlineLogEdit.field === 'hours_extra_100' ? (
+                                      <input
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        max="24"
+                                        autoFocus
+                                        value={inlineLogEdit.value}
+                                        onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') saveInlineLogEdit(l.id, 'hours_extra_100', inlineLogEdit.value)
+                                          if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
+                                        }}
+                                        onBlur={() => saveInlineLogEdit(l.id, 'hours_extra_100', inlineLogEdit.value)}
+                                        className="w-12 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
+                                      />
+                                    ) : (
+                                      <span>{l.hours_extra_100 || '-'}</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </td>
 
                           {/* Total Día */}
@@ -4294,22 +5162,23 @@ export default function LaborLogs() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
                     <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
-                    2. OT Habilitada (En Ejecución)
+                    2. OT (Opcional: puede dejarse en blanco)
                   </label>
                   <select
-                    required
-                    value={quickLogWorker.work_order_id}
+                    value={quickLogWorker.work_order_id || ''}
                     onChange={(e) => setQuickLogWorker({ ...quickLogWorker, work_order_id: e.target.value })}
-                    className="w-full bg-slate-950 border border-emerald-500/40 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400"
+                    className={`w-full bg-slate-950 border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-emerald-400 ${
+                      !quickLogWorker.work_order_id ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-emerald-500/40 text-white'
+                    }`}
                   >
+                    <option value="" className="bg-slate-900 text-amber-300 font-bold">
+                      -- ⚠️ Dejar OT en blanco (Pendiente de apertura) --
+                    </option>
                     {(() => {
                       const currentShipId = quickLogWorker.ship_id || ships[0]?.id
                       const filteredWos = getEnabledWosForWorkerInShip(currentShipId, quickLogWorker.name, quickLogWorker.type)
-                      if (filteredWos.length === 0) {
-                        return <option value="">🔒 Sin OTs en ejecución habilitadas en este barco</option>
-                      }
                       return filteredWos.map(wo => (
-                        <option key={wo.id} value={wo.id} className="bg-slate-900">
+                        <option key={wo.id} value={wo.id} className="bg-slate-900 text-white">
                           {wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}
                         </option>
                       ))
@@ -4947,27 +5816,58 @@ export default function LaborLogs() {
         title="Asignar Buque y Orden de Trabajo (Horas)"
         onSave={async ({ shipId, workOrderId }) => {
           if (shipPickerModal.logId) {
+            const logId = shipPickerModal.logId
+            const targetLog = recentLogs.find(l => l.id === logId)
+            if (targetLog && horasGrid?.pushUndoAction) {
+              horasGrid.pushUndoAction({
+                colKey: 'ship_wo',
+                colLabel: 'Barco / OT',
+                actionLabel: 'Cambio de Buque y OT',
+                previousValues: {
+                  [logId]: {
+                    ship_id: targetLog.ship_id || targetLog.work_orders?.ship_id || null,
+                    work_order_id: targetLog.work_order_id || null
+                  }
+                },
+                newValue: { ship_id: shipId, work_order_id: workOrderId },
+                timestamp: Date.now()
+              })
+            }
+
             const updatePayload = {
               ship_id: shipId,
-              work_order_id: workOrderId, // can be null!
-              updated_at: new Date().toISOString()
+              work_order_id: workOrderId
             }
             if (!workOrderId) {
               updatePayload.approval_status = 'R'
               updatePayload.review_reason = 'Falta Cargar OT (Pendiente de apertura)'
             }
-            const { error } = await supabase
-              .from('labor_logs')
-              .update(updatePayload)
-              .eq('id', shipPickerModal.logId)
-            if (error) throw error
-            setStatusMessage({
-              type: 'success',
-              text: workOrderId
-                ? 'Buque y OT asignados exitosamente.'
-                : 'Buque asignado. OT dejada en blanco (sumada a KPI Falta Cargar OT).'
-            })
-            loadInitialData()
+
+            setRecentLogs(prev =>
+              prev.map(l =>
+                l.id === logId
+                  ? { ...l, ...updatePayload, ...buildLocalRelationsForLog(shipId, workOrderId) }
+                  : l
+              )
+            )
+
+            try {
+              const { error } = await supabase
+                .from('labor_logs')
+                .update(updatePayload)
+                .eq('id', logId)
+              if (error) throw error
+              setStatusMessage({
+                type: 'success',
+                text: workOrderId
+                  ? 'Buque y OT asignados exitosamente.'
+                  : 'Buque asignado. OT dejada en blanco (sumada a KPI Falta Cargar OT).'
+              })
+            } catch (err) {
+              console.error('Error guardando Buque/OT en Horas:', err)
+              setStatusMessage({ type: 'error', text: 'Error al guardar Buque/OT: ' + err.message })
+              loadInitialData()
+            }
           } else if (shipPickerModal.rowIndex !== null) {
             setOperariosRows(prev =>
               prev.map((r, i) =>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
@@ -270,6 +270,7 @@ export default function Terceros() {
   const [services, setServices] = useState([])
   const [ships, setShips] = useState([])
   const [workOrders, setWorkOrders] = useState([])
+  const [workItems, setWorkItems] = useState([])
   const [contractors, setContractors] = useState([])
   const [macroVariables, setMacroVariables] = useState([])
   const [voucherHistory, setVoucherHistory] = useState([])
@@ -361,13 +362,15 @@ export default function Terceros() {
         srvRes,
         shpRes,
         woRes,
+        wiRes,
         wkrRes,
         mvRes,
         vhRes
       ] = await Promise.all([
         supabase.from('third_party_services').select('*').order('created_at', { ascending: false }),
         supabase.from('ships').select('id, name, vessel_type, current_location').order('name'),
-        supabase.from('work_orders').select('id, ot_number, title, ship_id, status, is_tabulated').order('ot_number'),
+        supabase.from('work_orders').select('id, ot_number, title, description, ship_id, status, is_tabulated').order('ot_number'),
+        supabase.from('work_items').select('id, work_order_id, contractors, description'),
         supabase.from('workers').select('id, name, trade, work_group, admin_center, can_charge_third_party').eq('can_charge_third_party', true).order('name'),
         supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
         supabase.from('third_party_voucher_history').select('*').order('created_at', { ascending: false })
@@ -383,6 +386,7 @@ export default function Terceros() {
       setServices(srvRes.data || [])
       setShips(shpRes.data || [])
       setWorkOrders(woRes.data || [])
+      setWorkItems(wiRes?.data || [])
       setContractors(wkrRes.data || [])
       setMacroVariables(mvRes.data || [])
       setVoucherHistory(vhRes.data || [])
@@ -907,48 +911,80 @@ export default function Terceros() {
     }
   }, [services])
 
-  // Columnas interactivas estilo Hoja de Cálculo
+  // Columnas interactivas estilo Hoja de Cálculo (alineadas 1:1 con las 7 columnas editables de la tabla)
   const spreadsheetColumns = useMemo(() => [
     { key: 'service_date', label: 'Fecha', readOnly: false },
-    { key: 'ship_wo', label: 'Barco / OT', readOnly: false },
+    {
+      key: 'ship_wo',
+      label: 'Barco / OT',
+      readOnly: false,
+      getValue: (row) => ({ ship_id: row.ship_id || null, work_order_id: row.work_order_id || null }),
+      formatDisplay: (val, row) => {
+        const sName = shipMap.get(val?.ship_id || row?.ship_id)?.name || 'Sin Buque'
+        const woObj = otMap.get(val?.work_order_id || row?.work_order_id)
+        return `${sName} / ${woObj?.ot_number || 'Sin OT'}`
+      }
+    },
     { key: 'contractor_name', label: 'Contratista', readOnly: false },
-    { key: 'trade', label: 'Rubro', readOnly: false },
     { key: 'amount_ars', label: 'Importe AR$', readOnly: !canEditAmounts },
     { key: 'voucher_type', label: 'Comprobante', readOnly: false },
     { key: 'voucher_number', label: 'Nº Comprobante', readOnly: false },
     { key: 'direct_observations', label: 'Comentarios', readOnly: false }
-  ], [canEditAmounts])
+  ], [canEditAmounts, shipMap, otMap])
 
-  // Actualización batch para comandos de hoja de cálculo (Ctrl+D, Ctrl+V, Drag Fill, Ctrl+Z)
+  // Actualización batch para comandos de hoja de cálculo (Ctrl+D, Ctrl+V, Drag Fill, Ctrl+Z, Ctrl+Y)
   const handleSpreadsheetBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
     if (isRevert && revertMap) {
       setServices((prev) =>
         prev.map((s) => {
           if (revertMap[s.id] !== undefined) {
-            if (colKey === 'ship_wo') {
-              return { ...s, ship_id: revertMap[s.id].ship_id, work_order_id: revertMap[s.id].work_order_id }
+            const oldVal = revertMap[s.id]
+            if (colKey === 'ship_wo' && oldVal && typeof oldVal === 'object') {
+              return { ...s, ship_id: oldVal.ship_id ?? null, work_order_id: oldVal.work_order_id ?? null }
             }
-            return { ...s, [colKey]: revertMap[s.id] }
+            if (colKey === 'amount_ars') {
+              const num = parseFloat(oldVal) || 0
+              const rate = Number(s.usd_rate) || 1500
+              const usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+              return { ...s, amount_ars: num, amount_usd: usd }
+            }
+            if (colKey === 'service_date') {
+              const rate = getDollarRateForDate(oldVal, macroVariables) || 1500
+              const num = parseFloat(s.amount_ars) || 0
+              const usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+              return { ...s, service_date: oldVal, entry_date: oldVal, usd_rate: rate, amount_usd: usd }
+            }
+            return { ...s, [colKey]: oldVal }
           }
           return s
         })
       )
       try {
-        for (const [id, oldVal] of Object.entries(revertMap)) {
-          if (colKey === 'ship_wo') {
-            await supabase.from('third_party_services').update({
-              ship_id: oldVal.ship_id,
-              work_order_id: oldVal.work_order_id,
-              updated_at: new Date().toISOString()
-            }).eq('id', id)
-          } else {
-            await supabase.from('third_party_services').update({
-              [colKey]: oldVal,
-              updated_at: new Date().toISOString()
-            }).eq('id', id)
-          }
-        }
-        showFeedback('success', `Deshecho: valores restaurados en ${Object.keys(revertMap).length} filas.`)
+        await Promise.all(
+          Object.entries(revertMap).map(([id, oldVal]) => {
+            const targetSrv = services.find((x) => x.id === id)
+            let payload = { updated_at: new Date().toISOString() }
+            if (colKey === 'ship_wo' && oldVal && typeof oldVal === 'object') {
+              payload.ship_id = oldVal.ship_id ?? null
+              payload.work_order_id = oldVal.work_order_id ?? null
+            } else if (colKey === 'amount_ars') {
+              const num = parseFloat(oldVal) || 0
+              const rate = Number(targetSrv?.usd_rate) || 1500
+              payload.amount_ars = num
+              payload.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+            } else if (colKey === 'service_date') {
+              const rate = getDollarRateForDate(oldVal, macroVariables) || 1500
+              const num = parseFloat(targetSrv?.amount_ars) || 0
+              payload.service_date = oldVal
+              payload.entry_date = oldVal
+              payload.usd_rate = rate
+              payload.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+            } else {
+              payload[colKey] = oldVal
+            }
+            return supabase.from('third_party_services').update(payload).eq('id', id)
+          })
+        )
       } catch (err) {
         console.error('Error al revertir:', err)
         showFeedback('error', 'Error al revertir: ' + err.message)
@@ -957,15 +993,40 @@ export default function Terceros() {
       return
     }
 
+    if (!targetIds || targetIds.length === 0) return
     const targetIdSet = new Set(targetIds)
+
+    // Resolver rubro automático si se copia/rellena contratista
+    let autoTradeForContractor = null
+    if (colKey === 'contractor_name' && typeof newValue === 'string') {
+      const upperName = newValue.trim().toUpperCase()
+      const foundC = contractors.find((c) => c.name?.toUpperCase().trim() === upperName)
+      if (foundC && foundC.trade && foundC.trade.toUpperCase() !== 'MANUAL') {
+        autoTradeForContractor = foundC.trade.toUpperCase()
+      }
+    }
+
     setServices((prev) =>
       prev.map((s) => {
         if (targetIdSet.has(s.id)) {
+          if (colKey === 'ship_wo' && newValue && typeof newValue === 'object') {
+            return { ...s, ship_id: newValue.ship_id ?? null, work_order_id: newValue.work_order_id ?? null }
+          }
           if (colKey === 'amount_ars') {
             const num = parseFloat(newValue) || 0
             const rate = Number(s.usd_rate) || 1500
             const usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
             return { ...s, amount_ars: num, amount_usd: usd }
+          }
+          if (colKey === 'service_date') {
+            const rate = getDollarRateForDate(newValue, macroVariables) || 1500
+            const num = parseFloat(s.amount_ars) || 0
+            const usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+            return { ...s, service_date: newValue, entry_date: newValue, usd_rate: rate, amount_usd: usd }
+          }
+          if (colKey === 'contractor_name') {
+            const cleanName = String(newValue || '').trim().toUpperCase()
+            return { ...s, contractor_name: cleanName, ...(autoTradeForContractor ? { trade: autoTradeForContractor } : {}) }
           }
           return { ...s, [colKey]: newValue }
         }
@@ -974,26 +1035,103 @@ export default function Terceros() {
     )
 
     try {
-      const updatePayload = { [colKey]: newValue, updated_at: new Date().toISOString() }
-      const { error } = await supabase
-        .from('third_party_services')
-        .update(updatePayload)
-        .in('id', targetIds)
-      if (error) throw error
-      showFeedback('success', `Se actualizaron ${targetIds.length} fila(s) con "${newValue}".`)
+      if (colKey === 'amount_ars' || colKey === 'service_date') {
+        // Actualizar individualmente para preservar el cálculo exacto de amount_usd por fila
+        await Promise.all(
+          targetIds.map((id) => {
+            const targetSrv = services.find((x) => x.id === id)
+            let rowPayload = { updated_at: new Date().toISOString() }
+            if (colKey === 'amount_ars') {
+              const num = parseFloat(newValue) || 0
+              const rate = Number(targetSrv?.usd_rate) || 1500
+              rowPayload.amount_ars = num
+              rowPayload.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+            } else {
+              const rate = getDollarRateForDate(newValue, macroVariables) || 1500
+              const num = parseFloat(targetSrv?.amount_ars) || 0
+              rowPayload.service_date = newValue
+              rowPayload.entry_date = newValue
+              rowPayload.usd_rate = rate
+              rowPayload.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+            }
+            return supabase.from('third_party_services').update(rowPayload).eq('id', id)
+          })
+        )
+      } else {
+        let updatePayload = { updated_at: new Date().toISOString() }
+        if (colKey === 'ship_wo' && newValue && typeof newValue === 'object') {
+          updatePayload.ship_id = newValue.ship_id ?? null
+          updatePayload.work_order_id = newValue.work_order_id ?? null
+        } else if (colKey === 'contractor_name') {
+          updatePayload.contractor_name = String(newValue || '').trim().toUpperCase()
+          if (autoTradeForContractor) updatePayload.trade = autoTradeForContractor
+        } else {
+          updatePayload[colKey] = newValue
+        }
+        const { error } = await supabase
+          .from('third_party_services')
+          .update(updatePayload)
+          .in('id', targetIds)
+        if (error) throw error
+      }
+      showFeedback('success', `Se actualizaron ${targetIds.length} fila(s).`)
     } catch (err) {
       console.error('Error en lote Terceros:', err)
       showFeedback('error', 'Error al actualizar filas: ' + err.message)
       fetchData()
     }
-  }, [showFeedback, fetchData])
+  }, [services, contractors, macroVariables])
+
+  // Activar edición de celda con doble clic o Enter / F2
+  const activateTercerosCell = useCallback((srv, colKey) => {
+    if (!srv) return
+    if (colKey === 'ship_wo') {
+      setPickerModal({
+        isOpen: true,
+        serviceId: srv.id,
+        shipId: srv.ship_id || '',
+        workOrderId: srv.work_order_id || '',
+        contractorName: srv.contractor_name || ''
+      })
+      return
+    }
+    if (colKey === 'amount_ars') {
+      if (!canEditAmounts) {
+        showFeedback('error', 'No tienes permisos para modificar importes monetarios.')
+        return
+      }
+      setInlineEdit({ id: srv.id, field: 'amount_ars', value: srv.amount_ars || '' })
+      return
+    }
+    if (colKey === 'service_date') {
+      setInlineEdit({ id: srv.id, field: 'service_date', value: srv.service_date || srv.entry_date || '' })
+      return
+    }
+    if (colKey === 'contractor_name') {
+      setInlineEdit({ id: srv.id, field: 'contractor_name', value: srv.contractor_name || '' })
+      return
+    }
+    if (colKey === 'voucher_type') {
+      setInlineEdit({ id: srv.id, field: 'voucher_type', value: srv.voucher_type || 'PRC' })
+      return
+    }
+    if (colKey === 'voucher_number') {
+      setInlineEdit({ id: srv.id, field: 'voucher_number', value: srv.voucher_number || '' })
+      return
+    }
+    if (colKey === 'direct_observations') {
+      setInlineEdit({ id: srv.id, field: 'direct_observations', value: srv.direct_observations || '' })
+    }
+  }, [canEditAmounts])
 
   // Hook central de Hoja de Cálculo
   const grid = useSpreadsheetGrid({
     rows: filteredServices,
     columns: spreadsheetColumns,
     getRowId: (row) => row.id,
+    storageKey: 'aloncar_grid_terceros',
     onBatchUpdate: handleSpreadsheetBatchUpdate,
+    onCellActivate: (row, colDef) => activateTercerosCell(row, colDef.key),
     onFocusSearch: () => {
       searchInputRef.current?.focus()
       searchInputRef.current?.select()
@@ -1054,29 +1192,33 @@ export default function Terceros() {
       })
     }
 
+    const extraFields = {}
+    let cleanedValue = newValue
+    if (field === 'service_date') {
+      const rate = getDollarRateForDate(newValue, macroVariables) || 1500
+      const num = parseFloat(targetService.amount_ars) || 0
+      extraFields.entry_date = newValue
+      extraFields.usd_rate = rate
+      extraFields.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+    } else if (field === 'amount_ars') {
+      const num = parseFloat(newValue) || 0
+      const rate = Number(targetService.usd_rate) || 1500
+      cleanedValue = num
+      extraFields.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+    } else if (field === 'contractor_name') {
+      cleanedValue = String(newValue || '').trim().toUpperCase()
+      const foundC = contractors.find((c) => c.name?.toUpperCase().trim() === cleanedValue)
+      if (foundC && foundC.trade && foundC.trade.toUpperCase() !== 'MANUAL') {
+        extraFields.trade = foundC.trade.toUpperCase()
+      }
+    }
+
     setServices((prev) =>
-      prev.map((s) => {
-        if (s.id === serviceId) {
-          if (field === 'amount_ars') {
-            const num = parseFloat(newValue) || 0
-            const rate = Number(s.usd_rate) || 1500
-            const usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
-            return { ...s, amount_ars: num, amount_usd: usd }
-          }
-          return { ...s, [field]: newValue }
-        }
-        return s
-      })
+      prev.map((s) => (s.id === serviceId ? { ...s, [field]: cleanedValue, ...extraFields } : s))
     )
 
     try {
-      const updateData = { [field]: newValue, updated_at: new Date().toISOString() }
-      if (field === 'amount_ars') {
-        const num = parseFloat(newValue) || 0
-        const rate = Number(targetService.usd_rate) || 1500
-        updateData.amount_ars = num
-        updateData.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
-      }
+      const updateData = { [field]: cleanedValue, ...extraFields, updated_at: new Date().toISOString() }
       const { error } = await supabase
         .from('third_party_services')
         .update(updateData)
@@ -1306,8 +1448,8 @@ export default function Terceros() {
         </div>
       </div>
 
-      {/* BANNER DINÁMICO DE INSTRUCCIONES POR PUESTO DE TRABAJO */}
-      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 md:p-5 text-xs text-slate-300 space-y-2">
+      {/* ZONA 1: BANNER DINÁMICO DE CONTEXTO POR PUESTO DE TRABAJO */}
+      <div className="alon-zone-context p-4 md:p-5 text-xs text-slate-300 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-primary font-bold tracking-wide uppercase text-[11px]">
             <Sparkles className="w-4 h-4 text-primary" />
@@ -1346,11 +1488,11 @@ export default function Terceros() {
       </div>
 
       {/* ZONA 2: RADAR OPERATIVO & ALERTAS EN VIVO (ESTANDARIZADO) */}
-      <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+      <div className="alon-zone-kpis p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-black uppercase tracking-wider text-cyan-400">📊 RADAR OPERATIVO & ALERTAS EN VIVO</span>
-            <span className="text-[10px] text-slate-500 font-mono">Monitoreo de inconsistencias contables y fiscales</span>
+            <span className="text-xs font-black uppercase tracking-wider text-amber-400">📊 RADAR DE KPIs Y ALERTAS EN VIVO</span>
+            <span className="text-[10px] text-slate-400 font-mono">Clic en cualquier indicador para filtrar</span>
           </div>
           {kpiFilter !== 'todos' && (
             <button
@@ -1485,8 +1627,8 @@ export default function Terceros() {
         </div>
       </div>
 
-      {/* BARRA DE FILTROS & BÚSQUEDA */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+      {/* ZONA 3: BARRA DE FILTROS, BÚSQUEDA Y COMANDOS DE PLANILLA */}
+      <div className="alon-zone-toolbar p-4 space-y-3">
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           {/* Buscador */}
           <div className="relative flex-1">
@@ -1511,9 +1653,33 @@ export default function Terceros() {
             )}
           </div>
 
-          <div className="hidden xl:flex items-center gap-1.5 text-[10px] font-mono text-slate-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
-            <span className="text-cyan-400 font-bold">⌨️ Atajos:</span>
-            <span>Doble Clic (Editar) | Ctrl+C/V/D | Ctrl+Z/Y</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {grid.canUndo && (
+              <button
+                type="button"
+                onClick={grid.undo}
+                className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Deshacer último cambio (Ctrl+Z)"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Deshacer (Ctrl+Z)</span>
+              </button>
+            )}
+            {grid.canRedo && (
+              <button
+                type="button"
+                onClick={grid.redo}
+                className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Rehacer cambio (Ctrl+Y)"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                <span>Rehacer (Ctrl+Y)</span>
+              </button>
+            )}
+            <div className="hidden xl:flex items-center gap-1.5 text-[10px] font-mono text-slate-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+              <span className="text-cyan-400 font-bold">⌨️ Grid:</span>
+              <span>Doble Clic / Enter | Ctrl+C/V/D | Ctrl+Z/Y</span>
+            </div>
           </div>
 
           {/* Toggle de Vistas Universales (Filas / Fichas) */}
@@ -1627,12 +1793,41 @@ export default function Terceros() {
           )}
         </div>
       ) : viewMode === 'filas' ? (
-        /* VISTA FILAS (TABLA DENSA CON CABECERA CONGELADA Y STATUS BAR TIPO EXCEL) */
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl flex flex-col overflow-hidden">
-          {/* Contenedor scrolleable vertical con encabezado congelado tipo Excel */}
-          <div className="overflow-y-auto max-h-[calc(100vh-270px)] overflow-x-hidden">
+        /* ZONA 4: PLANILLA / HOJA DE CÁLCULO EDITABLE DE TERCEROS */
+        <div className="alon-zone-grid flex flex-col">
+          <div className="alon-grid-ribbon">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px]">
+                {grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : 'MODO PLANILLA'}
+              </span>
+              <span className="text-slate-400">
+                Doble clic o <strong className="text-slate-200">Enter</strong> para editar celda • <strong className="text-slate-200">Ctrl+D</strong> o esquina celeste para rellenar hacia abajo
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
+              <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
+              <span>•</span>
+              <span>{filteredServices.length} comprobantes</span>
+            </div>
+          </div>
+
+          <datalist id="terceros-contractors-datalist">
+            {contractors.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.trade || ''}
+              </option>
+            ))}
+          </datalist>
+
+          {/* Contenedor scrolleable vertical con encabezado congelado y teclado conectado */}
+          <div
+            tabIndex={0}
+            onKeyDown={grid.handleKeyDown}
+            ref={grid.gridContainerRef}
+            className="overflow-y-auto max-h-[calc(100vh-270px)] overflow-x-hidden focus:outline-none"
+          >
             <table className="w-full text-left text-xs border-collapse table-fixed">
-              <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-800 shadow-sm backdrop-blur-md">
+              <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
                 <tr>
                   {/* Selector / Checkbox Maestro */}
                   <th className="py-3 px-2 w-9 text-center bg-slate-950">
@@ -1803,34 +1998,62 @@ export default function Terceros() {
                         return (
                           <td
                             {...cp.domProps}
-                            onDoubleClick={() => setInlineEdit({ id: srv.id, field: 'contractor_name', value: srv.contractor_name || '' })}
-                            className={`py-2.5 px-2 font-sans truncate ${cp.className}`}
+                            onDoubleClick={() => activateTercerosCell(srv, 'contractor_name')}
+                            className={`py-2.5 px-2 font-sans truncate cursor-pointer ${cp.className}`}
+                            title="Doble clic para editar Contratista (o doble clic en el rubro para cambiar Rubro)"
                           >
                             {inlineEdit.id === srv.id && inlineEdit.field === 'contractor_name' ? (
                               <input
                                 type="text"
+                                list="terceros-contractors-datalist"
                                 autoFocus
                                 value={inlineEdit.value}
                                 onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveInlineEdit(srv.id, 'contractor_name', inlineEdit.value)
+                                  if (e.key === 'Enter' && inlineEdit.value.trim()) saveInlineEdit(srv.id, 'contractor_name', inlineEdit.value)
                                   if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
                                 }}
-                                onBlur={() => saveInlineEdit(srv.id, 'contractor_name', inlineEdit.value)}
+                                onBlur={() => {
+                                  if (inlineEdit.value.trim()) saveInlineEdit(srv.id, 'contractor_name', inlineEdit.value)
+                                  else setInlineEdit({ id: null, field: null, value: '' })
+                                }}
                                 className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white outline-none font-bold uppercase"
                               />
+                            ) : inlineEdit.id === srv.id && inlineEdit.field === 'trade' ? (
+                              <select
+                                autoFocus
+                                value={inlineEdit.value}
+                                onChange={(e) => saveInlineEdit(srv.id, 'trade', e.target.value)}
+                                onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                }}
+                                className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white outline-none font-bold"
+                              >
+                                <option value="">-- Elegir Rubro --</option>
+                                {OFFICIAL_TRADES.map((t) => (
+                                  <option key={t} value={t}>{t}</option>
+                                ))}
+                              </select>
                             ) : (
                               <div>
                                 <div className="font-bold text-slate-100 uppercase tracking-wide truncate" title={srv.contractor_name}>
                                   {srv.contractor_name}
                                 </div>
-                                <div className="mt-0.5 truncate">
+                                <div
+                                  className="mt-0.5 truncate"
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation()
+                                    setInlineEdit({ id: srv.id, field: 'trade', value: effectiveTrade || '' })
+                                  }}
+                                  title="Doble clic aquí para cambiar el Rubro"
+                                >
                                   {effectiveTrade ? (
-                                    <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium font-mono truncate max-w-full">
+                                    <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 hover:border-cyan-500/50 text-slate-300 border border-slate-700 font-medium font-mono truncate max-w-full">
                                       {effectiveTrade}
                                     </span>
                                   ) : (
-                                    <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro</span>
+                                    <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro (Doble clic)</span>
                                   )}
                                 </div>
                               </div>
@@ -2605,20 +2828,22 @@ export default function Terceros() {
                 ) : null}
               </div>
 
-              {/* PASO 3: SELECCIONAR ORDEN DE TRABAJO (OT) */}
+              {/* PASO 3: SELECCIONAR ORDEN DE TRABAJO (OT - OPCIONAL) */}
               <div className="space-y-1">
                 <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>3° Orden de Trabajo (OT) en Ejecución *</span>
+                  <span>3° Orden de Trabajo (OT - Opcional: puede dejarse en blanco)</span>
                 </label>
                 <select
                   value={formData.work_order_id}
                   onChange={(e) => setFormData((prev) => ({ ...prev, work_order_id: e.target.value }))}
                   disabled={!formData.ship_id}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs disabled:opacity-50"
+                  className={`w-full bg-slate-950 border rounded-xl px-3 py-2 focus:outline-none focus:border-primary text-xs disabled:opacity-50 ${
+                    formData.ship_id && !formData.work_order_id ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-slate-700 text-white'
+                  }`}
                 >
                   <option value="">
-                    {!formData.ship_id ? '-- Primero seleccione un buque --' : '-- Seleccionar OT del buque --'}
+                    {!formData.ship_id ? '-- Primero seleccione un buque --' : '-- ⚠️ Dejar OT en blanco (Pendiente de apertura) --'}
                   </option>
                   {availableWorkOrdersForSelectedShip.map((wo) => (
                     <option key={wo.id} value={wo.id}>
@@ -3207,6 +3432,7 @@ export default function Terceros() {
         onClose={() => setPickerModal({ isOpen: false, serviceId: null, shipId: '', workOrderId: '', contractorName: '' })}
         ships={ships}
         workOrders={workOrders}
+        workItems={workItems}
         currentShipId={pickerModal.shipId}
         currentWorkOrderId={pickerModal.workOrderId}
         contractorName={pickerModal.contractorName}

@@ -10,3 +10,56 @@
     background-attachment: fixed;
   }
 }
+
+@layer components {
+  /* ==========================================================================
+     SISTEMA ESTÁNDAR DE DIFERENCIACIÓN VISUAL DE SECTORES (4 ZONAS + CARGA)
+     Garantiza que en todos los módulos del ERP el usuario identifique al
+     instante dónde está el Rol/Contexto, los KPIs/Alertas, la Carga de Datos,
+     la Barra de Búsqueda/Filtros y la Planilla Editable estilo Sheets.
+     ========================================================================== */
+
+  /* ZONA 1: Contexto Operativo / Terminal de Rol (Acento Azul Cielo) */
+  .alon-zone-context {
+    @apply relative rounded-2xl p-4 border border-sky-500/30 border-l-4 border-l-sky-400 shadow-md;
+    background: linear-gradient(135deg, rgba(12, 74, 110, 0.28) 0%, rgba(15, 23, 42, 0.88) 45%, rgba(15, 23, 42, 0.82) 100%);
+  }
+
+  /* ZONA 2: Radar Operativo de KPIs y Alertas en Vivo (Acento Ámbar Universal) */
+  .alon-zone-kpis {
+    @apply relative rounded-2xl p-4 border border-amber-500/35 border-l-4 border-l-amber-400 shadow-lg;
+    background: linear-gradient(135deg, rgba(120, 53, 15, 0.26) 0%, rgba(15, 23, 42, 0.92) 45%, rgba(2, 6, 23, 0.94) 100%);
+    box-shadow: 0 8px 24px -6px rgba(245, 158, 11, 0.12);
+  }
+
+  /* ZONA DE CARGA: Formularios de Carga Rápida / Cuadrillas / Tarifas (Acento Índigo) */
+  .alon-zone-entry {
+    @apply relative rounded-2xl p-5 border border-indigo-500/35 border-l-4 border-l-indigo-400 shadow-lg;
+    background: linear-gradient(135deg, rgba(49, 46, 129, 0.26) 0%, rgba(15, 23, 42, 0.92) 50%, rgba(15, 23, 42, 0.88) 100%);
+    box-shadow: 0 8px 24px -6px rgba(99, 102, 241, 0.12);
+  }
+
+  /* ZONA 3: Barra de Búsqueda, Filtros y Comandos Grid (Acento Cian) */
+  .alon-zone-toolbar {
+    @apply relative rounded-2xl p-3.5 border border-cyan-500/35 border-l-4 border-l-cyan-400 shadow-lg;
+    background: linear-gradient(135deg, rgba(22, 78, 99, 0.34) 0%, rgba(15, 23, 42, 0.95) 50%, rgba(15, 23, 42, 0.92) 100%);
+    box-shadow: 0 8px 24px -6px rgba(6, 182, 212, 0.12);
+  }
+
+  /* ZONA 4: Planilla / Hoja de Cálculo Editable (Acento Esmeralda) */
+  .alon-zone-grid {
+    @apply relative rounded-2xl overflow-hidden border border-emerald-500/30 border-t-2 border-t-emerald-400/80 bg-slate-950/95 shadow-2xl;
+    box-shadow: 0 12px 32px -8px rgba(16, 185, 129, 0.12);
+  }
+
+  /* Cinta superior informativa de la Hoja de Cálculo */
+  .alon-grid-ribbon {
+    @apply px-4 py-1.5 border-b border-emerald-500/25 flex flex-wrap items-center justify-between gap-2 text-[11px];
+    background: linear-gradient(90deg, rgba(6, 78, 59, 0.42) 0%, rgba(15, 23, 42, 0.95) 60%, rgba(2, 6, 23, 0.98) 100%);
+  }
+
+  /* Encabezado fijo (Sticky Header) diferenciado de las filas de datos */
+  .alon-grid-thead {
+    @apply sticky top-0 z-20 bg-slate-900 text-[10px] uppercase font-extrabold text-emerald-200/90 tracking-wider border-b-2 border-emerald-500/40 shadow-sm backdrop-blur-md;
+  }
+}

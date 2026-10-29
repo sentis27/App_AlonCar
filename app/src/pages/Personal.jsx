@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { 
   Users, 
   Plus, 
@@ -36,9 +36,12 @@ import {
   Minus,
   BarChart3,
   SlidersHorizontal,
-  ChevronRight
+  ChevronRight,
+  Undo2,
+  Redo2
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import initialPersonnelData from '../data/initialPersonnel.json'
 
 // Mapeo inicial normalizado para fallback local
@@ -1477,10 +1480,295 @@ export default function Personal() {
     }
   }
 
+  // -------------------------------------------------------------
+  // MODO HOJA DE CÁLCULO (GOOGLE SHEETS / EXCEL): PADRÓN & TARIFARIO
+  // -------------------------------------------------------------
+  const nominaSearchInputRef = useRef(null)
+  const rateSearchInputRef = useRef(null)
+  const [inlineCellEdit, setInlineCellEdit] = useState(null) // { rowId, colKey, value }
+  const [inlineRateEdit, setInlineRateEdit] = useState(null) // { rowId, colKey, value }
+
+  const showGridFeedback = useCallback((type, text) => {
+    setStatusMessage({ type, text })
+    setTimeout(() => setStatusMessage(null), 3200)
+  }, [])
+
+  const nominaColumns = useMemo(() => [
+    { key: 'name', label: 'Nombre y Apellido' },
+    { key: 'category', label: 'Categoría' },
+    { key: 'trade', label: 'Rubro' },
+    { key: 'hourly_rate_ars', label: 'AR$/Hora' },
+    { key: 'work_group', label: 'Grupo de Trabajo' },
+    { key: 'admin_center', label: 'Centro Admin' }
+  ], [])
+
+  const applyWorkerSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
+    const targetWorker = workers.find(w => w.id === rowId)
+    if (!targetWorker) return null
+
+    let dbPatch = {}
+    if (colKey === 'hourly_rate_ars') {
+      const ars = Math.max(0, parseFloat(rawValue) || 0)
+      const usd = dollarRate > 0 ? Number((ars / dollarRate).toFixed(2)) : (parseFloat(targetWorker.hourly_rate_usd) || 0)
+      dbPatch = { hourly_rate_ars: ars, hourly_rate_usd: usd }
+    } else if (colKey === 'admin_center') {
+      const normalized = String(rawValue || '').trim().toUpperCase()
+      const valid = ['ASTILLERO', 'CONTRATISTA', 'TALLER'].includes(normalized) ? normalized : targetWorker.admin_center
+      dbPatch = { admin_center: valid }
+    } else if (colKey === 'category' || colKey === 'trade' || colKey === 'work_group') {
+      dbPatch = { [colKey]: String(rawValue || '').trim().toUpperCase() }
+    } else if (colKey === 'name') {
+      const trimmed = String(rawValue || '').trim()
+      if (!trimmed) return null
+      dbPatch = { name: trimmed }
+    } else {
+      dbPatch = { [colKey]: rawValue }
+    }
+
+    setWorkers(prev => prev.map(w => w.id === rowId ? { ...w, ...dbPatch } : w))
+
+    if (!String(rowId).startsWith('worker-local-')) {
+      const { error } = await supabase
+        .from('workers')
+        .update(dbPatch)
+        .eq('id', rowId)
+      if (error) throw error
+    }
+    return dbPatch[colKey]
+  }, [workers, dollarRate])
+
+  const handleNominaBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    try {
+      if (isRevert && revertMap) {
+        for (const [id, oldVal] of Object.entries(revertMap)) {
+          await applyWorkerSinglePatch(id, colKey, oldVal)
+        }
+      } else if (Array.isArray(targetIds)) {
+        for (const id of targetIds) {
+          await applyWorkerSinglePatch(id, colKey, newValue)
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      showGridFeedback('error', `Error actualizando padrón: ${err.message}`)
+      loadWorkers()
+    }
+  }, [applyWorkerSinglePatch, showGridFeedback])
+
+  const nominaGrid = useSpreadsheetGrid({
+    rows: filteredWorkers,
+    columns: nominaColumns,
+    getRowId: (w) => w.id,
+    storageKey: 'aloncar_grid_personal',
+    onBatchUpdate: handleNominaBatchUpdate,
+    onFocusSearch: () => nominaSearchInputRef.current?.focus(),
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef) return
+      setInlineCellEdit({
+        rowId: row.id,
+        colKey: colDef.key,
+        value: row[colDef.key] ?? ''
+      })
+    },
+    showFeedback: showGridFeedback
+  })
+
+  const commitInlineWorkerEdit = async () => {
+    if (!inlineCellEdit) return
+    const { rowId, colKey, value } = inlineCellEdit
+    const worker = workers.find(w => w.id === rowId)
+    setInlineCellEdit(null)
+    if (!worker) return
+
+    const oldVal = worker[colKey]
+    if (String(oldVal ?? '') === String(value ?? '')) return
+
+    try {
+      const savedVal = await applyWorkerSinglePatch(rowId, colKey, value)
+      if (savedVal !== null) {
+        const colDef = nominaColumns.find(c => c.key === colKey)
+        nominaGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Editar ${colDef?.label || colKey} de ${worker.name}`,
+          previousValues: { [rowId]: oldVal },
+          newValue: savedVal,
+          timestamp: Date.now()
+        })
+        showGridFeedback('success', `Celda actualizada en ${worker.name}. (Ctrl+Z para deshacer)`)
+      }
+    } catch (err) {
+      console.error(err)
+      showGridFeedback('error', `Error al guardar celda: ${err.message}`)
+      loadWorkers()
+    }
+  }
+
+  // Grid 2: Tarifas Guardadas (rate_cards) respetando !rc.is_locked
+  const rateColumns = useMemo(() => [
+    { key: 'rate_oficial_ars', label: 'Oficial AR$' },
+    { key: 'rate_ayudante_ars', label: 'Ayudante AR$' }
+  ], [])
+
+  const canEditRateCell = useCallback((rc, colKeyOrDef) => {
+    if (!rc || rc.is_locked) return false
+    const key = typeof colKeyOrDef === 'string' ? colKeyOrDef : colKeyOrDef?.key
+    if (key === 'rate_ayudante_ars') {
+      return rc.admin_center === 'CONTRATISTA' && Boolean(rc.has_ayudante || rc.rate_ayudante_ars !== null)
+    }
+    return true
+  }, [])
+
+  const applyRateCardSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
+    const targetRc = rateCards.find(r => r.id === rowId)
+    if (!targetRc) return null
+    if (targetRc.is_locked) {
+      showGridFeedback('error', `🔒 La tarifa de ${targetRc.entity_name} (${targetRc.period}) está bloqueada.`)
+      return null
+    }
+    if (colKey === 'rate_ayudante_ars' && targetRc.admin_center === 'ASTILLERO') {
+      return null
+    }
+
+    const ars = Math.max(0, parseFloat(rawValue) || 0)
+    const dRate = parseFloat(targetRc.dollar_rate) || dollarRate || 1500
+    const usd = dRate > 0 ? Number((ars / dRate).toFixed(2)) : 0
+
+    const dbPatch = colKey === 'rate_oficial_ars'
+      ? { rate_oficial_ars: ars, rate_oficial_usd: usd, updated_at: new Date().toISOString() }
+      : { rate_ayudante_ars: ars, rate_ayudante_usd: usd, has_ayudante: true, updated_at: new Date().toISOString() }
+
+    setRateCards(prev => prev.map(r => r.id === rowId ? { ...r, ...dbPatch } : r))
+
+    const { error } = await supabase
+      .from('rate_cards')
+      .update(dbPatch)
+      .eq('id', rowId)
+    if (error) throw error
+
+    // Si pertenece a la quincena activa, sincronizar automáticamente con el padrón de operarios
+    if (targetRc.period === currentPeriodKey && ars > 0) {
+      if (targetRc.admin_center === 'ASTILLERO' && colKey === 'rate_oficial_ars') {
+        await supabase
+          .from('workers')
+          .update({ hourly_rate_ars: ars, hourly_rate_usd: usd })
+          .eq('admin_center', 'ASTILLERO')
+          .eq('category', targetRc.entity_name)
+        setWorkers(prev => prev.map(w =>
+          (w.admin_center === 'ASTILLERO' && w.category === targetRc.entity_name)
+            ? { ...w, hourly_rate_ars: ars, hourly_rate_usd: usd }
+            : w
+        ))
+        if (targetRc.entity_name === 'OFICIAL') setRateOficial(ars)
+        if (targetRc.entity_name === 'AYUDANTE') setRateAyudante(ars)
+      } else if (targetRc.admin_center === 'CONTRATISTA') {
+        if (colKey === 'rate_ayudante_ars') {
+          await supabase
+            .from('workers')
+            .update({ hourly_rate_ars: ars, hourly_rate_usd: usd })
+            .eq('admin_center', 'CONTRATISTA')
+            .or(`work_group.eq.${targetRc.entity_name} AYUDANTE,category.eq.${targetRc.entity_name} AYUDANTE`)
+          setWorkers(prev => prev.map(w => {
+            if (w.admin_center !== 'CONTRATISTA') return w
+            const isAy = (w.work_group === `${targetRc.entity_name} AYUDANTE`) || (w.category === `${targetRc.entity_name} AYUDANTE`)
+            return isAy ? { ...w, hourly_rate_ars: ars, hourly_rate_usd: usd } : w
+          }))
+        } else {
+          await supabase
+            .from('workers')
+            .update({ hourly_rate_ars: ars, hourly_rate_usd: usd })
+            .eq('admin_center', 'CONTRATISTA')
+            .eq('work_group', targetRc.entity_name)
+            .neq('category', `${targetRc.entity_name} AYUDANTE`)
+          setWorkers(prev => prev.map(w => {
+            if (w.admin_center !== 'CONTRATISTA') return w
+            const isAy = (w.work_group === `${targetRc.entity_name} AYUDANTE`) || (w.category === `${targetRc.entity_name} AYUDANTE`)
+            return (w.work_group === targetRc.entity_name && !isAy) ? { ...w, hourly_rate_ars: ars, hourly_rate_usd: usd } : w
+          }))
+        }
+      }
+    }
+
+    return ars
+  }, [rateCards, dollarRate, currentPeriodKey, showGridFeedback])
+
+  const handleRatesBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
+    try {
+      if (isRevert && revertMap) {
+        for (const [id, oldVal] of Object.entries(revertMap)) {
+          await applyRateCardSinglePatch(id, colKey, oldVal)
+        }
+      } else if (Array.isArray(targetIds)) {
+        for (const id of targetIds) {
+          await applyRateCardSinglePatch(id, colKey, newValue)
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      showGridFeedback('error', `Error actualizando tarifas: ${err.message}`)
+      loadRateCards(currentPeriodKey)
+    }
+  }, [applyRateCardSinglePatch, currentPeriodKey, showGridFeedback])
+
+  const ratesGrid = useSpreadsheetGrid({
+    rows: filteredRateCards,
+    columns: rateColumns,
+    getRowId: (rc) => rc.id,
+    storageKey: 'aloncar_grid_tarifas',
+    canEditCell: canEditRateCell,
+    onBatchUpdate: handleRatesBatchUpdate,
+    onFocusSearch: () => rateSearchInputRef.current?.focus(),
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef) return
+      if (row.is_locked) {
+        showGridFeedback('error', `🔒 Tarifa bloqueada (${row.period}): no admite edición directa.`)
+        return
+      }
+      if (colDef.key === 'rate_ayudante_ars' && row.admin_center === 'ASTILLERO') return
+      setInlineRateEdit({
+        rowId: row.id,
+        colKey: colDef.key,
+        value: row[colDef.key] ?? ''
+      })
+    },
+    showFeedback: showGridFeedback
+  })
+
+  const commitInlineRateEdit = async () => {
+    if (!inlineRateEdit) return
+    const { rowId, colKey, value } = inlineRateEdit
+    const rc = rateCards.find(r => r.id === rowId)
+    setInlineRateEdit(null)
+    if (!rc || rc.is_locked) return
+
+    const oldVal = rc[colKey]
+    if (Number(oldVal || 0) === Number(value || 0)) return
+
+    try {
+      const savedVal = await applyRateCardSinglePatch(rowId, colKey, value)
+      if (savedVal !== null) {
+        const colDef = rateColumns.find(c => c.key === colKey)
+        ratesGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Editar tarifa ${rc.entity_name} (${rc.period})`,
+          previousValues: { [rowId]: oldVal },
+          newValue: savedVal,
+          timestamp: Date.now()
+        })
+        showGridFeedback('success', `Tarifa de ${rc.entity_name} actualizada a $${savedVal.toLocaleString('es-AR')}. (Ctrl+Z deshacer)`)
+      }
+    } catch (err) {
+      console.error(err)
+      showGridFeedback('error', `Error al guardar tarifa: ${err.message}`)
+      loadRateCards(currentPeriodKey)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* CABECERA & NAVEGACIÓN PRINCIPAL */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+      {/* ZONA 1 (CONTEXTO): CABECERA & NAVEGACIÓN PRINCIPAL */}
+      <div className="alon-zone-context rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
             <span className="text-slate-300">Recursos Humanos & Mano de Obra</span>
@@ -2234,8 +2522,8 @@ export default function Personal() {
       {/* ========================================================================= */}
       {activeTab === 'tarifario' && (
         <div className="space-y-6 animate-in fade-in duration-150">
-          {/* BARRA DE CONTROL DEL PERÍODO & VALOR DÓLAR CONGELADO */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          {/* ZONA 2 (RADAR / INDICADORES QUINCENALES): PERÍODO & VALOR DÓLAR CONGELADO */}
+          <div className="alon-zone-kpis rounded-2xl p-5 shadow-xl space-y-4">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -2365,8 +2653,8 @@ export default function Personal() {
             )}
           </div>
 
-          {/* FORMULARIO UNIFICADO: GOBERNADO POR EL CENTRO DE COSTO */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-5">
+          {/* ZONA CARGA: FORMULARIO UNIFICADO GOBERNADO POR EL CENTRO DE COSTO */}
+          <div className="alon-zone-entry rounded-2xl p-5 md:p-6 shadow-xl space-y-5">
             <div className="border-b border-slate-800 pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
@@ -2670,21 +2958,42 @@ export default function Personal() {
             </div>
           </div>
 
-          {/* TABLA HISTÓRICA CONSOLIDADA (CON BUSCADOR Y FILTRO DE QUINCENAS) */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          {/* ZONA 3 (BÚSQUEDA Y COMANDOS): FILTROS DE TARIFAS GUARDADAS */}
+          <div className="alon-zone-toolbar rounded-2xl p-4 md:p-5 shadow-lg">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
                   <Layers className="w-4 h-4 text-emerald-400" />
                   Tarifas Guardadas en el Sistema ({filteredRateCards.length})
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Visualizá y filtrá las tarifas de la quincena activa o de todo el historial.
+                  Doble clic en Oficial AR$ o Ayudante AR$ para editar en línea (si el período no está bloqueado).
                 </p>
               </div>
 
-              {/* Filtros: Alcance de Quincena, Centro y Búsqueda */}
+              {/* Filtros: Alcance de Quincena, Centro, Búsqueda y Deshacer/Rehacer */}
               <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-lg p-1">
+                  <button
+                    type="button"
+                    disabled={!ratesGrid.canUndo}
+                    onClick={ratesGrid.undo}
+                    className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    title="Deshacer cambio en Tarifario (Ctrl + Z)"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!ratesGrid.canRedo}
+                    onClick={ratesGrid.redo}
+                    className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    title="Rehacer cambio en Tarifario (Ctrl + Y)"
+                  >
+                    <Redo2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
                 {/* Selector de Alcance */}
                 <select
                   value={rateTableScope}
@@ -2734,8 +3043,9 @@ export default function Personal() {
                 <div className="relative min-w-[200px]">
                   <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
                   <input
+                    ref={rateSearchInputRef}
                     type="text"
-                    placeholder="Filtrar por categoría o contratista..."
+                    placeholder="Filtrar categoría o contratista (Ctrl+F)..."
                     value={rateTableSearch}
                     onChange={(e) => setRateTableSearch(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
@@ -2752,20 +3062,42 @@ export default function Personal() {
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
+          {/* ZONA 4 (PLANILLA EDITABLE): TABLA HISTÓRICA DE TARIFAS */}
+          <div
+            ref={ratesGrid.gridContainerRef}
+            tabIndex={0}
+            onKeyDown={ratesGrid.handleKeyDown}
+            className="alon-zone-grid rounded-2xl shadow-xl overflow-hidden focus:outline-none"
+          >
+            <div className="alon-grid-ribbon px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
+                  {ratesGrid.activeCellBadge || 'PLANILLA TARIFAS'}
+                </span>
+                <span className="text-slate-400">
+                  Doble clic o Enter en montos AR$ para editar · Arrastrá ■ o Ctrl+D para clonar · Ctrl+Z/Y Deshacer/Rehacer
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-emerald-400">
+                {ratesGrid.undoStack.length > 0 ? `${ratesGrid.undoStack.length} cambio(s) en memoria` : 'Sin cambios pendientes'}
+              </span>
+            </div>
+
+            <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
+                <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-3 bg-slate-950">Quincena</th>
-                    <th className="py-2.5 px-3 bg-slate-950">Categoría / Contratista</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Oficial AR$</th>
-                    <th className="py-2.5 px-3 text-center text-emerald-400 bg-slate-950">Oficial U$</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Ayudante AR$</th>
-                    <th className="py-2.5 px-3 text-center text-amber-400 bg-slate-950">Ayudante U$</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Dólar</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Centro</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Acción</th>
+                    <th className="py-2.5 px-3">Quincena</th>
+                    <th className="py-2.5 px-3">Categoría / Contratista</th>
+                    <th className="py-2.5 px-3 text-right">Oficial AR$ ✎</th>
+                    <th className="py-2.5 px-3 text-center text-emerald-400">Oficial U$</th>
+                    <th className="py-2.5 px-3 text-right">Ayudante AR$ ✎</th>
+                    <th className="py-2.5 px-3 text-center text-amber-400">Ayudante U$</th>
+                    <th className="py-2.5 px-3 text-center">Dólar</th>
+                    <th className="py-2.5 px-3 text-center">Centro</th>
+                    <th className="py-2.5 px-3 text-right">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -2776,97 +3108,185 @@ export default function Personal() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRateCards.map(rc => (
-                      <tr 
-                        key={rc.id} 
-                        onDoubleClick={() => handleLoadRateCard(rc)}
-                        className="hover:bg-slate-800/30 transition-colors cursor-pointer select-none"
-                        title="Doble clic para editar esta tarifa"
-                      >
-                        <td className="py-2 px-3">
-                          <span className="font-mono text-xs font-bold text-slate-400">{rc.period}</span>
-                        </td>
-                        <td className="py-2 px-3">
-                          {rc.admin_center === 'ASTILLERO' ? (
-                            <span className={`px-2 py-0.5 rounded text-[10px] border ${getCategoryBadgeStyle(rc.entity_name)}`}>
-                              {rc.entity_name}
-                            </span>
-                          ) : (
-                            <span className="font-extrabold text-white font-mono">{rc.entity_name}</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono font-bold text-white">
-                          ${parseFloat(rc.rate_oficial_ars || 0).toLocaleString('es-AR')}
-                        </td>
-                        <td className="py-2 px-3 text-center font-mono font-extrabold text-emerald-400">
-                          ${parseFloat(rc.rate_oficial_usd || 0).toFixed(2)}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono font-bold">
-                          {rc.rate_ayudante_ars ? (
-                            <span className="text-white">${parseFloat(rc.rate_ayudante_ars).toLocaleString('es-AR')}</span>
-                          ) : (
-                            <span className="text-slate-600 font-normal italic">No aplica</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-center font-mono font-extrabold text-amber-400">
-                          {rc.rate_ayudante_usd ? `$${parseFloat(rc.rate_ayudante_usd).toFixed(2)}` : '-'}
-                        </td>
-                        <td className="py-2 px-3 text-center font-mono text-slate-400">
-                          ${rc.dollar_rate}
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-                            rc.admin_center === 'ASTILLERO'
-                              ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
-                              : 'bg-amber-950 text-amber-300 border-amber-800'
-                          }`}>
-                            {rc.admin_center}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (rc.year && rc.month && rc.quincena) {
-                                setRateYear(rc.year)
-                                setRateMonth(rc.month)
-                                setRateQuincena(rc.quincena)
+                    filteredRateCards.map((rc, rowIndex) => {
+                      const isLocked = Boolean(rc.is_locked)
+                      const canEditAyudante = !isLocked && rc.admin_center === 'CONTRATISTA' && Boolean(rc.has_ayudante || rc.rate_ayudante_ars !== null)
+                      const isEditingOficial = inlineRateEdit && inlineRateEdit.rowId === rc.id && inlineRateEdit.colKey === 'rate_oficial_ars'
+                      const isEditingAyudante = inlineRateEdit && inlineRateEdit.rowId === rc.id && inlineRateEdit.colKey === 'rate_ayudante_ars'
+
+                      const oficialActive = ratesGrid.isCellActive(rowIndex, 0)
+                      const oficialSelected = ratesGrid.isCellSelected(rowIndex, 0)
+                      const oficialFill = ratesGrid.isCellInFillPreview(rowIndex, 0)
+
+                      const ayudanteActive = ratesGrid.isCellActive(rowIndex, 1)
+                      const ayudanteSelected = ratesGrid.isCellSelected(rowIndex, 1)
+                      const ayudanteFill = ratesGrid.isCellInFillPreview(rowIndex, 1)
+
+                      return (
+                        <tr
+                          key={rc.id}
+                          className="hover:bg-slate-800/30 transition-colors select-none"
+                        >
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-xs font-bold text-slate-400">{rc.period}</span>
+                              {isLocked && (
+                                <Lock className="w-3 h-3 text-amber-400" title="Período bloqueado" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3">
+                            {rc.admin_center === 'ASTILLERO' ? (
+                              <span className={`px-2 py-0.5 rounded text-[10px] border ${getCategoryBadgeStyle(rc.entity_name)}`}>
+                                {rc.entity_name}
+                              </span>
+                            ) : (
+                              <span className="font-extrabold text-white font-mono">{rc.entity_name}</span>
+                            )}
+                          </td>
+
+                          {/* Col 0: Oficial AR$ (Doble clic editable si !rc.is_locked) */}
+                          <td
+                            onClick={(e) => ratesGrid.handleCellClick(rowIndex, 0, e)}
+                            onMouseDown={(e) => ratesGrid.handleCellMouseDown(rowIndex, 0, e)}
+                            onMouseEnter={() => ratesGrid.handleCellMouseEnter(rowIndex, 0)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              if (isLocked) {
+                                showGridFeedback('error', `🔒 La tarifa de ${rc.entity_name} (${rc.period}) está bloqueada.`)
+                                return
                               }
-                              if (rc.admin_center === 'ASTILLERO') {
-                                setRateAdminCenter('ASTILLERO')
-                                if (rc.rate_oficial_ars) {
-                                  setAstilleroForm(prev => ({
-                                    ...prev,
-                                    [rc.entity_name]: {
-                                      ars: parseFloat(rc.rate_oficial_ars) || 0,
-                                      usd: parseFloat(rc.rate_oficial_usd) || 0
-                                    }
-                                  }))
-                                }
-                              } else {
-                                setRateAdminCenter('CONTRATISTA')
-                                handleSelectContractor(rc.entity_name)
-                                setContractorOficialArs(parseFloat(rc.rate_oficial_ars) || 0)
-                                setContractorOficialUsd(parseFloat(rc.rate_oficial_usd) || 0)
-                                setContractorHasAyudante(rc.has_ayudante)
-                                setContractorAyudanteArs(rc.rate_ayudante_ars ? parseFloat(rc.rate_ayudante_ars) : 0)
-                                setContractorAyudanteUsd(rc.rate_ayudante_usd ? parseFloat(rc.rate_ayudante_usd) : 0)
-                              }
-                              setStatusMessage({
-                                type: 'info',
-                                text: `Editando valores de ${rc.entity_name} para la quincena ${rc.period}.`
+                              setInlineRateEdit({
+                                rowId: rc.id,
+                                colKey: 'rate_oficial_ars',
+                                value: rc.rate_oficial_ars ?? 0
                               })
-                              window.scrollTo({ top: 120, behavior: 'smooth' })
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ml-auto"
-                            title="Editar este registro histórico"
+                            title={isLocked ? 'Período bloqueado' : 'Doble clic para editar Oficial AR$'}
+                            className={`py-2 px-3 text-right font-mono font-bold text-white relative cursor-cell ${
+                              oficialActive ? 'ring-2 ring-inset ring-emerald-400 bg-emerald-950/30' :
+                              oficialFill ? 'bg-emerald-500/20 ring-1 ring-inset ring-emerald-400/60' :
+                              oficialSelected ? 'bg-cyan-500/15' : ''
+                            }`}
                           >
-                            <Pencil className="w-3 h-3" />
-                            <span>Editar</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                            {isEditingOficial ? (
+                              <input
+                                type="number"
+                                step="50"
+                                min="0"
+                                autoFocus
+                                value={inlineRateEdit.value}
+                                onChange={(e) => setInlineRateEdit(prev => ({ ...prev, value: e.target.value }))}
+                                onBlur={commitInlineRateEdit}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === 'Enter') commitInlineRateEdit()
+                                  if (e.key === 'Escape') setInlineRateEdit(null)
+                                }}
+                                className="w-28 bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
+                              />
+                            ) : (
+                              <span>${parseFloat(rc.rate_oficial_ars || 0).toLocaleString('es-AR')}</span>
+                            )}
+                            {!isLocked && ratesGrid.shouldRenderFillHandle(rowIndex, 0) && (
+                              <div
+                                onMouseDown={ratesGrid.handleFillHandleMouseDown}
+                                onDoubleClick={ratesGrid.handleFillHandleDoubleClick}
+                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                                title="Arrastrar para rellenar hacia abajo"
+                              />
+                            )}
+                          </td>
+
+                          <td className="py-2 px-3 text-center font-mono font-extrabold text-emerald-400">
+                            ${parseFloat(rc.rate_oficial_usd || 0).toFixed(2)}
+                          </td>
+
+                          {/* Col 1: Ayudante AR$ (Doble clic editable si !rc.is_locked y aplica ayudante) */}
+                          <td
+                            onClick={(e) => ratesGrid.handleCellClick(rowIndex, 1, e)}
+                            onMouseDown={(e) => ratesGrid.handleCellMouseDown(rowIndex, 1, e)}
+                            onMouseEnter={() => ratesGrid.handleCellMouseEnter(rowIndex, 1)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              if (isLocked) {
+                                showGridFeedback('error', `🔒 La tarifa de ${rc.entity_name} (${rc.period}) está bloqueada.`)
+                                return
+                              }
+                              if (!canEditAyudante) return
+                              setInlineRateEdit({
+                                rowId: rc.id,
+                                colKey: 'rate_ayudante_ars',
+                                value: rc.rate_ayudante_ars ?? 0
+                              })
+                            }}
+                            title={!canEditAyudante ? 'No aplica Ayudante en este registro' : 'Doble clic para editar Ayudante AR$'}
+                            className={`py-2 px-3 text-right font-mono font-bold relative ${canEditAyudante ? 'cursor-cell' : 'cursor-default'} ${
+                              ayudanteActive ? 'ring-2 ring-inset ring-emerald-400 bg-emerald-950/30' :
+                              ayudanteFill ? 'bg-emerald-500/20 ring-1 ring-inset ring-emerald-400/60' :
+                              ayudanteSelected ? 'bg-cyan-500/15' : ''
+                            }`}
+                          >
+                            {isEditingAyudante ? (
+                              <input
+                                type="number"
+                                step="50"
+                                min="0"
+                                autoFocus
+                                value={inlineRateEdit.value}
+                                onChange={(e) => setInlineRateEdit(prev => ({ ...prev, value: e.target.value }))}
+                                onBlur={commitInlineRateEdit}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === 'Enter') commitInlineRateEdit()
+                                  if (e.key === 'Escape') setInlineRateEdit(null)
+                                }}
+                                className="w-28 bg-slate-950 border border-amber-400 rounded px-2 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
+                              />
+                            ) : rc.rate_ayudante_ars ? (
+                              <span className="text-white">${parseFloat(rc.rate_ayudante_ars).toLocaleString('es-AR')}</span>
+                            ) : (
+                              <span className="text-slate-600 font-normal italic">No aplica</span>
+                            )}
+                            {canEditAyudante && ratesGrid.shouldRenderFillHandle(rowIndex, 1) && (
+                              <div
+                                onMouseDown={ratesGrid.handleFillHandleMouseDown}
+                                onDoubleClick={ratesGrid.handleFillHandleDoubleClick}
+                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                                title="Arrastrar para rellenar hacia abajo"
+                              />
+                            )}
+                          </td>
+
+                          <td className="py-2 px-3 text-center font-mono font-extrabold text-amber-400">
+                            {rc.rate_ayudante_usd ? `$${parseFloat(rc.rate_ayudante_usd).toFixed(2)}` : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-center font-mono text-slate-400">
+                            ${rc.dollar_rate}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                              rc.admin_center === 'ASTILLERO'
+                                ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                                : 'bg-amber-950 text-amber-300 border-amber-800'
+                            }`}>
+                              {rc.admin_center}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleLoadRateCard(rc)}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ml-auto"
+                              title="Cargar en el formulario superior"
+                            >
+                              <Pencil className="w-3 h-3" />
+                              <span>Editar</span>
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })
                   )}
                 </tbody>
               </table>
@@ -2880,8 +3300,8 @@ export default function Personal() {
       {/* ========================================================================= */}
       {activeTab === 'nomina' && (
         <div className="space-y-6 animate-in fade-in duration-150">
-          {/* BARRA SUPERIOR: VALOR DÓLAR & TARIFAS SINDICATO */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+          {/* ZONA 2 (RADAR / INDICADORES QUINCENALES): VALOR DÓLAR & TARIFAS SINDICATO */}
+          <div className="alon-zone-kpis rounded-2xl p-5 shadow-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
             {/* Cotización Dólar Quincenal (CONGELADO / SOLO LECTURA) */}
             <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
               <div>
@@ -3065,38 +3485,62 @@ export default function Personal() {
             </div>
           )}
 
-          {/* VISTA B: GRILLA MAESTRA DETALLADA (CON COLORES DE CATEGORÍA DE IMAGEN 1) */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          {/* ZONA 3 (BÚSQUEDA Y FILTROS): BARRA DE CONTROL DEL PADRÓN */}
+          <div className="alon-zone-toolbar rounded-2xl p-4 md:p-5 shadow-lg space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
               <div>
                 <h2 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
                   <HardHat className="w-4 h-4 text-cyan-400" />
                   Padrón Operativo de Personas y Talleres
                 </h2>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Cargá a cada persona vinculada a su Grupo de Trabajo. Las categorías exhiben los colores de la escala salarial oficial.
+                  Doble clic en cualquier celda (Nombre, Categoría, Rubro, AR$/Hora, Grupo o Centro) para editar estilo Google Sheets.
                 </p>
               </div>
 
-              {/* Buscador */}
-              <div className="relative min-w-[280px]">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Buscar por operario, grupo, rubro..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
-                />
-                {searchTerm && (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-lg p-1">
                   <button
                     type="button"
-                    onClick={() => setSearchTerm('')}
-                    className="absolute right-2.5 top-2.5 text-slate-500 hover:text-white cursor-pointer"
+                    disabled={!nominaGrid.canUndo}
+                    onClick={nominaGrid.undo}
+                    className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    title="Deshacer cambio en Padrón (Ctrl + Z)"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <Undo2 className="w-3.5 h-3.5" />
                   </button>
-                )}
+                  <button
+                    type="button"
+                    disabled={!nominaGrid.canRedo}
+                    onClick={nominaGrid.redo}
+                    className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    title="Rehacer cambio en Padrón (Ctrl + Y)"
+                  >
+                    <Redo2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Buscador */}
+                <div className="relative min-w-[260px]">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+                  <input
+                    ref={nominaSearchInputRef}
+                    type="text"
+                    placeholder="Buscar operario, grupo, rubro (Ctrl+F)..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                  />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-2.5 top-2.5 text-slate-500 hover:text-white cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -3204,24 +3648,63 @@ export default function Personal() {
                 </div>
               )}
             </div>
+          </div>
 
-            {/* TABLA MAESTRA */}
-            <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
+          {/* Datalists auxiliares para edición rápida en línea */}
+          <datalist id="nomina-categories-list">
+            {ASTILLERO_BASE_CATEGORIES.map(cat => (
+              <option key={cat} value={cat} />
+            ))}
+          </datalist>
+          <datalist id="nomina-trades-list">
+            {uniqueTrades.map(tr => (
+              <option key={tr} value={tr} />
+            ))}
+          </datalist>
+          <datalist id="nomina-groups-list">
+            <option value="ASTILLERO" />
+            {groupedSummary.map(g => (
+              <option key={g.name} value={g.name} />
+            ))}
+          </datalist>
+
+          {/* ZONA 4 (PLANILLA EDITABLE): TABLA MAESTRA DE PADRÓN */}
+          <div
+            ref={nominaGrid.gridContainerRef}
+            tabIndex={0}
+            onKeyDown={nominaGrid.handleKeyDown}
+            className="alon-zone-grid rounded-2xl shadow-xl overflow-hidden focus:outline-none"
+          >
+            <div className="alon-grid-ribbon px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
+                  {nominaGrid.activeCellBadge || 'PADRÓN OPERATIVO'}
+                </span>
+                <span className="text-slate-400">
+                  Doble clic o Enter para editar celda · Arrastrá ■ o Ctrl+D para clonar hacia abajo · Ctrl+C/V · Ctrl+Z/Y
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-emerald-400">
+                {nominaGrid.undoStack.length > 0 ? `${nominaGrid.undoStack.length} cambio(s) en memoria` : `${filteredWorkers.length} registros visibles`}
+              </span>
+            </div>
+
+            <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
+                <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-3 bg-slate-950">Nombre y Apellido</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Categoría</th>
-                    <th className="py-2.5 px-3 bg-slate-950">Rubro</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">AR$/Hora</th>
-                    <th className="py-2.5 px-2 text-center text-emerald-400 bg-slate-950">U$/Hora</th>
-                    <th className="py-2.5 px-3 bg-slate-950">Grupo de Trabajo</th>
-                    <th className="py-2.5 px-2.5 bg-slate-950">Centro Admin</th>
-                    <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
-                    <th className="py-2.5 px-2.5 bg-slate-950">Consumibles</th>
-                    <th className="py-2.5 px-2.5 bg-slate-950">Elem. Seg.</th>
-                    <th className="py-2.5 px-2 text-center bg-slate-950">Permisos</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
+                    <th className="py-2.5 px-3">Nombre y Apellido ✎</th>
+                    <th className="py-2.5 px-3 text-center">Categoría ✎</th>
+                    <th className="py-2.5 px-3">Rubro ✎</th>
+                    <th className="py-2.5 px-3 text-right">AR$/Hora ✎</th>
+                    <th className="py-2.5 px-2 text-center text-emerald-400">U$/Hora</th>
+                    <th className="py-2.5 px-3">Grupo de Trabajo ✎</th>
+                    <th className="py-2.5 px-2.5">Centro Admin ✎</th>
+                    <th className="py-2.5 px-2 text-center">Estado</th>
+                    <th className="py-2.5 px-2.5">Consumibles</th>
+                    <th className="py-2.5 px-2.5">Elem. Seg.</th>
+                    <th className="py-2.5 px-2 text-center">Permisos</th>
+                    <th className="py-2.5 px-3 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -3232,91 +3715,328 @@ export default function Personal() {
                       </td>
                     </tr>
                   ) : (
-                    filteredWorkers.map(w => {
+                    filteredWorkers.map((w, rowIndex) => {
                       const isActivo = w.status === 'ACTIVO'
                       const usdCalc = dollarRate > 0 && w.hourly_rate_ars ? (w.hourly_rate_ars / dollarRate).toFixed(2) : (w.hourly_rate_usd || 0)
 
+                      const getCellClass = (colIdx, baseClass = '') => {
+                        const active = nominaGrid.isCellActive(rowIndex, colIdx)
+                        const fill = nominaGrid.isCellInFillPreview(rowIndex, colIdx)
+                        const sel = nominaGrid.isCellSelected(rowIndex, colIdx)
+                        return `${baseClass} relative cursor-cell ${
+                          active ? 'ring-2 ring-inset ring-emerald-400 bg-emerald-950/30' :
+                          fill ? 'bg-emerald-500/20 ring-1 ring-inset ring-emerald-400/60' :
+                          sel ? 'bg-cyan-500/15' : ''
+                        }`
+                      }
+
+                      const isEditingCell = (colKey) =>
+                        Boolean(inlineCellEdit && inlineCellEdit.rowId === w.id && inlineCellEdit.colKey === colKey)
+
                       return (
-                        <tr 
-                          key={w.id} 
-                          onDoubleClick={() => handleStartEdit(w)}
-                          className={`hover:bg-slate-800/30 transition-colors cursor-pointer select-none ${!isActivo ? 'opacity-60 bg-rose-950/5' : ''}`}
-                          title="Doble clic para editar colaborador"
+                        <tr
+                          key={w.id}
+                          className={`hover:bg-slate-800/30 transition-colors select-none ${!isActivo ? 'opacity-60 bg-rose-950/5' : ''}`}
                         >
-                          {/* 1. Nombre y Apellido */}
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-white">{w.name}</span>
-                              {w.is_foreman && (
-                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600 font-extrabold">
-                                  👷 Jefe de Obra
-                                </span>
-                              )}
-                            </div>
+                          {/* Col 0: Nombre y Apellido */}
+                          <td
+                            onClick={(e) => nominaGrid.handleCellClick(rowIndex, 0, e)}
+                            onMouseDown={(e) => nominaGrid.handleCellMouseDown(rowIndex, 0, e)}
+                            onMouseEnter={() => nominaGrid.handleCellMouseEnter(rowIndex, 0)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              setInlineCellEdit({ rowId: w.id, colKey: 'name', value: w.name || '' })
+                            }}
+                            title="Doble clic para editar nombre"
+                            className={getCellClass(0, 'py-2 px-3')}
+                          >
+                            {isEditingCell('name') ? (
+                              <input
+                                type="text"
+                                autoFocus
+                                value={inlineCellEdit.value}
+                                onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
+                                onBlur={commitInlineWorkerEdit}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === 'Enter') commitInlineWorkerEdit()
+                                  if (e.key === 'Escape') setInlineCellEdit(null)
+                                }}
+                                className="w-full min-w-[140px] bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-xs text-white font-bold focus:outline-none"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-white">{w.name}</span>
+                                {w.is_foreman && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600 font-extrabold">
+                                    👷 Jefe de Obra
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {nominaGrid.shouldRenderFillHandle(rowIndex, 0) && (
+                              <div
+                                onMouseDown={nominaGrid.handleFillHandleMouseDown}
+                                onDoubleClick={nominaGrid.handleFillHandleDoubleClick}
+                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                              />
+                            )}
                           </td>
 
-                          {/* 2. Categoría */}
-                          <td className="py-2 px-3 text-center">
-                            {w.category ? (
+                          {/* Col 1: Categoría */}
+                          <td
+                            onClick={(e) => nominaGrid.handleCellClick(rowIndex, 1, e)}
+                            onMouseDown={(e) => nominaGrid.handleCellMouseDown(rowIndex, 1, e)}
+                            onMouseEnter={() => nominaGrid.handleCellMouseEnter(rowIndex, 1)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              setInlineCellEdit({ rowId: w.id, colKey: 'category', value: w.category || '' })
+                            }}
+                            title="Doble clic para editar categoría"
+                            className={getCellClass(1, 'py-2 px-3 text-center')}
+                          >
+                            {isEditingCell('category') ? (
+                              w.admin_center === 'ASTILLERO' ? (
+                                <select
+                                  autoFocus
+                                  value={inlineCellEdit.value}
+                                  onChange={(e) => {
+                                    const nextVal = e.target.value
+                                    setInlineCellEdit(prev => ({ ...prev, value: nextVal }))
+                                  }}
+                                  onBlur={commitInlineWorkerEdit}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineWorkerEdit()
+                                    if (e.key === 'Escape') setInlineCellEdit(null)
+                                  }}
+                                  className="bg-slate-950 border border-emerald-400 rounded px-1.5 py-0.5 text-[11px] text-white font-bold focus:outline-none"
+                                >
+                                  {ASTILLERO_BASE_CATEGORIES.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  list="nomina-categories-list"
+                                  autoFocus
+                                  value={inlineCellEdit.value}
+                                  onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
+                                  onBlur={commitInlineWorkerEdit}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Enter') commitInlineWorkerEdit()
+                                    if (e.key === 'Escape') setInlineCellEdit(null)
+                                  }}
+                                  className="w-28 bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-center text-[11px] text-white font-bold focus:outline-none"
+                                />
+                              )
+                            ) : w.category ? (
                               <span className={`px-2 py-0.5 rounded text-[10px] uppercase border inline-block ${getCategoryBadgeStyle(w.category)}`}>
                                 {w.category}
                               </span>
                             ) : (
                               <span className="text-slate-600">-</span>
                             )}
+                            {nominaGrid.shouldRenderFillHandle(rowIndex, 1) && (
+                              <div
+                                onMouseDown={nominaGrid.handleFillHandleMouseDown}
+                                onDoubleClick={nominaGrid.handleFillHandleDoubleClick}
+                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                              />
+                            )}
                           </td>
 
-                          {/* 3. Rubro (Soporta Multi-Rubro para Contratistas y Talleres) */}
-                          <td className="py-2 px-3">
-                            <div className="flex flex-wrap items-center gap-1">
-                              {String(w.trade || 'General')
-                                .split(/[,;/|]+/)
-                                .map(s => s.trim())
-                                .filter(Boolean)
-                                .map((tr, tIdx) => (
-                                  <span
-                                    key={`${w.id}-tr-${tIdx}`}
-                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRubroBadgeColor(tr)}`}
-                                    title={tIdx === 0 ? 'Rubro Principal' : 'Rubro Secundario Habilitado'}
-                                  >
-                                    {tIdx === 0 && String(w.trade || '').includes(',') ? `⭐ ${tr}` : tr}
-                                  </span>
-                                ))}
-                            </div>
+                          {/* Col 2: Rubro (Soporta Multi-Rubro para Contratistas y Talleres) */}
+                          <td
+                            onClick={(e) => nominaGrid.handleCellClick(rowIndex, 2, e)}
+                            onMouseDown={(e) => nominaGrid.handleCellMouseDown(rowIndex, 2, e)}
+                            onMouseEnter={() => nominaGrid.handleCellMouseEnter(rowIndex, 2)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              setInlineCellEdit({ rowId: w.id, colKey: 'trade', value: w.trade || '' })
+                            }}
+                            title="Doble clic para editar rubro(s)"
+                            className={getCellClass(2, 'py-2 px-3')}
+                          >
+                            {isEditingCell('trade') ? (
+                              <input
+                                type="text"
+                                list="nomina-trades-list"
+                                autoFocus
+                                value={inlineCellEdit.value}
+                                onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
+                                onBlur={commitInlineWorkerEdit}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === 'Enter') commitInlineWorkerEdit()
+                                  if (e.key === 'Escape') setInlineCellEdit(null)
+                                }}
+                                placeholder="Ej: CALDERERIA, MECANICA"
+                                className="w-full min-w-[130px] bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-[11px] text-white font-bold focus:outline-none"
+                              />
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-1">
+                                {String(w.trade || 'General')
+                                  .split(/[,;/|]+/)
+                                  .map(s => s.trim())
+                                  .filter(Boolean)
+                                  .map((tr, tIdx) => (
+                                    <span
+                                      key={`${w.id}-tr-${tIdx}`}
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRubroBadgeColor(tr)}`}
+                                      title={tIdx === 0 ? 'Rubro Principal' : 'Rubro Secundario Habilitado'}
+                                    >
+                                      {tIdx === 0 && String(w.trade || '').includes(',') ? `⭐ ${tr}` : tr}
+                                    </span>
+                                  ))}
+                              </div>
+                            )}
+                            {nominaGrid.shouldRenderFillHandle(rowIndex, 2) && (
+                              <div
+                                onMouseDown={nominaGrid.handleFillHandleMouseDown}
+                                onDoubleClick={nominaGrid.handleFillHandleDoubleClick}
+                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                              />
+                            )}
                           </td>
 
-                          {/* 4. AR$/Hora */}
-                          <td className="py-2 px-3 text-right font-mono font-bold text-white">
-                            {w.hourly_rate_ars > 0 ? (
+                          {/* Col 3: AR$/Hora */}
+                          <td
+                            onClick={(e) => nominaGrid.handleCellClick(rowIndex, 3, e)}
+                            onMouseDown={(e) => nominaGrid.handleCellMouseDown(rowIndex, 3, e)}
+                            onMouseEnter={() => nominaGrid.handleCellMouseEnter(rowIndex, 3)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              setInlineCellEdit({ rowId: w.id, colKey: 'hourly_rate_ars', value: w.hourly_rate_ars ?? 0 })
+                            }}
+                            title="Doble clic para editar tarifa AR$/Hora"
+                            className={getCellClass(3, 'py-2 px-3 text-right font-mono font-bold text-white')}
+                          >
+                            {isEditingCell('hourly_rate_ars') ? (
+                              <input
+                                type="number"
+                                step="50"
+                                min="0"
+                                autoFocus
+                                value={inlineCellEdit.value}
+                                onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
+                                onBlur={commitInlineWorkerEdit}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === 'Enter') commitInlineWorkerEdit()
+                                  if (e.key === 'Escape') setInlineCellEdit(null)
+                                }}
+                                className="w-24 bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
+                              />
+                            ) : w.hourly_rate_ars > 0 ? (
                               `$${parseFloat(w.hourly_rate_ars).toLocaleString('es-AR')}`
                             ) : (
                               <span className="text-slate-600">-</span>
                             )}
+                            {nominaGrid.shouldRenderFillHandle(rowIndex, 3) && (
+                              <div
+                                onMouseDown={nominaGrid.handleFillHandleMouseDown}
+                                onDoubleClick={nominaGrid.handleFillHandleDoubleClick}
+                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                              />
+                            )}
                           </td>
 
-                          {/* 5. U$/Hora */}
+                          {/* U$/Hora (Calculado automáticamente) */}
                           <td className="py-2 px-2 text-center font-mono font-extrabold text-emerald-400">
                             ${usdCalc}
                           </td>
 
-                          {/* 6. Grupo de Trabajo */}
-                          <td className="py-2 px-3">
-                            <span className="font-mono text-cyan-300 font-bold px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
-                              {w.work_group}
-                            </span>
+                          {/* Col 4: Grupo de Trabajo */}
+                          <td
+                            onClick={(e) => nominaGrid.handleCellClick(rowIndex, 4, e)}
+                            onMouseDown={(e) => nominaGrid.handleCellMouseDown(rowIndex, 4, e)}
+                            onMouseEnter={() => nominaGrid.handleCellMouseEnter(rowIndex, 4)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              setInlineCellEdit({ rowId: w.id, colKey: 'work_group', value: w.work_group || '' })
+                            }}
+                            title="Doble clic para editar Grupo de Trabajo"
+                            className={getCellClass(4, 'py-2 px-3')}
+                          >
+                            {isEditingCell('work_group') ? (
+                              <input
+                                type="text"
+                                list="nomina-groups-list"
+                                autoFocus
+                                value={inlineCellEdit.value}
+                                onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
+                                onBlur={commitInlineWorkerEdit}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === 'Enter') commitInlineWorkerEdit()
+                                  if (e.key === 'Escape') setInlineCellEdit(null)
+                                }}
+                                className="w-32 bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-[11px] text-cyan-300 font-mono font-bold focus:outline-none"
+                              />
+                            ) : (
+                              <span className="font-mono text-cyan-300 font-bold px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
+                                {w.work_group}
+                              </span>
+                            )}
+                            {nominaGrid.shouldRenderFillHandle(rowIndex, 4) && (
+                              <div
+                                onMouseDown={nominaGrid.handleFillHandleMouseDown}
+                                onDoubleClick={nominaGrid.handleFillHandleDoubleClick}
+                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                              />
+                            )}
                           </td>
 
-                          {/* 7. Centro Admin */}
-                          <td className="py-2 px-2.5">
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-                              w.admin_center === 'ASTILLERO'
-                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
-                                : w.admin_center === 'TALLER'
-                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
-                                : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
-                            }`}>
-                              {w.admin_center}
-                            </span>
+                          {/* Col 5: Centro Admin */}
+                          <td
+                            onClick={(e) => nominaGrid.handleCellClick(rowIndex, 5, e)}
+                            onMouseDown={(e) => nominaGrid.handleCellMouseDown(rowIndex, 5, e)}
+                            onMouseEnter={() => nominaGrid.handleCellMouseEnter(rowIndex, 5)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              setInlineCellEdit({ rowId: w.id, colKey: 'admin_center', value: w.admin_center || 'ASTILLERO' })
+                            }}
+                            title="Doble clic para cambiar Centro Administrativo"
+                            className={getCellClass(5, 'py-2 px-2.5')}
+                          >
+                            {isEditingCell('admin_center') ? (
+                              <select
+                                autoFocus
+                                value={inlineCellEdit.value}
+                                onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
+                                onBlur={commitInlineWorkerEdit}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === 'Enter') commitInlineWorkerEdit()
+                                  if (e.key === 'Escape') setInlineCellEdit(null)
+                                }}
+                                className="bg-slate-950 border border-emerald-400 rounded px-1.5 py-0.5 text-[10px] text-white font-bold focus:outline-none"
+                              >
+                                <option value="ASTILLERO">ASTILLERO</option>
+                                <option value="CONTRATISTA">CONTRATISTA</option>
+                                <option value="TALLER">TALLER</option>
+                              </select>
+                            ) : (
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                                w.admin_center === 'ASTILLERO'
+                                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
+                                  : w.admin_center === 'TALLER'
+                                  ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                  : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                              }`}>
+                                {w.admin_center}
+                              </span>
+                            )}
+                            {nominaGrid.shouldRenderFillHandle(rowIndex, 5) && (
+                              <div
+                                onMouseDown={nominaGrid.handleFillHandleMouseDown}
+                                onDoubleClick={nominaGrid.handleFillHandleDoubleClick}
+                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                              />
+                            )}
                           </td>
 
                           {/* 8. Estado */}

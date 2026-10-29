@@ -232,6 +232,7 @@ export default function Compras() {
   const [materials, setMaterials] = useState([])
   const [ships, setShips] = useState([])
   const [workOrders, setWorkOrders] = useState([])
+  const [workItems, setWorkItems] = useState([])
   const [workers, setWorkers] = useState([])
   const [macroVariables, setMacroVariables] = useState([])
   const [documents, setDocuments] = useState([])
@@ -259,6 +260,7 @@ export default function Compras() {
     orderId: null,
     shipId: '',
     workOrderId: '',
+    chargeType: 'DIRECT',
     contractorName: ''
   })
 
@@ -305,12 +307,13 @@ export default function Compras() {
   async function fetchData() {
     setLoading(true)
     try {
-      const [poRes, supRes, matRes, shpRes, woRes, wkrRes, mvRes, docRes, setRes] = await Promise.all([
+      const [poRes, supRes, matRes, shpRes, woRes, wiRes, wkrRes, mvRes, docRes, setRes] = await Promise.all([
         supabase.from('purchase_orders').select('*').order('order_date', { ascending: false }).order('created_at', { ascending: false }),
         supabase.from('suppliers').select('*').order('name'),
         supabase.from('materials').select('*').order('name'),
         supabase.from('ships').select('id, name, vessel_type').order('name'),
-        supabase.from('work_orders').select('id, ot_number, title, description, ship_id').order('ot_number'),
+        supabase.from('work_orders').select('id, ot_number, title, description, ship_id, status').order('ot_number'),
+        supabase.from('work_items').select('id, work_order_id, contractors, description'),
         supabase.from('workers').select('id, name, trade, can_withdraw_materials').order('name'),
         supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
         supabase.from('purchase_documents').select('*').order('created_at', { ascending: false }),
@@ -331,6 +334,7 @@ export default function Compras() {
       setMaterials(matRes.data || [])
       setShips(shpRes.data || [])
       setWorkOrders(woRes.data || [])
+      setWorkItems(wiRes?.data || [])
       setWorkers(wkrRes.data || [])
       setMacroVariables(mvRes.data || [])
       setDocuments(docRes.data || [])
@@ -410,10 +414,10 @@ export default function Compras() {
     purchaseOrders.forEach((po) => {
       if (!po.work_order_id) {
         countSinOtTotal++
-        if (po.charge_type === 'STOCK') {
-          countSinOtStock++
-        } else {
+        if (po.charge_type === 'DIRECT') {
           countSinOtObras++
+        } else {
+          countSinOtStock++
         }
       }
       if (po.is_new_material && !po.no_catalog_required) newMaterialsCount++
@@ -533,9 +537,9 @@ export default function Compras() {
       if (activeKpiFilter === 'sin_ot') {
         if (po.work_order_id) return false
       } else if (activeKpiFilter === 'sin_ot_obras') {
-        if (po.work_order_id || po.charge_type === 'STOCK') return false
+        if (po.work_order_id || po.charge_type !== 'DIRECT') return false
       } else if (activeKpiFilter === 'sin_ot_stock') {
-        if (po.work_order_id || po.charge_type !== 'STOCK') return false
+        if (po.work_order_id || po.charge_type === 'DIRECT') return false
       } else if (activeKpiFilter === 'por_emitir') {
         if (!['PEDIR', 'SOLICITUD'].includes(po.status)) return false
       } else if (activeKpiFilter === 'cotizaciones') {
@@ -575,17 +579,40 @@ export default function Compras() {
     })
   }, [purchaseOrders, searchQuery, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter, suppliers, ships])
 
+  // Helper para calcular quincena YYYY-MM-Q1/Q2 desde una fecha YYYY-MM-DD
+  const computeFortnightFromDate = useCallback((dateStr) => {
+    if (!dateStr || typeof dateStr !== 'string') return currentFortnight
+    const parts = dateStr.split('-')
+    if (parts.length < 3) return currentFortnight
+    const q = parseInt(parts[2], 10) <= 15 ? 'Q1' : 'Q2'
+    return `${parts[0]}-${parts[1]}-${q}`
+  }, [currentFortnight])
+
   // =========================================================================
   // HOJA DE CÁLCULO INTELIGENTE (ESTÁNDAR EXCEL / GOOGLE SHEETS)
-  // Atajos: Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z, Ctrl+F, Navegación con Flechas y Tirador
+  // Atajos: Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z, Ctrl+Y, Ctrl+F, Flechas, Enter y Tirador ■
   // =========================================================================
   const spreadsheetColumns = useMemo(() => {
     const cols = [
       { key: 'charge_type', label: 'Destino', readOnly: false },
-      { key: 'order_date', label: 'Fecha / Quincena', readOnly: true },
-      { key: 'ship_id', label: 'Buque / OT', readOnly: true },
+      { key: 'order_date', label: 'Fecha / Quincena', readOnly: false },
+      {
+        key: 'ship_id',
+        label: 'Buque / OT',
+        readOnly: false,
+        getValue: (r) => {
+          const shpName = ships.find((s) => s.id === r.ship_id)?.name || 'ASTILLERO'
+          const woObj = workOrders.find((w) => w.id === r.work_order_id)
+          return {
+            ship_id: r.ship_id || null,
+            work_order_id: r.work_order_id || null,
+            charge_type: r.charge_type || 'DIRECT',
+            label: `${shpName} / ${woObj?.ot_number || 'Sin OT'}`
+          }
+        }
+      },
       { key: 'requested_by_name', label: 'Solicita', readOnly: false },
-      { key: 'material_name_raw', label: 'Material', readOnly: true },
+      { key: 'material_name_raw', label: 'Material', readOnly: false },
       { key: 'quantity', label: 'Cant.', readOnly: false }
     ]
     if (viewMode === 'completa') {
@@ -600,23 +627,27 @@ export default function Compras() {
       { key: 'urgency', label: 'Urgencia', readOnly: false }
     )
     return cols
-  }, [viewMode])
+  }, [viewMode, ships, workOrders])
 
-  // Actualización batch para comandos de hoja de cálculo (Ctrl+D, Ctrl+V, Drag Fill, Ctrl+Z)
+  // Actualización batch para comandos de hoja de cálculo (Ctrl+D, Ctrl+V, Drag Fill, Ctrl+Z, Ctrl+Y)
   const handleSpreadsheetBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
     if (isRevert && revertMap) {
-      // Reversión atómica por Ctrl+Z agrupada por valor
-      const grouped = {}
-      for (const [id, oldVal] of Object.entries(revertMap)) {
-        const key = String(oldVal ?? '')
-        if (!grouped[key]) grouped[key] = { value: oldVal, ids: [] }
-        grouped[key].ids.push(id)
-      }
-
       setPurchaseOrders((prev) =>
         prev.map((p) => {
           if (revertMap[p.id] !== undefined) {
-            return { ...p, [colKey]: revertMap[p.id] }
+            const oldVal = revertMap[p.id]
+            if (colKey === 'ship_id' && oldVal && typeof oldVal === 'object') {
+              return {
+                ...p,
+                ship_id: oldVal.ship_id ?? null,
+                work_order_id: oldVal.work_order_id ?? null,
+                charge_type: oldVal.charge_type || p.charge_type
+              }
+            }
+            if (colKey === 'order_date') {
+              return { ...p, order_date: oldVal, fortnight_period: computeFortnightFromDate(oldVal) }
+            }
+            return { ...p, [colKey]: oldVal }
           }
           return p
         })
@@ -624,12 +655,20 @@ export default function Compras() {
 
       try {
         await Promise.all(
-          Object.values(grouped).map((group) =>
-            supabase
-              .from('purchase_orders')
-              .update({ [colKey]: group.value, updated_at: new Date().toISOString() })
-              .in('id', group.ids)
-          )
+          Object.entries(revertMap).map(([id, oldVal]) => {
+            let payload = { updated_at: new Date().toISOString() }
+            if (colKey === 'ship_id' && oldVal && typeof oldVal === 'object') {
+              payload.ship_id = oldVal.ship_id ?? null
+              payload.work_order_id = oldVal.work_order_id ?? null
+              if (oldVal.charge_type) payload.charge_type = oldVal.charge_type
+            } else if (colKey === 'order_date') {
+              payload.order_date = oldVal
+              payload.fortnight_period = computeFortnightFromDate(oldVal)
+            } else {
+              payload[colKey] = oldVal
+            }
+            return supabase.from('purchase_orders').update(payload).eq('id', id)
+          })
         )
       } catch (err) {
         console.error('Error al revertir en Supabase:', err)
@@ -640,20 +679,36 @@ export default function Compras() {
     }
 
     if (targetIds && targetIds.length > 0) {
-      // Optimistic local update
+      const targetSet = new Set(targetIds)
+      let dbPayload = { updated_at: new Date().toISOString() }
+
+      if (colKey === 'ship_id' && newValue && typeof newValue === 'object') {
+        dbPayload.ship_id = newValue.ship_id ?? null
+        dbPayload.work_order_id = newValue.work_order_id ?? null
+        if (newValue.charge_type) dbPayload.charge_type = newValue.charge_type
+      } else if (colKey === 'order_date') {
+        dbPayload.order_date = newValue
+        dbPayload.fortnight_period = computeFortnightFromDate(newValue)
+      } else if (colKey === 'material_name_raw') {
+        dbPayload.material_name_raw = newValue
+        dbPayload.unit_measure = deduceUnitMeasure(String(newValue || ''))
+      } else if (colKey === 'charge_type') {
+        dbPayload.charge_type = newValue
+        if (newValue !== 'DIRECT') {
+          dbPayload.work_order_id = null
+        }
+      } else {
+        dbPayload[colKey] = newValue
+      }
+
       setPurchaseOrders((prev) =>
-        prev.map((p) => {
-          if (targetIds.includes(p.id)) {
-            return { ...p, [colKey]: newValue }
-          }
-          return p
-        })
+        prev.map((p) => (targetSet.has(p.id) ? { ...p, ...dbPayload } : p))
       )
 
       try {
         const { error } = await supabase
           .from('purchase_orders')
-          .update({ [colKey]: newValue, updated_at: new Date().toISOString() })
+          .update(dbPayload)
           .in('id', targetIds)
         if (error) throw error
       } catch (err) {
@@ -662,14 +717,64 @@ export default function Compras() {
         fetchData()
       }
     }
-  }, [fetchData])
+  }, [fetchData, computeFortnightFromDate])
+
+  // Activar edición de celda con doble clic o tecla Enter / F2
+  const activateComprasCell = useCallback((po, colKey) => {
+    if (!po) return
+    if (colKey === 'ship_id') {
+      const supName = suppliers.find((s) => s.id === po.supplier_id)?.name || po.requested_by_name || ''
+      setShipPickerModal({
+        isOpen: true,
+        orderId: po.id,
+        shipId: po.ship_id || '',
+        workOrderId: po.work_order_id || '',
+        chargeType: po.charge_type || 'DIRECT',
+        contractorName: supName
+      })
+      return
+    }
+    if (colKey === 'urgency') {
+      handleCycleUrgency(po.id, po.urgency || 'SIN_APURO')
+      return
+    }
+    if (colKey === 'charge_type') {
+      setInlineEdit({ orderId: po.id, field: 'charge_type', value: po.charge_type || 'DIRECT' })
+      return
+    }
+    if (colKey === 'order_date') {
+      setInlineEdit({ orderId: po.id, field: 'order_date', value: po.order_date || new Date().toISOString().split('T')[0] })
+      return
+    }
+    if (colKey === 'requested_by_name') {
+      setInlineEdit({ orderId: po.id, field: 'requested_by_name', value: po.requested_by_name || 'PAÑOL' })
+      return
+    }
+    if (colKey === 'material_name_raw') {
+      setInlineEdit({ orderId: po.id, field: 'material_name_raw', value: po.material_name_raw || '' })
+      return
+    }
+    if (colKey === 'quantity') {
+      setInlineEdit({ orderId: po.id, field: 'quantity', value: po.quantity || 1 })
+      return
+    }
+    if (colKey === 'supplier_quoted_price') {
+      setInlineEdit({ orderId: po.id, field: 'supplier_quoted_price', value: po.supplier_quoted_price || '' })
+      return
+    }
+    if (colKey === 'supplier_id') {
+      setInlineEdit({ orderId: po.id, field: 'supplier_id', value: po.supplier_id || '' })
+    }
+  }, [suppliers])
 
   // Hook central de Hoja de Cálculo
   const grid = useSpreadsheetGrid({
     rows: filteredOrders,
     columns: spreadsheetColumns,
     getRowId: (row) => row.id,
+    storageKey: 'aloncar_grid_compras',
     onBatchUpdate: handleSpreadsheetBatchUpdate,
+    onCellActivate: (row, colDef) => activateComprasCell(row, colDef.key),
     onFocusSearch: () => {
       searchInputRef.current?.focus()
       searchInputRef.current?.select()
@@ -719,7 +824,6 @@ export default function Compras() {
     const targetOrder = purchaseOrders.find((p) => p.id === orderId)
     if (!targetOrder || targetOrder[field] === newValue) return
 
-    // Registrar en pila de deshacer (Ctrl+Z)
     if (grid?.pushUndoAction) {
       grid.pushUndoAction({
         colKey: field,
@@ -731,22 +835,29 @@ export default function Compras() {
       })
     }
 
-    // Optimistic update
+    const extraFields = {}
+    if (field === 'order_date') {
+      extraFields.fortnight_period = computeFortnightFromDate(newValue)
+    } else if (field === 'material_name_raw') {
+      extraFields.unit_measure = deduceUnitMeasure(String(newValue || ''))
+    } else if (field === 'charge_type' && newValue !== 'DIRECT') {
+      extraFields.work_order_id = null
+    }
+
     setPurchaseOrders((prev) =>
-      prev.map((p) => (p.id === orderId ? { ...p, [field]: newValue } : p))
+      prev.map((p) => (p.id === orderId ? { ...p, [field]: newValue, ...extraFields } : p))
     )
 
     try {
       const { error } = await supabase
         .from('purchase_orders')
-        .update({ [field]: newValue, updated_at: new Date().toISOString() })
+        .update({ [field]: newValue, ...extraFields, updated_at: new Date().toISOString() })
         .eq('id', orderId)
       if (error) throw error
       showFeedbackMsg('success', 'Campo actualizado correctamente.')
     } catch (err) {
       console.error('Error guardando edición rápida:', err)
       showFeedbackMsg('error', 'Error al guardar: ' + err.message)
-      // Rollback
       setPurchaseOrders((prev) =>
         prev.map((p) => (p.id === orderId ? targetOrder : p))
       )
@@ -981,9 +1092,9 @@ export default function Compras() {
   return (
     <div className="space-y-4 pb-24">
       {/* ========================================================= */}
-      {/* CABECERA PRINCIPAL Y SELECTOR DE PESTAÑAS */}
+      {/* ZONA 1: CABECERA PRINCIPAL Y CONTEXTO DE MÓDULO */}
       {/* ========================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800 backdrop-blur-md">
+      <div className="alon-zone-context flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-slate-950">
             <ShoppingCart className="w-5 h-5 stroke-[2.5]" />
@@ -1079,8 +1190,23 @@ export default function Compras() {
       {/* ========================================================= */}
       {activeTab === 'compras' && (
         <>
-          {/* TARJETAS DE KPIs SUPERIORES (GRUPOS Y SUBGRUPOS INTERACTIVOS 1-CLIC) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2.5">
+          {/* ZONA 2: TARJETAS DE KPIs SUPERIORES (RADAR OPERATIVO 1-CLIC) */}
+          <div className="alon-zone-kpis p-3 space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90 flex items-center gap-1.5">
+                📊 RADAR DE KPIs Y ALERTAS OPERATIVAS • Clic en cualquier tarjeta para filtrar
+              </span>
+              {activeKpiFilter && (
+                <button
+                  type="button"
+                  onClick={() => setActiveKpiFilter(null)}
+                  className="text-[10px] font-bold text-amber-300 hover:text-white bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded cursor-pointer"
+                >
+                  ✕ Quitar Filtro KPI
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2.5">
             {/* KPI 0: Falta Cargar OT (Total + Obras / Astillero) */}
             <div
               onClick={() => toggleKpiFilter('sin_ot')}
@@ -1350,10 +1476,11 @@ export default function Compras() {
                 <p className="text-slate-400 text-[9px] truncate">Cliente 2234867 | 0810-222-5272</p>
               </div>
             </div>
+            </div>
           </div>
 
-          {/* BARRA DE FILTROS & HERRAMIENTAS */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+          {/* ZONA 3: BARRA DE FILTROS & HERRAMIENTAS */}
+          <div className="alon-zone-toolbar p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
             {/* Buscador */}
             <div className="relative flex-1 min-w-[220px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1497,9 +1624,37 @@ export default function Compras() {
           </div>
 
           {/* ========================================================= */}
-          {/* GRILLA MAESTRA DE COMPRAS CON STICKY HEADERS */}
+          {/* ZONA 4: PLANILLA / HOJA DE CÁLCULO EDITABLE DE COMPRAS */}
           {/* ========================================================= */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+          <div className="alon-zone-grid">
+            <div className="alon-grid-ribbon">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px]">
+                  {grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : 'MODO PLANILLA'}
+                </span>
+                <span className="text-slate-400">
+                  Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier celda para editar • Arrastrar esquina celeste o <strong className="text-slate-200">Ctrl+D</strong> para rellenar
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
+                <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
+                <span>•</span>
+                <span>{filteredOrders.length} filas</span>
+              </div>
+            </div>
+
+            <datalist id="compras-materials-datalist">
+              {materials.slice(0, 300).map((m) => (
+                <option key={m.id} value={m.name} />
+              ))}
+            </datalist>
+            <datalist id="compras-requesters-datalist">
+              <option value="PAÑOL" />
+              {workers.filter((w) => w.can_withdraw_materials).map((w) => (
+                <option key={w.id} value={w.name} />
+              ))}
+            </datalist>
+
             <div
               tabIndex={0}
               onKeyDown={grid.handleKeyDown}
@@ -1507,8 +1662,8 @@ export default function Compras() {
               className="overflow-x-auto max-h-[600px] overflow-y-auto relative focus:outline-none"
             >
               <table className="w-full text-left text-xs border-collapse">
-                {/* STICKY HEADER TIPO EXCEL (NUEVO ORDEN SOLICITADO) */}
-                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm">
+                {/* STICKY HEADER TIPO EXCEL */}
+                <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
                     <th className="py-2.5 px-3 w-10 text-center">
                       <button
@@ -1606,15 +1761,32 @@ export default function Compras() {
                             </button>
                           </td>
 
-                          {/* 2. Destino */}
+                          {/* 2. Destino (Doble clic editable) */}
                           {(() => {
                             const cp = getSpreadsheetCellProps(rowIndex, 'charge_type')
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 whitespace-nowrap ${cp.className}`}
+                                onDoubleClick={() => activateComprasCell(po, 'charge_type')}
+                                className={`py-2 px-3 whitespace-nowrap cursor-pointer ${cp.className}`}
+                                title="Doble clic para cambiar Destino (Directo / Pañol / Stand-by)"
                               >
-                                {po.charge_type === 'DIRECT' ? (
+                                {inlineEdit.orderId === po.id && inlineEdit.field === 'charge_type' ? (
+                                  <select
+                                    autoFocus
+                                    value={inlineEdit.value}
+                                    onChange={(e) => saveInlineEdit(po.id, 'charge_type', e.target.value)}
+                                    onBlur={() => setInlineEdit({ orderId: null, field: null, value: '' })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                    }}
+                                    className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[10px] font-bold text-white focus:outline-none"
+                                  >
+                                    <option value="DIRECT">DIRECTO (OBRA)</option>
+                                    <option value="VIA_PANOL">PAÑOL / STOCK</option>
+                                    <option value="STANDBY">STANDBY</option>
+                                  </select>
+                                ) : po.charge_type === 'DIRECT' ? (
                                   <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-bold text-[10px]">
                                     DIRECTO
                                   </span>
@@ -1639,16 +1811,38 @@ export default function Compras() {
                             )
                           })()}
 
-                          {/* 3. Fecha / Quincena */}
+                          {/* 3. Fecha / Quincena (Doble clic editable) */}
                           {(() => {
                             const cp = getSpreadsheetCellProps(rowIndex, 'order_date')
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 whitespace-nowrap font-mono ${cp.className}`}
+                                onDoubleClick={() => activateComprasCell(po, 'order_date')}
+                                className={`py-2 px-3 whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
+                                title="Doble clic para editar fecha"
                               >
-                                <div className="text-slate-200">{po.order_date}</div>
-                                <div className="text-[10px] text-slate-500">{po.fortnight_period}</div>
+                                {inlineEdit.orderId === po.id && inlineEdit.field === 'order_date' ? (
+                                  <input
+                                    type="date"
+                                    autoFocus
+                                    value={inlineEdit.value}
+                                    onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && inlineEdit.value) saveInlineEdit(po.id, 'order_date', inlineEdit.value)
+                                      if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                    }}
+                                    onBlur={() => {
+                                      if (inlineEdit.value) saveInlineEdit(po.id, 'order_date', inlineEdit.value)
+                                      else setInlineEdit({ orderId: null, field: null, value: '' })
+                                    }}
+                                    className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                  />
+                                ) : (
+                                  <>
+                                    <div className="text-slate-200">{po.order_date}</div>
+                                    <div className="text-[10px] text-slate-500">{po.fortnight_period}</div>
+                                  </>
+                                )}
                                 {cp.renderHandle && (
                                   <div
                                     onMouseDown={grid.handleFillHandleMouseDown}
@@ -1666,15 +1860,7 @@ export default function Compras() {
                             return (
                               <td
                                 {...cp.domProps}
-                                onDoubleClick={() => {
-                                  setShipPickerModal({
-                                    isOpen: true,
-                                    orderId: po.id,
-                                    shipId: po.ship_id || '',
-                                    workOrderId: po.work_order_id || '',
-                                    contractorName: po.charge_type
-                                  })
-                                }}
+                                onDoubleClick={() => activateComprasCell(po, 'ship_id')}
                                 className={`py-2 px-3 cursor-pointer ${cp.className}`}
                                 title="Doble clic para cambiar Buque u Orden de Trabajo"
                               >
@@ -1682,7 +1868,7 @@ export default function Compras() {
                                   {shp?.name || 'ASTILLERO'}
                                 </div>
                                 <div className="text-[10px] text-slate-400 truncate max-w-[130px]" title={wo?.title || (po.work_order_id ? 'OT' : '⚠️ Sin OT')}>
-                                  {wo?.title || (po.work_order_id ? 'OT' : <span className="text-amber-400 font-bold">⚠️ Sin OT</span>)}
+                                  {wo ? `${wo.ot_number ? `#${wo.ot_number} ` : ''}${wo.title}` : (po.work_order_id ? 'OT' : <span className="text-amber-400 font-bold">⚠️ Sin OT</span>)}
                                 </div>
                                 {cp.renderHandle && (
                                   <div
@@ -1702,11 +1888,14 @@ export default function Compras() {
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 whitespace-nowrap ${cp.className}`}
+                                onDoubleClick={() => activateComprasCell(po, 'requested_by_name')}
+                                className={`py-2 px-3 whitespace-nowrap cursor-pointer ${cp.className}`}
+                                title="Doble clic para editar solicitante"
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'requested_by_name' ? (
                                   <input
                                     type="text"
+                                    list="compras-requesters-datalist"
                                     autoFocus
                                     value={inlineEdit.value}
                                     onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
@@ -1718,11 +1907,7 @@ export default function Compras() {
                                     className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
                                   />
                                 ) : (
-                                  <div
-                                    onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'requested_by_name', value: po.requested_by_name || 'PAÑOL' })}
-                                    className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all"
-                                    title="Doble clic para editar solicitante"
-                                  >
+                                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all">
                                     {po.requested_by_name || 'PAÑOL'}
                                   </div>
                                 )}
@@ -1738,34 +1923,58 @@ export default function Compras() {
                             )
                           })()}
 
-                          {/* 6. Material Solicitado */}
+                          {/* 6. Material Solicitado (Editable con Doble Clic) */}
                           {(() => {
                             const cp = getSpreadsheetCellProps(rowIndex, 'material_name_raw')
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 ${cp.className}`}
+                                onDoubleClick={() => activateComprasCell(po, 'material_name_raw')}
+                                className={`py-2 px-3 cursor-pointer ${cp.className}`}
+                                title="Doble clic para editar descripción del material"
                               >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-medium text-white">{po.material_name_raw}</span>
-                                  {po.is_new_material && !po.no_catalog_required && isSupervisorOrAdmin && (
-                                    <button
-                                      onClick={() => {
-                                        setPendingMaterialOrder(po)
-                                        setShowNewMaterialModal(true)
-                                      }}
-                                      className="px-1.5 py-0.2 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer"
-                                      title="Material sin registro. Clic para formalizar alta o descartar."
-                                    >
-                                      <AlertTriangle className="w-2.5 h-2.5" />
-                                      <span>Alta</span>
-                                    </button>
-                                  )}
-                                </div>
-                                {po.observations && (
-                                  <p className="text-[10px] text-slate-400 italic truncate max-w-[200px]" title={po.observations}>
-                                    {po.observations}
-                                  </p>
+                                {inlineEdit.orderId === po.id && inlineEdit.field === 'material_name_raw' ? (
+                                  <input
+                                    type="text"
+                                    list="compras-materials-datalist"
+                                    autoFocus
+                                    value={inlineEdit.value}
+                                    onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && inlineEdit.value.trim()) saveInlineEdit(po.id, 'material_name_raw', inlineEdit.value.trim())
+                                      if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
+                                    }}
+                                    onBlur={() => {
+                                      if (inlineEdit.value.trim()) saveInlineEdit(po.id, 'material_name_raw', inlineEdit.value.trim())
+                                      else setInlineEdit({ orderId: null, field: null, value: '' })
+                                    }}
+                                    className="w-full min-w-[180px] bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                  />
+                                ) : (
+                                  <>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-medium text-white">{po.material_name_raw}</span>
+                                      {po.is_new_material && !po.no_catalog_required && isSupervisorOrAdmin && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setPendingMaterialOrder(po)
+                                            setShowNewMaterialModal(true)
+                                          }}
+                                          className="px-1.5 py-0.2 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                          title="Material sin registro. Clic para formalizar alta o descartar."
+                                        >
+                                          <AlertTriangle className="w-2.5 h-2.5" />
+                                          <span>Alta</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                    {po.observations && (
+                                      <p className="text-[10px] text-slate-400 italic truncate max-w-[200px]" title={po.observations}>
+                                        {po.observations}
+                                      </p>
+                                    )}
+                                  </>
                                 )}
                                 {cp.renderHandle && (
                                   <div
@@ -1784,7 +1993,9 @@ export default function Compras() {
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 text-right whitespace-nowrap font-mono ${cp.className}`}
+                                onDoubleClick={() => activateComprasCell(po, 'quantity')}
+                                className={`py-2 px-3 text-right whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
+                                title="Doble clic para editar cantidad"
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'quantity' ? (
                                   <input
@@ -1800,11 +2011,7 @@ export default function Compras() {
                                     className="w-20 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
                                   />
                                 ) : (
-                                  <div
-                                    onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'quantity', value: po.quantity || 1 })}
-                                    className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all font-mono inline-block text-right"
-                                    title="Doble clic para editar cantidad"
-                                  >
+                                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all font-mono inline-block text-right">
                                     <span className="font-bold text-white">{po.quantity}</span>{' '}
                                     <span className="text-[10px] text-slate-500">{po.unit_measure || 'unidad'}</span>
                                   </div>
@@ -1830,7 +2037,9 @@ export default function Compras() {
                                 return (
                                   <td
                                     {...cp.domProps}
-                                    className={`py-2 px-3 text-right whitespace-nowrap font-mono ${cp.className}`}
+                                    onDoubleClick={() => activateComprasCell(po, 'supplier_quoted_price')}
+                                    className={`py-2 px-3 text-right whitespace-nowrap font-mono cursor-pointer ${cp.className}`}
+                                    title="Doble clic para editar $/U cotizado"
                                   >
                                     {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_quoted_price' ? (
                                       <input
@@ -1846,11 +2055,7 @@ export default function Compras() {
                                         className="w-28 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none font-mono"
                                       />
                                     ) : (
-                                      <div
-                                        onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_quoted_price', value: po.supplier_quoted_price || '' })}
-                                        className="cursor-pointer hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right"
-                                        title="Doble clic para editar $/U cotizado"
-                                      >
+                                      <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right">
                                         {po.supplier_quoted_price ? (
                                           <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span>
                                         ) : (
@@ -1910,7 +2115,9 @@ export default function Compras() {
                             return (
                               <td
                                 {...cp.domProps}
-                                className={`py-2 px-3 relative ${cp.className}`}
+                                onDoubleClick={() => activateComprasCell(po, 'supplier_id')}
+                                className={`py-2 px-3 relative cursor-pointer ${cp.className}`}
+                                title="Doble clic para buscar y asignar proveedor por iniciales"
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_id' ? (
                                   <InlineSupplierPicker
@@ -1920,11 +2127,7 @@ export default function Compras() {
                                     onCancel={() => setInlineEdit({ orderId: null, field: null, value: '' })}
                                   />
                                 ) : (
-                                  <div
-                                    onDoubleClick={() => setInlineEdit({ orderId: po.id, field: 'supplier_id', value: po.supplier_id || '' })}
-                                    className="cursor-pointer hover:bg-slate-800/80 px-1.5 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[140px]"
-                                    title="Doble clic para buscar y asignar proveedor por iniciales"
-                                  >
+                                  <div className="hover:bg-slate-800/80 px-1.5 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[140px]">
                                     <span className="font-semibold text-slate-200">{sup?.name || <span className="text-slate-600 italic">Asignar...</span>}</span>
                                   </div>
                                 )}
@@ -2255,8 +2458,12 @@ export default function Compras() {
       {/* ========================================================= */}
       {activeTab === 'proveedores' && (
         <div className="space-y-4">
-          {/* KPIS PROPIOS DE PROVEEDORES */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {/* ZONA 2: KPIS PROPIOS DE PROVEEDORES */}
+          <div className="alon-zone-kpis p-3 space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90 px-1 block">
+              📊 RADAR DE PROVEEDORES • Clic para filtrar padrón
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div
               onClick={() => setSupplierKpiFilter('TODOS')}
               className={`p-3 rounded-xl border cursor-pointer transition-all ${
@@ -2306,10 +2513,11 @@ export default function Compras() {
               <p className="text-[10px] font-bold text-cyan-400 uppercase">💨 Gases (P-02)</p>
               <p className="text-xl font-black text-cyan-300 mt-0.5">{supplierKpis.gasesCount}</p>
             </div>
+            </div>
           </div>
 
-          {/* BARRA DE HERRAMIENTAS Y VISTAS */}
-          <div className="flex items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+          {/* ZONA 3: BARRA DE HERRAMIENTAS Y VISTAS */}
+          <div className="alon-zone-toolbar flex items-center justify-between p-3">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSuppliersViewMode('lista')}
@@ -2343,12 +2551,12 @@ export default function Compras() {
             </button>
           </div>
 
-          {/* VISTA 1: TABLA (LISTA CON STICKY HEADERS) */}
+          {/* ZONA 4: TABLA DE PROVEEDORES */}
           {suppliersViewMode === 'lista' ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+            <div className="alon-zone-grid">
               <div className="overflow-x-auto max-h-[550px] overflow-y-auto">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                  <thead className="sticky top-0 z-20 alon-grid-thead">
                     <tr>
                       <th className="py-2.5 px-3">Proveedor / Razón Social</th>
                       <th className="py-2.5 px-3">Rubros</th>
@@ -2910,6 +3118,69 @@ export default function Compras() {
           }}
         />
       )}
+
+      {/* ========================================================= */}
+      {/* MODAL 11: SELECTOR ENFOCADO DE BUQUE Y OT (DOBLE CLIC) */}
+      {/* ========================================================= */}
+      <ShipWorkOrderPickerModal
+        isOpen={shipPickerModal.isOpen}
+        onClose={() => setShipPickerModal({ isOpen: false, orderId: null, shipId: '', workOrderId: '', chargeType: 'DIRECT', contractorName: '' })}
+        ships={ships}
+        workOrders={workOrders}
+        workItems={workItems}
+        currentShipId={shipPickerModal.shipId}
+        currentWorkOrderId={shipPickerModal.workOrderId}
+        currentChargeType={shipPickerModal.chargeType}
+        allowAstilleroStock={true}
+        contractorName={shipPickerModal.contractorName}
+        title="Asignar Buque y Orden de Trabajo (Compras)"
+        onSave={async ({ shipId, workOrderId, isAstilleroStock }) => {
+          const orderId = shipPickerModal.orderId
+          const target = purchaseOrders.find((p) => p.id === orderId)
+          if (!target) return
+
+          const astShip = ships.find((s) => s.name === 'ASTILLERO')
+          const resolvedShipId = isAstilleroStock ? (astShip?.id || null) : shipId
+          const resolvedChargeType = isAstilleroStock || (astShip && resolvedShipId === astShip.id) ? 'VIA_PANOL' : 'DIRECT'
+
+          if (grid?.pushUndoAction) {
+            grid.pushUndoAction({
+              colKey: 'ship_id',
+              colLabel: 'Buque / OT',
+              actionLabel: 'Cambio de Buque y OT',
+              previousValues: { [orderId]: { ship_id: target.ship_id, work_order_id: target.work_order_id, charge_type: target.charge_type } },
+              newValue: { ship_id: resolvedShipId, work_order_id: workOrderId, charge_type: resolvedChargeType },
+              timestamp: Date.now()
+            })
+          }
+
+          setPurchaseOrders((prev) =>
+            prev.map((p) => (p.id === orderId ? { ...p, ship_id: resolvedShipId, work_order_id: workOrderId, charge_type: resolvedChargeType } : p))
+          )
+
+          try {
+            const { error } = await supabase
+              .from('purchase_orders')
+              .update({
+                ship_id: resolvedShipId,
+                work_order_id: workOrderId,
+                charge_type: resolvedChargeType,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', orderId)
+            if (error) throw error
+            if (!workOrderId) {
+              showFeedbackMsg('success', 'Destino asignado. OT dejada en blanco (sumada a KPI Falta Cargar OT).')
+            } else {
+              showFeedbackMsg('success', 'Buque y OT asignados con éxito.')
+            }
+          } catch (err) {
+            console.error('Error guardando Buque y OT en Compras:', err)
+            showFeedbackMsg('error', 'Error al guardar Buque y OT: ' + err.message)
+            fetchData()
+          }
+        }}
+      />
     </div>
   )
 }
@@ -3035,8 +3306,8 @@ function OrderFormModal({
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (chargeType === 'DIRECT' && (!shipId || !workOrderId)) {
-      return alert('Debe seleccionar el Buque y la Orden de Trabajo para compras directas.')
+    if (chargeType === 'DIRECT' && !shipId) {
+      return alert('Debe seleccionar el Buque para compras directas (la Orden de Trabajo puede dejarse en blanco si aún no está abierta).')
     }
 
     for (let i = 0; i < items.length; i++) {
@@ -3175,14 +3446,15 @@ function OrderFormModal({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1 font-semibold">Orden de Trabajo (OT)</label>
+                  <label className="block text-slate-400 mb-1 font-semibold">Orden de Trabajo (OT - Opcional)</label>
                   <select
                     value={workOrderId}
                     onChange={(e) => setWorkOrderId(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-                    required
+                    className={`w-full bg-slate-900 border rounded-lg p-2 focus:outline-none focus:border-cyan-500 ${
+                      !workOrderId ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-slate-700 text-white'
+                    }`}
                   >
-                    <option value="">-- Seleccionar OT --</option>
+                    <option value="">-- ⚠️ Dejar OT en blanco (Pendiente de apertura) --</option>
                     {availableWorkOrders.map((w) => (
                       <option key={w.id} value={w.id}>
                         {w.ot_number ? `OT #${w.ot_number} - ` : ''}{w.title}
@@ -5511,58 +5783,6 @@ function InlineSupplierPicker({ suppliers, currentSupplierId, onSelect, onCancel
           ))
         )}
       </div>
-      {/* Modal enfocado de Buque / OT en Doble Clic */}
-      <ShipWorkOrderPickerModal
-        isOpen={shipPickerModal.isOpen}
-        onClose={() => setShipPickerModal({ isOpen: false, orderId: null, shipId: '', workOrderId: '', contractorName: '' })}
-        ships={ships}
-        workOrders={workOrders}
-        currentShipId={shipPickerModal.shipId}
-        currentWorkOrderId={shipPickerModal.workOrderId}
-        contractorName={shipPickerModal.contractorName}
-        title="Asignar Buque y Orden de Trabajo (Compras)"
-        onSave={async ({ shipId, workOrderId }) => {
-          const orderId = shipPickerModal.orderId
-          const target = purchaseOrders.find((p) => p.id === orderId)
-          if (!target) return
-
-          if (grid?.pushUndoAction) {
-            grid.pushUndoAction({
-              colKey: 'ship_id',
-              colLabel: 'Buque / OT',
-              actionLabel: 'Cambio de Buque y OT',
-              previousValues: { [orderId]: { ship_id: target.ship_id, work_order_id: target.work_order_id } },
-              newValue: { ship_id: shipId, work_order_id: workOrderId },
-              timestamp: Date.now()
-            })
-          }
-
-          setPurchaseOrders((prev) =>
-            prev.map((p) => (p.id === orderId ? { ...p, ship_id: shipId, work_order_id: workOrderId } : p))
-          )
-
-          try {
-            const { error } = await supabase
-              .from('purchase_orders')
-              .update({
-                ship_id: shipId,
-                work_order_id: workOrderId, // can be null!
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', orderId)
-            if (error) throw error
-            if (!workOrderId) {
-              showFeedbackMsg('success', 'Buque asignado. OT dejada en blanco (sumada a KPI Falta Cargar OT).')
-            } else {
-              showFeedbackMsg('success', 'Buque y OT asignados con éxito.')
-            }
-          } catch (err) {
-            console.error('Error guardando Buque y OT en Compras:', err)
-            showFeedbackMsg('error', 'Error al guardar Buque y OT: ' + err.message)
-            fetchData()
-          }
-        }}
-      />
     </div>
   )
 }

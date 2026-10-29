@@ -650,6 +650,11 @@ export default function AdminDashboard() {
     }
   }
 
+  function handleCancelEditMacro() {
+    setIsEditingMacro(false)
+    setMacroEditTarget(null)
+  }
+
   // Abrir Modal de Edición Completa de Variables Macroeconómicas
   function handleOpenMacroModal(item) {
     const dBase = parseFloat(item.dollar_rate) || 1500
