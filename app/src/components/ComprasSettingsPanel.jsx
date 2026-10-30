@@ -13,7 +13,9 @@ import {
   FileText,
   Bell,
   Mail,
-  UserCheck
+  UserCheck,
+  Flame,
+  ExternalLink
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -63,6 +65,15 @@ export default function ComprasSettingsPanel() {
     auto_notify: true
   })
 
+  const [gasesAlert, setGasesAlert] = useState({
+    admin_alert_phone: '+5492235000001',
+    admin_alert_name: 'Administrador Alon Car',
+    alert_day: 'Martes',
+    alert_time: '09:00',
+    enabled: true,
+    alert_message: '🚨 RECORDATORIO SEMANAL GASES (P-02) - ALON CAR\nHoy martes antes de las 12:00 hs vence el plazo para enviar el pedido de tubos a Air Liquide. Por favor consolidar tubos vacíos en pañol y emitir pedido.'
+  })
+
   useEffect(() => {
     fetchSettings()
   }, [])
@@ -73,7 +84,7 @@ export default function ComprasSettingsPanel() {
       const { data, error } = await supabase
         .from('system_settings')
         .select('*')
-        .in('key', ['compras_whatsapp', 'se_compra_alertas'])
+        .in('key', ['compras_whatsapp', 'se_compra_alertas', 'gases_p02_alerta'])
 
       if (error) throw error
       if (data) {
@@ -84,6 +95,10 @@ export default function ComprasSettingsPanel() {
         const alerts = data.find((d) => d.key === 'se_compra_alertas')
         if (alerts?.value) {
           setSeCompraAlerts((prev) => ({ ...prev, ...alerts.value }))
+        }
+        const gases = data.find((d) => d.key === 'gases_p02_alerta')
+        if (gases?.value) {
+          setGasesAlert((prev) => ({ ...prev, ...gases.value }))
         }
       }
     } catch (err) {
@@ -117,6 +132,13 @@ export default function ComprasSettingsPanel() {
         updated_by: 'Administrador'
       }
 
+            const payloadGases = {
+        key: 'gases_p02_alerta',
+        value: gasesAlert,
+        updated_at: new Date().toISOString(),
+        updated_by: 'Administrador'
+      }
+
       const { error: err1 } = await supabase
         .from('system_settings')
         .upsert(payloadWhats, { onConflict: 'key' })
@@ -126,6 +148,11 @@ export default function ComprasSettingsPanel() {
         .from('system_settings')
         .upsert(payloadAlerts, { onConflict: 'key' })
       if (err2) throw err2
+
+      const { error: err3 } = await supabase
+        .from('system_settings')
+        .upsert(payloadGases, { onConflict: 'key' })
+      if (err3) throw err3
 
       showFeedback('success', 'Configuración de Compras y Alertas guardada correctamente.')
     } catch (err) {
@@ -573,6 +600,111 @@ export default function ComprasSettingsPanel() {
                       El sistema identifica automáticamente al Jefe de Obra asignado al buque y OT seleccionados en la orden de compra y le dirige la consulta para validación técnica.
                     </p>
                   </div>
+                </div>
+              </div>
+            </div>
+
+                        {/* SECCIÓN 3: ALERTA AUTOMATIZADA DE GASES (PROCEDIMIENTO P-02 AIR LIQUIDE) */}
+            <div className="space-y-3 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-cyan-400" />
+                    3. Alerta Automatizada de Gases (Procedimiento P-02 Air Liquide)
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Notificación desatendida programada para las 09:00 hs del día de vencimiento de pedidos de tubos (Regla P-02: Martes antes de las 12:00 hs).
+                  </p>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-cyan-300 font-bold bg-cyan-950/60 border border-cyan-500/40 px-3 py-1 rounded-lg cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={gasesAlert.enabled}
+                    onChange={(e) => setGasesAlert({ ...gasesAlert, enabled: e.target.checked })}
+                    className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                  />
+                  <span>Automatización Activa</span>
+                </label>
+              </div>
+
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-4 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-semibold">Nombre del Destinatario (Administrador)</label>
+                    <input
+                      type="text"
+                      value={gasesAlert.admin_alert_name}
+                      onChange={(e) => setGasesAlert({ ...gasesAlert, admin_alert_name: e.target.value })}
+                      placeholder="Ej: Administrador Alon Car"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-semibold flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Teléfono Móvil Administrador (WhatsApp)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={gasesAlert.admin_alert_phone}
+                      onChange={(e) => setGasesAlert({ ...gasesAlert, admin_alert_phone: e.target.value })}
+                      placeholder="Ej: +5492235000001"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
+                      required
+                    />
+                    <span className="text-[10px] text-slate-500">Recibirá el recordatorio a las 09:00 hs</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-semibold">Día de Emisión</label>
+                      <input
+                        type="text"
+                        value={gasesAlert.alert_day}
+                        onChange={(e) => setGasesAlert({ ...gasesAlert, alert_day: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-medium text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-semibold">Hora de Alerta</label>
+                      <input
+                        type="text"
+                        value={gasesAlert.alert_time}
+                        onChange={(e) => setGasesAlert({ ...gasesAlert, alert_time: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono font-bold text-center text-cyan-300"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1 font-semibold">Texto Predeterminado de la Alerta Semanal</label>
+                  <textarea
+                    rows="3"
+                    value={gasesAlert.alert_message}
+                    onChange={(e) => setGasesAlert({ ...gasesAlert, alert_message: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-cyan-500 font-mono text-[11px]"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                  <span className="text-[11px] text-slate-400">
+                    💡 Disparo programado: Todos los martes a las 09:00 hs con límite de envío a Air Liquide a las 12:00 hs.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cleanPhone = (gasesAlert.admin_alert_phone || '').replace(/\D/g, '')
+                      if (!cleanPhone) return alert('Por favor complete el teléfono del Administrador.')
+                      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(gasesAlert.alert_message)}`
+                      window.open(url, '_blank')
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>📲 Probar Envío Alerta WhatsApp</span>
+                  </button>
                 </div>
               </div>
             </div>

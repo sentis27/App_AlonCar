@@ -169,3 +169,55 @@ Todo módulo con grilla de datos debe instanciar el hook `useSpreadsheetGrid`:
   - **Duplicación en 1-Clic (`<Copy />`):** En la columna de *Acciones* de cada fila, incluir el botón de clonar que crea una copia exacta del registro con fecha de hoy al final de la grilla (con soporte para revertir con `Ctrl+Z`).
   - **Copiar y Pegar Fila Completa (`Ctrl+C` / `Ctrl+V`):** El motor `useSpreadsheetGrid` debe permitir copiar una fila seleccionada y pegarla sobre una fila vacía o de destino rellenando todos sus atributos automáticamente.
   - **Acceso Dual al Pie:** Junto a la inserción rápida, proveer un enlace secundario para abrir el modal completo si se requiere carga masiva o parametrizada.
+
+---
+
+## 13. Auditoría y Consistencia de Costo Directo vs Stock (Condiciones Necesarias y Suficientes)
+- **Principio:** *"Toda compra nace para Stock/Pañol hasta que se demuestre lo contrario. Solo compras vinculadas a un buque específico de cliente se imputan como costo directo."*
+- **Reglas de Negocio Estándar:**
+  1. **Destino por Defecto = PAÑOL (`charge_type: 'VIA_PANOL'`):** Toda nueva solicitud o fila rápida nace asignada a Pañol con Buque = `ASTILLERO / STOCK` y OT = `null`.
+  2. **Desacople Buque / OT en Destino Directo:** Solo cuando el operador cambia explícitamente a `DIRECTO` se exige la vinculación obligatoria a un **Buque de obra específico** (distinto de Astillero). La Orden de Trabajo (OT) puede quedar temporalmente en blanco (`null`) si la OT de producción aún no fue abierta, sin bloquear la compra.
+  3. **Condiciones Necesarias y Suficientes para Costo Directo:**
+     Para que una compra se afecte directamente al costo contable de una obra debe cumplir estrictamente dos condiciones simultáneas: `destino == DIRECTO` y `estado == RECIB.COMP.DIRECT`.
+- **Detección Automática de Incoherencias (Radar de KPIs):**
+  - La tarjeta de radar `7. AUDITORÍA COSTO DIRECTO` fiscaliza y cuenta en tiempo real los siguientes errores contables:
+    - **Infracción A:** Pedido con destino `DIRECTO` pero sin Buque de obra específico asignado (o buque = Astillero).
+    - **Infracción B:** Pedido con Buque de obra asignado recibido como `RECIB.COMP.DIRECT` pero cuyo destino figura como `PAÑOL` u otro destino no directo.
+    - **Infracción C:** Pedido con Buque de obra asignado y destino `DIRECTO`, pero recibido con estado `RECIBIDO` o `RECIBIDO 2` (omitiendo la afectación contable directa del gasto a la obra).
+  - Al cliquear la tarjeta, la grilla se filtra instantáneamente mostrando únicamente las órdenes en infracción para su corrección en 1 toque.
+
+---
+
+## 14. Asistente Inteligente de Proveedores y Métricas de Frecuencia de Compra
+- **Principio:** Al solicitar un material, el operador debe recibir sugerencias inmediatas basadas en el comportamiento histórico real de compras para optimizar precios y tiempos.
+- **Acceso In-Situ:** Botón `<Lightbulb />` en la columna de *Acciones* de cada fila.
+- **Métricas y Análisis en Tiempo Real:**
+  1. **Capa 1 (Histórico Directo del Material):** Busca en el historial todas las compras del mismo material o con palabras clave coincidentes. Calcula el `% de frecuencia de compra` por proveedor, cantidad de compras registradas, último precio unitario y fecha de la última compra.
+  2. **Capa 2 (Fallback por Rubro):** Si no existen compras previas del material, ofrece selector desplegable de Rubro + filtro de texto libre para listar los proveedores del sector con su frecuencia de compra general.
+  3. **Carga en 1-Clic (`[ ⚡ Cargar Pedido ]`):** Asigna de inmediato el proveedor sugerido, último precio registrado y fecha de hoy (si estaba vacía), registrando la acción en la pila de deshacer para reversión inmediata con `Ctrl+Z`.
+
+---
+
+## 15. Logística Local y Despacho de Mandados por WhatsApp Web
+- **Principio:** La coordinación de retiros de materiales en comercios locales debe realizarse de forma fluida, clara y sin jerga técnica interna que confunda al mandadero.
+- **Parámetros del Proveedor:**
+  - `is_local_supplier` (Boolean): Identifica si el proveedor está ubicado en la ciudad para retiro presencial.
+  - `address` (Text): Dirección física del local comercial (ej: *Juan B. Justo 1420*).
+- **Circuito de Despacho (`MandadosModal`):**
+  - **Accesos:** Botón `[ 🛵 Pedido de Mandado ]` en la barra superior (con contador de pedidos locales pendientes) y `[ 🛵 Mandar a Retirar ({N}) ]` en la barra flotante de selección masiva.
+  - **Selector de Mandadero:** Se conecta a la nómina de `Personal`, destacando operarios con rubro `MANDADOS` o con celular registrado.
+  - **Mensaje Universal Formateado para WhatsApp Web:**
+    - Saludo directo personalizado: `"buenas {nombre}, podes pasar a retirar por favor:"`.
+    - Agrupación por **Proveedor y Dirección**: `📍 {NOMBRE PROVEEDOR} ({DIRECCIÓN}):`.
+    - Ítems limpios: ` - {cantidad} {unidad} {material}` (**sin número de pedido `#123` ni nombres de OT**).
+    - Cierre imperativo en negrita: `*⚠️ Por favor retirar remito/factura.*`.
+    - Botones para copiar al portapapeles y abrir chat directo de WhatsApp con `wa.me`.
+
+---
+
+## 16. Automatizaciones Periódicas y Alertas Normativas en Panel Administrador
+- **Principio:** Las reglas de corte semanales de proveedores (ej. Regla P-02 Air Liquide de pedidos antes del martes a las 12:00 hs) no deben ocupar espacio en los radares de compras operativas diarias.
+- **Estándar:**
+  - Migrar su administración a `ComprasSettingsPanel.jsx` en el Panel de Configuración General.
+  - Permitir la configuración del teléfono celular del Administrador (`admin_alert_phone`), día, hora de notificación (09:00 hs) y mensaje predeterminado.
+  - Incluir botón interactivo de prueba para validar el canal de comunicación desatendido en WhatsApp.

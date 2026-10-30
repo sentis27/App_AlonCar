@@ -56,12 +56,39 @@ import {
   Upload,
   Save,
   Navigation,
-  Copy
+  Copy,
+  Lightbulb,
+  Zap
 } from 'lucide-react'
 import { extractTextFromPdf } from '../lib/pdfTextExtractor'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
+
+// Regla de Negocio: Para que una compra se cargue directamente a costo: destino=DIRECTO y estado=RECIB.COMP.DIRECT.
+// Alerta Incoherencias si buque ≠ Astillero y:
+// 1) estado=RECIB.COMP.DIRECT y destino ≠ DIRECTO
+// 2) destino=DIRECTO y estado en (RECIBIDO, RECIBIDO 2)
+// 3) destino=DIRECTO sin buque de obra específico
+export function isCostAuditError(po, ships = []) {
+  if (!po) return false
+  const astShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO'))
+  const isAstilleroOrEmpty = !po.ship_id || (astShip && po.ship_id === astShip.id)
+  const isSpecificShip = !isAstilleroOrEmpty
+  const isDirect = po.charge_type === 'DIRECT'
+  const status = po.status || ''
+
+  // Infracción 1: Destino DIRECTO pero sin Buque de obra específico
+  if (isDirect && isAstilleroOrEmpty) return true
+
+  // Infracción 2: Buque de obra específico con RECIB.COMP.DIRECT pero destino NO es DIRECTO
+  if (isSpecificShip && status === 'RECIB.COMP.DIRECT' && !isDirect) return true
+
+  // Infracción 3: Buque de obra específico con destino DIRECTO pero recibido como Pañol/Cliente (RECIBIDO o RECIBIDO 2) omitiendo la imputación directa
+  if (isSpecificShip && isDirect && (status === 'RECIBIDO' || status === 'RECIBIDO 2')) return true
+
+  return false
+}
 
 // Estados válidos según GS-006 (Ordenados según especificación operativa, texto corto visible y leyenda en tooltip)
 const STATUS_OPTIONS = [
@@ -298,6 +325,11 @@ export default function Compras() {
   const [editingSupplier, setEditingSupplier] = useState(null)
 
   const [showBatchOrderModal, setShowBatchOrderModal] = useState(false)
+  // Modales de Asistente de Proveedor y Despacho de Mandados
+  const [showSupplierHelperModal, setShowSupplierHelperModal] = useState(false)
+  const [supplierHelperTarget, setSupplierHelperTarget] = useState(null)
+  const [showMandadosModal, setShowMandadosModal] = useState(false)
+  const [mandadosPreselectedIds, setMandadosPreselectedIds] = useState([])
 
   // Carga inicial
   useEffect(() => {
@@ -319,7 +351,7 @@ export default function Compras() {
         supabase.from('ships').select('id, name, vessel_type').order('name'),
         supabase.from('work_orders').select('id, ot_number, title, description, ship_id, status').order('ot_number'),
         supabase.from('work_items').select('id, work_order_id, contractors, description'),
-        supabase.from('workers').select('id, name, trade, can_withdraw_materials').order('name'),
+        supabase.from('workers').select('id, name, trade, can_withdraw_materials, phone').order('name'),
         supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
         supabase.from('purchase_documents').select('*').order('created_at', { ascending: false }),
         supabase.from('system_settings').select('*').eq('key', 'compras_whatsapp').maybeSingle()
@@ -405,6 +437,7 @@ export default function Compras() {
     let countSeCompra = 0
     let countRecibido = 0
     let countRecibidoDirecto = 0
+    let countCostAuditErrors = 0
     let countConciliados = 0
     let expiredQuotes = 0
     let newMaterialsCount = 0
@@ -446,6 +479,7 @@ export default function Compras() {
       if (po.status === 'SE COMPRA?') countSeCompra++
       if (po.status === 'RECIBIDO') countRecibido++
       if (po.status === 'RECIB.COMP.DIRECT') countRecibidoDirecto++
+      if (isCostAuditError(po, ships)) countCostAuditErrors++
     })
 
     return {
@@ -467,10 +501,59 @@ export default function Compras() {
       recibidosTotal: countRecibido + countRecibidoDirecto,
       countRecibido,
       countRecibidoDirecto,
+      costAuditErrors: countCostAuditErrors,
       countConciliados,
       newMaterialsCount
     }
-  }, [purchaseOrders])
+  }, [purchaseOrders, ships])
+
+  // Aplicar proveedor sugerido desde el Asistente Inteligente con soporte de Ctrl+Z
+  async function handleApplySupplierHelper(orderId, updates) {
+    const target = purchaseOrders.find((p) => p.id === orderId)
+    if (!target) return
+
+    const previousValues = {
+      [orderId]: {
+        supplier_id: target.supplier_id,
+        supplier_quoted_price: target.supplier_quoted_price,
+        system_unit_price: target.system_unit_price,
+        order_date: target.order_date,
+        fortnight_period: target.fortnight_period,
+        status: target.status
+      }
+    }
+
+    try {
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', orderId)
+      if (error) throw error
+
+      if (grid?.pushUndoAction) {
+        grid.pushUndoAction({
+          colKey: 'supplier_helper',
+          colLabel: 'Asistente de Proveedor',
+          actionLabel: 'Asignar Proveedor Sugerido',
+          previousValues,
+          newValue: updates,
+          timestamp: Date.now()
+        })
+      }
+
+      setPurchaseOrders((prev) =>
+        prev.map((p) => (p.id === orderId ? { ...p, ...updates } : p))
+      )
+
+      const supName = suppliers.find((s) => s.id === updates.supplier_id)?.name || 'Proveedor'
+      showFeedbackMsg('success', `Proveedor "${supName}" y condiciones asignadas con éxito. (Ctrl+Z para deshacer)`)
+      setShowSupplierHelperModal(false)
+      setSupplierHelperTarget(null)
+    } catch (err) {
+      console.error('Error aplicando asistente de proveedor:', err)
+      showFeedbackMsg('error', 'Error al asignar proveedor: ' + err.message)
+    }
+  }
 
   // Limpiar todos los filtros (Botón Global)
   function clearAllFilters() {
@@ -504,7 +587,7 @@ export default function Compras() {
       setFilterSupplier('TODOS')
     } else {
       setActiveKpiFilter(filterKey)
-      if (['por_emitir', 'cotizaciones', 'pedidos', 'recibidos', 'conciliados', 'alta_materiales'].includes(filterKey)) {
+      if (['por_emitir', 'cotizaciones', 'pedidos', 'recibidos', 'conciliados', 'alta_materiales', 'cost_audit'].includes(filterKey)) {
         setFilterStatus('TODOS')
         setFilterSupplier('TODOS')
       } else if (['PEDIR', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA', 'PEDIDO', 'PEDIDO INCOMPLETO', 'SE COMPRA?'].includes(filterKey)) {
@@ -566,6 +649,8 @@ export default function Compras() {
         if (!po.is_reconciled) return false
       } else if (activeKpiFilter === 'alta_materiales') {
         if (!po.is_new_material || po.no_catalog_required) return false
+      } else if (activeKpiFilter === 'cost_audit') {
+        if (!isCostAuditError(po, ships)) return false
       } else if (activeKpiFilter === 'gases') {
         const sup = suppliers.find((s) => s.id === po.supplier_id)
         if (!sup?.is_gas_supplier) return false
@@ -676,6 +761,9 @@ export default function Compras() {
                 freight_estimated_date: oldVal.freight_estimated_date ?? null
               }
             }
+            if (colKey === 'supplier_helper' && oldVal && typeof oldVal === 'object') {
+              return { ...p, ...oldVal }
+            }
             if (colKey === 'order_date') {
               return { ...p, order_date: oldVal, fortnight_period: computeFortnightFromDate(oldVal) }
             }
@@ -698,6 +786,8 @@ export default function Compras() {
               payload.invoice_number = oldVal.invoice_number ?? null
               payload.reconciled_at = oldVal.reconciled_at ?? null
               payload.reconciled_by = oldVal.reconciled_by ?? null
+            } else if (colKey === 'supplier_helper' && oldVal && typeof oldVal === 'object') {
+              payload = { ...payload, ...oldVal }
             } else if (colKey === 'freight' && oldVal && typeof oldVal === 'object') {
               payload.freight_transport_name = oldVal.freight_transport_name ?? null
               payload.freight_request_date = oldVal.freight_request_date ?? null
@@ -984,13 +1074,14 @@ export default function Compras() {
     const fortnight = computeFortnightFromDate(todayStr)
     const defaultUser = profile?.full_name || user?.email?.split('@')[0] || 'PAÑOL'
 
+    const astShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO'))
     const newOrderPayload = {
       order_date: todayStr,
       fortnight_period: fortnight,
       status: 'PEDIR',
       urgency: 'SIN_APURO',
-      charge_type: 'DIRECT',
-      ship_id: null,
+      charge_type: 'VIA_PANOL', // Destino por defecto = PAÑOL
+      ship_id: astShip?.id || null, // Buque = Astillero / Stock por defecto
       work_order_id: null,
       supplier_id: null,
       requested_by_name: defaultUser,
@@ -1212,6 +1303,15 @@ export default function Compras() {
     const nextUrgency = cycle[currentUrgency] || 'SIN_APURO'
     await saveInlineEdit(orderId, 'urgency', nextUrgency)
   }
+
+  // Cantidad de pedidos pendientes a retirar de proveedores locales
+  const localPendingCount = useMemo(() => {
+    return purchaseOrders.filter((po) => {
+      if (!['PEDIDO', 'PEDIDO INCOMPLETO'].includes(po.status)) return false
+      const sup = suppliers.find((s) => s.id === po.supplier_id)
+      return Boolean(sup?.is_local_supplier)
+    }).length
+  }, [purchaseOrders, suppliers])
 
   // KPIs específicos de la pestaña Proveedores
   const supplierKpis = useMemo(() => {
@@ -1771,28 +1871,40 @@ export default function Compras() {
                 </div>
               </div>
 
-              {/* KPI 7: Gases P-02 — Color Único: CIAN / TURQUESA (Cyan) */}
+                            {/* KPI 7: AUDITORÍA COSTO DIRECTO — Color Único: ROSE / CARMESÍ */}
               <div
-                onClick={() => toggleKpiFilter('gases')}
+                onClick={() => toggleKpiFilter('cost_audit')}
                 className={`py-2 px-2.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
-                  activeKpiFilter === 'gases'
-                    ? 'bg-cyan-950/85 border-cyan-400 ring-1 ring-cyan-400/50 shadow-lg shadow-cyan-500/20'
-                    : 'bg-cyan-950/25 border-cyan-500/40 hover:border-cyan-400/70'
+                  activeKpiFilter === 'cost_audit'
+                    ? 'bg-rose-950/85 border-rose-400 ring-1 ring-rose-400/50 shadow-lg shadow-rose-500/20'
+                    : kpis.costAuditErrors > 0
+                    ? 'bg-rose-950/35 border-rose-500/60 hover:border-rose-400/80 animate-pulse'
+                    : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-center justify-between gap-1">
                   <div className="flex items-center gap-1">
-                    <Flame className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                    <span className="text-[13px] xl:text-[14px] font-black text-cyan-300 leading-tight tracking-tight">
-                      7. Gases P-02
+                    <ShieldAlert className={`w-3.5 h-3.5 ${kpis.costAuditErrors > 0 ? 'text-rose-400' : 'text-slate-400'} shrink-0`} />
+                    <span className={`text-[12px] xl:text-[13px] font-black leading-tight tracking-tight ${
+                      kpis.costAuditErrors > 0 ? 'text-rose-300' : 'text-slate-400'
+                    }`}>
+                      7. AUDITORÍA COSTO DIRECTO
                     </span>
                   </div>
-                  {activeKpiFilter === 'gases' && (
-                    <span className="px-1 rounded bg-cyan-400 text-slate-950 font-black text-[8px]">ACTIVO</span>
+                  {activeKpiFilter === 'cost_audit' ? (
+                    <span className="px-1 rounded bg-rose-400 text-slate-950 font-black text-[8px]">ACTIVO</span>
+                  ) : (
+                    <span className={`text-base font-black font-mono leading-none ${
+                      kpis.costAuditErrors > 0 ? 'text-rose-400' : 'text-slate-400'
+                    }`}>
+                      {kpis.costAuditErrors}
+                    </span>
                   )}
                 </div>
-                <div className="mt-1.5 pt-1 border-t border-cyan-900/50 text-[9px]">
-                  <p className="font-bold text-cyan-100 truncate">Air Liquide: Mar &lt;12hs</p>
+                <div className="mt-1.5 pt-1 border-t border-rose-900/40 text-[9px]">
+                  <p className={`font-bold truncate ${kpis.costAuditErrors > 0 ? 'text-rose-300' : 'text-slate-400'}`}>
+                    {kpis.costAuditErrors > 0 ? '⚠️ Incoherencias Buque/Directo' : '✓ Cero Incoherencias'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -2812,6 +2924,17 @@ export default function Compras() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => {
+                                  setSupplierHelperTarget(po)
+                                  setShowSupplierHelperModal(true)
+                                }}
+                                className="p-1 text-slate-400 hover:text-amber-300 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="💡 Asistente Inteligente de Proveedores (Histórico y Métricas de Frecuencia)"
+                              >
+                                <Lightbulb className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleDuplicateOrder(po)}
                                 className="p-1 text-slate-400 hover:text-cyan-300 rounded hover:bg-slate-800 transition-colors cursor-pointer"
                                 title="⚡ Duplicar este pedido (clonar al final con fecha de hoy)"
@@ -3065,6 +3188,19 @@ export default function Compras() {
                     </button>
                   </>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMandadosPreselectedIds(Array.from(selectedOrderIds))
+                    setShowMandadosModal(true)
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-200 font-bold rounded-lg text-xs shadow-md shadow-cyan-900/30 transition-all cursor-pointer"
+                  title="Generar orden de retiro para mandadero con los ítems seleccionados"
+                >
+                  <span>🛵</span>
+                  <span>Mandar a Retirar ({selectedOrderIds.size})</span>
+                </button>
 
                 <button
                   type="button"
@@ -3895,6 +4031,36 @@ export default function Compras() {
           }
         }}
       />
+
+      {/* MODAL 12: ASISTENTE INTELIGENTE DE PROVEEDOR */}
+      {showSupplierHelperModal && supplierHelperTarget && (
+        <SupplierHelperModal
+          order={supplierHelperTarget}
+          purchaseOrders={purchaseOrders}
+          suppliers={suppliers}
+          ships={ships}
+          workOrders={workOrders}
+          onClose={() => {
+            setShowSupplierHelperModal(false)
+            setSupplierHelperTarget(null)
+          }}
+          onApply={handleApplySupplierHelper}
+        />
+      )}
+
+      {/* MODAL 13: PEDIDO DE MANDADO (RETIRO LOCAL) */}
+      {showMandadosModal && (
+        <MandadosModal
+          purchaseOrders={purchaseOrders}
+          suppliers={suppliers}
+          workers={workers}
+          preselectedIds={mandadosPreselectedIds}
+          onClose={() => {
+            setShowMandadosModal(false)
+            setMandadosPreselectedIds([])
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -3919,7 +4085,7 @@ function OrderFormModal({
   onSuccess
 }) {
   // Encabezado
-  const [chargeType, setChargeType] = useState(order?.charge_type || 'DIRECT')
+  const [chargeType, setChargeType] = useState(order?.charge_type || 'VIA_PANOL')
   const [orderDate, setOrderDate] = useState(order?.order_date || new Date().toISOString().split('T')[0])
   const [shipId, setShipId] = useState(order?.ship_id || '')
   const [workOrderId, setWorkOrderId] = useState(order?.work_order_id || '')
@@ -4020,8 +4186,9 @@ function OrderFormModal({
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (chargeType === 'DIRECT' && !shipId) {
-      return alert('Debe seleccionar el Buque para compras directas (la Orden de Trabajo puede dejarse en blanco si aún no está abierta).')
+    const astShipObj = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO'))
+    if (chargeType === 'DIRECT' && (!shipId || (astShipObj && shipId === astShipObj.id))) {
+      return alert('Para compras con destino DIRECTO debe seleccionar un Buque específico de obra (distinto de Astillero). La Orden de Trabajo (OT) puede quedar en blanco si aún no está abierta.')
     }
 
     for (let i = 0; i < items.length; i++) {
@@ -5191,6 +5358,8 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
   const [cuitCuil, setCuitCuil] = useState(supplier?.cuit_cuil || '')
   const [phone, setPhone] = useState(supplier?.phone || '')
   const [email, setEmail] = useState(supplier?.email || '')
+  const [address, setAddress] = useState(supplier?.address || '')
+  const [isLocalSupplier, setIsLocalSupplier] = useState(supplier?.is_local_supplier ?? true)
   const [contactName, setContactName] = useState(supplier?.contact_name || '')
   const [paymentMethod, setPaymentMethod] = useState(supplier?.payment_method || 'CUENTA_CORRIENTE')
   const [billingMedium, setBillingMedium] = useState(supplier?.billing_medium || 'EMAIL')
@@ -5242,6 +5411,8 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
         cuit_cuil: cuitCuil.trim() || null,
         phone: phone.trim() || null,
         email: email.trim() || null,
+        address: address.trim() || null,
+        is_local_supplier: Boolean(isLocalSupplier),
         contact_name: contactName.trim() || null,
         payment_method: paymentMethod,
         billing_medium: billingMedium,
@@ -5385,6 +5556,30 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-400 mb-1 font-semibold">Dirección Física (Mar del Plata)</label>
+              <input
+                type="text"
+                placeholder="Ej: Juan B. Justo 1420"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div className="flex items-center pt-5">
+              <label className="flex items-center gap-2 text-slate-300 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isLocalSupplier}
+                  onChange={(e) => setIsLocalSupplier(e.target.checked)}
+                  className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500"
+                />
+                <span>🛵 Proveedor Local (Retiro por Mandado)</span>
+              </label>
             </div>
           </div>
 
@@ -6714,6 +6909,640 @@ function FreightModal({ order, onClose, onSuccess }) {
             </div>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ==============================================================================
+// MODAL: ASISTENTE INTELIGENTE DE SELECCIÓN DE PROVEEDOR (HISTÓRICO Y FRECUENCIA)
+// ==============================================================================
+function SupplierHelperModal({ order, purchaseOrders, suppliers, ships, workOrders, onClose, onApply }) {
+  const [activeTab, setActiveTab] = useState('material') // 'material' | 'trade'
+  const [selectedTrade, setSelectedTrade] = useState('')
+  const [searchDesc, setSearchDesc] = useState('')
+  const [applyingId, setApplyingId] = useState(null)
+
+  const materialQuery = (order?.material_name_raw || '').trim().toLowerCase()
+
+  // 1. Coincidencias en el histórico por Nombre de Material
+  const materialHistory = useMemo(() => {
+    if (!materialQuery) return []
+    const keywords = materialQuery.split(/\s+/).filter((w) => w.length > 2)
+
+    const matches = purchaseOrders.filter((po) => {
+      if (po.id === order.id) return false
+      if (!po.supplier_id) return false
+      const name = (po.material_name_raw || '').toLowerCase()
+      if (name.includes(materialQuery)) return true
+      if (keywords.length > 0 && keywords.some((kw) => name.includes(kw))) return true
+      return false
+    })
+
+    if (matches.length === 0) return []
+
+    const groupMap = new Map()
+    matches.forEach((po) => {
+      const sup = suppliers.find((s) => s.id === po.supplier_id)
+      if (!sup) return
+
+      if (!groupMap.has(po.supplier_id)) {
+        groupMap.set(po.supplier_id, {
+          supplier: sup,
+          count: 0,
+          orders: []
+        })
+      }
+      const entry = groupMap.get(po.supplier_id)
+      entry.count++
+      entry.orders.push(po)
+    })
+
+    const totalMatches = matches.length
+    const results = Array.from(groupMap.values()).map((item) => {
+      item.orders.sort((a, b) => new Date(b.order_date || 0) - new Date(a.order_date || 0))
+      const last = item.orders[0]
+      const lastPrice = last.supplier_quoted_price || last.system_unit_price || null
+      const percentage = Math.round((item.count / totalMatches) * 100)
+
+      return {
+        supplier: item.supplier,
+        count: item.count,
+        percentage,
+        lastPrice,
+        lastDate: last.order_date,
+        lastOrder: last
+      }
+    })
+
+    results.sort((a, b) => b.count - a.count)
+    return results
+  }, [materialQuery, purchaseOrders, suppliers, order.id])
+
+  useEffect(() => {
+    if (materialHistory.length === 0 && activeTab === 'material') {
+      setActiveTab('trade')
+    }
+  }, [materialHistory, activeTab])
+
+  // 2. Coincidencias por Rubro
+  const tradeSuppliers = useMemo(() => {
+    if (!selectedTrade) return []
+    const cleanTrade = selectedTrade.toUpperCase()
+
+    const sups = suppliers.filter((s) => {
+      if (s.trades && Array.isArray(s.trades) && s.trades.includes(cleanTrade)) return true
+      if (s.trade && s.trade.toUpperCase().includes(cleanTrade)) return true
+      return false
+    })
+
+    const results = sups.map((sup) => {
+      let lastPrice = null
+      let lastDate = null
+      const supOrders = purchaseOrders.filter((po) => po.supplier_id === sup.id)
+      const count = supOrders.length
+
+      if (searchDesc.trim()) {
+        const qDesc = searchDesc.toLowerCase()
+        const descMatches = supOrders.filter((po) => (po.material_name_raw || '').toLowerCase().includes(qDesc))
+        if (descMatches.length > 0) {
+          descMatches.sort((a, b) => new Date(b.order_date || 0) - new Date(a.order_date || 0))
+          lastPrice = descMatches[0].supplier_quoted_price || descMatches[0].system_unit_price || null
+          lastDate = descMatches[0].order_date
+        }
+      } else if (supOrders.length > 0) {
+        supOrders.sort((a, b) => new Date(b.order_date || 0) - new Date(a.order_date || 0))
+        lastPrice = supOrders[0].supplier_quoted_price || supOrders[0].system_unit_price || null
+        lastDate = supOrders[0].order_date
+      }
+
+      return {
+        supplier: sup,
+        count,
+        lastPrice,
+        lastDate
+      }
+    })
+
+    const maxCount = Math.max(1, ...results.map((r) => r.count))
+    return results.map((r) => ({
+      ...r,
+      percentage: Math.round((r.count / maxCount) * 100)
+    })).sort((a, b) => b.count - a.count)
+  }, [selectedTrade, suppliers, purchaseOrders, searchDesc])
+
+  async function handleFastLoad(entry) {
+    setApplyingId(entry.supplier.id)
+    const today = new Date().toISOString().split('T')[0]
+    const updates = {
+      supplier_id: entry.supplier.id,
+      order_date: order.order_date || today,
+      supplier_quoted_price: entry.lastPrice ?? order.supplier_quoted_price ?? null,
+      system_unit_price: entry.lastPrice ?? order.system_unit_price ?? null
+    }
+    await onApply(order.id, updates)
+    setApplyingId(null)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 space-y-4 shadow-2xl animate-in fade-in duration-150">
+        <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/10">
+              <Lightbulb className="w-5 h-5 stroke-[2.5]" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                Asistente Inteligente de Proveedores
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 uppercase font-black">
+                  Frecuencia & Métricas
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Material solicitado:{' '}
+                <strong className="text-white font-mono">{order.material_name_raw || 'Sin material especificado'}</strong>
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-lg">✕</button>
+        </div>
+
+        <div className="flex items-center gap-2 border-b border-slate-800/80 pb-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setActiveTab('material')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'material'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <span>Histórico del Material</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+              activeTab === 'material' ? 'bg-slate-950 text-amber-300' : 'bg-slate-800 text-slate-300'
+            }`}>
+              {materialHistory.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('trade')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'trade'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <span>Buscar por Rubro de Proveedor</span>
+          </button>
+        </div>
+
+        {activeTab === 'material' && (
+          <div className="space-y-3">
+            {materialHistory.length > 0 ? (
+              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                {materialHistory.map((entry) => (
+                  <div
+                    key={entry.supplier.id}
+                    className="p-3 bg-slate-950 border border-slate-800 rounded-xl hover:border-amber-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-white text-xs">{entry.supplier.name}</span>
+                        {entry.supplier.is_local_supplier && (
+                          <span className="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[9px] font-bold">
+                            Local MDP
+                          </span>
+                        )}
+                        {entry.supplier.phone && (
+                          <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                            <Phone className="w-2.5 h-2.5 text-cyan-400" />
+                            {entry.supplier.phone}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[10px] font-mono">
+                          <span className="text-amber-400 font-bold">
+                            {entry.count} compra(s) registrada(s) ({entry.percentage}% de frecuencia)
+                          </span>
+                          {entry.lastPrice && (
+                            <span className="text-emerald-400 font-bold">
+                              Último: ${Number(entry.lastPrice).toLocaleString('es-AR')} {entry.lastDate ? `(${entry.lastDate})` : ''}
+                            </span>
+                          )}
+                        </div>
+                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-amber-500 to-emerald-400 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${entry.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {entry.supplier.address && (
+                        <p className="text-[10px] text-slate-500 truncate">
+                          📍 {entry.supplier.address}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={applyingId === entry.supplier.id}
+                      onClick={() => handleFastLoad(entry)}
+                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {applyingId === entry.supplier.id ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Zap className="w-3.5 h-3.5 fill-slate-950" />
+                      )}
+                      <span>⚡ Cargar Pedido</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 bg-slate-950 rounded-xl border border-slate-800 text-center space-y-2">
+                <AlertCircle className="w-6 h-6 text-amber-400 mx-auto" />
+                <p className="text-xs text-white font-bold">No hay compras previas registradas para este material exacto.</p>
+                <p className="text-[11px] text-slate-400">
+                  Usa la pestaña <strong>"Buscar por Rubro de Proveedor"</strong> para sugerir proveedores del sector según su frecuencia de compra.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'trade' && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">1. Seleccionar Rubro del Proveedor</label>
+                <select
+                  value={selectedTrade}
+                  onChange={(e) => setSelectedTrade(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-bold focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">-- Seleccionar Rubro --</option>
+                  {STANDARD_TRADES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">2. Descripción / Filtro Opcional</label>
+                <input
+                  type="text"
+                  placeholder="Ej: planchuela, bulón, electrodo..."
+                  value={searchDesc}
+                  onChange={(e) => setSearchDesc(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            {selectedTrade ? (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                {tradeSuppliers.length > 0 ? (
+                  tradeSuppliers.map((entry) => (
+                    <div
+                      key={entry.supplier.id}
+                      className="p-3 bg-slate-950 border border-slate-800 rounded-xl hover:border-amber-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1 flex-1 min-w-0 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-white">{entry.supplier.name}</span>
+                          {entry.supplier.is_local_supplier && (
+                            <span className="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[9px] font-bold">
+                              Local MDP
+                            </span>
+                          )}
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {entry.supplier.phone ? `📞 ${entry.supplier.phone}` : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                          <span>{entry.count} compra(s) en {selectedTrade}</span>
+                          {entry.lastPrice && (
+                            <span className="text-emerald-400 font-bold">
+                              Ref: ${Number(entry.lastPrice).toLocaleString('es-AR')}
+                            </span>
+                          )}
+                        </div>
+                        {entry.supplier.address && (
+                          <p className="text-[10px] text-slate-500 truncate">📍 {entry.supplier.address}</p>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={applyingId === entry.supplier.id}
+                        onClick={() => handleFastLoad(entry)}
+                        className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {applyingId === entry.supplier.id ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Zap className="w-3.5 h-3.5 fill-slate-950" />
+                        )}
+                        <span>⚡ Cargar Pedido</span>
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="p-4 text-center text-xs text-slate-500 italic">
+                    No se encontraron proveedores registrados con el rubro "{selectedTrade}".
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="p-4 text-center text-xs text-slate-500 italic">
+                Selecciona un rubro arriba para ver los proveedores sugeridos y sus métricas de compra.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs">
+          <span className="text-[11px] text-slate-500">
+            💡 Asigna proveedor y último precio registrado. Soporta Ctrl+Z para deshacer.
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl cursor-pointer"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ==============================================================================
+// MODAL: GESTIÓN DE MANDADOS Y RETIROS LOCALES POR WHATSAPP
+// ==============================================================================
+function MandadosModal({ purchaseOrders, suppliers, workers, preselectedIds = [], onClose }) {
+  const candidateOrders = useMemo(() => {
+    return purchaseOrders.filter((po) => {
+      if (preselectedIds.includes(po.id)) return true
+      if (!['PEDIDO', 'PEDIDO INCOMPLETO'].includes(po.status)) return false
+      const sup = suppliers.find((s) => s.id === po.supplier_id)
+      return Boolean(sup?.is_local_supplier)
+    })
+  }, [purchaseOrders, suppliers, preselectedIds])
+
+  const [selectedIds, setSelectedIds] = useState(() => {
+    if (preselectedIds.length > 0) return new Set(preselectedIds)
+    return new Set(candidateOrders.map((p) => p.id))
+  })
+
+  const defaultWorker = useMemo(() => {
+    const mandadero = workers.find((w) => (w.trade || '').toUpperCase().includes('MANDADO'))
+    if (mandadero) return mandadero.id
+    const withPhone = workers.find((w) => w.phone && w.phone.trim())
+    return withPhone?.id || (workers[0]?.id || '')
+  }, [workers])
+
+  const [selectedWorkerId, setSelectedWorkerId] = useState(defaultWorker)
+  const [copied, setCopied] = useState(false)
+
+  const selectedWorker = useMemo(() => {
+    return workers.find((w) => w.id === selectedWorkerId)
+  }, [workers, selectedWorkerId])
+
+  const groupedOrders = useMemo(() => {
+    const groups = new Map()
+    selectedIds.forEach((id) => {
+      const po = candidateOrders.find((p) => p.id === id)
+      if (!po) return
+      const sup = suppliers.find((s) => s.id === po.supplier_id)
+      const supKey = sup?.id || 'SIN_PROV'
+      const supName = sup?.name || 'PROVEEDOR S/D'
+      const supAddress = sup?.address || 'Mar del Plata'
+
+      if (!groups.has(supKey)) {
+        groups.set(supKey, {
+          supplier: sup,
+          name: supName,
+          address: supAddress,
+          items: []
+        })
+      }
+      groups.get(supKey).items.push(po)
+    })
+    return Array.from(groups.values())
+  }, [selectedIds, candidateOrders, suppliers])
+
+  const messageText = useMemo(() => {
+    const workerFirstName = (selectedWorker?.name || 'compañero').split(',')[0].split(' ')[0].toLowerCase()
+    let msg = `buenas ${workerFirstName}, podes pasar a retirar por favor:\n\n`
+
+    groupedOrders.forEach((grp) => {
+      msg += `📍 ${grp.name} (${grp.address}):\n`
+      grp.items.forEach((it) => {
+        const qty = Number(it.quantity) || 1
+        const u = it.unit_measure ? ` ${it.unit_measure}` : ''
+        const mat = it.material_name_raw || 'Material'
+        msg += ` - ${qty}${u} ${mat}\n`
+      })
+      msg += '\n'
+    })
+
+    msg += `*⚠️ Por favor retirar remito/factura.*`.trim()
+    return msg
+  }, [groupedOrders, selectedWorker])
+
+  function toggleSelectAll() {
+    if (selectedIds.size === candidateOrders.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(candidateOrders.map((p) => p.id)))
+    }
+  }
+
+  function toggleItem(id) {
+    const next = new Set(selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelectedIds(next)
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(messageText)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
+
+  function handleSendWhatsApp() {
+    const cleanPhone = (selectedWorker?.phone || '').replace(/\D/g, '')
+    if (!cleanPhone) {
+      alert(`El operario "${selectedWorker?.name || 'seleccionado'}" no tiene cargado un número de teléfono en Nómina. Por favor agrégalo en el módulo Personal o copia el mensaje manualmente.`)
+      return
+    }
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`
+    window.open(url, '_blank')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl p-6 space-y-4 shadow-2xl animate-in fade-in duration-150">
+        <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0 shadow-lg shadow-cyan-500/10 text-xl">
+              🛵
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                Pedido de Mandado (Retiro Local)
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300 uppercase font-black">
+                  WhatsApp Inteligente
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Selecciona los materiales emitidos a retirar de proveedores locales y envía la orden agrupada al mandadero en 1 clic.
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-lg">✕</button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs">
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">
+              Operario Responsable de Mandados
+            </label>
+            <select
+              value={selectedWorkerId}
+              onChange={(e) => setSelectedWorkerId(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-bold focus:outline-none focus:border-cyan-500"
+            >
+              {workers.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name} {w.trade ? `(${w.trade})` : ''} {w.phone ? `• ${w.phone}` : '• S/Tel'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col justify-center">
+            <span className="text-slate-400 text-[11px]">Destino de Notificación:</span>
+            <div className="flex items-center gap-2 mt-0.5 font-mono text-xs">
+              <span className="text-white font-bold">{selectedWorker?.name || 'Sin seleccionar'}</span>
+              {selectedWorker?.phone ? (
+                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold">
+                  {selectedWorker.phone}
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300">
+                  ⚠️ Sin Teléfono
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-300">
+                Materiales Emitidos a Prov. Locales ({selectedIds.size}/{candidateOrders.length})
+              </span>
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold"
+              >
+                {selectedIds.size === candidateOrders.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+              </button>
+            </div>
+
+            <div className="max-h-[300px] overflow-y-auto space-y-1.5 pr-1">
+              {candidateOrders.length > 0 ? (
+                candidateOrders.map((po) => {
+                  const isChecked = selectedIds.has(po.id)
+                  const sup = suppliers.find((s) => s.id === po.supplier_id)
+                  return (
+                    <label
+                      key={po.id}
+                      className={`p-2.5 rounded-xl border flex items-start gap-2.5 text-xs cursor-pointer transition-all ${
+                        isChecked
+                          ? 'bg-cyan-950/40 border-cyan-500/50 text-white'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleItem(po.id)}
+                        className="mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-white truncate">{po.material_name_raw || 'Material'}</p>
+                        <p className="text-[10px] text-slate-400 truncate">
+                          {Number(po.quantity) || 1} {po.unit_measure || 'un.'} • <strong className="text-cyan-300">{sup?.name || 'S/Prov'}</strong> {sup?.address ? `(${sup.address})` : ''}
+                        </p>
+                      </div>
+                    </label>
+                  )
+                })
+              ) : (
+                <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-center text-xs text-slate-500">
+                  No hay pedidos pendientes de retiro de proveedores locales.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 flex flex-col">
+            <span className="font-bold text-slate-300 text-xs flex items-center gap-1.5">
+              <span>Vista Previa del Mensaje</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">WhatsApp</span>
+            </span>
+
+            <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs font-mono text-emerald-200/90 whitespace-pre-wrap max-h-[300px] overflow-y-auto leading-relaxed shadow-inner">
+              {messageText}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800 text-xs">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl cursor-pointer"
+          >
+            Cancelar
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? '¡Copiado!' : 'Copiar Mensaje'}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={selectedIds.size === 0}
+              onClick={handleSendWhatsApp}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black flex items-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <MessageSquare className="w-4 h-4 stroke-[2.5]" />
+              <span>Enviar WhatsApp a {selectedWorker?.name?.split(',')[0]?.split(' ')[0] || 'Mandadero'}</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

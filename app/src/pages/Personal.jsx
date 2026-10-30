@@ -38,7 +38,8 @@ import {
   SlidersHorizontal,
   ChevronRight,
   Undo2,
-  Redo2
+  Redo2,
+  Phone
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
@@ -161,6 +162,7 @@ export default function Personal() {
     hourly_rate_ars: 16365.76,
     hourly_rate_usd: 10.91,
     category: 'OFICIAL',
+    phone: '',
     can_withdraw_materials: true,
     can_impute_hours: true,
     can_charge_third_party: false,
@@ -1254,6 +1256,7 @@ export default function Personal() {
       hourly_rate_ars: defaultRate,
       hourly_rate_usd: dollarRate > 0 ? Number((defaultRate / dollarRate).toFixed(2)) : 0,
       category: 'OFICIAL',
+      phone: '',
       can_withdraw_materials: true,
       can_impute_hours: true,
       can_charge_third_party: initialCenter !== 'ASTILLERO',
@@ -1299,6 +1302,7 @@ export default function Personal() {
       hourly_rate_ars: ars,
       hourly_rate_usd: usd,
       category: w.category || 'OFICIAL',
+      phone: w.phone || '',
       can_withdraw_materials: w.can_withdraw_materials ?? true,
       can_impute_hours: w.can_impute_hours ?? true,
       can_charge_third_party: w.can_charge_third_party ?? (center !== 'ASTILLERO'),
@@ -1343,6 +1347,7 @@ export default function Personal() {
         hourly_rate_ars: ars,
         hourly_rate_usd: usd,
         category: formData.category,
+        phone: formData.phone?.trim() || null,
         can_withdraw_materials: Boolean(formData.can_withdraw_materials),
         can_impute_hours: Boolean(formData.can_impute_hours),
         can_charge_third_party: Boolean(formData.can_charge_third_party),
@@ -3772,6 +3777,12 @@ export default function Personal() {
                                     👷 Jefe de Obra
                                   </span>
                                 )}
+                                {w.phone && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800 font-mono flex items-center gap-1" title={`WhatsApp / Móvil: ${w.phone}`}>
+                                    <Phone className="w-2.5 h-2.5" />
+                                    <span>{w.phone}</span>
+                                  </span>
+                                )}
                               </div>
                             )}
                             {nominaGrid.shouldRenderFillHandle(rowIndex, 0) && (
@@ -4430,20 +4441,36 @@ export default function Personal() {
                 </div>
               )}
 
-              {/* 3. DATOS DE LA PERSONA: NOMBRE & RUBRO (SOPORTE MULTI-RUBRO EN CONTRATISTAS) */}
+              {/* 3. DATOS DE LA PERSONA: NOMBRE, TELÉFONO & RUBRO (SOPORTE MULTI-RUBRO EN CONTRATISTAS) */}
               <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Nombre y Apellido
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: Rodriguez, Lucas"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Nombre y Apellido
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Rodriguez, Lucas"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Celular / WhatsApp (Mandados / Avisos)</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: +5492235001122"
+                      value={formData.phone || ''}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
                 </div>
 
                 {formData.admin_center === 'ASTILLERO' ? (
