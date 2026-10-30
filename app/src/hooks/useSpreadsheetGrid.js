@@ -23,6 +23,7 @@ export function useSpreadsheetGrid({
   onBatchUpdate,
   onFocusSearch,
   onCellActivate,
+  onPasteRow,
   canEditCell = () => true,
   maxUndoSteps = 50,
   storageKey = 'aloncar_grid',
@@ -92,15 +93,37 @@ export function useSpreadsheetGrid({
     return String(val)
   }, [])
 
-  // Sincronizar undoStack con sessionStorage (máx 50 pasos)
+  // Sincronizar undoStack con sessionStorage (máx 50 pasos) - Polimórfico (objeto, array o callbacks)
   const pushUndoAction = useCallback((action) => {
     setRedoStack([])
     try {
       sessionStorage.removeItem(redoStorageKey)
     } catch {}
 
+    let normalizedAction = action
+    if (Array.isArray(action)) {
+      const byColPrev = {}
+      const byColNew = {}
+      let defaultCol = ''
+      action.forEach((m) => {
+        const k = m.colId || m.colKey || 'value'
+        defaultCol = k
+        if (!byColPrev[k]) byColPrev[k] = {}
+        if (!byColNew[k]) byColNew[k] = {}
+        byColPrev[k][m.rowId] = m.oldValue
+        byColNew[k][m.rowId] = m.newValue
+      })
+      normalizedAction = {
+        type: 'multi_column_mutations',
+        mutationsByCol: { prev: byColPrev, next: byColNew },
+        colKey: defaultCol,
+        colLabel: defaultCol,
+        actionLabel: action[0]?.actionLabel || 'cambio'
+      }
+    }
+
     setUndoStack((prev) => {
-      const next = [action, ...prev].slice(0, maxUndoSteps)
+      const next = [normalizedAction, ...prev].slice(0, maxUndoSteps)
       try {
         sessionStorage.setItem(undoStorageKey, JSON.stringify(next))
       } catch (e) {
@@ -130,6 +153,33 @@ export function useSpreadsheetGrid({
       } catch {}
       return nextRedo
     })
+
+    if (lastAction.undoFn && typeof lastAction.undoFn === 'function') {
+      try {
+        await lastAction.undoFn()
+        if (showFeedback) showFeedback('success', `Deshecho (Ctrl+Z): ${lastAction.actionLabel || 'Acción revertida'}.`)
+      } catch (err) {
+        console.error('Error en undoFn personalizada:', err)
+      }
+      return
+    }
+
+    if (lastAction.type === 'multi_column_mutations' && lastAction.mutationsByCol) {
+      if (onBatchUpdate) {
+        for (const [colKey, revertMap] of Object.entries(lastAction.mutationsByCol.prev)) {
+          await onBatchUpdate({
+            colKey,
+            revertMap,
+            isRevert: true,
+            actionLabel: lastAction.actionLabel || 'deshacer'
+          })
+        }
+        if (showFeedback) {
+          showFeedback('success', `Deshecho (Ctrl+Z): Se restauraron cambios en ${lastAction.colLabel || lastAction.colKey}.`)
+        }
+      }
+      return
+    }
 
     if (onBatchUpdate && lastAction.previousValues) {
       const entries = Object.entries(lastAction.previousValues)
@@ -166,6 +216,33 @@ export function useSpreadsheetGrid({
       } catch {}
       return nextUndo
     })
+
+    if (actionToRedo.redoFn && typeof actionToRedo.redoFn === 'function') {
+      try {
+        await actionToRedo.redoFn()
+        if (showFeedback) showFeedback('success', `Rehecho (Ctrl+Y): ${actionToRedo.actionLabel || 'Acción reaplicada'}.`)
+      } catch (err) {
+        console.error('Error en redoFn personalizada:', err)
+      }
+      return
+    }
+
+    if (actionToRedo.type === 'multi_column_mutations' && actionToRedo.mutationsByCol) {
+      if (onBatchUpdate) {
+        for (const [colKey, revertMap] of Object.entries(actionToRedo.mutationsByCol.next)) {
+          await onBatchUpdate({
+            colKey,
+            revertMap,
+            isRevert: true,
+            actionLabel: actionToRedo.actionLabel || 'rehacer'
+          })
+        }
+        if (showFeedback) {
+          showFeedback('success', `Rehecho (Ctrl+Y): Se re-aplicó el cambio en ${actionToRedo.colLabel || actionToRedo.colKey}.`)
+        }
+      }
+      return
+    }
 
     if (onBatchUpdate) {
       const targetIds = Object.keys(actionToRedo.previousValues || {})
@@ -283,9 +360,38 @@ export function useSpreadsheetGrid({
     }
   }, [activeCell, rows, columns, showFeedback, readCellValue, formatCellDisplay])
 
+  // Copiar fila completa como objeto de plantilla (estilo Excel / Google Sheets)
+  const copyRow = useCallback((rowIndex) => {
+    const row = rows[rowIndex]
+    if (!row) return
+    setInternalClipboard({
+      type: 'row',
+      rowObj: { ...row },
+      rowIndex,
+      displayLabel: `Fila ${rowIndex + 1}`
+    })
+    if (showFeedback) {
+      showFeedback('info', `Fila ${rowIndex + 1} copiada al portapapeles. Pega con Ctrl+V en otra fila o en una fila vacía.`)
+    }
+  }, [rows, showFeedback])
+
   // Pegar valor en celda activa o rango seleccionado (Ctrl + V)
   const pasteToActiveOrRange = useCallback(async () => {
     if (!activeCell) return
+
+    // Soporte especial: Si el portapapeles contiene una fila completa y se definió onPasteRow
+    if (internalClipboard && internalClipboard.type === 'row' && onPasteRow) {
+      const targetRow = rows[activeCell.rowIndex]
+      if (targetRow) {
+        await onPasteRow({
+          sourceRow: internalClipboard.rowObj,
+          targetRow,
+          targetRowIndex: activeCell.rowIndex
+        })
+        return
+      }
+    }
+
     const colDef = columns[activeCell.colIndex]
     if (!colDef || colDef.readOnly) {
       if (showFeedback) showFeedback('error', 'Esta columna es de solo lectura.')
@@ -739,6 +845,8 @@ export function useSpreadsheetGrid({
     canRedo: redoStack.length > 0,
     redo,
     copyActiveCell,
+    copyRow,
+    internalClipboard,
     pasteToActiveOrRange,
     executeFillDown,
     handleKeyDown,
