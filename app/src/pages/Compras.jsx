@@ -128,6 +128,77 @@ const STANDARD_TRADES = [
   'LUBRICANTES'
 ]
 
+// ==============================================================================
+// COMPONENTES Y HELPERS PARA RESALTADO AMARILLO DE BÚSQUEDA AVANZADA (ESTÁNDAR ERP)
+// ==============================================================================
+function HighlightText({ text, query, className = '' }) {
+  if (!text) return null
+  if (!query || !query.trim()) return <span className={className}>{text}</span>
+
+  const q = query.trim()
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  const parts = String(text).split(regex)
+
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-yellow-400/80 text-slate-950 font-bold px-0.5 rounded shadow-sm">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  )
+}
+
+function getSearchMatchMap(po, searchQuery, suppliers = [], ships = [], documents = []) {
+  if (!searchQuery || !searchQuery.trim()) return { hasMatch: false }
+  const q = searchQuery.trim().toLowerCase()
+
+  const matRaw = (po.material_name_raw || '').toLowerCase()
+  const obs = (po.observations || '').toLowerCase()
+  const req = (po.requested_by_name || '').toLowerCase()
+  const trn = (po.freight_transport_name || '').toLowerCase()
+  const sup = suppliers.find((s) => s.id === po.supplier_id)?.name.toLowerCase() || ''
+  const shp = ships.find((s) => s.id === po.ship_id)?.name.toLowerCase() || ''
+
+  const orderDocs = documents.filter((d) => d.purchase_order_id === po.id || (d.work_order_id && d.work_order_id === po.work_order_id))
+  let docMatchDetail = null
+  const docMatches = orderDocs.some((d) => {
+    const fn = (d.original_filename || '').toLowerCase()
+    const ds = (d.description || '').toLowerCase()
+    const dt = (d.doc_type || '').toLowerCase()
+    const txt = (d.extracted_text || '').toLowerCase()
+    if (fn.includes(q)) { docMatchDetail = d.original_filename; return true }
+    if (ds.includes(q)) { docMatchDetail = d.description; return true }
+    if (dt.includes(q)) { docMatchDetail = d.doc_type; return true }
+    if (txt.includes(q)) { docMatchDetail = `Texto en ${d.original_filename || 'PDF'}`; return true }
+    return false
+  })
+
+  const isMaterial = matRaw.includes(q) || obs.includes(q)
+  const isSupplier = sup.includes(q)
+  const isShip = shp.includes(q)
+  const isReq = req.includes(q)
+  const isFreight = trn.includes(q)
+  const isDoc = docMatches
+
+  return {
+    hasMatch: isMaterial || isSupplier || isShip || isReq || isFreight || isDoc,
+    material: isMaterial,
+    supplier: isSupplier,
+    ship: isShip,
+    requested_by: isReq,
+    freight: isFreight,
+    documents: isDoc,
+    docMatchDetail
+  }
+}
+
 // Lista oficial de Rubros de Materiales para B.D. Maestra (Se vinculará a tabla de rubros en Módulo Pañol)
 const CATALOG_RUBROS = [
   'ABRAZADERA',
@@ -330,6 +401,7 @@ export default function Compras() {
   const [supplierHelperTarget, setSupplierHelperTarget] = useState(null)
   const [showMandadosModal, setShowMandadosModal] = useState(false)
   const [mandadosPreselectedIds, setMandadosPreselectedIds] = useState([])
+  const [batchTargetStatus, setBatchTargetStatus] = useState('RECIBIDO')
 
   // Carga inicial
   useEffect(() => {
@@ -1133,6 +1205,121 @@ export default function Compras() {
     }
   }
 
+  // Insertar una fila completa contigua entre otras filas (heredando datos del pedido vecino)
+  async function handleInsertOrderContext(referenceOrder, rowIndex, position = 'below') {
+    if (!referenceOrder) return
+    const refDate = referenceOrder.order_date || new Date().toISOString().split('T')[0]
+    const fortnight = referenceOrder.fortnight_period || computeFortnightFromDate(refDate)
+
+    const refTime = new Date(referenceOrder.created_at || Date.now()).getTime()
+    let newTime
+    if (position === 'below') {
+      const nextOrder = filteredOrders[rowIndex + 1]
+      if (nextOrder && nextOrder.created_at) {
+        const nextTime = new Date(nextOrder.created_at).getTime()
+        newTime = Math.round((refTime + nextTime) / 2)
+        if (newTime >= refTime || newTime <= nextTime) {
+          newTime = refTime - 1000
+        }
+      } else {
+        newTime = refTime - 1000
+      }
+    } else {
+      const prevOrder = filteredOrders[rowIndex - 1]
+      if (prevOrder && prevOrder.created_at) {
+        const prevTime = new Date(prevOrder.created_at).getTime()
+        newTime = Math.round((refTime + prevTime) / 2)
+        if (newTime <= refTime || newTime >= prevTime) {
+          newTime = refTime + 1000
+        }
+      } else {
+        newTime = refTime + 1000
+      }
+    }
+
+    const newOrderPayload = {
+      order_date: refDate,
+      fortnight_period: fortnight,
+      status: referenceOrder.status || 'PEDIR',
+      urgency: referenceOrder.urgency || 'SIN_APURO',
+      charge_type: referenceOrder.charge_type || 'VIA_PANOL',
+      ship_id: referenceOrder.ship_id || null,
+      work_order_id: referenceOrder.work_order_id || null,
+      supplier_id: referenceOrder.supplier_id || null,
+      requested_by_name: referenceOrder.requested_by_name || 'PAÑOL',
+      material_name_raw: '',
+      quantity: 1,
+      unit_measure: 'unidad',
+      supplier_quoted_price: null,
+      system_unit_price: null,
+      observations: null,
+      is_new_material: true,
+      no_catalog_required: false,
+      created_at: new Date(newTime).toISOString()
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('purchase_orders')
+        .insert([newOrderPayload])
+        .select()
+        .single()
+      if (error) throw error
+
+      setPurchaseOrders((prev) => {
+        const refIdxInAll = prev.findIndex((p) => p.id === referenceOrder.id)
+        const targetAllIndex =
+          refIdxInAll !== -1
+            ? position === 'below'
+              ? refIdxInAll + 1
+              : refIdxInAll
+            : prev.length
+        const copy = [...prev]
+        copy.splice(targetAllIndex, 0, data)
+        return copy
+      })
+
+      grid.pushUndoAction({
+        actionLabel: 'Insertar fila contigua',
+        undoFn: async () => {
+          await supabase.from('purchase_orders').delete().eq('id', data.id)
+          setPurchaseOrders((prev) => prev.filter((p) => p.id !== data.id))
+        },
+        redoFn: async () => {
+          await supabase.from('purchase_orders').insert([data])
+          setPurchaseOrders((prev) => {
+            const refIdx = prev.findIndex((p) => p.id === referenceOrder.id)
+            const targetIdx =
+              refIdx !== -1
+                ? position === 'below'
+                  ? refIdx + 1
+                  : refIdx
+                : prev.length
+            const copy = [...prev]
+            copy.splice(targetIdx, 0, data)
+            return copy
+          })
+        }
+      })
+
+      showFeedbackMsg(
+        'success',
+        `Fila insertada ${position === 'below' ? 'debajo' : 'arriba'}. Escribe el material directamente.`
+      )
+      setTimeout(() => {
+        setInlineEdit({
+          orderId: data.id,
+          field: 'material_name_raw',
+          value: '',
+          obsValue: ''
+        })
+      }, 50)
+    } catch (err) {
+      console.error('Error insertando fila contigua:', err)
+      showFeedbackMsg('error', 'Error al insertar fila: ' + err.message)
+    }
+  }
+
   // Duplicar pedido existente (clonar al final con fecha de hoy)
   async function handleDuplicateOrder(order) {
     const todayStr = new Date().toISOString().split('T')[0]
@@ -1483,25 +1670,76 @@ export default function Compras() {
     }
   }
 
-  // Acción masiva: Recibir en lote
-  async function handleBatchReceive() {
+  // Acción masiva: Cambio de estado en bloque con soporte de Ctrl+Z y reglas de negocio
+  async function handleBatchStatusApply() {
     if (selectedOrderIds.size === 0) return
-    if (!confirm(`¿Marcar los ${selectedOrderIds.size} pedidos seleccionados como RECIBIDOS?`)) return
+    const ids = Array.from(selectedOrderIds)
+    const targetStatus = batchTargetStatus
 
-    try {
-      const ids = Array.from(selectedOrderIds)
-      for (const id of ids) {
-        const po = purchaseOrders.find((p) => p.id === id)
-        if (po) {
-          const targetStatus = po.charge_type === 'DIRECT' ? 'RECIB.COMP.DIRECT' : 'RECIBIDO'
-          await handleQuickStatusChange(id, targetStatus)
+    let convertToDirect = false
+    if (targetStatus === 'RECIB.COMP.DIRECT') {
+      const nonDirectOrders = ids
+        .map((id) => purchaseOrders.find((p) => p.id === id))
+        .filter((p) => p && p.charge_type !== 'DIRECT')
+      if (nonDirectOrders.length > 0) {
+        if (
+          confirm(
+            `Hay ${nonDirectOrders.length} pedido(s) con destino "PAÑOL". Para cumplir la regla de auditoría de Costo Directo, ¿deseas cambiar automáticamente su destino a "DIRECTO"?`
+          )
+        ) {
+          convertToDirect = true
         }
       }
+    }
+
+    const previousValues = {}
+    ids.forEach((id) => {
+      const po = purchaseOrders.find((p) => p.id === id)
+      if (po) {
+        previousValues[id] = {
+          status: po.status,
+          charge_type: po.charge_type
+        }
+      }
+    })
+
+    const dbPayload = {
+      status: targetStatus,
+      updated_at: new Date().toISOString()
+    }
+    if (convertToDirect) {
+      dbPayload.charge_type = 'DIRECT'
+    }
+
+    try {
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update(dbPayload)
+        .in('id', ids)
+      if (error) throw error
+
+      if (grid?.pushUndoAction) {
+        grid.pushUndoAction({
+          colKey: 'status',
+          colLabel: 'Estado en bloque',
+          actionLabel: `Cambio masivo a ${targetStatus}`,
+          previousValues,
+          newValue: dbPayload,
+          timestamp: Date.now()
+        })
+      }
+
+      setPurchaseOrders((prev) =>
+        prev.map((p) => (ids.includes(p.id) ? { ...p, ...dbPayload } : p))
+      )
       setSelectedOrderIds(new Set())
-      showFeedbackMsg('success', `Se marcaron ${ids.length} pedidos como recibidos con éxito.`)
+      showFeedbackMsg(
+        'success',
+        `Se cambió el estado a "${targetStatus}" en ${ids.length} pedidos. (Ctrl+Z para deshacer)`
+      )
     } catch (err) {
-      console.error('Error en recepción masiva:', err)
-      showFeedbackMsg('error', 'Error en recepción masiva: ' + err.message)
+      console.error('Error en cambio de estado masivo:', err)
+      showFeedbackMsg('error', 'Error en cambio de estado: ' + err.message)
     }
   }
 
@@ -2106,15 +2344,18 @@ export default function Compras() {
                 {/* STICKY HEADER TIPO EXCEL (FIT-TO-VIEWPORT SIN SCROLL HORIZONTAL) */}
                 <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
-                    <th className="py-2 px-1.5 w-7 text-center">
-                      <button
-                        type="button"
-                        onClick={toggleSelectAll}
-                        className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
-                        title={isAllFilteredSelected ? 'Deseleccionar todo' : 'Seleccionar todo'}
-                      >
-                        {isAllFilteredSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
-                      </button>
+                    <th className="py-1 px-1 w-8 text-center select-none">
+                      <div className="flex flex-col items-center justify-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={toggleSelectAll}
+                          className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                          title={isAllFilteredSelected ? 'Deseleccionar todo' : 'Seleccionar todo'}
+                        >
+                          {isAllFilteredSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
+                        </button>
+                        <span className="font-mono text-[9px] text-slate-500 font-bold" title="Número de fila">#</span>
+                      </div>
                     </th>
                     <th className="py-2 px-1.5">Destino ✎</th>
                     <th className="py-2 px-1.5">Fecha / Q. ✎</th>
@@ -2173,6 +2414,7 @@ export default function Compras() {
                       const sup = suppliers.find((s) => s.id === po.supplier_id)
                       const shp = ships.find((s) => s.id === po.ship_id)
                       const wo = workOrders.find((w) => w.id === po.work_order_id)
+                      const matchMap = getSearchMatchMap(po, searchQuery, suppliers, ships, documents)
                       const lineDocs = documents.filter((d) => d.purchase_order_id === po.id)
 
                       // Diferencia de precio proveedor vs sistema
@@ -2198,15 +2440,25 @@ export default function Compras() {
                               : 'hover:bg-slate-800/50'
                           }`}
                         >
-                          {/* 1. Checkbox */}
-                          <td className="py-1.5 px-1.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => toggleSelectRow(po.id)}
-                              className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
-                            >
-                              {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
-                            </button>
+                          {/* 1. Checkbox + Número de Fila (#) */}
+                          <td className="py-1 px-1 text-center w-8 select-none">
+                            <div className="flex flex-col items-center justify-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleSelectRow(po.id)}
+                                className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                              >
+                                {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
+                              </button>
+                              <span
+                                className={`font-mono text-[9px] font-bold transition-colors ${
+                                  isSelected ? 'text-cyan-300' : 'text-slate-500 group-hover:text-cyan-400'
+                                }`}
+                                title={`Fila #${rowIndex + 1} • Clic en [+] al final para insertar fila contigua`}
+                              >
+                                {rowIndex + 1}
+                              </span>
+                            </div>
                           </td>
 
                           {/* 2. Destino (Doble clic editable) */}
@@ -2326,14 +2578,18 @@ export default function Compras() {
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'ship_id')}
-                                className={`py-1.5 px-1.5 cursor-pointer ${cp.className}`}
+                                className={`py-1.5 px-1.5 cursor-pointer ${matchMap.ship ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cp.className}`}
                                 title="Doble clic para cambiar Buque u Orden de Trabajo"
                               >
                                 <div className="font-semibold text-slate-200 truncate max-w-[105px]" title={shp?.name || 'ASTILLERO'}>
-                                  {shp?.name || 'ASTILLERO'}
+                                  <HighlightText text={shp?.name || 'ASTILLERO'} query={searchQuery} />
                                 </div>
                                 <div className="text-[9px] text-slate-400 truncate max-w-[105px]" title={wo?.title || (po.work_order_id ? 'OT' : '⚠️ Sin OT')}>
-                                  {wo ? `${wo.ot_number ? `#${wo.ot_number} ` : ''}${wo.title}` : (po.work_order_id ? 'OT' : <span className="text-amber-400 font-bold">⚠️ Sin OT</span>)}
+                                  {wo ? (
+                                    <HighlightText text={`${wo.ot_number ? `#${wo.ot_number} ` : ''}${wo.title}`} query={searchQuery} />
+                                  ) : (
+                                    po.work_order_id ? 'OT' : <span className="text-amber-400 font-bold">⚠️ Sin OT</span>
+                                  )}
                                 </div>
                                 {cp.renderHandle && (
                                   <div
@@ -2354,7 +2610,7 @@ export default function Compras() {
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'requested_by_name')}
-                                className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer ${cp.className}`}
+                                className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer ${matchMap.requested_by ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cp.className}`}
                                 title={`Solicita: ${po.requested_by_name || 'PAÑOL'} (Doble clic para editar)`}
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'requested_by_name' ? (
@@ -2373,7 +2629,7 @@ export default function Compras() {
                                   />
                                 ) : (
                                   <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all truncate max-w-[85px]">
-                                    {po.requested_by_name || 'PAÑOL'}
+                                    <HighlightText text={po.requested_by_name || 'PAÑOL'} query={searchQuery} />
                                   </div>
                                 )}
                                 {cp.renderHandle && (
@@ -2396,7 +2652,7 @@ export default function Compras() {
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'material_name_raw')}
-                                className={`py-1.5 px-1.5 cursor-pointer ${cp.className}`}
+                                className={`py-1.5 px-1.5 cursor-pointer ${matchMap.material ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cp.className}`}
                                 title="Doble clic para editar material y observaciones in-situ"
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'material_name_raw' ? (
@@ -2459,7 +2715,11 @@ export default function Compras() {
                                   <>
                                     <div className="flex items-center gap-1">
                                       <span className="font-medium text-white truncate max-w-[165px]" title={po.material_name_raw || 'Sin nombre'}>
-                                        {po.material_name_raw || <span className="text-slate-500 italic">-- Sin material --</span>}
+                                        {po.material_name_raw ? (
+                                          <HighlightText text={po.material_name_raw} query={searchQuery} />
+                                        ) : (
+                                          <span className="text-slate-500 italic">-- Sin material --</span>
+                                        )}
                                       </span>
                                       {po.is_new_material && !po.no_catalog_required && isSupervisorOrAdmin && (
                                         <button
@@ -2492,7 +2752,7 @@ export default function Compras() {
                                     {/* Observación en renglón independiente (convive siempre) */}
                                     {po.observations && (
                                       <p className="text-[10px] text-slate-300 italic truncate max-w-[190px]" title={po.observations}>
-                                        {po.observations}
+                                        <HighlightText text={po.observations} query={searchQuery} />
                                       </p>
                                     )}
                                   </>
@@ -2637,7 +2897,7 @@ export default function Compras() {
                               <td
                                 {...cp.domProps}
                                 onDoubleClick={() => activateComprasCell(po, 'supplier_id')}
-                                className={`py-1.5 px-1.5 relative cursor-pointer ${cp.className}`}
+                                className={`py-1.5 px-1.5 relative cursor-pointer ${matchMap.supplier ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cp.className}`}
                                 title={sup?.name ? `Proveedor: ${sup.name} (Doble clic para cambiar)` : 'Doble clic para buscar y asignar proveedor por iniciales'}
                               >
                                 {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_id' ? (
@@ -2650,7 +2910,7 @@ export default function Compras() {
                                 ) : (
                                   <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all flex items-center justify-between gap-1 max-w-[125px]">
                                     <span className="font-semibold text-slate-200 truncate flex-1">
-                                      {sup?.name || <span className="text-slate-600 italic">Asignar...</span>}
+                                      {sup?.name ? <HighlightText text={sup.name} query={searchQuery} /> : <span className="text-slate-600 italic">Asignar...</span>}
                                     </span>
                                     {Boolean(po.courier_dispatched) && (po.status === 'PEDIDO' || po.status === 'PEDIDO INCOMPLETO') && (
                                       <span
@@ -2794,11 +3054,19 @@ export default function Compras() {
                                 setShowOrderDocsModal(true)
                               }}
                               className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                                lineDocs.length > 0
+                                matchMap.documents
+                                  ? 'bg-amber-400/30 border-2 border-amber-400 text-amber-200 ring-2 ring-amber-400/60 shadow-lg shadow-amber-400/20 animate-pulse'
+                                  : lineDocs.length > 0
                                   ? 'bg-cyan-950 border border-cyan-500/60 text-cyan-300 hover:bg-cyan-900 shadow-sm'
                                   : 'text-slate-500 hover:text-cyan-400 hover:bg-slate-800/80 border border-transparent'
                               }`}
-                              title={lineDocs.length > 0 ? `${lineDocs.length} archivo(s) adjunto(s). Clic para ver / agregar más.` : 'Adjuntar cotización, ficha técnica o fotos'}
+                              title={
+                                matchMap.documents
+                                  ? `📄 ¡Coincidencia en adjunto PDF: ${matchMap.docMatchDetail || 'Documento'}! Clic para abrir.`
+                                  : lineDocs.length > 0
+                                  ? `${lineDocs.length} archivo(s) adjunto(s). Clic para ver / agregar más.`
+                                  : 'Adjuntar cotización, ficha técnica o fotos'
+                              }
                             >
                               <Paperclip className="w-3 h-3" />
                               <span>{lineDocs.length > 0 ? lineDocs.length : ''}</span>
@@ -2920,17 +3188,29 @@ export default function Compras() {
                                   setShowFreightModal(true)
                                 }}
                                 className={`p-1 rounded transition-colors cursor-pointer ${
-                                  hasFreight
+                                  matchMap.freight
+                                    ? 'text-amber-100 bg-amber-500/40 border-2 border-amber-400 ring-2 ring-amber-400/60 shadow-md shadow-amber-500/20 font-bold'
+                                    : hasFreight
                                     ? 'text-amber-300 bg-amber-950/70 border border-amber-500/50 hover:bg-amber-900'
                                     : 'text-slate-400 hover:text-cyan-300 hover:bg-slate-800'
                                 }`}
                                 title={
-                                  hasFreight
+                                  matchMap.freight
+                                    ? `🚚 ¡Coincidencia en Flete: "${po.freight_transport_name}"! Clic para ver / editar.`
+                                    : hasFreight
                                     ? `🚚 Flete: ${po.freight_transport_name || 'S/D'} | Solicitud: ${po.freight_request_date || '—'} | Est. Entrega: ${po.freight_estimated_date || '—'} (Clic para editar)`
                                     : 'Asignar datos de Flete (Transporte, Fecha Solicitud y Fecha Entrega Estimada)'
                                 }
                               >
                                 <Truck className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleInsertOrderContext(po, rowIndex, 'below')}
+                                className="p-1 text-slate-400 hover:text-emerald-400 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="➕ Insertar fila contigua (agrega un nuevo ítem en este mismo pedido)"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
@@ -3212,15 +3492,40 @@ export default function Compras() {
                   <span>Mandar a Retirar ({selectedOrderIds.size})</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleBatchReceive}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
-                  title="Marcar seleccionados como recibidos"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Recibir ({selectedOrderIds.size})</span>
-                </button>
+                {/* Selector y botón de Cambio de Estado en Bloque */}
+                <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-700 rounded-lg p-1 shadow-md">
+                  <span className="text-[11px] text-slate-400 font-semibold pl-1">
+                    🏷️ Estado:
+                  </span>
+                  <select
+                    value={batchTargetStatus}
+                    onChange={(e) => setBatchTargetStatus(e.target.value)}
+                    className="bg-slate-950 border border-slate-700 hover:border-cyan-500 focus:border-cyan-500 rounded px-2 py-1 text-xs font-bold text-white focus:outline-none cursor-pointer"
+                    title="Selecciona el estado que se aplicará a todas las filas seleccionadas"
+                  >
+                    <option value="PEDIR">PEDIR (Por emitir)</option>
+                    <option value="PEDIDO">PEDIDO (En proveedor)</option>
+                    <option value="RECIBIDO">RECIBIDO (Stock / Pañol)</option>
+                    <option value="RECIB.COMP.DIRECT">RECIB.COMP.DIRECT (Directo a obra)</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleBatchStatusApply}
+                    className={`flex items-center gap-1.5 px-3 py-1 text-white font-bold rounded-md text-xs shadow-md transition-all cursor-pointer ${
+                      batchTargetStatus === 'RECIB.COMP.DIRECT'
+                        ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20'
+                        : batchTargetStatus === 'RECIBIDO'
+                        ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                        : batchTargetStatus === 'PEDIDO'
+                        ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'
+                        : 'bg-cyan-600 hover:bg-cyan-500 shadow-cyan-600/20'
+                    }`}
+                    title={`Aplicar estado "${batchTargetStatus}" a los ${selectedOrderIds.size} ítems seleccionados`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Aplicar a ({selectedOrderIds.size})</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

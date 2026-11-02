@@ -224,3 +224,59 @@ Todo módulo con grilla de datos debe instanciar el hook `useSpreadsheetGrid`:
   - Migrar su administración a `ComprasSettingsPanel.jsx` en el Panel de Configuración General.
   - Permitir la configuración del teléfono celular del Administrador (`admin_alert_phone`), día, hora de notificación (09:00 hs) y mensaje predeterminado.
   - Incluir botón interactivo de prueba para validar el canal de comunicación desatendido en WhatsApp.
+
+---
+
+## 17. Numeración Ordinal de Fila Integrada (#) y Regla de Espacio Horizontal Óptimo
+- **Principio:** Para facilitar la comunicación rápida entre operarios en taller y oficina (*"Revisá la fila 20 que hay una duda"*), cada fila de una grilla debe exhibir su número ordinal visible (`1, 2, ..., 20`).
+- **Arquitectura de Columna Única (Checkbox + # Apilados):**
+  - **Prohibido:** Crear una columna separada exclusivamente para el `#` cuando el ancho de la pantalla sea ajustado, ya que le resta entre 35px y 45px a columnas críticas como Material o Proveedor.
+  - **Estándar:** En la primera columna de ancho fijo compacto (`w-8`), ubicar el checkbox de selección arriba y el número de fila `#` debajo en un contenedor flex vertical centrado:
+    ```jsx
+    <td className="py-1 px-1 text-center w-8 select-none">
+      <div className="flex flex-col items-center justify-center gap-0.5">
+        <button type="button" onClick={() => toggleSelectRow(row.id)}>
+          {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
+        </button>
+        <span className={`font-mono text-[9px] font-bold ${isSelected ? 'text-cyan-300' : 'text-slate-500 group-hover:text-cyan-400'}`}>
+          {rowIndex + 1}
+        </span>
+      </div>
+    </td>
+    ```
+  - **En Cabecera (`thead`):** El checkbox maestro de selección general arriba y el símbolo `#` tenue abajo.
+  - **Aplica:** Universalmente a todas las grillas del ERP AlonCar (Compras, Personal, Pañol, Obras).
+
+---
+
+## 18. Resaltado Visual Amarillo de Coincidencias en Filtros y Búsqueda Inteligente (Celdas, Fletes y PDFs)
+- **Principio:** Cuando el usuario filtra una grilla mediante la búsqueda general, el sistema no solo debe mostrar las filas coincidentes, sino **señalizar exactamente a los ojos dónde y por qué** se produjo la coincidencia.
+- **Estándar de Iluminación Cromática:**
+  1. **Celdas de Texto (Material, Proveedor, Buque, Solicitante):**
+     - La celda activa recibe un fondo sutil amarillo ámbar (`bg-amber-400/20 ring-1 ring-inset ring-amber-400/50`).
+     - El fragmento de texto exacto coincidente se envuelve en `<mark className="bg-yellow-400/80 text-slate-950 font-bold px-0.5 rounded shadow-sm">`.
+  2. **Acciones y Fletes:**
+     - Si el texto coincide con datos del transporte (ej. `"TAS"`), el botón de flete se enciende en ámbar vibrante (`bg-amber-500/40 border-2 border-amber-400 ring-2 ring-amber-400/60 font-bold`) con tooltip informativo.
+  3. **Documentos Adjuntos y PDFs Digitales:**
+     - Si la coincidencia provino de metadatos o texto OCR/PDF digital de un archivo adjunto, el botón del clip de documentos se ilumina en amarillo brillante con animación de pulso (`animate-pulse`) y tooltip explícito: `📄 Coincidencia en adjunto PDF: [archivo.pdf]`.
+
+---
+
+## 19. Barra de Acciones Masivas: Selector Dinámico de Estado en Bloque con Ctrl+Z
+- **Principio:** Reemplazar botones rígidos de acción única (ej. sólo `"Recibir"`) por controles multipropósito de **Cambio de Estado en Bloque**.
+- **Estándar:**
+  - Al seleccionar 1 o más filas, la barra inferior flotante proyecta un selector desplegable con los estados disponibles del flujo (`PEDIR`, `PEDIDO`, `RECIBIDO`, `RECIB.COMP.DIRECT`) junto al botón de ejecución `[ Aplicar a (N) ]`.
+  - El botón adopta dinámicamente el color corporativo del estado destino (Esmeralda para Recibido, Ámbar para Directo, Azul para Pedido, Cian para Pedir).
+  - **Validación de Reglas de Negocio:** Valida automáticamente coherencia (ej. destino Directo vs Pañol) antes de impactar la base de datos.
+  - **Reversión Obligatoria con Ctrl+Z:** Todo cambio en bloque registra el estado anterior de cada fila seleccionada en `pushUndoAction` para poder deshacer todo el bloque de una sola vez.
+
+---
+
+## 20. Inserción Contextual de Filas entre Filas Existentes
+- **Principio:** Cuando se cargan pedidos y posteriormente se recuerda un ítem faltante, el operador debe poder insertarlo contiguo al pedido original para mantener coherencia visual y trazabilidad.
+- **Estándar:**
+  - Botón `➕` en la columna de *Acciones* de cada fila (`handleInsertOrderContext(po, rowIndex, 'below')`).
+  - **Herencia Inteligente de Cabecera:** La nueva fila hereda automáticamente fecha, quincena, solicitante, destino (`DIRECTO/PAÑOL`), buque, OT y proveedor de la fila vecina.
+  - **Foco Automático:** El cursor se posiciona inmediatamente en el campo de material con modo de edición activo.
+  - **Garantía de Posición Relativa:** Interpola la marca de tiempo de creación entre la fila de referencia y su contigua para que permanezca en su posición exacta tras recargas.
+  - **Soporte de Ctrl+Z:** Permite eliminar la fila creada al presionar `Ctrl+Z`.
