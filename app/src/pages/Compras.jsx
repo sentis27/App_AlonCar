@@ -70,22 +70,38 @@ import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 // 1) estado=RECIB.COMP.DIRECT y destino ≠ DIRECTO
 // 2) destino=DIRECTO y estado en (RECIBIDO, RECIBIDO 2)
 // 3) destino=DIRECTO sin buque de obra específico
+// Regla de Negocio: Para que una compra se cargue directamente a costo de obra tiene que cumplir dos condiciones:
+// destino = DIRECTO y estado = RECIB.COMP.DIRECT.
+// Si un material se pide para un barco específico (Buque ≠ Astillero), tiene que computarse al costo del barco.
+// El KPI de Auditoría SOLO cuenta como error si:
+// 1) destino = DIRECTO y estado = RECIBIDO (o RECIBIDO 2) y Buque ≠ Astillero (no se computaría al buque)
+// 2) destino ≠ DIRECTO y Buque ≠ Astillero y estado in (RECIBIDO, RECIBIDO 2, RECIB.COMP.DIRECT) (destino mal asignado)
+// Cancelados bajo ninguna circunstancia suman al contador. Compras no recibidas (PEDIR, PEDIDO, etc.) tampoco.
 export function isCostAuditError(po, ships = []) {
   if (!po) return false
+
+  const status = (po.status || '').toUpperCase()
+  // Excluir de inmediato compras canceladas o no recibidas aún
+  if (status === 'CANCELADOS') return false
+  if (!['RECIBIDO', 'RECIBIDO 2', 'RECIB.COMP.DIRECT'].includes(status)) return false
+
+  // Verificar si es Buque de Obra específico (Buque ≠ Astillero y no vacío)
   const astShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO'))
   const isAstilleroOrEmpty = !po.ship_id || (astShip && po.ship_id === astShip.id)
   const isSpecificShip = !isAstilleroOrEmpty
+  if (!isSpecificShip) return false
+
   const isDirect = po.charge_type === 'DIRECT'
-  const status = po.status || ''
 
-  // Infracción 1: Destino DIRECTO pero sin Buque de obra específico
-  if (isDirect && isAstilleroOrEmpty) return true
+  // Caso 1: destino = directo Y estado = recibido Y Buque ≠ astillero (no se computaría al costo del buque)
+  if (isDirect && (status === 'RECIBIDO' || status === 'RECIBIDO 2')) {
+    return true
+  }
 
-  // Infracción 2: Buque de obra específico con RECIB.COMP.DIRECT pero destino NO es DIRECTO
-  if (isSpecificShip && status === 'RECIB.COMP.DIRECT' && !isDirect) return true
-
-  // Infracción 3: Buque de obra específico con destino DIRECTO pero recibido como Pañol/Cliente (RECIBIDO o RECIBIDO 2) omitiendo la imputación directa
-  if (isSpecificShip && isDirect && (status === 'RECIBIDO' || status === 'RECIBIDO 2')) return true
+  // Caso 2: destino ≠ directo Y Buque ≠ astillero Y (estado = recibido O estado = recib.comp.direct)
+  if (!isDirect && ['RECIBIDO', 'RECIBIDO 2', 'RECIB.COMP.DIRECT'].includes(status)) {
+    return true
+  }
 
   return false
 }
@@ -402,6 +418,24 @@ export default function Compras() {
   const [showMandadosModal, setShowMandadosModal] = useState(false)
   const [mandadosPreselectedIds, setMandadosPreselectedIds] = useState([])
   const [batchTargetStatus, setBatchTargetStatus] = useState('RECIBIDO')
+  const [rowMenuTarget, setRowMenuTarget] = useState(null)
+
+  // Cerrar menú de fila contextual al hacer clic fuera o presionar Escape
+  useEffect(() => {
+    if (!rowMenuTarget) return
+    function handleGlobalClick() {
+      setRowMenuTarget(null)
+    }
+    function handleGlobalKeyDown(e) {
+      if (e.key === 'Escape') setRowMenuTarget(null)
+    }
+    window.addEventListener('click', handleGlobalClick)
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => {
+      window.removeEventListener('click', handleGlobalClick)
+      window.removeEventListener('keydown', handleGlobalKeyDown)
+    }
+  }, [rowMenuTarget])
 
   // Carga inicial
   useEffect(() => {
@@ -2315,10 +2349,29 @@ export default function Compras() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
-                <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
-                <span>•</span>
-                <span>{filteredOrders.length} filas</span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetIdx = grid.activeCell?.rowIndex >= 0 ? grid.activeCell.rowIndex : 0
+                    const targetPo = filteredOrders[targetIdx]
+                    if (targetPo) {
+                      handleInsertOrderContext(targetPo, targetIdx, 'below')
+                    } else {
+                      handleAddNewBlankOrder()
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-bold text-xs transition-all cursor-pointer shadow-md shadow-emerald-950/40 hover:scale-[1.02]"
+                  title={`➕ Insertar fila contigua debajo de la fila activa (#${(grid.activeCell?.rowIndex ?? 0) + 1})`}
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                  <span>+ Insertar Fila en #{(grid.activeCell?.rowIndex ?? 0) + 1}</span>
+                </button>
+                <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
+                  <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
+                  <span>•</span>
+                  <span>{filteredOrders.length} filas</span>
+                </div>
               </div>
             </div>
 
@@ -2432,6 +2485,17 @@ export default function Compras() {
                       return (
                         <tr
                           key={po.id}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setRowMenuTarget({
+                              order: po,
+                              rowIndex,
+                              mode: 'context_menu',
+                              x: e.clientX,
+                              y: e.clientY
+                            })
+                          }}
                           className={`group transition-colors ${
                             isSelected
                               ? 'bg-cyan-950/30 hover:bg-cyan-950/40'
@@ -2440,8 +2504,8 @@ export default function Compras() {
                               : 'hover:bg-slate-800/50'
                           }`}
                         >
-                          {/* 1. Checkbox + Número de Fila (#) */}
-                          <td className="py-1 px-1 text-center w-8 select-none">
+                          {/* 1. Checkbox + Número de Fila (#) con Menú Interactivo */}
+                          <td className="py-1 px-1 text-center w-8 select-none relative">
                             <div className="flex flex-col items-center justify-center gap-0.5">
                               <button
                                 type="button"
@@ -2450,15 +2514,79 @@ export default function Compras() {
                               >
                                 {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
                               </button>
-                              <span
-                                className={`font-mono text-[9px] font-bold transition-colors ${
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setRowMenuTarget(
+                                    rowMenuTarget?.order?.id === po.id && rowMenuTarget?.mode === 'click_num'
+                                      ? null
+                                      : { order: po, rowIndex, mode: 'click_num' }
+                                  )
+                                }}
+                                className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
                                   isSelected ? 'text-cyan-300' : 'text-slate-500 group-hover:text-cyan-400'
                                 }`}
-                                title={`Fila #${rowIndex + 1} • Clic en [+] al final para insertar fila contigua`}
+                                title={`Fila #${rowIndex + 1} • Clic para insertar fila arriba o abajo (o clic derecho)`}
                               >
                                 {rowIndex + 1}
-                              </span>
+                              </button>
                             </div>
+
+                            {/* Menú flotante al hacer clic en el número de fila # */}
+                            {rowMenuTarget?.order?.id === po.id && rowMenuTarget?.mode === 'click_num' && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute left-9 top-1 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 w-52 text-left space-y-1 animate-in fade-in zoom-in-95 duration-100"
+                              >
+                                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5 text-cyan-300">
+                                    <span>Fila #{rowIndex + 1}</span>
+                                    <span className="text-slate-500 font-normal truncate max-w-[85px]">{po.material_name_raw || 'S/D'}</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRowMenuTarget(null)}
+                                    className="text-slate-500 hover:text-white text-xs px-1"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRowMenuTarget(null)
+                                    handleInsertOrderContext(po, rowIndex, 'above')
+                                  }}
+                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-200 hover:bg-cyan-950 hover:text-cyan-300 flex items-center gap-2 cursor-pointer transition-colors"
+                                >
+                                  <span className="text-sm">⬆️</span>
+                                  <span>Insertar fila ARRIBA</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRowMenuTarget(null)
+                                    handleInsertOrderContext(po, rowIndex, 'below')
+                                  }}
+                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-200 hover:bg-cyan-950 hover:text-cyan-300 flex items-center gap-2 cursor-pointer transition-colors"
+                                >
+                                  <span className="text-sm">⬇️</span>
+                                  <span>Insertar fila DEBAJO</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRowMenuTarget(null)
+                                    handleDuplicateOrder(po)
+                                  }}
+                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-800/80"
+                                >
+                                  <Copy className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>Duplicar pedido al final</span>
+                                </button>
+                              </div>
+                            )}
                           </td>
 
                           {/* 2. Destino (Doble clic editable) */}
@@ -3298,6 +3426,68 @@ export default function Compras() {
                 </tbody>
               </table>
             </div>
+
+            {/* Menú Contextual de Clic Derecho en Fila (Estilo Excel) */}
+            {rowMenuTarget && rowMenuTarget.mode === 'context_menu' && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  top: Math.min(rowMenuTarget.y, (window.innerHeight || 800) - 160),
+                  left: Math.min(rowMenuTarget.x, (window.innerWidth || 1200) - 230)
+                }}
+                className="fixed z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 w-52 text-left space-y-1 animate-in fade-in zoom-in-95 duration-100"
+              >
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                  <span className="text-cyan-300 flex items-center gap-1.5">
+                    <span>Fila #{rowMenuTarget.rowIndex + 1}</span>
+                    <span className="text-slate-500 font-normal truncate max-w-[85px]">{rowMenuTarget.order?.material_name_raw || 'S/D'}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRowMenuTarget(null)}
+                    className="text-slate-500 hover:text-white text-xs px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { order, rowIndex } = rowMenuTarget
+                    setRowMenuTarget(null)
+                    handleInsertOrderContext(order, rowIndex, 'above')
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-200 hover:bg-cyan-950 hover:text-cyan-300 flex items-center gap-2 cursor-pointer transition-colors"
+                >
+                  <span className="text-sm">⬆️</span>
+                  <span>Insertar fila ARRIBA</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { order, rowIndex } = rowMenuTarget
+                    setRowMenuTarget(null)
+                    handleInsertOrderContext(order, rowIndex, 'below')
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-200 hover:bg-cyan-950 hover:text-cyan-300 flex items-center gap-2 cursor-pointer transition-colors"
+                >
+                  <span className="text-sm">⬇️</span>
+                  <span>Insertar fila DEBAJO</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { order } = rowMenuTarget
+                    setRowMenuTarget(null)
+                    handleDuplicateOrder(order)
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-800/80"
+                >
+                  <Copy className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Duplicar pedido al final</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* ========================================================= */}
