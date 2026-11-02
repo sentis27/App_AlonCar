@@ -2648,8 +2648,18 @@ export default function Compras() {
                                     onCancel={() => setInlineEdit({ orderId: null, field: null, value: '' })}
                                   />
                                 ) : (
-                                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all truncate max-w-[115px]">
-                                    <span className="font-semibold text-slate-200">{sup?.name || <span className="text-slate-600 italic">Asignar...</span>}</span>
+                                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all flex items-center justify-between gap-1 max-w-[125px]">
+                                    <span className="font-semibold text-slate-200 truncate flex-1">
+                                      {sup?.name || <span className="text-slate-600 italic">Asignar...</span>}
+                                    </span>
+                                    {Boolean(po.courier_dispatched) && (po.status === 'PEDIDO' || po.status === 'PEDIDO INCOMPLETO') && (
+                                      <span
+                                        className="text-xs shrink-0 select-none px-1 py-0.2 rounded bg-cyan-950/90 border border-cyan-500/60 shadow-sm"
+                                        title={`🛵 Mandado a retirar por ${po.courier_worker_name || 'Mandadero'}${po.courier_dispatched_at ? ' (' + new Date(po.courier_dispatched_at).toLocaleDateString('es-AR') + ')' : ''}`}
+                                      >
+                                        🛵
+                                      </span>
+                                    )}
                                   </div>
                                 )}
                                 {cp.renderHandle && (
@@ -4055,6 +4065,13 @@ export default function Compras() {
           suppliers={suppliers}
           workers={workers}
           preselectedIds={mandadosPreselectedIds}
+          onDispatched={(dispatchedIds, info) => {
+            setPurchaseOrders((prev) =>
+              prev.map((p) => (dispatchedIds.includes(p.id) ? { ...p, ...info } : p))
+            )
+            setSelectedOrderIds(new Set())
+            showFeedbackMsg('success', `🛵 Retiro de mandado registrado para ${dispatchedIds.length} ítem(s).`)
+          }}
           onClose={() => {
             setShowMandadosModal(false)
             setMandadosPreselectedIds([])
@@ -7345,7 +7362,7 @@ function SupplierHelperModal({ order, purchaseOrders, suppliers, ships, workOrde
 // ==============================================================================
 // MODAL: GESTIÓN DE MANDADOS Y RETIROS LOCALES POR WHATSAPP
 // ==============================================================================
-function MandadosModal({ purchaseOrders, suppliers, workers, preselectedIds = [], onClose }) {
+function MandadosModal({ purchaseOrders, suppliers, workers, preselectedIds = [], onDispatched, onClose }) {
   const candidateOrders = useMemo(() => {
     return purchaseOrders.filter((po) => {
       if (preselectedIds.includes(po.id)) return true
@@ -7402,7 +7419,7 @@ function MandadosModal({ purchaseOrders, suppliers, workers, preselectedIds = []
     let msg = `buenas ${workerFirstName}, podes pasar a retirar por favor:\n\n`
 
     groupedOrders.forEach((grp) => {
-      msg += `📍 ${grp.name} (${grp.address}):\n`
+      msg += `*${grp.name}* (${grp.address}):\n`
       grp.items.forEach((it) => {
         const qty = Number(it.quantity) || 1
         const u = it.unit_measure ? ` ${it.unit_measure}` : ''
@@ -7412,7 +7429,7 @@ function MandadosModal({ purchaseOrders, suppliers, workers, preselectedIds = []
       msg += '\n'
     })
 
-    msg += `*⚠️ Por favor retirar remito/factura.*`.trim()
+    msg += `*Por favor retirar remito/factura.*`.trim()
     return msg
   }, [groupedOrders, selectedWorker])
 
@@ -7437,7 +7454,7 @@ function MandadosModal({ purchaseOrders, suppliers, workers, preselectedIds = []
     setTimeout(() => setCopied(false), 2500)
   }
 
-  function handleSendWhatsApp() {
+  async function handleSendWhatsApp() {
     const cleanPhone = (selectedWorker?.phone || '').replace(/\D/g, '')
     if (!cleanPhone) {
       alert(`El operario "${selectedWorker?.name || 'seleccionado'}" no tiene cargado un número de teléfono en Nómina. Por favor agrégalo en el módulo Personal o copia el mensaje manualmente.`)
@@ -7445,6 +7462,29 @@ function MandadosModal({ purchaseOrders, suppliers, workers, preselectedIds = []
     }
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`
     window.open(url, '_blank')
+
+    const dispatchedIds = Array.from(selectedIds)
+    const dispatchInfo = {
+      courier_dispatched: true,
+      courier_dispatched_at: new Date().toISOString(),
+      courier_worker_id: selectedWorker?.id || null,
+      courier_worker_name: selectedWorker?.name || null
+    }
+
+    try {
+      await supabase
+        .from('purchase_orders')
+        .update(dispatchInfo)
+        .in('id', dispatchedIds)
+    } catch (err) {
+      console.error('Error registrando despacho de mandado en Supabase:', err)
+    }
+
+    if (onDispatched) {
+      onDispatched(dispatchedIds, dispatchInfo)
+    }
+
+    onClose()
   }
 
   return (
