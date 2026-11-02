@@ -4109,9 +4109,15 @@ function OrderFormModal({
 
   const [saving, setSaving] = useState(false)
 
-  // Lista de personas habilitadas para retirar materiales
-  const authorizedWorkers = useMemo(() => {
-    return workers.filter((w) => w.can_withdraw_materials)
+  // Lista de personas habilitadas para retirar materiales y demás personal
+  const { authorizedWorkers, otherWorkers } = useMemo(() => {
+    const auth = []
+    const others = []
+    workers.forEach((w) => {
+      if (w.can_withdraw_materials) auth.push(w)
+      else others.push(w)
+    })
+    return { authorizedWorkers: auth, otherWorkers: others }
   }, [workers])
 
   // Filtrado de OTs por Barco seleccionado
@@ -4354,32 +4360,45 @@ function OrderFormModal({
               </div>
             )}
 
-            {/* Solicitante Inteligente */}
-            <div className="pt-2 border-t border-slate-850 flex items-center gap-3">
-              <div className="flex-1">
-                <label className="block text-slate-400 mb-1 font-semibold">Persona o Sector que Solicita</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={requestedByName}
-                    onChange={(e) => setRequestedByName(e.target.value)}
-                    placeholder="Escriba o elija de la lista..."
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-                  />
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) setRequestedByName(e.target.value)
-                    }}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
-                  >
-                    <option value="">-- Habilitados Pañol --</option>
-                    <option value="PAÑOL">PAÑOL CENTRAL</option>
-                    {authorizedWorkers.map((w) => (
-                      <option key={w.id} value={w.name}>{w.name} ({w.trade})</option>
+            {/* Persona o Sector que Solicita (Solo Desplegable - Por defecto PAÑOL con opción a cambiar) */}
+            <div className="pt-2 border-t border-slate-850">
+              <label className="block text-slate-400 mb-1 font-semibold">Persona o Sector que Solicita</label>
+              <select
+                value={requestedByName}
+                onChange={(e) => setRequestedByName(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value="PAÑOL">PAÑOL (Por Defecto)</option>
+                <optgroup label="Personal Habilitado (Pañol)">
+                  {authorizedWorkers.map((w) => (
+                    <option key={w.id} value={w.name}>
+                      {w.name} {w.trade ? `(${w.trade})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+                {otherWorkers.length > 0 && (
+                  <optgroup label="Demás Personal de Nómina">
+                    {otherWorkers.map((w) => (
+                      <option key={w.id} value={w.name}>
+                        {w.name} {w.trade ? `(${w.trade})` : ''}
+                      </option>
                     ))}
-                  </select>
-                </div>
-              </div>
+                  </optgroup>
+                )}
+                <optgroup label="Sectores / Áreas Comunes">
+                  <option value="ADMINISTRACION">ADMINISTRACION</option>
+                  <option value="OFICINA TECNICA">OFICINA TECNICA</option>
+                  <option value="MANTENIMIENTO">MANTENIMIENTO</option>
+                  <option value="CALIDAD / SEGURIDAD">CALIDAD / SEGURIDAD</option>
+                </optgroup>
+                {requestedByName &&
+                  requestedByName !== 'PAÑOL' &&
+                  !authorizedWorkers.some((w) => w.name === requestedByName) &&
+                  !otherWorkers.some((w) => w.name === requestedByName) &&
+                  !['ADMINISTRACION', 'OFICINA TECNICA', 'MANTENIMIENTO', 'CALIDAD / SEGURIDAD'].includes(requestedByName) && (
+                    <option value={requestedByName}>{requestedByName} (Actual)</option>
+                  )}
+              </select>
             </div>
           </div>
 
