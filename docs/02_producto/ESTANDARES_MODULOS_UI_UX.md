@@ -192,9 +192,12 @@ Todo módulo con grilla de datos debe instanciar el hook `useSpreadsheetGrid`:
 - **Principio:** Al solicitar un material, el operador debe recibir sugerencias inmediatas basadas en el comportamiento histórico real de compras para optimizar precios y tiempos.
 - **Acceso In-Situ:** Botón `<Lightbulb />` en la columna de *Acciones* de cada fila.
 - **Métricas y Análisis en Tiempo Real:**
-  1. **Capa 1 (Histórico Directo del Material):** Busca en el historial todas las compras del mismo material o con palabras clave coincidentes. Calcula el `% de frecuencia de compra` por proveedor, cantidad de compras registradas, último precio unitario y fecha de la última compra.
-  2. **Capa 2 (Fallback por Rubro):** Si no existen compras previas del material, ofrece selector desplegable de Rubro + filtro de texto libre para listar los proveedores del sector con su frecuencia de compra general.
-  3. **Carga en 1-Clic (`[ ⚡ Cargar Pedido ]`):** Asigna de inmediato el proveedor sugerido, último precio registrado y fecha de hoy (si estaba vacía), registrando la acción en la pila de deshacer para reversión inmediata con `Ctrl+Z`.
+  1. **Capa 1 (Histórico Exacto y Frase Completa):** Busca en el historial coincidencias exactas o de frase completa del material (`normName === normTarget` o contención directa). Si existen compras exactas, se toman exclusivamente esas para el cálculo.
+     - **Prevención de Falsos Positivos por Medidas:** Jamás debe utilizarse un operador disyuntivo (`OR / some()`) sobre palabras sueltas, ya que incluiría artículos no relacionados que solo comparten una medida accesoria (por ejemplo, sumar una compra de `TUERCA 1/2` dentro del historial de `BULON 1/2`).
+  2. **Capa 2 (Coincidencia Estricta por Tokens - Solo si Capa 1 arroja 0 compras):** Si no hay compras exactas, se tokeniza exigiendo que el **sustantivo principal** (tipo de artículo: `BULON`, `ELECTRODO`, `DISCO`) coincida obligatoriamente y que al menos el 75-80% de los tokens estén presentes.
+  3. **Capa 3 (Fallback por Rubro):** Si no existen compras históricas del material, ofrece selector desplegable de Rubro + filtro de texto libre para listar los proveedores del sector con su frecuencia de compra general.
+  4. **Métricas Consistentes y Legibles:** Las tarjetas deben expresar el recuento exacto de compras sobre el total (`X de Y compras (Z% de frecuencia)`) y el tab superior reflejar la cantidad total de compras históricas del material.
+  5. **Carga en 1-Clic (`[ ⚡ Cargar Pedido ]`):** Asigna de inmediato el proveedor sugerido, último precio registrado y fecha de hoy (si estaba vacía), registrando la acción en la pila de deshacer para reversión inmediata con `Ctrl+Z`.
 
 ---
 

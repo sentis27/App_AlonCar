@@ -6942,25 +6942,62 @@ function SupplierHelperModal({ order, purchaseOrders, suppliers, ships, workOrde
   const [searchDesc, setSearchDesc] = useState('')
   const [applyingId, setApplyingId] = useState(null)
 
-  const materialQuery = (order?.material_name_raw || '').trim().toLowerCase()
+  const rawMaterialName = (order?.material_name_raw || '').trim()
 
-  // 1. Coincidencias en el histórico por Nombre de Material
-  const materialHistory = useMemo(() => {
-    if (!materialQuery) return []
-    const keywords = materialQuery.split(/\s+/).filter((w) => w.length > 2)
+  // 1. Coincidencias en el histórico por Nombre de Material (Estricto en 2 Capas para evitar falsos positivos de medidas)
+  const { materialHistory, totalMaterialMatches } = useMemo(() => {
+    if (!rawMaterialName) return { materialHistory: [], totalMaterialMatches: 0 }
 
-    const matches = purchaseOrders.filter((po) => {
-      if (po.id === order.id) return false
-      if (!po.supplier_id) return false
-      const name = (po.material_name_raw || '').toLowerCase()
-      if (name.includes(materialQuery)) return true
-      if (keywords.length > 0 && keywords.some((kw) => name.includes(kw))) return true
+    const normalize = (str) =>
+      (str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Quitar tildes
+        .replace(/["'”’]/g, '"')          // Normalizar comillas y pulgadas
+        .replace(/\s+/g, ' ')            // Colapsar espacios
+        .trim()
+
+    const normTarget = normalize(rawMaterialName)
+    const validOrders = purchaseOrders.filter((po) => po.id !== order.id && Boolean(po.supplier_id))
+
+    // CAPA 1: Coincidencia Exacta o Substring Completo (sin romper en palabras)
+    let matches = validOrders.filter((po) => {
+      const normName = normalize(po.material_name_raw)
+      if (!normName) return false
+      if (normName === normTarget) return true
+      if (normTarget.length >= 4 && (normName.includes(normTarget) || normTarget.includes(normName))) return true
       return false
     })
 
-    if (matches.length === 0) return []
+    // CAPA 2: Solo si en Capa 1 no hay coincidencias exactas, coincidencia estricta de tokens
+    // El sustantivo principal (primera palabra representativa) DEBE coincidir obligatoriamente
+    // para evitar mezclar artículos distintos que solo comparten una medida (ej. BULON vs TUERCA de 1/2)
+    if (matches.length === 0) {
+      const tokens = normTarget
+        .split(/[\s,;-]+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length > 1 && !['de', 'la', 'el', 'en', 'para', 'con', 'x'].includes(t))
 
+      if (tokens.length > 0) {
+        const primaryNoun = tokens.find((t) => !/^\d+/.test(t)) || tokens[0]
+
+        matches = validOrders.filter((po) => {
+          const normName = normalize(po.material_name_raw)
+          if (!normName) return false
+          if (primaryNoun && !normName.includes(primaryNoun)) return false
+
+          const matchedCount = tokens.filter((t) => normName.includes(t)).length
+          const matchRatio = matchedCount / tokens.length
+          return tokens.length <= 2 ? matchedCount === tokens.length : matchRatio >= 0.75
+        })
+      }
+    }
+
+    if (matches.length === 0) return { materialHistory: [], totalMaterialMatches: 0 }
+
+    const totalMatches = matches.length
     const groupMap = new Map()
+
     matches.forEach((po) => {
       const sup = suppliers.find((s) => s.id === po.supplier_id)
       if (!sup) return
@@ -6977,7 +7014,6 @@ function SupplierHelperModal({ order, purchaseOrders, suppliers, ships, workOrde
       entry.orders.push(po)
     })
 
-    const totalMatches = matches.length
     const results = Array.from(groupMap.values()).map((item) => {
       item.orders.sort((a, b) => new Date(b.order_date || 0) - new Date(a.order_date || 0))
       const last = item.orders[0]
@@ -6987,6 +7023,7 @@ function SupplierHelperModal({ order, purchaseOrders, suppliers, ships, workOrde
       return {
         supplier: item.supplier,
         count: item.count,
+        totalMatches,
         percentage,
         lastPrice,
         lastDate: last.order_date,
@@ -6995,8 +7032,8 @@ function SupplierHelperModal({ order, purchaseOrders, suppliers, ships, workOrde
     })
 
     results.sort((a, b) => b.count - a.count)
-    return results
-  }, [materialQuery, purchaseOrders, suppliers, order.id])
+    return { materialHistory: results, totalMaterialMatches: totalMatches }
+  }, [rawMaterialName, purchaseOrders, suppliers, order.id])
 
   useEffect(() => {
     if (materialHistory.length === 0 && activeTab === 'material') {
@@ -7101,7 +7138,7 @@ function SupplierHelperModal({ order, purchaseOrders, suppliers, ships, workOrde
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
               activeTab === 'material' ? 'bg-slate-950 text-amber-300' : 'bg-slate-800 text-slate-300'
             }`}>
-              {materialHistory.length}
+              {totalMaterialMatches}
             </span>
           </button>
 
@@ -7146,7 +7183,7 @@ function SupplierHelperModal({ order, purchaseOrders, suppliers, ships, workOrde
                       <div className="space-y-0.5">
                         <div className="flex items-center justify-between text-[10px] font-mono">
                           <span className="text-amber-400 font-bold">
-                            {entry.count} compra(s) registrada(s) ({entry.percentage}% de frecuencia)
+                            {entry.count} de {entry.totalMatches} compra(s) ({entry.percentage}% de frecuencia)
                           </span>
                           {entry.lastPrice && (
                             <span className="text-emerald-400 font-bold">
