@@ -26,6 +26,7 @@ import {
   Sparkles,
   DollarSign,
   Calendar,
+  MapPin,
   Building2,
   Phone,
   Mail,
@@ -366,7 +367,9 @@ export default function Compras() {
   const [activeKpiFilter, setActiveKpiFilter] = useState(null) // 'pedidos' | 'cotizaciones' | 'sin_recibir' | 'gases'
 
   // Filtros propios de Proveedores
-  const [supplierKpiFilter, setSupplierKpiFilter] = useState('TODOS') // 'TODOS', 'NO_PHONE', 'NO_EMAIL', 'NO_TRADE', 'GASES'
+  const [supplierKpiFilter, setSupplierKpiFilter] = useState('TODOS') // 'TODOS', 'LOCAL', 'NO_CONTACT', 'NO_PHONE', 'NO_EMAIL', 'NO_TRADE'
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState('')
+  const [supplierInlineEdit, setSupplierInlineEdit] = useState({ supplierId: null, field: null, value: '' })
 
   // Selección de filas (para totales y acciones en lote)
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set())
@@ -1174,6 +1177,110 @@ export default function Compras() {
     }
   }
 
+  // Guardar edición rápida in-situ de celdas de proveedores (Doble Clic estilo Excel/Sheets)
+  async function saveSupplierInlineEdit(supplierId, field, rawValue) {
+    setSupplierInlineEdit({ supplierId: null, field: null, value: '' })
+    const target = suppliers.find((s) => s.id === supplierId)
+    if (!target) return
+
+    let cleanValue = rawValue
+    const updates = {}
+
+    if (field === 'trades') {
+      const tradesArray = typeof rawValue === 'string'
+        ? rawValue.split(',').map((t) => t.trim().toUpperCase()).filter(Boolean)
+        : Array.isArray(rawValue) ? rawValue : []
+      if (tradesArray.length === 0) {
+        showFeedbackMsg('error', 'El proveedor debe tener al menos un rubro.')
+        return
+      }
+      cleanValue = tradesArray
+      updates.trades = tradesArray
+      updates.trade = tradesArray.join(', ')
+    } else if (typeof rawValue === 'string') {
+      cleanValue = rawValue.trim()
+      if (field === 'name' && !cleanValue) {
+        showFeedbackMsg('error', 'La razón social del proveedor no puede estar vacía.')
+        return
+      }
+      updates[field] = cleanValue || null
+    } else {
+      updates[field] = rawValue
+    }
+
+    if (JSON.stringify(target[field]) === JSON.stringify(cleanValue)) return
+
+    setSuppliers((prev) =>
+      prev.map((s) => (s.id === supplierId ? { ...s, ...updates } : s))
+    )
+
+    try {
+      const { error } = await supabase
+        .from('suppliers')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', supplierId)
+      if (error) throw error
+      showFeedbackMsg('success', 'Proveedor actualizado correctamente.')
+    } catch (err) {
+      console.error('Error guardando proveedor in-situ:', err)
+      showFeedbackMsg('error', 'Error al guardar proveedor: ' + err.message)
+      setSuppliers((prev) =>
+        prev.map((s) => (s.id === supplierId ? target : s))
+      )
+    }
+  }
+
+  // Alternar rápidamente estado de Proveedor Local (MDP) con 1 clic en la casilla
+  async function toggleSupplierLocal(supplierId, currentVal) {
+    const newVal = !currentVal
+    const target = suppliers.find((s) => s.id === supplierId)
+    if (!target) return
+
+    setSuppliers((prev) =>
+      prev.map((s) => (s.id === supplierId ? { ...s, is_local_supplier: newVal } : s))
+    )
+
+    try {
+      const { error } = await supabase
+        .from('suppliers')
+        .update({ is_local_supplier: newVal, updated_at: new Date().toISOString() })
+        .eq('id', supplierId)
+      if (error) throw error
+      showFeedbackMsg('success', newVal ? 'Proveedor marcado como Local (MDP).' : 'Proveedor desmarcado como Local.')
+    } catch (err) {
+      console.error('Error actualizando estado local del proveedor:', err)
+      showFeedbackMsg('error', 'Error al actualizar: ' + err.message)
+      setSuppliers((prev) =>
+        prev.map((s) => (s.id === supplierId ? target : s))
+      )
+    }
+  }
+
+  // Eliminar proveedor de forma segura con verificación de compras asociadas
+  async function handleDeleteSupplier(sup) {
+    const associatedOrders = purchaseOrders.filter((po) => po.supplier_id === sup.id)
+    if (associatedOrders.length > 0) {
+      showFeedbackMsg(
+        'error',
+        `No se puede eliminar a "${sup.name}" porque tiene ${associatedOrders.length} orden(es) de compra registrada(s).`
+      )
+      return
+    }
+
+    const confirmed = window.confirm(`¿Está seguro de que desea eliminar al proveedor "${sup.name}" del padrón?`)
+    if (!confirmed) return
+
+    try {
+      const { error } = await supabase.from('suppliers').delete().eq('id', sup.id)
+      if (error) throw error
+      setSuppliers((prev) => prev.filter((s) => s.id !== sup.id))
+      showFeedbackMsg('success', `Proveedor "${sup.name}" eliminado del catálogo.`)
+    } catch (err) {
+      console.error('Error eliminando proveedor:', err)
+      showFeedbackMsg('error', 'Error al eliminar proveedor: ' + err.message)
+    }
+  }
+
   // Insertar un nuevo pedido rápido en blanco al final de la grilla (Imagen 2)
   async function handleAddNewBlankOrder() {
     const todayStr = new Date().toISOString().split('T')[0]
@@ -1534,39 +1641,64 @@ export default function Compras() {
     }).length
   }, [purchaseOrders, suppliers])
 
-  // KPIs específicos de la pestaña Proveedores
+  // KPIs específicos de la pestaña Proveedores (Radar renovado)
   const supplierKpis = useMemo(() => {
+    let localCount = 0
     let noPhone = 0
     let noEmail = 0
+    let noContact = 0 // sin teléfono Y sin email agrupado
     let noTrade = 0
-    let gasesCount = 0
 
     suppliers.forEach((s) => {
-      if (!s.phone || !s.phone.trim()) noPhone++
-      if (!s.email || !s.email.trim()) noEmail++
-      if ((!s.trades || s.trades.length === 0) && (!s.trade || !s.trade.trim())) noTrade++
-      if (s.is_gas_supplier) gasesCount++
+      const hasPhone = Boolean(s.phone && s.phone.trim())
+      const hasEmail = Boolean(s.email && s.email.trim())
+      const hasTrade = Boolean((s.trades && s.trades.length > 0) || (s.trade && s.trade.trim()))
+
+      if (s.is_local_supplier) localCount++
+      if (!hasPhone) noPhone++
+      if (!hasEmail) noEmail++
+      if (!hasPhone && !hasEmail) noContact++
+      if (!hasTrade) noTrade++
     })
 
     return {
       total: suppliers.length,
+      localCount,
+      noContact,
       noPhone,
       noEmail,
-      noTrade,
-      gasesCount
+      noTrade
     }
   }, [suppliers])
 
-  // Filtrado de proveedores
+  // Filtrado de proveedores (KPIs + Buscador reactivo)
   const filteredSuppliers = useMemo(() => {
+    const q = supplierSearchQuery.trim().toLowerCase()
+
     return suppliers.filter((s) => {
+      if (supplierKpiFilter === 'LOCAL' && !s.is_local_supplier) return false
+      if (supplierKpiFilter === 'NO_CONTACT' && (Boolean(s.phone && s.phone.trim()) || Boolean(s.email && s.email.trim()))) return false
       if (supplierKpiFilter === 'NO_PHONE' && s.phone && s.phone.trim()) return false
       if (supplierKpiFilter === 'NO_EMAIL' && s.email && s.email.trim()) return false
       if (supplierKpiFilter === 'NO_TRADE' && ((s.trades && s.trades.length > 0) || (s.trade && s.trade.trim()))) return false
-      if (supplierKpiFilter === 'GASES' && !s.is_gas_supplier) return false
+
+      if (q) {
+        const allTradesStr = ((s.trades && s.trades.length > 0) ? s.trades.join(' ') : (s.trade || '')).toLowerCase()
+        const match =
+          (s.name || '').toLowerCase().includes(q) ||
+          (s.cuit_cuil || '').toLowerCase().includes(q) ||
+          (s.phone || '').toLowerCase().includes(q) ||
+          (s.email || '').toLowerCase().includes(q) ||
+          (s.address || '').toLowerCase().includes(q) ||
+          (s.contact_name || '').toLowerCase().includes(q) ||
+          (s.observations || '').toLowerCase().includes(q) ||
+          allTradesStr.includes(q)
+        if (!match) return false
+      }
+
       return true
     })
-  }, [suppliers, supplierKpiFilter])
+  }, [suppliers, supplierKpiFilter, supplierSearchQuery])
 
   // Estadísticas reactivas inferiores
   const stats = useMemo(() => {
@@ -3729,70 +3861,173 @@ export default function Compras() {
       {/* ========================================================= */}
       {activeTab === 'proveedores' && (
         <div className="space-y-4">
-          {/* ZONA 2: KPIS PROPIOS DE PROVEEDORES */}
+          {/* ZONA 2: KPIS PROPIOS DE PROVEEDORES (RADAR RENOVADO) */}
           <div className="alon-zone-kpis p-3 space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90 px-1 block">
-              📊 RADAR DE PROVEEDORES • Clic para filtrar padrón
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div
-              onClick={() => setSupplierKpiFilter('TODOS')}
-              className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                supplierKpiFilter === 'TODOS' ? 'bg-cyan-950/60 border-cyan-500' : 'bg-slate-900 border-slate-800'
-              }`}
-            >
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Total Activos</p>
-              <p className="text-xl font-black text-white mt-0.5">{supplierKpis.total}</p>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90 px-1 block">
+                📊 RADAR DE PROVEEDORES • Clic en una tarjeta para filtrar el padrón
+              </span>
+              {supplierKpiFilter !== 'TODOS' && (
+                <button
+                  type="button"
+                  onClick={() => setSupplierKpiFilter('TODOS')}
+                  className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                  <span>Restablecer filtro ({supplierKpiFilter})</span>
+                </button>
+              )}
             </div>
 
-            <div
-              onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_PHONE' ? 'TODOS' : 'NO_PHONE')}
-              className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                supplierKpiFilter === 'NO_PHONE' ? 'bg-amber-950/60 border-amber-500' : 'bg-slate-900 border-slate-800'
-              }`}
-            >
-              <p className="text-[10px] font-bold text-amber-400 uppercase">⚠️ Sin Teléfono</p>
-              <p className="text-xl font-black text-amber-300 mt-0.5">{supplierKpis.noPhone}</p>
-            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              {/* 1. Total Padrón */}
+              <div
+                onClick={() => setSupplierKpiFilter('TODOS')}
+                className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  supplierKpiFilter === 'TODOS'
+                    ? 'bg-cyan-950/60 border-cyan-500 shadow-md ring-1 ring-cyan-500/50'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Total Proveedores</p>
+                  <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                </div>
+                <p className="text-xl font-black text-white mt-0.5">{supplierKpis.total}</p>
+                <span className="text-[9px] text-slate-500">Padrón activo</span>
+              </div>
 
-            <div
-              onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_EMAIL' ? 'TODOS' : 'NO_EMAIL')}
-              className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                supplierKpiFilter === 'NO_EMAIL' ? 'bg-purple-950/60 border-purple-500' : 'bg-slate-900 border-slate-800'
-              }`}
-            >
-              <p className="text-[10px] font-bold text-purple-400 uppercase">⚠️ Sin Email</p>
-              <p className="text-xl font-black text-purple-300 mt-0.5">{supplierKpis.noEmail}</p>
-            </div>
+              {/* 2. Locales MDP */}
+              <div
+                onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'LOCAL' ? 'TODOS' : 'LOCAL')}
+                className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  supplierKpiFilter === 'LOCAL'
+                    ? 'bg-emerald-950/60 border-emerald-500 shadow-md ring-1 ring-emerald-500/50'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    <span>Locales (MDP)</span>
+                  </p>
+                </div>
+                <p className="text-xl font-black text-emerald-300 mt-0.5">{supplierKpis.localCount}</p>
+                <span className="text-[9px] text-emerald-500/80">Para mandados</span>
+              </div>
 
-            <div
-              onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_TRADE' ? 'TODOS' : 'NO_TRADE')}
-              className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                supplierKpiFilter === 'NO_TRADE' ? 'bg-rose-950/60 border-rose-500' : 'bg-slate-900 border-slate-800'
-              }`}
-            >
-              <p className="text-[10px] font-bold text-rose-400 uppercase">⚠️ Sin Rubro</p>
-              <p className="text-xl font-black text-rose-300 mt-0.5">{supplierKpis.noTrade}</p>
-            </div>
+              {/* 3. Sin Contacto (Agrupado: Sin Teléfono ni Email) */}
+              <div
+                onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_CONTACT' ? 'TODOS' : 'NO_CONTACT')}
+                className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  supplierKpiFilter === 'NO_CONTACT'
+                    ? 'bg-rose-950/70 border-rose-500 shadow-md ring-1 ring-rose-500/50'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-rose-400 uppercase flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>Sin Contacto</span>
+                  </p>
+                </div>
+                <p className="text-xl font-black text-rose-300 mt-0.5">{supplierKpis.noContact}</p>
+                <span className="text-[9px] text-rose-400/80">Sin Tel ni Email</span>
+              </div>
 
-            <div
-              onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'GASES' ? 'TODOS' : 'GASES')}
-              className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                supplierKpiFilter === 'GASES' ? 'bg-cyan-950/60 border-cyan-400' : 'bg-slate-900 border-slate-800'
-              }`}
-            >
-              <p className="text-[10px] font-bold text-cyan-400 uppercase">💨 Gases (P-02)</p>
-              <p className="text-xl font-black text-cyan-300 mt-0.5">{supplierKpis.gasesCount}</p>
-            </div>
+              {/* 4. Sin WhatsApp / Teléfono */}
+              <div
+                onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_PHONE' ? 'TODOS' : 'NO_PHONE')}
+                className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  supplierKpiFilter === 'NO_PHONE'
+                    ? 'bg-amber-950/60 border-amber-500 shadow-md ring-1 ring-amber-500/50'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-amber-400 uppercase flex items-center gap-1">
+                    <Phone className="w-3 h-3" />
+                    <span>Sin WhatsApp</span>
+                  </p>
+                </div>
+                <p className="text-xl font-black text-amber-300 mt-0.5">{supplierKpis.noPhone}</p>
+                <span className="text-[9px] text-amber-500/80">Falta teléfono</span>
+              </div>
+
+              {/* 5. Sin Email */}
+              <div
+                onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_EMAIL' ? 'TODOS' : 'NO_EMAIL')}
+                className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  supplierKpiFilter === 'NO_EMAIL'
+                    ? 'bg-purple-950/60 border-purple-500 shadow-md ring-1 ring-purple-500/50'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-purple-400 uppercase flex items-center gap-1">
+                    <Mail className="w-3 h-3" />
+                    <span>Sin Email</span>
+                  </p>
+                </div>
+                <p className="text-xl font-black text-purple-300 mt-0.5">{supplierKpis.noEmail}</p>
+                <span className="text-[9px] text-purple-500/80">Falta correo</span>
+              </div>
+
+              {/* 6. Sin Rubro */}
+              <div
+                onClick={() => setSupplierKpiFilter(supplierKpiFilter === 'NO_TRADE' ? 'TODOS' : 'NO_TRADE')}
+                className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  supplierKpiFilter === 'NO_TRADE'
+                    ? 'bg-orange-950/60 border-orange-500 shadow-md ring-1 ring-orange-500/50'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-orange-400 uppercase flex items-center gap-1">
+                    <Tag className="w-3 h-3" />
+                    <span>Sin Rubro</span>
+                  </p>
+                </div>
+                <p className="text-xl font-black text-orange-300 mt-0.5">{supplierKpis.noTrade}</p>
+                <span className="text-[9px] text-orange-500/80">Sin categorizar</span>
+              </div>
             </div>
           </div>
 
-          {/* ZONA 3: BARRA DE HERRAMIENTAS Y VISTAS */}
-          <div className="alon-zone-toolbar flex items-center justify-between p-3">
+          {/* ZONA 3: BARRA DE HERRAMIENTAS, MENÚ DE BÚSQUEDA Y VISTAS */}
+          <div className="alon-zone-toolbar flex flex-wrap items-center justify-between gap-3 p-3">
+            {/* Buscador reactivo de Proveedores */}
+            <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-md">
+              <div className="relative w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={supplierSearchQuery}
+                  onChange={(e) => setSupplierSearchQuery(e.target.value)}
+                  placeholder="Buscar proveedor, rubro, CUIT, teléfono, email, notas..."
+                  className="w-full pl-9 pr-8 py-1.5 bg-slate-900/90 border border-slate-750 focus:border-cyan-500 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none transition-all shadow-inner"
+                />
+                {supplierSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSupplierSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    title="Limpiar búsqueda"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
+                {filteredSuppliers.length} de {suppliers.length}
+              </span>
+            </div>
+
+            {/* Selector de vistas y botón Nuevo Proveedor */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSuppliersViewMode('lista')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                   suppliersViewMode === 'lista' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -3801,96 +4036,358 @@ export default function Compras() {
               </button>
               <button
                 onClick={() => setSuppliersViewMode('fichas')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                   suppliersViewMode === 'fichas' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
                 <span>Vista Fichas</span>
               </button>
-            </div>
 
-            <button
-              onClick={() => {
-                setEditingSupplier(null)
-                setShowSupplierModal(true)
-              }}
-              className="flex items-center gap-2 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-lg text-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Nuevo Proveedor</span>
-            </button>
+              <button
+                onClick={() => {
+                  setEditingSupplier(null)
+                  setShowSupplierModal(true)
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-lg text-xs cursor-pointer shadow-sm ml-1 transition-all"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Nuevo Proveedor</span>
+              </button>
+            </div>
           </div>
 
-          {/* ZONA 4: TABLA DE PROVEEDORES */}
+          {/* ZONA 4: TABLA DE PROVEEDORES (GRILLA CON ARQUITECTURA COMPLETA) */}
           {suppliersViewMode === 'lista' ? (
             <div className="alon-zone-grid">
-              <div className="overflow-x-auto max-h-[550px] overflow-y-auto">
+              <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="sticky top-0 z-20 alon-grid-thead">
                     <tr>
                       <th className="py-2.5 px-3">Proveedor / Razón Social</th>
                       <th className="py-2.5 px-3">Rubros</th>
-                      <th className="py-2.5 px-3">CUIT</th>
+                      <th className="py-2.5 px-3 text-center">Local (MDP)</th>
+                      <th className="py-2.5 px-3">CUIT / CUIL</th>
                       <th className="py-2.5 px-3">Teléfono / WhatsApp</th>
                       <th className="py-2.5 px-3">Email</th>
                       <th className="py-2.5 px-3">Pago</th>
-                      <th className="py-2.5 px-3">Circuito Gases (P-02)</th>
+                      <th className="py-2.5 px-3 min-w-[220px]">Notas / Observaciones</th>
                       <th className="py-2.5 px-3 text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {filteredSuppliers.map((sup) => {
-                      const allTrades = sup.trades && sup.trades.length > 0 ? sup.trades : sup.trade ? [sup.trade] : []
-                      return (
-                        <tr key={sup.id} className="hover:bg-slate-800/50 transition-colors">
-                          <td className="py-2 px-3 font-bold text-white whitespace-nowrap">{sup.name}</td>
-                          <td className="py-2 px-3">
-                            <div className="flex flex-wrap gap-1 max-w-[200px]">
-                              {allTrades.length > 0 ? (
-                                allTrades.map((t, idx) => (
-                                  <span key={idx} className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px] uppercase font-semibold">
-                                    {t}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-[10px] text-rose-400 italic">Sin rubro</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-2 px-3 font-mono text-slate-300 whitespace-nowrap">{sup.cuit_cuil || '—'}</td>
-                          <td className="py-2 px-3 font-mono text-slate-300 whitespace-nowrap">
-                            {sup.phone ? (
-                              <span className="text-emerald-400">{sup.phone}</span>
-                            ) : (
-                              <span className="text-amber-400/80 italic text-[10px]">Sin teléfono</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-slate-300 truncate max-w-[150px]">{sup.email || '—'}</td>
-                          <td className="py-2 px-3 whitespace-nowrap text-slate-400">{sup.payment_method || 'Cta Cte'}</td>
-                          <td className="py-2 px-3 whitespace-nowrap">
-                            {sup.is_gas_supplier ? (
-                              <span className="px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
-                                {sup.client_number ? `Cli: ${sup.client_number}` : 'Gases'}
-                              </span>
-                            ) : (
-                              <span className="text-slate-600">—</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-center whitespace-nowrap">
+                    {filteredSuppliers.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-8 text-center text-slate-500">
+                          <p className="text-sm">No se encontraron proveedores que coincidan con los filtros aplicados.</p>
+                          {(supplierKpiFilter !== 'TODOS' || supplierSearchQuery) && (
                             <button
                               onClick={() => {
-                                setEditingSupplier(sup)
-                                setShowSupplierModal(true)
+                                setSupplierKpiFilter('TODOS')
+                                setSupplierSearchQuery('')
                               }}
-                              className="px-2 py-1 text-slate-400 hover:text-white rounded bg-slate-800 hover:bg-slate-700 text-xs"
+                              className="mt-2 text-xs text-cyan-400 hover:underline"
                             >
-                              Editar
+                              Limpiar filtros y búsqueda
                             </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
+                          )}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSuppliers.map((sup) => {
+                        const allTrades = sup.trades && sup.trades.length > 0 ? sup.trades : sup.trade ? [sup.trade] : []
+                        return (
+                          <tr key={sup.id} className="hover:bg-slate-800/50 transition-colors">
+                            {/* 1. Proveedor / Razón Social (Doble Clic para editar) */}
+                            <td
+                              onDoubleClick={() => setSupplierInlineEdit({ supplierId: sup.id, field: 'name', value: sup.name || '' })}
+                              className="py-2 px-3 font-bold text-white whitespace-nowrap cursor-pointer hover:bg-slate-800/80 group transition-colors"
+                              title="Doble clic para editar razón social"
+                            >
+                              {supplierInlineEdit.supplierId === sup.id && supplierInlineEdit.field === 'name' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={supplierInlineEdit.value}
+                                  onChange={(e) => setSupplierInlineEdit({ ...supplierInlineEdit, value: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveSupplierInlineEdit(sup.id, 'name', supplierInlineEdit.value)
+                                    if (e.key === 'Escape') setSupplierInlineEdit({ supplierId: null, field: null, value: '' })
+                                  }}
+                                  onBlur={() => saveSupplierInlineEdit(sup.id, 'name', supplierInlineEdit.value)}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none min-w-[150px]"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <span><HighlightText text={sup.name} query={supplierSearchQuery} /></span>
+                                  <Edit3 className="w-3 h-3 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                              )}
+                            </td>
+
+                            {/* 2. Rubros (Doble Clic para editar) */}
+                            <td
+                              onDoubleClick={() => {
+                                const rawVal = sup.trades && sup.trades.length > 0 ? sup.trades.join(', ') : sup.trade || ''
+                                setSupplierInlineEdit({ supplierId: sup.id, field: 'trades', value: rawVal })
+                              }}
+                              className="py-2 px-3 cursor-pointer hover:bg-slate-800/80 group transition-colors"
+                              title="Doble clic para editar rubros (separados por comas)"
+                            >
+                              {supplierInlineEdit.supplierId === sup.id && supplierInlineEdit.field === 'trades' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={supplierInlineEdit.value}
+                                  onChange={(e) => setSupplierInlineEdit({ ...supplierInlineEdit, value: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveSupplierInlineEdit(sup.id, 'trades', supplierInlineEdit.value)
+                                    if (e.key === 'Escape') setSupplierInlineEdit({ supplierId: null, field: null, value: '' })
+                                  }}
+                                  onBlur={() => saveSupplierInlineEdit(sup.id, 'trades', supplierInlineEdit.value)}
+                                  placeholder="Ej: FERRETERIA, BULONERIA"
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none min-w-[160px]"
+                                />
+                              ) : (
+                                <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
+                                  {allTrades.length > 0 ? (
+                                    allTrades.map((t, idx) => (
+                                      <span key={idx} className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px] uppercase font-semibold">
+                                        <HighlightText text={t} query={supplierSearchQuery} />
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-[10px] text-rose-400 italic flex items-center gap-1">
+                                      <span>Sin rubro</span>
+                                      <Edit3 className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-slate-500" />
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* 3. Casilla Local (MDP) (Casilla interactiva de verificación) */}
+                            <td className="py-2 px-3 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => toggleSupplierLocal(sup.id, sup.is_local_supplier)}
+                                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                                  sup.is_local_supplier
+                                    ? 'bg-emerald-950/80 border border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/80'
+                                    : 'bg-slate-800/80 border border-slate-750 text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+                                }`}
+                                title={sup.is_local_supplier ? 'Proveedor local de MDP (Clic para alternar)' : 'No es local / Envío (Clic para alternar)'}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(sup.is_local_supplier)}
+                                  onChange={() => {}} // Manejado por el contenedor
+                                  className="w-3.5 h-3.5 rounded text-emerald-500 bg-slate-900 border-slate-600 cursor-pointer pointer-events-none accent-emerald-500"
+                                />
+                                <span>{sup.is_local_supplier ? 'Local (MDP)' : 'No local'}</span>
+                              </button>
+                            </td>
+
+                            {/* 4. CUIT / CUIL (Doble Clic para editar) */}
+                            <td
+                              onDoubleClick={() => setSupplierInlineEdit({ supplierId: sup.id, field: 'cuit_cuil', value: sup.cuit_cuil || '' })}
+                              className="py-2 px-3 font-mono text-slate-300 whitespace-nowrap cursor-pointer hover:bg-slate-800/80 group transition-colors"
+                              title="Doble clic para editar CUIT"
+                            >
+                              {supplierInlineEdit.supplierId === sup.id && supplierInlineEdit.field === 'cuit_cuil' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={supplierInlineEdit.value}
+                                  onChange={(e) => setSupplierInlineEdit({ ...supplierInlineEdit, value: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveSupplierInlineEdit(sup.id, 'cuit_cuil', supplierInlineEdit.value)
+                                    if (e.key === 'Escape') setSupplierInlineEdit({ supplierId: null, field: null, value: '' })
+                                  }}
+                                  onBlur={() => saveSupplierInlineEdit(sup.id, 'cuit_cuil', supplierInlineEdit.value)}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white font-mono focus:outline-none w-28"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <span>{sup.cuit_cuil ? <HighlightText text={sup.cuit_cuil} query={supplierSearchQuery} /> : '—'}</span>
+                                  <Edit3 className="w-2.5 h-2.5 text-slate-600 opacity-0 group-hover:opacity-100" />
+                                </div>
+                              )}
+                            </td>
+
+                            {/* 5. Teléfono / WhatsApp (Doble Clic para editar) */}
+                            <td
+                              onDoubleClick={() => setSupplierInlineEdit({ supplierId: sup.id, field: 'phone', value: sup.phone || '' })}
+                              className="py-2 px-3 font-mono whitespace-nowrap cursor-pointer hover:bg-slate-800/80 group transition-colors"
+                              title="Doble clic para editar teléfono"
+                            >
+                              {supplierInlineEdit.supplierId === sup.id && supplierInlineEdit.field === 'phone' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={supplierInlineEdit.value}
+                                  onChange={(e) => setSupplierInlineEdit({ ...supplierInlineEdit, value: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveSupplierInlineEdit(sup.id, 'phone', supplierInlineEdit.value)
+                                    if (e.key === 'Escape') setSupplierInlineEdit({ supplierId: null, field: null, value: '' })
+                                  }}
+                                  onBlur={() => saveSupplierInlineEdit(sup.id, 'phone', supplierInlineEdit.value)}
+                                  placeholder="Ej: 2235123456"
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white font-mono focus:outline-none w-28"
+                                />
+                              ) : sup.phone ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-emerald-400 font-bold">
+                                    <HighlightText text={sup.phone} query={supplierSearchQuery} />
+                                  </span>
+                                  <a
+                                    href={`https://wa.me/${sup.phone.replace(/[^0-9]/g, '')}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-emerald-400 hover:text-emerald-300 p-0.5 rounded hover:bg-emerald-950/50"
+                                    title="Abrir WhatsApp"
+                                  >
+                                    <Phone className="w-3 h-3" />
+                                  </a>
+                                  <Edit3 className="w-2.5 h-2.5 text-slate-600 opacity-0 group-hover:opacity-100" />
+                                </div>
+                              ) : (
+                                <span className="text-amber-400/80 italic text-[10px] flex items-center gap-1">
+                                  <span>Sin teléfono</span>
+                                  <Edit3 className="w-2.5 h-2.5 text-slate-600 opacity-0 group-hover:opacity-100" />
+                                </span>
+                              )}
+                            </td>
+
+                            {/* 6. Email (Doble Clic para editar) */}
+                            <td
+                              onDoubleClick={() => setSupplierInlineEdit({ supplierId: sup.id, field: 'email', value: sup.email || '' })}
+                              className="py-2 px-3 text-slate-300 whitespace-nowrap cursor-pointer hover:bg-slate-800/80 group transition-colors"
+                              title="Doble clic para editar email"
+                            >
+                              {supplierInlineEdit.supplierId === sup.id && supplierInlineEdit.field === 'email' ? (
+                                <input
+                                  type="email"
+                                  autoFocus
+                                  value={supplierInlineEdit.value}
+                                  onChange={(e) => setSupplierInlineEdit({ ...supplierInlineEdit, value: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveSupplierInlineEdit(sup.id, 'email', supplierInlineEdit.value)
+                                    if (e.key === 'Escape') setSupplierInlineEdit({ supplierId: null, field: null, value: '' })
+                                  }}
+                                  onBlur={() => saveSupplierInlineEdit(sup.id, 'email', supplierInlineEdit.value)}
+                                  placeholder="correo@proveedor.com"
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none w-36"
+                                />
+                              ) : sup.email ? (
+                                <div className="flex items-center gap-1.5">
+                                  <a
+                                    href={`mailto:${sup.email}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="truncate max-w-[150px] text-slate-300 hover:text-cyan-300 hover:underline"
+                                    title={sup.email}
+                                  >
+                                    <HighlightText text={sup.email} query={supplierSearchQuery} />
+                                  </a>
+                                  <Edit3 className="w-2.5 h-2.5 text-slate-600 opacity-0 group-hover:opacity-100" />
+                                </div>
+                              ) : (
+                                <span className="text-purple-400/80 italic text-[10px] flex items-center gap-1">
+                                  <span>Sin email</span>
+                                  <Edit3 className="w-2.5 h-2.5 text-slate-600 opacity-0 group-hover:opacity-100" />
+                                </span>
+                              )}
+                            </td>
+
+                            {/* 7. Forma de Pago (Doble Clic para editar) */}
+                            <td
+                              onDoubleClick={() => setSupplierInlineEdit({ supplierId: sup.id, field: 'payment_method', value: sup.payment_method || 'CUENTA_CORRIENTE' })}
+                              className="py-2 px-3 whitespace-nowrap text-slate-400 cursor-pointer hover:bg-slate-800/80 group transition-colors"
+                              title="Doble clic para cambiar forma de pago"
+                            >
+                              {supplierInlineEdit.supplierId === sup.id && supplierInlineEdit.field === 'payment_method' ? (
+                                <select
+                                  autoFocus
+                                  value={supplierInlineEdit.value}
+                                  onChange={(e) => {
+                                    saveSupplierInlineEdit(sup.id, 'payment_method', e.target.value)
+                                  }}
+                                  onBlur={() => setSupplierInlineEdit({ supplierId: null, field: null, value: '' })}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                                >
+                                  <option value="CUENTA_CORRIENTE">Cuenta Corriente</option>
+                                  <option value="CONTADO">Contado</option>
+                                </select>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs">{sup.payment_method === 'CONTADO' ? 'Contado' : 'Cta Cte'}</span>
+                                  <Edit3 className="w-2.5 h-2.5 text-slate-600 opacity-0 group-hover:opacity-100" />
+                                </div>
+                              )}
+                            </td>
+
+                            {/* 8. Notas / Observaciones (Casilla para escritura libre con Doble Clic) */}
+                            <td
+                              onDoubleClick={() => setSupplierInlineEdit({ supplierId: sup.id, field: 'observations', value: sup.observations || '' })}
+                              className="py-2 px-3 cursor-pointer hover:bg-slate-800/80 group transition-colors min-w-[220px]"
+                              title="Doble clic para editar observaciones / notas libres"
+                            >
+                              {supplierInlineEdit.supplierId === sup.id && supplierInlineEdit.field === 'observations' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={supplierInlineEdit.value}
+                                  onChange={(e) => setSupplierInlineEdit({ ...supplierInlineEdit, value: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveSupplierInlineEdit(sup.id, 'observations', supplierInlineEdit.value)
+                                    if (e.key === 'Escape') setSupplierInlineEdit({ supplierId: null, field: null, value: '' })
+                                  }}
+                                  onBlur={() => saveSupplierInlineEdit(sup.id, 'observations', supplierInlineEdit.value)}
+                                  placeholder="Escribir notas sobre el proveedor..."
+                                  className="w-full bg-slate-950 border border-cyan-400 rounded px-2 py-0.5 text-xs text-white focus:outline-none"
+                                />
+                              ) : sup.observations ? (
+                                <div className="flex items-center gap-1.5" title={sup.observations}>
+                                  <span className="truncate max-w-[260px] text-xs text-slate-200">
+                                    <HighlightText text={sup.observations} query={supplierSearchQuery} />
+                                  </span>
+                                  <Edit3 className="w-3 h-3 text-slate-600 opacity-0 group-hover:opacity-100 shrink-0" />
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-slate-600 italic group-hover:text-cyan-400 flex items-center gap-1">
+                                  <span>+ Agregar nota libre...</span>
+                                  <Edit3 className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-slate-500" />
+                                </span>
+                              )}
+                            </td>
+
+                            {/* 9. Acciones */}
+                            <td className="py-2 px-3 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setEditingSupplier(sup)
+                                    setShowSupplierModal(true)
+                                  }}
+                                  className="px-2 py-1 text-slate-400 hover:text-white rounded bg-slate-800 hover:bg-slate-700 text-xs font-semibold transition-colors"
+                                  title="Editar ficha completa"
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteSupplier(sup)}
+                                  className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-950/40 transition-colors"
+                                  title="Eliminar proveedor del padrón"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -3898,68 +4395,162 @@ export default function Compras() {
           ) : (
             /* VISTA 2: FICHAS (CARDS) */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filteredSuppliers.map((sup) => {
-                const allTrades = sup.trades && sup.trades.length > 0 ? sup.trades : sup.trade ? [sup.trade] : []
-                return (
-                  <div key={sup.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-md">
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-bold text-white text-sm">{sup.name}</h3>
-                        {sup.is_gas_supplier && (
-                          <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold shrink-0">
-                            💨 GASES
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Rubros múltiples */}
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {allTrades.map((t, idx) => (
-                          <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase font-semibold">
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="mt-3 space-y-1 text-xs text-slate-300">
-                        {sup.phone && (
-                          <div className="flex items-center gap-2">
-                            <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                            <span className="font-mono">{sup.phone}</span>
-                          </div>
-                        )}
-                        {sup.email && (
-                          <div className="flex items-center gap-2">
-                            <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                            <span className="truncate">{sup.email}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {sup.is_gas_supplier && (
-                        <div className="mt-3 p-2 bg-slate-950 rounded-lg border border-cyan-900/40 text-[10px] text-cyan-200 space-y-0.5">
-                          <p className="font-bold text-cyan-400">Circuito P-02:</p>
-                          {sup.client_number && <p>N° Cliente: <span className="font-mono font-bold text-white">{sup.client_number}</span></p>}
-                          {sup.order_cutoff_day && <p>Corte: {sup.order_cutoff_day}</p>}
+              {filteredSuppliers.length === 0 ? (
+                <div className="col-span-full py-8 text-center text-slate-500 bg-slate-900/60 rounded-xl border border-slate-800">
+                  <p className="text-sm">No se encontraron proveedores que coincidan con los filtros aplicados.</p>
+                  {(supplierKpiFilter !== 'TODOS' || supplierSearchQuery) && (
+                    <button
+                      onClick={() => {
+                        setSupplierKpiFilter('TODOS')
+                        setSupplierSearchQuery('')
+                      }}
+                      className="mt-2 text-xs text-cyan-400 hover:underline"
+                    >
+                      Limpiar filtros y búsqueda
+                    </button>
+                  )}
+                </div>
+              ) : (
+                filteredSuppliers.map((sup) => {
+                  const allTrades = sup.trades && sup.trades.length > 0 ? sup.trades : sup.trade ? [sup.trade] : []
+                  return (
+                    <div key={sup.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-md hover:border-slate-700 transition-all">
+                      <div>
+                        {/* Cabecera de la ficha: Razón social y botón Local */}
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-bold text-white text-sm">
+                            <HighlightText text={sup.name} query={supplierSearchQuery} />
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={() => toggleSupplierLocal(sup.id, sup.is_local_supplier)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 transition-all cursor-pointer ${
+                              sup.is_local_supplier
+                                ? 'bg-emerald-950 border border-emerald-600 text-emerald-300'
+                                : 'bg-slate-800 border border-slate-700 text-slate-500'
+                            }`}
+                            title="Clic para cambiar si es local de Mar del Plata"
+                          >
+                            {sup.is_local_supplier ? '📍 LOCAL (MDP)' : 'NO LOCAL'}
+                          </button>
                         </div>
-                      )}
-                    </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                      <span className="text-[10px] text-slate-500">{sup.payment_method || 'Cta Cte'}</span>
-                      <button
-                        onClick={() => {
-                          setEditingSupplier(sup)
-                          setShowSupplierModal(true)
-                        }}
-                        className="px-2 py-1 text-slate-400 hover:text-white rounded bg-slate-800 hover:bg-slate-700 text-xs"
-                      >
-                        Editar
-                      </button>
+                        {/* Rubros múltiples */}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {allTrades.map((t, idx) => (
+                            <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase font-semibold">
+                              <HighlightText text={t} query={supplierSearchQuery} />
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Datos de contacto */}
+                        <div className="mt-3 space-y-1 text-xs text-slate-300">
+                          {sup.cuit_cuil && (
+                            <div className="text-[11px] text-slate-400">
+                              CUIT: <span className="font-mono text-slate-300"><HighlightText text={sup.cuit_cuil} query={supplierSearchQuery} /></span>
+                            </div>
+                          )}
+                          {sup.phone ? (
+                            <div className="flex items-center gap-2">
+                              <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <a
+                                href={`https://wa.me/${sup.phone.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-emerald-400 hover:underline"
+                                title="Enviar WhatsApp"
+                              >
+                                <HighlightText text={sup.phone} query={supplierSearchQuery} />
+                              </a>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-amber-400/80 text-[11px] italic">
+                              <Phone className="w-3 h-3 text-amber-400/60" />
+                              <span>Sin teléfono de contacto</span>
+                            </div>
+                          )}
+
+                          {sup.email ? (
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                              <a
+                                href={`mailto:${sup.email}`}
+                                className="truncate text-slate-300 hover:text-cyan-300 hover:underline"
+                                title={sup.email}
+                              >
+                                <HighlightText text={sup.email} query={supplierSearchQuery} />
+                              </a>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-purple-400/80 text-[11px] italic">
+                              <Mail className="w-3 h-3 text-purple-400/60" />
+                              <span>Sin email de contacto</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Notas / Observaciones libres */}
+                        <div className="mt-3 p-2 bg-slate-950/80 rounded-lg border border-slate-800 text-xs">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1">
+                            <span>NOTAS / OBSERVACIONES:</span>
+                            <button
+                              onClick={() => setSupplierInlineEdit({ supplierId: sup.id, field: 'observations', value: sup.observations || '' })}
+                              className="text-cyan-400 hover:underline text-[10px]"
+                            >
+                              Editar
+                            </button>
+                          </div>
+                          {supplierInlineEdit.supplierId === sup.id && supplierInlineEdit.field === 'observations' ? (
+                            <input
+                              type="text"
+                              autoFocus
+                              value={supplierInlineEdit.value}
+                              onChange={(e) => setSupplierInlineEdit({ ...supplierInlineEdit, value: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveSupplierInlineEdit(sup.id, 'observations', supplierInlineEdit.value)
+                                if (e.key === 'Escape') setSupplierInlineEdit({ supplierId: null, field: null, value: '' })
+                              }}
+                              onBlur={() => saveSupplierInlineEdit(sup.id, 'observations', supplierInlineEdit.value)}
+                              className="w-full bg-slate-900 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                              placeholder="Escribir notas..."
+                            />
+                          ) : sup.observations ? (
+                            <p className="text-slate-200 text-xs">
+                              <HighlightText text={sup.observations} query={supplierSearchQuery} />
+                            </p>
+                          ) : (
+                            <p className="text-slate-600 italic text-xs">Sin notas registradas.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Pie de la ficha */}
+                      <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                        <span className="text-[10px] text-slate-500 font-semibold">{sup.payment_method === 'CONTADO' ? 'Contado' : 'Cuenta Corriente'}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setEditingSupplier(sup)
+                              setShowSupplierModal(true)
+                            }}
+                            className="px-2.5 py-1 text-slate-300 hover:text-white rounded bg-slate-800 hover:bg-slate-700 text-xs font-semibold transition-colors"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSupplier(sup)}
+                            className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-950/40 transition-colors"
+                            title="Eliminar proveedor"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })
+              )}
             </div>
           )}
         </div>
