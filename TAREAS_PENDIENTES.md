@@ -149,19 +149,36 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
     - **Praxair Linde:** Quincenal (1 lunes c/15 días vía portal web o comercial), entrega martes.
     - **Ferremat:** A demanda ante emergencias o quiebres de stock.
 
-- [x] **3. Módulo M4: Pañol y Materiales (y Módulo de Terceros):**
-  - Catálogo de consumibles y aceros/chapas navales (3 únicas categorías: MATERIALES, CONSUMIBLES, ELEM.SEGURIDAD).
-  - 🗂️ **Base de Datos de Rubros de Pañol (material_rubros) y Vinculación con Compras:** Al construir el módulo de Pañol, crear la tabla maestra de rubros técnicos y vincular el desplegable de rubros del modal Alta Formal de Material en Compras y el homologador en /admin contra esta tabla.
-  - 📏 **Deducción y Edición de Unidad de Medida con Alerta de Impacto en Stock:** Al dar de alta o editar materiales en Pañol, la unidad de medida se deducirá automáticamente a partir del nombre (`lado x lado` $\rightarrow$ `m2`, `x metro` $\rightarrow$ `metro lineal`, `x kg` $\rightarrow$ `kg`, `x m3` $\rightarrow$ `m3`, defecto `unidad`), pero será editable para corregir inconsistencias de origen. **Alerta obligatoria:** Si el material pertenece a la lista de control de stock y se modifica su unidad de medida, el sistema emitirá un aviso visual de confirmación informando que la modificación alterará el recuento y control de stock acumulado.
-  - Vales de retiro de pañol vinculados a OTs (`inventory_transactions.work_order_id` y `work_item_id`).
-  - Control de stock y alertas automáticas de reposición mínima.
-  - ⚠️ **INSTRUCCIÓN OBLIGATORIA (Replicar Bloqueo y Filtrado en Cascada de Horas en Materiales y Terceros — Ver Sección 8.7 de `docs/03_negocio/00_reglas_negocio.md`):**
-    1. **Cascada de 3 pasos en la cabecera:** `1º Barco` $\rightarrow$ `2º Contratista / Grupo Habilitado en trabajos "En ejecución" de ese barco` $\rightarrow$ `3º OT Habilitada donde actúa ese contratista` (mostrando descripción `DEC-016` y guardando `work_item_id`).
-    2. **Bloqueo del selector inferior de persona/prestador:** Si en el Paso 2 se elige `ASTILLERO.<RUBRO>` (ej. `ASTILLERO.MECANICA`, `ASTILLERO.RASCHINAJE`), el `<select>` de retirante/operario abajo solo muestra a los operarios de `public.workers` de ese oficio (`trade`). Si se elige un contratista/taller externo (ej. `TECO TALLER`), se bloquea exclusivamente en ese contratista/taller (validando además permiso `[P]` `can_withdraw_panol` en Materiales y `[3ros]` `can_charge_third_party` en Terceros).
-    3. **Lecciones Aprendidas en Horas (NO REPETIR):**
-       - **Problema 1 (Columna inexistente en `work_items`):** Nunca ordenar `public.work_items` por `row_number` (no existe y hace que Supabase devuelva `null`); usar siempre `.order('created_at', { ascending: true })` y no poner fallbacks ficticios como `ASTILLERO.GENERAL` que oculten errores.
-       - **Problema 2 (Sincronización de grilla inferior):** Llamar a la función sincronizadora (`syncWithContractor`) tanto en el `onChange` manual del Paso 2 como en el `useEffect` que selecciona automáticamente el primer contratista al cambiar de barco; y usar `<select>` cerrado en vez de `<input list>` libre.
-       - **Problema 3 (Múltiples `work_items` en una misma OT):** Resolver siempre el `work_item` específico dentro de la OT para el contratista elegido (`activeItemsForSelectedWo`) para exhibir la descripción correcta y persistir `work_item_id`.
+- [x] **3. Módulo M4: Pañol, Materiales y Control de Gases (`Panol.jsx` + Migraciones 0033 y 0034):**
+  - **Planilla de Retiros (Reemplazo Integral de GS-002 y GS-007):**
+    - Renombrada la vista a **Planilla de Retiros** (depuración del término Kárdex) y eliminación definitiva de la columna ficticia `Vale / N°`.
+    - **Insertar Fila en 1 Clic:** Botón y atajo operativo que inserta una nueva fila editable en la planilla, idéntico al comportamiento de Compras.
+    - **Edición In-Situ con Doble Clic:** Modificación ágil en celda de `transaction_date` (con selector nativo `showPicker()`), `ship_id`, `work_order_id`, `quantity_withdrawn` (recalculando el peso acumulado en vivo), `cost_center` y `notes`. Guardado instantáneo en Supabase con `Enter` o `Blur`.
+  - **Modal de Retiro Multi-Material (Carga Múltiple Atómica):**
+    - **Cascada Canónica de 3 Pasos:** `1° Barco` $\rightarrow$ `2° Contratista / Grupo (workers.work_group: TANO, BOLTRI, IMPERPUR, ASTILLERO, etc.)` $\rightarrow$ `3° Orden de Trabajo (OT)`.
+    - **Visualización Completa de la OT:** Exhibe el número y la descripción detallada del trabajo (`OT #123 - Reparación de casco en bodega`).
+    - **Casilla de OT Vacía (Regla 0028):** Casilla `[ ] OT en blanco / pendiente` para imputar el retiro directamente al buque sin frenar la operativa del pañol.
+    - **Match Riguroso de Operarios:** Al seleccionar un grupo (ej. `TANO`), el desplegable de operarios filtra únicamente a los trabajadores que pertenecen a ese grupo (`w.work_group === selectedGroup`) y que poseen el permiso `[P]` habilitado (`w.can_withdraw_materials === true`).
+    - **Solicitud de Habilitación de Operarios:** Si una persona no figura en la lista autorizada, botón `[ ➕ ¿No aparece? Solicitar Habilitación a Jorge Sentis ]` que abre modal y envía una solicitud formal a `worker_permission_requests` con notificación directa al Administrador.
+    - **Buscador Inteligente de Materiales (`MaterialSearchInput`):** Combobox con búsqueda in-situ mientras se escribe por nombre, rubro o categoría, mostrando foto miniatura, stock en tiempo real y unidad de medida.
+    - **Deducción Automática de Centro de Costo:**
+      - Materiales (`category === 'MATERIALES'`) $\rightarrow$ Imputación automática a `CLIENTE` (Obra del buque).
+      - Consumibles / EPP (`CONSUMIBLES` / `ELEM.SEGURIDAD`) $\rightarrow$ Verifica la condición del operario (`worker.consumables === 'CONTRATISTA'`). Si el contratista se paga sus consumibles, imputa a `CONTRATISTA` (descontable en la liquidación quincenal); de lo contrario a `CLIENTE`.
+      - Campo bloqueado en solo lectura para el pañolero, editable únicamente por el `Admin`.
+    - **Carga de Múltiples Renglones Dinámicos:** Permite cargar 5 o más materiales distintos retirados en un mismo viaje (ej. Tano retira electrodos, discos, pintura y guantes) y guardarlos en una sola operación atómica.
+  - **Catálogo Maestro B.D. MATERIALES & Stock Físico:**
+    - **Diferenciación de Stock Físico:** Columna `requires_stock_control` y filtros de barra de herramientas `[ Todos ]` vs `[ 📦 Solo con Control de Stock ]` para separar materiales de compra eventual de insumos con inventario físico permanente.
+    - **Peso del Material:** Columna `weight_kg` registrada en base de datos y visible en catálogo y planilla, computando automáticamente el tonelaje/kilos totales retirados en cada obra.
+    - **Edición In-Situ en Catálogo:** Doble clic para editar nombre, peso en kg, stock mínimo y bandera de control de stock.
+    - **Porcentaje de Seguridad Naval:** Insignias visuales con código de color rápido por nivel (2% gris, 6% esmeralda estándar, 10% ámbar, 15% naranja, 20% rosa), con edición restringida estrictamente a administradores.
+    - **Integración con Compras:**
+      - Botón individual `[ 🛒 Reponer ]` que navega a Compras precargando ID y nombre de material para evitar campos en blanco.
+      - Selección múltiple de materiales mediante casillas de verificación y barra flotante `[ 🛒 Generar Pedido de Compra (N) ]` para solicitar reposición en lote.
+  - **Submódulo Integral de Control de Gases y Tubos:**
+    - Panel de stock en Patio clasificado por proveedor (Air Liquide, Praxair Linde, Ferremat, Astillero Propio) y estado (Llenos vs Vacíos).
+    - Registro de las 3 operaciones canónicas: `Primera Entrega`, `Recambio 1x1 con Cruce de Marcas` y `Devolución Final`.
+    - Matriz de deuda de tubos por contratista tipo Sheets y alertas de retención mayor a 15 días con generación de mensaje WhatsApp de reclamo (P-01/P-02).
+
 - [ ] **4. Módulo M5: Tarifarios y Liquidaciones:**
   - Matriz de tarifas por hora de personal propio vs. contratistas/talleres.
   - Anexos de facturación y resumen de costos por obra.
