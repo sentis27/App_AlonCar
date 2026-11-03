@@ -33,6 +33,31 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 
+// ==============================================================================
+// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
+// ==============================================================================
+function HighlightText({ text, query, className = '' }) {
+  if (!text) return null
+  if (!query || !query.trim()) return <span className={className}>{text}</span>
+
+  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.trim().toLowerCase() ? (
+          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  )
+}
+
+
 // Grupos del Catálogo de Trabajos (OT.ABC)
 const GRUPOS_CATALOGO = ['Renovación', 'Intermediaria']
 
@@ -709,6 +734,24 @@ export default function WorkOrders() {
   }, [workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList, otMetricsAndDatesMap])
 
   // Filtrado de filas unificadas
+    const clearAllFilters = useCallback(() => {
+    setSearchQuery('')
+    setSelectedShipFilter('todos')
+    setSelectedOtFilter('todas')
+    setSelectedStatusFilter('todos')
+    setSelectedForemanFilter('todos')
+    setSelectedContractorFilter('todos')
+  }, [])
+
+  const hasActiveFilters = Boolean(
+    searchQuery ||
+    selectedShipFilter !== 'todos' ||
+    selectedOtFilter !== 'todas' ||
+    selectedStatusFilter !== 'todos' ||
+    selectedForemanFilter !== 'todos' ||
+    selectedContractorFilter !== 'todos'
+  )
+
   const filteredRows = useMemo(() => {
     return unifiedRows.filter(row => {
       if (selectedShipFilter !== 'todos' && row.wo?.ship_id !== selectedShipFilter) return false
@@ -2309,30 +2352,30 @@ export default function WorkOrders() {
       </div>
 
       {/* ========================================================= */}
-      {/* ZONA 3 (BÚSQUEDA Y FILTROS): PESTAÑAS Y FILTROS CASCADA   */}
-      {/* ========================================================= */}
-      <div className="alon-zone-toolbar p-4 rounded-2xl shadow-lg space-y-3.5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      {/* ZONA 3 (BÚSQUEDA Y FILTROS): PESTAÑAS Y FILTROS CASCADA ESTANDARIZADOS */}
+      <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-3">
+        {/* FILA 1: Pestañas de Vista de Trabajos + Acciones */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center p-1 bg-slate-950 rounded-xl border border-slate-800 gap-1">
             <button
               type="button"
               onClick={() => setActiveMainTab('unificado')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeMainTab === 'unificado'
-                  ? 'bg-primary text-slate-950 shadow-md'
+                  ? 'bg-primary text-slate-950 shadow-md font-black'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
               <Wrench className="w-3.5 h-3.5" />
-              <span>Planilla Unificada de Trabajos ({unifiedRows.length})</span>
+              <span>Planilla Unificada ({unifiedRows.length})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveMainTab('ots')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeMainTab === 'ots'
-                  ? 'bg-cyan-500 text-slate-950 shadow-md'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -2343,9 +2386,9 @@ export default function WorkOrders() {
             <button
               type="button"
               onClick={() => setActiveMainTab('terceros')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeMainTab === 'terceros'
-                  ? 'bg-purple-600 text-white shadow-md'
+                  ? 'bg-purple-600 text-white shadow-md font-black'
                   : 'text-purple-300 hover:text-white'
               }`}
             >
@@ -2354,56 +2397,85 @@ export default function WorkOrders() {
             </button>
           </div>
 
-          {/* Deshacer / Rehacer + Buscador */}
-          <div className="flex items-center gap-2 w-full lg:w-auto">
-            {activeMainTab === 'unificado' && (
-              <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-xl p-1 shrink-0">
-                <button
-                  type="button"
-                  disabled={!woGrid.canUndo}
-                  onClick={woGrid.undo}
-                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                  title="Deshacer en Planilla OTs (Ctrl + Z)"
-                >
-                  <Undo2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  disabled={!woGrid.canRedo}
-                  onClick={woGrid.redo}
-                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                  title="Rehacer en Planilla OTs (Ctrl + Y)"
-                >
-                  <Redo2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-
-            <div className="relative w-full lg:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
-              <input
-                ref={woSearchInputRef}
-                type="text"
-                placeholder="Buscar barco, OT, descripción, jefe (Ctrl+F)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+          {activeMainTab === 'unificado' && (
+            <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-xl p-1 shrink-0 self-end lg:self-auto">
+              <button
+                type="button"
+                disabled={!woGrid.canUndo}
+                onClick={woGrid.undo}
+                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                title="Deshacer en Planilla OTs (Ctrl + Z)"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={!woGrid.canRedo}
+                onClick={woGrid.redo}
+                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                title="Rehacer en Planilla OTs (Ctrl + Y)"
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </button>
             </div>
+          )}
+        </div>
+
+        {/* FILA 2: BARRA DE BÚSQUEDA UNIVERSAL (ESTÁNDAR COMPRAS) */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="relative flex-1 min-w-[260px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
+            <input
+              ref={woSearchInputRef}
+              type="text"
+              placeholder="Buscar barco, OT, descripción, jefe, contratista... (Ctrl+F | Esc limpia todo)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  clearAllFilters()
+                  e.target.blur()
+                }
+              }}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
+            />
+            <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
+              Ctrl+F
+            </span>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
+                title="Limpiar búsqueda"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
+              Mostrando {filteredRows.length} de {unifiedRows.length} trabajos
+            </span>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+                title="Limpiar todos los filtros y búsqueda (Esc)"
+              >
+                <X className="w-3 h-3" />
+                <span>Limpiar filtros</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Selectores de filtrado */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-800/60 text-xs">
+        {/* FILA 3: SELECTORES DE FILTRADO EN CASCADA */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-800/60 text-xs">
           <div>
             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">1. Barco</label>
             <select
@@ -2412,7 +2484,7 @@ export default function WorkOrders() {
                 setSelectedShipFilter(e.target.value)
                 setSelectedOtFilter('todas')
               }}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
             >
               <option value="todos">Todos los Barcos</option>
               {ships.map(s => (
@@ -2428,14 +2500,14 @@ export default function WorkOrders() {
             <select
               value={selectedOtFilter}
               onChange={(e) => setSelectedOtFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
             >
               <option value="todas">Todas las OTs</option>
               {workOrders
                 .filter(w => selectedShipFilter === 'todos' || w.ship_id === selectedShipFilter)
                 .map(w => (
                   <option key={w.id} value={w.id}>
-                    {w.ot_number} &bull; {w.title}
+                    {w.ot_number} • {w.title}
                   </option>
                 ))}
             </select>
@@ -2446,7 +2518,7 @@ export default function WorkOrders() {
             <select
               value={selectedStatusFilter}
               onChange={(e) => setSelectedStatusFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
             >
               <option value="todos">Todos los Estados</option>
               {ESTADOS_TRABAJO.map(st => (
@@ -2456,11 +2528,11 @@ export default function WorkOrders() {
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">4. Jefe de Obra (Padrón)</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">4. Jefe de Obra</label>
             <select
               value={selectedForemanFilter}
               onChange={(e) => setSelectedForemanFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
             >
               <option value="todos">Todos los Jefes de Obra</option>
               {foremenList.map(f => (
@@ -2474,7 +2546,7 @@ export default function WorkOrders() {
             <select
               value={selectedContractorFilter}
               onChange={(e) => setSelectedContractorFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
             >
               <option value="todos">Todos los Contratistas</option>
               {contractorCatalog.map(c => (
@@ -2486,8 +2558,8 @@ export default function WorkOrders() {
           </div>
         </div>
       </div>
-
-      {/* ========================================================= */}
+      
+{/* ========================================================= */}
       {/* 4A. VISTA UNIFICADA DE TRABAJOS (GS-003 UNIFICADO)        */}
       {/* ========================================================= */}
       {loading ? (
@@ -2520,6 +2592,7 @@ export default function WorkOrders() {
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                 <tr>
+                  <th className="py-3 px-2 text-center w-10">#</th>
                   <th className="py-3 px-3">Barco</th>
                   <th className="py-3 px-3">Orden de Trabajo (Estado Calculado)</th>
                   <th className="py-3 px-3 min-w-[155px]">Fechas OT (Creac. / Inicio / Fin)</th>
@@ -2535,7 +2608,7 @@ export default function WorkOrders() {
               <tbody className="divide-y divide-slate-800/60 font-medium">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-500">
+                    <td colSpan={11} className="py-12 text-center text-slate-500">
                       No hay trabajos registrados para los filtros seleccionados. Hacé clic en <strong>&quot;+ Cargar Trabajo / Nueva OT&quot;</strong> para comenzar.
                     </td>
                   </tr>
@@ -2569,11 +2642,16 @@ export default function WorkOrders() {
                         key={row.id}
                         className="hover:bg-slate-800/30 transition-colors align-top select-none"
                       >
-                        {/* 1. Barco (Nombre limpio sin texto extra) */}
+                        {/* 0. Número Ordinal de Fila (#) */}
+                        <td className="py-3 px-2 text-center font-mono text-[11px] text-slate-500 font-bold whitespace-nowrap">
+                          {rowIndex + 1}
+                        </td>
+
+                        {/* 1. Barco (Nombre limpio con resaltado de búsqueda) */}
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-1.5 font-bold text-white">
                             <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                            <span>{row.wo?.ships?.name || 'Sin barco'}</span>
+                            <span><HighlightText text={row.wo?.ships?.name || 'Sin barco'} query={searchQuery} /></span>
                           </div>
                         </td>
 
@@ -2581,9 +2659,11 @@ export default function WorkOrders() {
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono text-[11px] font-black text-primary px-1.5 py-0.5 rounded bg-primary/10 border border-primary/30">
-                              {row.wo?.ot_number || 'OT-1'}
+                              <HighlightText text={row.wo?.ot_number || 'OT-1'} query={searchQuery} />
                             </span>
-                            <span className="font-extrabold text-white">{row.wo?.title}</span>
+                            <span className="font-extrabold text-white">
+                              <HighlightText text={row.wo?.title} query={searchQuery} />
+                            </span>
                             {isLocked && (
                               <Lock className="w-3 h-3 text-purple-400" title="OT Facturada y Cerrada (DEC-011)" />
                             )}
@@ -2683,7 +2763,7 @@ export default function WorkOrders() {
                             />
                           ) : row.description ? (
                             <div className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed line-clamp-3 hover:line-clamp-none">
-                              {row.description}
+                              <HighlightText text={row.description} query={searchQuery} />
                             </div>
                           ) : (
                             <span className="text-amber-400/80 italic text-xs">Sin descripción cargada</span>

@@ -46,6 +46,31 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 
+// ==============================================================================
+// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
+// ==============================================================================
+function HighlightText({ text, query, className = '' }) {
+  if (!text) return null
+  if (!query || !query.trim()) return <span className={className}>{text}</span>
+
+  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.trim().toLowerCase() ? (
+          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  )
+}
+
+
 // Componentes predeterminados de la Ficha Técnica Dinámica Naval
 const DEFAULT_TECH_COMPONENTS = [
   { key: 'tanques_combustible', label: 'Tanques de Combustible', defaultUnit: 'tanques', hint: 'Ej: 2 en bodega 10m³, 1 popa boyante 15m³, 1 diario 2m³' },
@@ -1825,42 +1850,64 @@ export default function Ships() {
           </div>
         </div>
 
-        {/* BARRA DE BÚSQUEDA Y FILTROS TRANSVERSALES */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        {/* BARRA DE BÚSQUEDA Y FILTROS TRANSVERSALES (ESTÁNDAR COMPRAS) */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="relative flex-1 min-w-[260px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
             <input
               ref={shipsSearchInputRef}
               type="text"
               placeholder={
                 activeTab === 'buques'
-                  ? 'Buscar por buque, tipo, armador, matrícula o locación (Ctrl+F)...'
+                  ? 'Buscar por buque, tipo, armador, matrícula o locación... (Ctrl+F | Esc limpia todo)'
                   : activeTab === 'movimientos'
-                  ? 'Buscar estadía por buque, locación o fecha (Ctrl+F)...'
-                  : 'Buscar empresa armadora, contacto, teléfono, email o CUIT (Ctrl+F)...'
+                  ? 'Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)'
+                  : 'Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)'
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setSearchTerm('')
+                  setLocationFilter('todos')
+                  setRequestFilter('todos')
+                  setRoleQuickFilter('todos')
+                  e.target.blur()
+                }
+              }}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
             />
+            <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
+              Ctrl+F
+            </span>
             {searchTerm && (
               <button
                 type="button"
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
+                title="Limpiar búsqueda"
               >
-                <X className="w-3.5 h-3.5" />
+                ✕
               </button>
             )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
+              {activeTab === 'buques'
+                ? `Mostrando ${filteredShips.length} de ${ships.length} buques`
+                : activeTab === 'movimientos'
+                ? `Mostrando ${filteredStays.length} de ${stays.length} estadías`
+                : `Mostrando ${filteredOwners.length} de ${owners.length} armadores`}
+            </span>
+
             {activeTab === 'buques' && (
               <>
                 <select
                   value={locationFilter}
                   onChange={(e) => setLocationFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-bold"
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
                 >
                   <option value="todos">Todas las Locaciones</option>
                   <option value="VARADERO">Varadero</option>
@@ -1871,7 +1918,7 @@ export default function Ships() {
                 <select
                   value={requestFilter}
                   onChange={(e) => setRequestFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-bold"
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
                 >
                   <option value="todos">Todos los Estados</option>
                   <option value="pendientes">⚠️ Con Solicitud Activa</option>
@@ -1889,17 +1936,17 @@ export default function Ships() {
                   setRoleQuickFilter('todos')
                   setSearchTerm('')
                 }}
-                className="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                title="Limpiar todos los filtros"
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+                title="Limpiar todos los filtros (Esc)"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Limpiar</span>
+                <X className="w-3.5 h-3.5" />
+                <span>Limpiar filtros</span>
               </button>
             )}
           </div>
         </div>
       </div>
-
+      
       {/* ========================================================================= */}
       {/* PESTAÑA 1: BUQUES & FICHAS TÉCNICAS (ZONA 4 PLANILLA / VISTA TARJETAS)    */}
       {/* ========================================================================= */}
@@ -1937,6 +1984,7 @@ export default function Ships() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                     <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-2 text-center w-10">#</th>
                       <th className="py-3 px-3">Buque ✎</th>
                       <th className="py-3 px-3">Tipo ✎</th>
                       <th className="py-3 px-3">Locación ✎</th>
@@ -1950,7 +1998,7 @@ export default function Ships() {
                   <tbody className="divide-y divide-slate-800/80">
                     {filteredShips.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-10 text-center text-slate-500">
+                        <td colSpan={9} className="py-10 text-center text-slate-500">
                           No se encontraron buques con los filtros seleccionados.
                         </td>
                       </tr>
@@ -1976,6 +2024,11 @@ export default function Ships() {
                                 : ''
                             }`}
                           >
+                            {/* 0. Número Ordinal (#) */}
+                            <td className="py-3.5 px-2 text-center font-mono text-[11px] text-slate-500 font-bold whitespace-nowrap">
+                              {rowIndex + 1}
+                            </td>
+
                             {/* 1. Buque (Doble clic editable) */}
                             <td
                               {...cpName.domProps}

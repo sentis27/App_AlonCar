@@ -38,6 +38,31 @@ import {
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+
+// ==============================================================================
+// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
+// ==============================================================================
+function HighlightText({ text, query, className = '' }) {
+  if (!text) return null
+  if (!query || !query.trim()) return <span className={className}>{text}</span>
+
+  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.trim().toLowerCase() ? (
+          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  )
+}
+
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import {
   OFFICIAL_RUBROS_CATALOG,
@@ -3133,72 +3158,95 @@ export default function LaborLogs() {
 
           {/* ZONA 3 & ZONA 4: PLANILLA INTERACTIVA DE HORAS REGISTRADAS (MODO HOJA DE CÁLCULO) */}
           <div className="space-y-3">
-            {/* ZONA 3: BARRA DE BÚSQUEDA, FILTROS Y ATAJOS DE PLANILLA */}
-            <div className="alon-zone-toolbar p-3.5 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-xs uppercase tracking-wider font-bold text-white">
-                  Planilla de Horas Registradas ({filteredLogs.length})
-                </h3>
-                {activeKpiFilter !== 'todos' && (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold">
-                    Filtro KPI: {activeKpiFilter}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
+            {/* ZONA 3: BARRA DE BÚSQUEDA Y FILTROS ESTANDARIZADOS (ESTÁNDAR COMPRAS) */}
+            <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
+                {/* Buscador Flexible */}
+                <div className="relative flex-1 min-w-[260px]">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
                   <input
                     ref={logSearchInputRef}
                     type="text"
-                    placeholder="Buscar operario, buque, OT, rubro... (Ctrl+F)"
+                    placeholder="Buscar operario, buque, OT, rubro... (Ctrl+F | Esc limpia todo)"
                     value={filterWorker}
                     onChange={(e) => setFilterWorker(e.target.value)}
-                    className="bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary min-w-[230px]"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.preventDefault()
+                        setFilterWorker('')
+                        setFilterDate('')
+                        setFilterShip('')
+                        setActiveKpiFilter('todos')
+                        e.target.blur()
+                      }
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
                   />
+                  <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
+                    Ctrl+F
+                  </span>
+                  {filterWorker && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterWorker('')}
+                      className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
+                      title="Limpiar búsqueda"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
-                <input
-                  type="date"
-                  value={filterDate}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
-                />
-                {(filterWorker || filterDate || activeKpiFilter !== 'todos') && (
-                  <button
-                    type="button"
-                    onClick={() => { setFilterWorker(''); setFilterDate(''); setActiveKpiFilter('todos'); setDailyFilterType('todos'); }}
-                    className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                    title="Limpiar filtros"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    <span>Limpiar</span>
-                  </button>
-                )}
 
-                {horasGrid.canUndo && (
-                  <button
-                    type="button"
-                    onClick={horasGrid.undo}
-                    className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1.5 cursor-pointer"
-                    title="Deshacer último cambio (Ctrl+Z)"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Deshacer (Ctrl+Z)</span>
-                  </button>
-                )}
-                {horasGrid.canRedo && (
-                  <button
-                    type="button"
-                    onClick={horasGrid.redo}
-                    className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1.5 cursor-pointer"
-                    title="Rehacer cambio (Ctrl+Y)"
-                  >
-                    <RotateCw className="w-3.5 h-3.5" />
-                    <span>Rehacer (Ctrl+Y)</span>
-                  </button>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
+                    Mostrando {filteredLogs.length} de {recentLogs.length} registros
+                  </span>
+
+                  <input
+                    type="date"
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                  />
+
+                  {(filterWorker || filterDate || filterShip || activeKpiFilter !== 'todos') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterWorker('')
+                        setFilterDate('')
+                        setFilterShip('')
+                        setActiveKpiFilter('todos')
+                      }}
+                      className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+                      title="Limpiar todos los filtros (Esc)"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Limpiar filtros</span>
+                    </button>
+                  )}
+
+                  {horasGrid.canUndo && (
+                    <button
+                      type="button"
+                      onClick={horasGrid.undo}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold shadow flex items-center gap-1 cursor-pointer border border-slate-700"
+                      title="Deshacer último cambio (Ctrl+Z)"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {horasGrid.canRedo && (
+                    <button
+                      type="button"
+                      onClick={horasGrid.redo}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold shadow flex items-center gap-1 cursor-pointer border border-slate-700"
+                      title="Rehacer cambio (Ctrl+Y)"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -3281,14 +3329,19 @@ export default function LaborLogs() {
                               isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'
                             }`}
                           >
-                            {/* Checkbox */}
-                            <td className="py-2 px-2 text-center">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleSelectLog(log.id)}
-                                className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                              />
+                            {/* Checkbox con número ordinal (#) apilado */}
+                            <td className="py-1 px-1 text-center whitespace-nowrap w-9">
+                              <div className="flex flex-col items-center justify-center gap-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelectLog(log.id)}
+                                  className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                                />
+                                <span className="font-mono text-[9px] text-slate-500 font-bold leading-none select-none">
+                                  {rowIndex + 1}
+                                </span>
+                              </div>
                             </td>
 
                             {/* 1. Fecha (Doble clic editable) */}

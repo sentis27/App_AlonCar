@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { 
-  ShieldCheck, 
+  ShieldCheck,
+  Search, 
   Users, 
   DollarSign, 
   TrendingUp, 
@@ -50,6 +51,31 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import AiGovernancePanel from '../components/AiGovernancePanel'
 import ComprasSettingsPanel from '../components/ComprasSettingsPanel'
+
+// ==============================================================================
+// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
+// ==============================================================================
+function HighlightText({ text, query, className = '' }) {
+  if (!text) return null
+  if (!query || !query.trim()) return <span className={className}>{text}</span>
+
+  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.trim().toLowerCase() ? (
+          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  )
+}
+
 
 // Módulos del sistema controlables en la matriz de seguridad
 const SYSTEM_MODULES = [
@@ -196,6 +222,18 @@ export default function AdminDashboard() {
   
   // Estados de la Matriz de Puestos
   const [roles, setRoles] = useState([])
+  const [roleSearch, setRoleSearch] = useState('')
+
+  const filteredRoles = useMemo(() => {
+    if (!roleSearch.trim()) return roles
+    const q = roleSearch.toLowerCase().trim()
+    return roles.filter(r =>
+      (r.role_title || '').toLowerCase().includes(q) ||
+      (r.holder_name || '').toLowerCase().includes(q) ||
+      (r.department || '').toLowerCase().includes(q) ||
+      (r.security_level || '').toLowerCase().includes(q)
+    )
+  }, [roles, roleSearch])
   const [loadingRoles, setLoadingRoles] = useState(true)
   const [editingRole, setEditingRole] = useState(null)
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false)
@@ -1099,6 +1137,40 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {/* BARRA DE BÚSQUEDA ESTÁNDAR (ESTÁNDAR COMPRAS) */}
+            <div className="alon-zone-toolbar p-2.5 rounded-xl border border-slate-800 bg-slate-950/60 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+              <div className="relative flex-1 min-w-[240px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Buscar puesto, responsable, departamento o nivel de seguridad... (Esc limpia)"
+                  value={roleSearch}
+                  onChange={(e) => setRoleSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setRoleSearch('')
+                      e.target.blur()
+                    }
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-10 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
+                />
+                {roleSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setRoleSearch('')}
+                    className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
+                    title="Limpiar búsqueda"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                Mostrando {filteredRoles.length} de {roles.length} puestos
+              </span>
+            </div>
+
             {/* ESQUEMA VISUAL DEL CIRCUITO OPERATIVO INTER-DEPARTAMENTAL ALON CAR */}
             {showWorkflowCircuit && (
               <div className="p-4 bg-slate-950/90 border border-purple-500/30 rounded-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
@@ -1213,7 +1285,7 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ) : (
-                    roles.map(r => {
+                    filteredRoles.map((r, rowIndex) => {
                       const isActivo = r.status === 'ACTIVO'
                       const allowed = r.allowed_sections || []
 
@@ -1224,7 +1296,7 @@ export default function AdminDashboard() {
                         >
                           {/* Puesto */}
                           <td className="py-2.5 px-3">
-                            <span className="font-extrabold text-white block">{r.role_title}</span>
+                            <span className="font-extrabold text-white block"><HighlightText text={r.role_title} query={roleSearch} /></span>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-[10px] text-slate-400">{r.department || 'Operaciones'}</span>
                               {r.reports_to && (
@@ -1245,7 +1317,7 @@ export default function AdminDashboard() {
 
                           {/* Persona a Cargo */}
                           <td className="py-2.5 px-3 font-mono font-bold text-cyan-300">
-                            {r.holder_name}
+                            <HighlightText text={r.holder_name} query={roleSearch} />
                           </td>
 
                           {/* Nivel de Seguridad */}

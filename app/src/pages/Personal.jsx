@@ -43,6 +43,31 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+
+// ==============================================================================
+// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
+// ==============================================================================
+function HighlightText({ text, query, className = '' }) {
+  if (!text) return null
+  if (!query || !query.trim()) return <span className={className}>{text}</span>
+
+  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.trim().toLowerCase() ? (
+          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  )
+}
+
 import initialPersonnelData from '../data/initialPersonnel.json'
 
 // Mapeo inicial normalizado para fallback local
@@ -1128,6 +1153,22 @@ export default function Personal() {
     })
     return Array.from(set).sort()
   }, [workers])
+
+    const clearAllFilters = useCallback(() => {
+    setSearchTerm('')
+    setFilterCenter('todos')
+    setFilterStatus('todos')
+    setFilterGroup('todos')
+    setFilterForemanOnly(false)
+  }, [])
+
+  const hasActiveFilters = Boolean(
+    searchTerm ||
+    filterCenter !== 'todos' ||
+    filterStatus !== 'todos' ||
+    filterGroup !== 'todos' ||
+    filterForemanOnly
+  )
 
   const filteredWorkers = useMemo(() => {
     return workers.filter(w => {
@@ -3525,27 +3566,54 @@ export default function Personal() {
                   </button>
                 </div>
 
-                {/* Buscador */}
-                <div className="relative min-w-[260px]">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+                {/* Buscador Estándar Compras */}
+                <div className="relative flex-1 min-w-[260px]">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
                   <input
                     ref={nominaSearchInputRef}
                     type="text"
-                    placeholder="Buscar operario, grupo, rubro (Ctrl+F)..."
+                    placeholder="Buscar operario, grupo, rubro, DNI... (Ctrl+F | Esc limpia todo)"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.preventDefault()
+                        clearAllFilters()
+                        e.target.blur()
+                      }
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
                   />
+                  <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
+                    Ctrl+F
+                  </span>
                   {searchTerm && (
                     <button
                       type="button"
                       onClick={() => setSearchTerm('')}
-                      className="absolute right-2.5 top-2.5 text-slate-500 hover:text-white cursor-pointer"
+                      className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
+                      title="Limpiar búsqueda"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      ✕
                     </button>
                   )}
                 </div>
+
+                <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
+                  Mostrando {filteredWorkers.length} de {workers.length} operarios
+                </span>
+
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+                    title="Limpiar todos los filtros (Esc)"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Limpiar filtros</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -3698,6 +3766,7 @@ export default function Personal() {
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                   <tr>
+                    <th className="py-2.5 px-2 text-center w-10">#</th>
                     <th className="py-2.5 px-3">Nombre y Apellido ✎</th>
                     <th className="py-2.5 px-3 text-center">Categoría ✎</th>
                     <th className="py-2.5 px-3">Rubro ✎</th>
@@ -3715,7 +3784,7 @@ export default function Personal() {
                 <tbody className="divide-y divide-slate-800/60 font-medium">
                   {filteredWorkers.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="py-10 text-center text-slate-500">
+                      <td colSpan={13} className="py-10 text-center text-slate-500">
                         {loading ? 'Cargando padrón...' : 'No se encontraron registros que coincidan con la búsqueda.'}
                       </td>
                     </tr>
@@ -3743,7 +3812,12 @@ export default function Personal() {
                           key={w.id}
                           className={`hover:bg-slate-800/30 transition-colors select-none ${!isActivo ? 'opacity-60 bg-rose-950/5' : ''}`}
                         >
-                          {/* Col 0: Nombre y Apellido */}
+                          {/* Col 0: Número Ordinal (#) */}
+                          <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-500 font-bold whitespace-nowrap">
+                            {rowIndex + 1}
+                          </td>
+
+                          {/* Col 1: Nombre y Apellido */}
                           <td
                             onClick={(e) => nominaGrid.handleCellClick(rowIndex, 0, e)}
                             onMouseDown={(e) => nominaGrid.handleCellMouseDown(rowIndex, 0, e)}

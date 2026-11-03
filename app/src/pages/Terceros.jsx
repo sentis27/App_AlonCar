@@ -2,6 +2,31 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+
+// ==============================================================================
+// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
+// ==============================================================================
+function HighlightText({ text, query, className = '' }) {
+  if (!text) return null
+  if (!query || !query.trim()) return <span className={className}>{text}</span>
+
+  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
+  return (
+    <span className={className}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.trim().toLowerCase() ? (
+          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  )
+}
+
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import {
   Wrench,
@@ -825,6 +850,24 @@ export default function Terceros() {
   }
 
   // Filtrado reactivo de servicios
+    const clearAllFilters = useCallback(() => {
+    setSearchTerm('')
+    setSelectedShipFilter('TODOS')
+    setSelectedContractorFilter('TODOS')
+    setSelectedTradeFilter('TODOS')
+    setSelectedVoucherFilter('TODOS')
+    setKpiFilter(null)
+  }, [])
+
+  const hasActiveFilters = Boolean(
+    searchTerm ||
+    selectedShipFilter !== 'TODOS' ||
+    selectedContractorFilter !== 'TODOS' ||
+    selectedTradeFilter !== 'TODOS' ||
+    selectedVoucherFilter !== 'TODOS' ||
+    kpiFilter !== null
+  )
+
   const filteredServices = useMemo(() => {
     return services.filter((srv) => {
       // 1. Filtro KPI
@@ -1630,28 +1673,54 @@ export default function Terceros() {
       {/* ZONA 3: BARRA DE FILTROS, BÚSQUEDA Y COMANDOS DE PLANILLA */}
       <div className="alon-zone-toolbar p-4 space-y-3">
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-          {/* Buscador */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+          {/* Buscador Estándar Compras */}
+          <div className="relative flex-1 min-w-[260px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F)"
+              placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F | Esc limpia todo)"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary transition-all"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  clearAllFilters()
+                  e.target.blur()
+                }
+              }}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
             />
-            <span className="absolute right-8 top-2.5 px-1.5 py-0.5 rounded bg-slate-800 text-[9px] font-mono text-slate-400 border border-slate-700 pointer-events-none hidden sm:inline">Ctrl + F</span>
+            <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
+              Ctrl+F
+            </span>
             {searchTerm && (
               <button
                 type="button"
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white"
+                className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
+                title="Limpiar búsqueda"
               >
-                <X className="w-4 h-4" />
+                ✕
               </button>
             )}
           </div>
+
+          <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
+            Mostrando {filteredServices.length} de {services.length} servicios
+          </span>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+              title="Limpiar todos los filtros (Esc)"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Limpiar filtros</span>
+            </button>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             {grid.canUndo && (
@@ -1890,14 +1959,19 @@ export default function Terceros() {
                           : 'hover:bg-slate-850/40 text-slate-200'
                       }`}
                     >
-                      {/* Checkbox individual para selección de fila */}
-                      <td className="py-2.5 px-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => handleCheckboxToggle(srv.id, index, e)}
-                          className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30 cursor-pointer"
-                        />
+                      {/* Checkbox individual con número ordinal (#) apilado */}
+                      <td className="py-1 px-1 text-center whitespace-nowrap w-9">
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => handleCheckboxToggle(srv.id, index, e)}
+                            className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30 cursor-pointer"
+                          />
+                          <span className="font-mono text-[9px] text-slate-500 font-bold leading-none select-none">
+                            {index + 1}
+                          </span>
+                        </div>
                       </td>
 
                       {/* 1. Fecha (Editable con doble clic) */}
