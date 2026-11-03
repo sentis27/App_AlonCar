@@ -149,7 +149,7 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
     - **Praxair Linde:** Quincenal (1 lunes c/15 días vía portal web o comercial), entrega martes.
     - **Ferremat:** A demanda ante emergencias o quiebres de stock.
 
-- [ ] **3. Módulo M4: Pañol y Materiales (y Módulo de Terceros):**
+- [x] **3. Módulo M4: Pañol y Materiales (y Módulo de Terceros):**
   - Catálogo de consumibles y aceros/chapas navales (3 únicas categorías: MATERIALES, CONSUMIBLES, ELEM.SEGURIDAD).
   - 🗂️ **Base de Datos de Rubros de Pañol (material_rubros) y Vinculación con Compras:** Al construir el módulo de Pañol, crear la tabla maestra de rubros técnicos y vincular el desplegable de rubros del modal Alta Formal de Material en Compras y el homologador en /admin contra esta tabla.
   - 📏 **Deducción y Edición de Unidad de Medida con Alerta de Impacto en Stock:** Al dar de alta o editar materiales en Pañol, la unidad de medida se deducirá automáticamente a partir del nombre (`lado x lado` $\rightarrow$ `m2`, `x metro` $\rightarrow$ `metro lineal`, `x kg` $\rightarrow$ `kg`, `x m3` $\rightarrow$ `m3`, defecto `unidad`), pero será editable para corregir inconsistencias de origen. **Alerta obligatoria:** Si el material pertenece a la lista de control de stock y se modifica su unidad de medida, el sistema emitirá un aviso visual de confirmación informando que la modificación alterará el recuento y control de stock acumulado.

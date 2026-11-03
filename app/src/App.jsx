@@ -10,6 +10,7 @@ import Ships from './pages/Ships'
 import AdminDashboard from './pages/AdminDashboard'
 import Terceros from './pages/Terceros'
 import Compras from './pages/Compras'
+import Panol from './pages/Panol'
 import ModulePlaceholder from './pages/ModulePlaceholder'
 import { Loader2 } from 'lucide-react'
 
@@ -75,7 +76,7 @@ export default function App() {
             <Route path="barcos" element={<Ships />} />
             <Route path="terceros" element={<Terceros />} />
             <Route path="horas" element={<LaborLogs />} />
-            <Route path="panol" element={<ModulePlaceholder />} />
+            <Route path="panol" element={<Panol />} />
             <Route path="compras" element={<Compras />} />
             <Route path="personal" element={<Personal />} />
             <Route path="comparador" element={<ModulePlaceholder />} />

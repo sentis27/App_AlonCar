@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import {
   XCircle,
@@ -334,6 +335,7 @@ export default function Compras() {
   // Por defecto, si el usuario no es supervisor/admin, arranca en modo Simple
   const [viewMode, setViewMode] = useState(isSupervisorOrAdmin ? 'completa' : 'simple')
 
+
   // Pestañas
   const [activeTab, setActiveTab] = useState('compras') // 'compras', 'proveedores', 'documentos'
   const [loading, setLoading] = useState(true)
@@ -386,6 +388,33 @@ export default function Compras() {
     // Modales
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [editingOrder, setEditingOrder] = useState(null)
+  const [searchParams] = useSearchParams()
+
+  // Sincronización con parámetros URL (?mode=simple, ?nuevo=true, ?materialId=...)
+  useEffect(() => {
+    const modeParam = searchParams.get('mode')
+    if (modeParam === 'simple' || modeParam === 'completa') {
+      setViewMode(modeParam)
+    }
+    if (searchParams.get('nuevo') === 'true') {
+      const matId = searchParams.get('materialId')
+      if (matId && materials.length > 0) {
+        const found = materials.find((m) => m.id === matId)
+        if (found) {
+          setEditingOrder({
+            material_id: found.id,
+            material_name_raw: found.name,
+            charge_type: 'VIA_PANOL',
+            unit_measure: found.unit_measure || 'Unidad',
+            quantity: 1
+          })
+        }
+      } else {
+        setEditingOrder(null)
+      }
+      setShowOrderModal(true)
+    }
+  }, [searchParams, materials])
 
   const [showNewMaterialModal, setShowNewMaterialModal] = useState(false)
   const [pendingMaterialOrder, setPendingMaterialOrder] = useState(null)
