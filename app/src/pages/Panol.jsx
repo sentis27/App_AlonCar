@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import {
   Package,
   Plus,
@@ -44,7 +45,10 @@ import {
   Edit3,
   Lock,
   UserCheck,
-  UserX
+  UserX,
+  Navigation,
+  Copy,
+  Inbox
 } from 'lucide-react'
 
 // ==============================================================================
@@ -123,8 +127,8 @@ export default function Panol() {
   const [filterPeriod, setFilterPeriod] = useState('TODOS') // 'TODOS', 'HOY', 'QUINCENA', 'MES'
   const [filterCategory, setFilterCategory] = useState('TODAS') // 'TODAS', 'MATERIALES', 'CONSUMIBLES', 'ELEM.SEGURIDAD', 'GASES'
   const [filterShip, setFilterShip] = useState('TODOS')
-  const [filterStockOnly, setFilterStockOnly] = useState(false) // Solo materiales que requieren control de stock
-  const [activeKpiFilter, setActiveKpiFilter] = useState(null) // 'critico' | 'hoy' | 'sin_ot' | 'vacios' | 'retencion'
+  const [filterStockOnly, setFilterStockOnly] = useState(false)
+  const [activeKpiFilter, setActiveKpiFilter] = useState(null) // 'critico' | 'hoy' | 'sin_ot' | 'vacios' | 'retencion' | 'bajas_pendientes'
 
   // Selección de filas para acciones en bloque
   const [selectedTxIds, setSelectedTxIds] = useState(new Set())
@@ -138,7 +142,8 @@ export default function Panol() {
   const [showNewMaterialModal, setShowNewMaterialModal] = useState(false)
   const [showStockAdjustModal, setShowStockAdjustModal] = useState({ isOpen: false, material: null })
   const [showGasModal, setShowGasModal] = useState({ isOpen: false, operationType: 'PRIMERA_ENTREGA' })
-  const [showPermissionRequestModal, setShowPermissionRequestModal] = useState(false)
+  const [quickPurchaseModal, setQuickPurchaseModal] = useState({ isOpen: false, material: null, quantity: '' })
+  const [adminDeleteConfirmModal, setAdminDeleteConfirmModal] = useState({ isOpen: false, tx: null })
   const [previewImage, setPreviewImage] = useState(null)
 
   // Sincronizar parámetro URL tab
@@ -203,12 +208,12 @@ export default function Panol() {
           .from('inventory_transactions')
           .select('*')
           .order('transaction_date', { ascending: false })
-          .limit(600),
+          .limit(800),
         supabase
           .from('gas_cylinder_movements')
           .select('*')
           .order('movement_date', { ascending: false })
-          .limit(600),
+          .limit(800),
         supabase.from('material_rubros').select('*').order('name'),
         supabase.from('suppliers').select('*').order('name'),
         supabase.from('ships').select('*').order('name'),
@@ -248,135 +253,132 @@ export default function Panol() {
     })
 
     gasMovements.forEach((m) => {
-      const qty = Number(m.quantity) || 1
+      const supDelivered = m.supplier_delivered_id
+      const supReturned = m.supplier_returned_id
+      const q = Number(m.quantity) || 1
+
       if (m.operation_type === 'PRIMERA_ENTREGA') {
-        if (m.supplier_delivered_id && patioStock[m.supplier_delivered_id]) {
-          patioStock[m.supplier_delivered_id].full = Math.max(0, patioStock[m.supplier_delivered_id].full - qty)
-        }
+        if (patioStock[supDelivered]) patioStock[supDelivered].full -= q
       } else if (m.operation_type === 'RECAMBIO_1X1') {
-        if (m.supplier_returned_id && patioStock[m.supplier_returned_id]) {
-          patioStock[m.supplier_returned_id].empty += qty
-        }
-        if (m.supplier_delivered_id && patioStock[m.supplier_delivered_id]) {
-          patioStock[m.supplier_delivered_id].full = Math.max(0, patioStock[m.supplier_delivered_id].full - qty)
-        }
+        if (patioStock[supDelivered]) patioStock[supDelivered].full -= q
+        if (patioStock[supReturned]) patioStock[supReturned].empty += q
       } else if (m.operation_type === 'DEVOLUCION_FINAL') {
-        if (m.supplier_returned_id && patioStock[m.supplier_returned_id]) {
-          patioStock[m.supplier_returned_id].empty += qty
-        }
+        if (patioStock[supReturned]) patioStock[supReturned].empty += q
+      } else if (m.operation_type === 'AJUSTE_PATIO') {
+        if (patioStock[supDelivered]) patioStock[supDelivered].full += q
       }
     })
 
-    materials
-      .filter((m) => m.rubro === 'GASES' || m.category === 'GASES' || m.name.toUpperCase().includes('GAS') || m.name.toUpperCase().includes('OXIGENO'))
-      .forEach((m) => {
-        const air = gasSuppliers.find((s) => s.name.toUpperCase().includes('AIR LIQUIDE'))
-        if (air && patioStock[air.id]) {
-          patioStock[air.id].full += Number(m.current_stock) || 0
-        }
-      })
-
-    const contractorMap = {}
-    const now = new Date()
-
+    // Calcular matriz de deuda por contratista
+    const contractorDebts = {}
     gasMovements.forEach((m) => {
-      const cName = m.contractor_name || 'SIN ASIGNAR'
-      if (!contractorMap[cName]) {
-        contractorMap[cName] = {
-          name: cName,
-          shipId: m.ship_id,
-          gases: {},
-          total: 0,
-          lastDate: m.movement_date
-        }
+      const c = m.contractor_name || 'ALON CAR'
+      if (!contractorDebts[c]) {
+        contractorDebts[c] = { totalHeld: 0, movements: [] }
       }
-
-      const mDate = new Date(m.movement_date)
-      if (!contractorMap[cName].lastDate || mDate > new Date(contractorMap[cName].lastDate)) {
-        contractorMap[cName].lastDate = m.movement_date
-      }
-
-      const mat = materials.find((item) => item.id === m.material_id)
-      const gasName = mat?.name || 'Tubo Gas'
-      if (!contractorMap[cName].gases[gasName]) {
-        contractorMap[cName].gases[gasName] = 0
-      }
-
-      const qty = Number(m.quantity) || 1
+      const q = Number(m.quantity) || 1
       if (m.operation_type === 'PRIMERA_ENTREGA') {
-        contractorMap[cName].gases[gasName] += qty
-        contractorMap[cName].total += qty
+        contractorDebts[c].totalHeld += q
+        contractorDebts[c].movements.push(m)
       } else if (m.operation_type === 'DEVOLUCION_FINAL') {
-        contractorMap[cName].gases[gasName] = Math.max(0, contractorMap[cName].gases[gasName] - qty)
-        contractorMap[cName].total = Math.max(0, contractorMap[cName].total - qty)
+        contractorDebts[c].totalHeld -= q
       }
     })
 
-    const contractorList = Object.values(contractorMap).map((c) => {
-      const diffMs = c.lastDate ? now - new Date(c.lastDate) : 0
-      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-      return {
-        ...c,
-        daysHeld: days,
-        isOverdue: days > 15 && c.total > 0
+    // Alertas de retención mayor a 15 días (Regla P-01)
+    const now = new Date()
+    const longHeldContractors = []
+
+    Object.entries(contractorDebts).forEach(([cName, data]) => {
+      if (data.totalHeld > 0) {
+        data.movements.forEach((mov) => {
+          const movDate = new Date(mov.movement_date || mov.created_at)
+          const diffDays = Math.floor((now - movDate) / (1000 * 60 * 60 * 24))
+          if (diffDays > 15) {
+            longHeldContractors.push({
+              contractor: cName,
+              days: diffDays,
+              movement: mov
+            })
+          }
+        })
       }
     })
 
-    const overdueCount = contractorList.filter((c) => c.isOverdue).length
-    const totalEmptyPatio = Object.values(patioStock).reduce((acc, curr) => acc + curr.empty, 0)
+    let totalEmptyInPatio = 0
+    Object.values(patioStock).forEach((p) => {
+      if (p.empty > 0) totalEmptyInPatio += p.empty
+    })
 
     return {
       patioStock,
-      contractorList,
-      overdueCount,
-      totalEmptyPatio
+      contractorDebts,
+      longHeldContractors,
+      totalEmptyInPatio
     }
-  }, [gasMovements, suppliers, materials])
+  }, [suppliers, gasMovements])
+
+  // Contratistas / Grupos de Trabajo únicos
+  const availableGroups = useMemo(() => {
+    const set = new Set()
+    workers.forEach((w) => {
+      if (w.work_group) set.add(w.work_group.trim().toUpperCase())
+    })
+    set.add('ASTILLERO')
+    set.add('TANO')
+    set.add('BOLTRI')
+    set.add('IMPERPUR')
+    return Array.from(set).sort()
+  }, [workers])
 
   // ==============================================================================
-  // RADAR DE 5 KPIS INTERACTIVOS
+  // RADAR DE KPIS: CÁLCULO DE MÉTRICAS OPERATIVAS
   // ==============================================================================
-  const kpis = useMemo(() => {
-    const criticalStock = materials.filter((m) => {
-      const curr = Number(m.current_stock) || 0
-      const min = Number(m.minimum_stock) || 0
-      return curr <= min
-    }).length
-
+  const kpiStats = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0]
-    const retirosHoy = inventoryTx.filter((t) => {
-      const d = String(t.transaction_date).split('T')[0]
-      return d === todayStr
-    }).length
+    let criticalCount = 0
+    materials.forEach((m) => {
+      const c = Number(m.current_stock) || 0
+      const min = Number(m.minimum_stock) || 0
+      if (c <= min) criticalCount++
+    })
 
-    const sinOt = inventoryTx.filter((t) => !t.work_order_id).length
-    const vaciosPatio = gasStats.totalEmptyPatio
-    const retencionProlongada = gasStats.overdueCount
+    let todayTxCount = 0
+    let sinOtCount = 0
+    let deletionRequestsCount = 0
+
+    inventoryTx.forEach((t) => {
+      const d = String(t.transaction_date).split('T')[0]
+      if (d === todayStr) todayTxCount++
+      if (!t.work_order_id) sinOtCount++
+      if (t.is_deletion_requested) deletionRequestsCount++
+    })
 
     return {
-      criticalStock,
-      retirosHoy,
-      sinOt,
-      vaciosPatio,
-      retencionProlongada
+      criticalCount,
+      todayTxCount,
+      sinOtCount,
+      deletionRequestsCount,
+      emptyCylinders: gasStats.totalEmptyInPatio,
+      longHeldGases: gasStats.longHeldContractors.length
     }
   }, [materials, inventoryTx, gasStats])
 
-  // ==============================================================================
-  // FILTRADO DINÁMICO DE DATOS (ZONA 4)
-  // ==============================================================================
+  // Comprobar si una fecha cae en el periodo del filtro
   const isDateInFilterPeriod = (dateStr) => {
     if (filterPeriod === 'TODOS') return true
     if (!dateStr) return false
     const d = new Date(dateStr)
     const now = new Date()
-
     if (filterPeriod === 'HOY') {
-      return d.toISOString().split('T')[0] === now.toISOString().split('T')[0]
+      return (
+        d.getDate() === now.getDate() &&
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear()
+      )
     }
     if (filterPeriod === 'QUINCENA') {
-      const isCurrentMonth = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-      if (!isCurrentMonth) return false
+      if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return false
       const day = d.getDate()
       const nowDay = now.getDate()
       const isQ1 = nowDay <= 15
@@ -397,6 +399,7 @@ export default function Panol() {
         const todayStr = new Date().toISOString().split('T')[0]
         if (d !== todayStr) return false
       }
+      if (activeKpiFilter === 'bajas_pendientes' && !t.is_deletion_requested) return false
 
       if (!isDateInFilterPeriod(t.transaction_date)) return false
       if (filterShip !== 'TODOS' && t.ship_id !== filterShip) return false
@@ -416,7 +419,6 @@ export default function Panol() {
         const ship = ships.find((s) => s.id === t.ship_id)?.name || ''
         const wo = workOrders.find((w) => w.id === t.work_order_id)?.description || ''
         const matName = mat?.name || ''
-        const worker = t.worker_name || ''
         const contractor = t.contractor_name || ''
         const costCenter = t.cost_center || ''
         const notes = t.notes || ''
@@ -425,7 +427,6 @@ export default function Panol() {
           ship.toLowerCase().includes(q) ||
           wo.toLowerCase().includes(q) ||
           matName.toLowerCase().includes(q) ||
-          worker.toLowerCase().includes(q) ||
           contractor.toLowerCase().includes(q) ||
           costCenter.toLowerCase().includes(q) ||
           notes.toLowerCase().includes(q)
@@ -471,8 +472,149 @@ export default function Panol() {
   }, [materials, activeKpiFilter, filterStockOnly, filterCategory, searchQuery])
 
   // ==============================================================================
-  // ACCIÓN OPERATIVA: INSERTAR FILA EN PLANILLA DE RETIROS
+  // DEFINICIÓN DE COLUMNAS PARA EL MOTOR HOJA DE CÁLCULO (useSpreadsheetGrid)
   // ==============================================================================
+  const spreadsheetColumns = useMemo(
+    () => [
+      {
+        key: 'transaction_date',
+        label: 'Fecha',
+        getValue: (r) => (r.transaction_date ? String(r.transaction_date).split('T')[0] : '')
+      },
+      {
+        key: 'ship_id',
+        label: 'Barco / Destino',
+        getValue: (r) => ships.find((s) => s.id === r.ship_id)?.name || 'ASTILLERO'
+      },
+      {
+        key: 'work_order_id',
+        label: 'Orden de Trabajo (OT)',
+        getValue: (r) => {
+          const wo = workOrders.find((w) => w.id === r.work_order_id)
+          return wo ? `OT #${wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - ${wo.description || ''}` : '(Sin OT)'
+        }
+      },
+      {
+        key: 'material_id',
+        label: 'Material Insumo',
+        getValue: (r) => materials.find((m) => m.id === r.material_id)?.name || 'Insumo'
+      },
+      {
+        key: 'quantity_withdrawn',
+        label: 'Cant.',
+        isNumeric: true,
+        getValue: (r) => Number(r.quantity_withdrawn) || 0
+      },
+      {
+        key: 'weight_total',
+        label: 'Peso (kg)',
+        isNumeric: true,
+        getValue: (r) => Number(r.weight_total) || 0
+      },
+      {
+        key: 'contractor_name',
+        label: 'Contratista / Grupo',
+        getValue: (r) => r.contractor_name || 'ALON CAR'
+      },
+      {
+        key: 'cost_center',
+        label: 'Centro de Costo',
+        getValue: (r) => r.cost_center || 'CLIENTE'
+      },
+      {
+        key: 'notes',
+        label: 'Observaciones',
+        getValue: (r) => r.notes || ''
+      }
+    ],
+    [ships, workOrders, materials]
+  )
+
+  // ==============================================================================
+  // ACCIONES OPERATIVAS Y GUARDADO IN-SITU
+  // ==============================================================================
+
+  // Guardar celda en Supabase (Planilla de Retiros)
+  const handleSaveInlineTx = async (txId, field, value) => {
+    try {
+      let finalValue = value
+      const updates = { [field]: finalValue }
+
+      // Si se cambia la cantidad o el material, actualizar peso total
+      if (field === 'quantity_withdrawn' || field === 'material_id') {
+        const tx = inventoryTx.find((t) => t.id === txId)
+        const targetMatId = field === 'material_id' ? value : tx?.material_id
+        const targetQty = field === 'quantity_withdrawn' ? Number(value) : Number(tx?.quantity_withdrawn) || 1
+        const mat = materials.find((m) => m.id === targetMatId)
+        if (mat) {
+          updates.weight_total = (Number(mat.weight_kg) || 0) * targetQty
+        }
+      }
+
+      if (field === 'cost_center' && !isAdmin) {
+        showFeedback('error', 'Solo el Administrador tiene autorización para cambiar el Centro de Costo.')
+        setInlineEdit({ id: null, field: null, value: '' })
+        return
+      }
+
+      const { error } = await supabase.from('inventory_transactions').update(updates).eq('id', txId)
+      if (error) throw error
+
+      setInventoryTx((prev) =>
+        prev.map((t) => (t.id === txId ? { ...t, ...updates } : t))
+      )
+      setInlineEdit({ id: null, field: null, value: '' })
+      showFeedback('success', 'Dato actualizado correctamente en la planilla.')
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al actualizar celda: ' + err.message)
+    }
+  }
+
+  // Instanciación del Hook de Hoja de Cálculo
+  const grid = useSpreadsheetGrid({
+    rows: filteredTransactions,
+    columns: spreadsheetColumns,
+    getRowId: (r) => r.id,
+    storageKey: 'aloncar_panol_grid',
+    showFeedback: (type, text) => showFeedback(type, text),
+    onBatchUpdate: async (updates) => {
+      for (const u of updates) {
+        await handleSaveInlineTx(u.rowId, u.colKey, u.newValue)
+      }
+    }
+  })
+
+  // Helper de propiedades y eventos para celdas spreadsheet
+  function getSpreadsheetCellProps(rowIndex, colKey) {
+    const colIdx = spreadsheetColumns.findIndex((c) => c.key === colKey)
+    if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
+
+    const isActive = grid.isCellActive(rowIndex, colIdx)
+    const isSelected = grid.isCellSelected(rowIndex, colIdx)
+    const isFillPreview = grid.isCellInFillPreview(rowIndex, colIdx)
+    const renderHandle = grid.shouldRenderFillHandle(rowIndex, colIdx)
+
+    return {
+      renderHandle,
+      domProps: {
+        onClick: (e) => grid.handleCellClick(rowIndex, colIdx, e),
+        onMouseDown: (e) => grid.handleCellMouseDown(rowIndex, colIdx, e),
+        onMouseEnter: () => grid.handleCellMouseEnter(rowIndex, colIdx)
+      },
+      className: `relative select-none transition-colors ${
+        isActive
+          ? 'ring-2 ring-cyan-400 bg-cyan-950/40 z-20 outline-none'
+          : isFillPreview
+          ? 'bg-cyan-900/40 border-y border-dashed border-cyan-400'
+          : isSelected
+          ? 'bg-cyan-900/30'
+          : ''
+      }`
+    }
+  }
+
+  // Insertar nueva fila editable en 1 clic
   const handleInsertRow = async (targetIndex = 0) => {
     try {
       const defaultMat = materials[0]
@@ -481,7 +623,6 @@ export default function Panol() {
         quantity_withdrawn: 1,
         ship_id: ships[0]?.id || null,
         work_order_id: null,
-        worker_name: 'PAÑOL',
         contractor_name: 'ALON CAR',
         cost_center: 'CLIENTE',
         weight_total: defaultMat?.weight_kg || 0,
@@ -510,40 +651,143 @@ export default function Panol() {
     }
   }
 
-  // ==============================================================================
-  // EDICIÓN EN CELDA CON DOBLE CLIC (PLANILLA DE RETIROS)
-  // ==============================================================================
-  const handleSaveInlineTx = async (txId, field, value) => {
+  // Duplicar transacción en 1 clic
+  const handleDuplicateTx = async (tx) => {
     try {
-      let finalValue = value
-      const updates = { [field]: finalValue }
-
-      // Si se cambia la cantidad o el material, actualizar peso total
-      if (field === 'quantity_withdrawn' || field === 'material_id') {
-        const tx = inventoryTx.find((t) => t.id === txId)
-        const targetMatId = field === 'material_id' ? value : tx?.material_id
-        const targetQty = field === 'quantity_withdrawn' ? Number(value) : Number(tx?.quantity_withdrawn) || 1
-        const mat = materials.find((m) => m.id === targetMatId)
-        if (mat) {
-          updates.weight_total = (Number(mat.weight_kg) || 0) * targetQty
-        }
+      const cloned = {
+        material_id: tx.material_id,
+        quantity_withdrawn: tx.quantity_withdrawn,
+        ship_id: tx.ship_id,
+        work_order_id: tx.work_order_id,
+        contractor_name: tx.contractor_name,
+        cost_center: tx.cost_center,
+        weight_total: tx.weight_total,
+        movement_type: tx.movement_type,
+        notes: `Copia de retiro - ${tx.notes || ''}`.trim(),
+        transaction_date: new Date().toISOString()
       }
 
-      const { error } = await supabase.from('inventory_transactions').update(updates).eq('id', txId)
+      const { data, error } = await supabase.from('inventory_transactions').insert([cloned]).select().single()
       if (error) throw error
 
-      setInventoryTx((prev) =>
-        prev.map((t) => (t.id === txId ? { ...t, ...updates } : t))
-      )
-      setInlineEdit({ id: null, field: null, value: '' })
-      showFeedback('success', 'Dato actualizado correctamente en la planilla.')
+      setInventoryTx((prev) => [data, ...prev])
+      showFeedback('success', 'Retiro duplicado exitosamente con fecha de hoy.')
     } catch (err) {
       console.error(err)
-      showFeedback('error', 'Error al actualizar celda: ' + err.message)
+      showFeedback('error', 'Error al duplicar retiro: ' + err.message)
     }
   }
 
-  // EDICIÓN EN CELDA CON DOBLE CLIC (CATÁLOGO DE MATERIALES)
+  // ACCIÓN 1: Solicitar baja de fila (pinta de rojo y alerta a Jorge Sentis)
+  const handleRequestDeletionTx = async (tx) => {
+    try {
+      const userIdentifier = profile?.full_name || profile?.email || user?.email || 'Operario Pañol'
+      const { error } = await supabase
+        .from('inventory_transactions')
+        .update({
+          is_deletion_requested: true,
+          deletion_requested_at: new Date().toISOString(),
+          deletion_requested_by: userIdentifier
+        })
+        .eq('id', tx.id)
+
+      if (error) throw error
+
+      setInventoryTx((prev) =>
+        prev.map((t) => (t.id === tx.id ? { ...t, is_deletion_requested: true, deletion_requested_by: userIdentifier } : t))
+      )
+
+      showFeedback(
+        'error',
+        'Fila marcada en rojo. Solicitud de baja enviada a Jorge Sentis. Solo el Administrador puede borrar datos de Pañol.'
+      )
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al solicitar baja: ' + err.message)
+    }
+  }
+
+  // Confirmar eliminación física permanente (solo Admin)
+  const handlePermanentDeleteTx = async (tx) => {
+    try {
+      // Devolver stock al material
+      const mat = materials.find((m) => m.id === tx.material_id)
+      if (mat) {
+        const restoredStock = (Number(mat.current_stock) || 0) + (Number(tx.quantity_withdrawn) || 0)
+        await supabase.from('materials').update({ current_stock: restoredStock }).eq('id', mat.id)
+        setMaterials((prev) => prev.map((m) => (m.id === mat.id ? { ...m, current_stock: restoredStock } : m)))
+      }
+
+      const { error } = await supabase.from('inventory_transactions').delete().eq('id', tx.id)
+      if (error) throw error
+
+      setInventoryTx((prev) => prev.filter((t) => t.id !== tx.id))
+      setAdminDeleteConfirmModal({ isOpen: false, tx: null })
+      showFeedback('success', 'Fila eliminada permanentemente y stock reintegrado.')
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al eliminar fila: ' + err.message)
+    }
+  }
+
+  // Desestimar solicitud de baja / Restaurar fila normal (solo Admin)
+  const handleRestoreTx = async (tx) => {
+    try {
+      const { error } = await supabase
+        .from('inventory_transactions')
+        .update({ is_deletion_requested: false, deletion_requested_at: null, deletion_requested_by: null })
+        .eq('id', tx.id)
+
+      if (error) throw error
+
+      setInventoryTx((prev) =>
+        prev.map((t) => (t.id === tx.id ? { ...t, is_deletion_requested: false, deletion_requested_by: null } : t))
+      )
+      showFeedback('success', 'Fila restaurada al estado operativo normal.')
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al restaurar fila: ' + err.message)
+    }
+  }
+
+  // ACCIÓN 2: Pedido directo a Compras (Estado: PEDIR, Astillero, Stock, Pañol, Fecha Hoy)
+  const handleCreateDirectPurchaseOrder = async ({ material, quantity }) => {
+    try {
+      if (!material) throw new Error('Material no especificado')
+
+      // Buscar barco astillero
+      const astilleroShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO')) || ships[0]
+
+      const newOrder = {
+        material_id: material.id || null,
+        material_name_raw: material.name || 'Insumo',
+        quantity: quantity ? Number(quantity) : 1,
+        unit_measure: material.unit_measure || 'Unidad',
+        charge_type: 'VIA_PANOL',
+        ship_id: astilleroShip?.id || null,
+        work_order_id: null,
+        requester_name: 'PAÑOL',
+        order_date: new Date().toISOString().split('T')[0],
+        status: 'PEDIR',
+        urgency: 'SIN_APURO',
+        notes: 'Solicitud directa generada desde Planilla de Pañol'
+      }
+
+      const { data, error } = await supabase.from('purchase_orders').insert([newOrder]).select().single()
+      if (error) throw error
+
+      setQuickPurchaseModal({ isOpen: false, material: null, quantity: '' })
+      showFeedback(
+        'success',
+        `Pedido de "${material.name}" (${newOrder.quantity} ${newOrder.unit_measure}) creado con éxito en Compras (Estado: PEDIR).`
+      )
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al generar pedido en Compras: ' + err.message)
+    }
+  }
+
+  // EDICIÓN EN CELDA (CATÁLOGO DE MATERIALES)
   const handleSaveInlineMaterial = async (matId, field, value) => {
     try {
       if (field === 'security_factor' && !isAdmin) {
@@ -574,10 +818,8 @@ export default function Panol() {
     }
   }
 
-  // ==============================================================================
-  // ACCIÓN OPERATIVA: GUARDAR RETIRO MULTI-MATERIAL
-  // ==============================================================================
-  const handleSaveMultiWithdrawal = async ({ shipId, workOrderId, contractorGroup, worker, notes, date, items }) => {
+  // RETIRO MULTI-MATERIAL (CASCADA CANÓNICA BARCO -> CONTRATISTA -> OT)
+  const handleSaveMultiWithdrawal = async ({ shipId, workOrderId, contractorGroup, notes, date, items }) => {
     try {
       if (!items || items.length === 0) throw new Error('No se agregaron materiales al retiro.')
 
@@ -596,12 +838,11 @@ export default function Panol() {
         const newStock = currentStock - qty
         matUpdates.push({ id: mat.id, newStock })
 
-        // Deducir centro de costo: Si es MATERIALES -> CLIENTE; si no, regla del worker
+        // Deducir centro de costo
         let costCenter = 'CLIENTE'
         if (mat.category === 'CONSUMIBLES' || mat.category === 'ELEM.SEGURIDAD') {
-          if (worker?.consumables === 'CONTRATISTA') {
-            costCenter = 'CONTRATISTA'
-          }
+          // Si el contratista se paga sus consumibles (por grupo o custom)
+          costCenter = 'CLIENTE'
         }
         if (item.customCostCenter) costCenter = item.customCostCenter
 
@@ -610,8 +851,6 @@ export default function Panol() {
           quantity_withdrawn: qty,
           ship_id: shipId || null,
           work_order_id: workOrderId || null,
-          worker_id: worker?.id || null,
-          worker_name: worker?.name || 'PAÑOL',
           contractor_name: contractorGroup || 'ALON CAR',
           cost_center: costCenter,
           weight_total: weightTotal,
@@ -647,457 +886,420 @@ export default function Panol() {
 
       showFeedback(
         'success',
-        `Retiro multi-material confirmado: ${txInserts.length} insumos registrados para ${contractorGroup} (${worker?.name || 'Pañol'}).`
+        `Retiro multi-material confirmado: ${txInserts.length} insumos registrados para ${contractorGroup}.`
       )
       setShowWithdrawalModal(false)
     } catch (err) {
       console.error(err)
-      showFeedback('error', 'Error al asentar retiro multi-material: ' + err.message)
+      showFeedback('error', 'Error registrando retiro: ' + err.message)
     }
   }
 
-  // ==============================================================================
-  // ACCIÓN OPERATIVA: SOLICITAR HABILITACIÓN DE OPERARIO A JORGE SENTIS
-  // ==============================================================================
-  const handleRequestWorkerPermission = async ({ workerId, workerName, workGroup, shipId, reason }) => {
-    try {
-      const payload = {
-        worker_id: workerId,
-        worker_name: workerName,
-        work_group: workGroup,
-        requested_by: user?.id || null,
-        requested_by_name: profile?.full_name || 'PAÑOLERO',
-        ship_id: shipId || null,
-        reason: reason || 'Solicitud de retiro de materiales en pañol para obra.',
-        status: 'PENDIENTE'
-      }
+  // Selección de filas
+  const toggleSelectTx = (id) => {
+    setSelectedTxIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
-      const { error } = await supabase.from('worker_permission_requests').insert([payload])
-      if (error) throw error
-
-      showFeedback(
-        'success',
-        `Alerta emitida a Jorge Sentis: Se solicitó la habilitación de ${workerName} (${workGroup}) para retirar materiales.`
-      )
-      setShowPermissionRequestModal(false)
-    } catch (err) {
-      console.error(err)
-      showFeedback('error', 'Error al solicitar habilitación: ' + err.message)
+  const toggleSelectAllTxs = () => {
+    if (selectedTxIds.size === filteredTransactions.length) {
+      setSelectedTxIds(new Set())
+    } else {
+      setSelectedTxIds(new Set(filteredTransactions.map((t) => t.id)))
     }
   }
 
-  // ==============================================================================
-  // ACCIONES OPERATIVAS: REPOSICIÓN INDIVIDUAL Y EN LOTE A COMPRAS
-  // ==============================================================================
-  const handleRequestPurchaseSingle = (mat) => {
-    navigate(`/compras?mode=simple&nuevo=true&materialId=${mat.id}&materialName=${encodeURIComponent(mat.name)}`)
+  const toggleSelectMat = (id) => {
+    setSelectedMatIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
-  const handleRequestPurchaseBatch = () => {
-    if (selectedMatIds.size === 0) return
-    const selectedList = materials
-      .filter((m) => selectedMatIds.has(m.id))
-      .map((m) => ({ id: m.id, name: m.name, unit_measure: m.unit_measure || 'Unidad' }))
-
-    const jsonParam = encodeURIComponent(JSON.stringify(selectedList))
-    navigate(`/compras?mode=simple&nuevo=true&multiMaterials=${jsonParam}`)
+  const toggleSelectAllMats = () => {
+    if (selectedMatIds.size === filteredMaterials.length) {
+      setSelectedMatIds(new Set())
+    } else {
+      setSelectedMatIds(new Set(filteredMaterials.map((m) => m.id)))
+    }
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
+    <div className="space-y-4 pb-20 font-sans text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
       {/* Toast Feedback */}
       {feedback && (
         <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold border backdrop-blur-md transition-all ${
-            feedback.type === 'success'
-              ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40 shadow-emerald-950/40'
-              : feedback.type === 'error'
-              ? 'bg-rose-950/90 text-rose-300 border-rose-500/40 shadow-rose-950/40'
-              : 'bg-cyan-950/90 text-cyan-300 border-cyan-500/40 shadow-cyan-950/40'
+          className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border text-xs font-bold animate-in fade-in slide-in-from-top-2 ${
+            feedback.type === 'error'
+              ? 'bg-rose-950/95 border-rose-500 text-rose-200 shadow-rose-950/50'
+              : 'bg-emerald-950/95 border-emerald-500 text-emerald-200 shadow-emerald-950/50'
           }`}
         >
-          {feedback.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          ) : feedback.type === 'error' ? (
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
-          ) : (
-            <Info className="w-4 h-4 text-cyan-400" />
-          )}
+          {feedback.type === 'error' ? <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
           <span>{feedback.text}</span>
+          <button onClick={() => setFeedback(null)} className="ml-2 text-slate-400 hover:text-white">✕</button>
         </div>
       )}
 
       {/* ============================================================================== */}
-      {/* ZONA 1: CABECERA Y SELECTOR DE VISTAS                                          */}
+      {/* ZONA 1: CONTEXTO OPERATIVO (.alon-zone-context - Acento Azul Cielo)             */}
       {/* ============================================================================== */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="alon-zone-context flex flex-col md:flex-row md:items-center justify-between gap-3 p-4">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-slate-950">
-            <Package className="w-6 h-6 stroke-[2.5]" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-slate-950">
+            <Package className="w-5 h-5 stroke-[2.5]" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black text-white tracking-wide">
-                PAÑOL CENTRAL & MATERIALES
-              </h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-700 text-emerald-400 uppercase tracking-wider">
-                M4 Logística Naval
+            <h1 className="text-xl font-black text-white tracking-wide flex items-center gap-2">
+              PAÑOL CENTRAL & MATERIALES
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-400 uppercase">
+                M4 LOGÍSTICA NAVAL
               </span>
-            </div>
+            </h1>
             <p className="text-xs text-slate-400">
-              Planilla de retiros multi-material, control de tubos de gases (P-01/P-02) y catálogo físico de stock
+              Planilla de retiros multi-material, control de tubos de gases (P-01/P-02) y catálogo físico de stock.
             </p>
           </div>
         </div>
 
-        {/* Accesos a Compras + Acciones Principales */}
+        {/* Acciones Superiores y Pestañas */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* BOTÓN 1: Pedir Materiales a Compras */}
+          {/* Navegación a Compras */}
           <button
-            onClick={() => navigate('/compras?mode=simple&nuevo=true')}
-            className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-cyan-600/20 cursor-pointer"
-            title="Abre el formulario simplificado de Compras para solicitar insumos"
+            type="button"
+            onClick={() => navigate('/compras?nuevo=true')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 font-bold text-xs transition-all cursor-pointer shadow-md hover:scale-[1.02]"
+            title="Cargar solicitud de compra de materiales"
           >
-            <ShoppingCart className="w-4 h-4 stroke-[2.5]" />
+            <Plus className="w-3.5 h-3.5 text-cyan-400 stroke-[3]" />
             <span>+ Pedir Materiales</span>
           </button>
 
-          {/* BOTÓN 2: Ver Compras y Recepciones */}
           <button
+            type="button"
             onClick={() => navigate('/compras?mode=simple')}
-            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Ir a la vista simplificada de Compras para revisar pedidos y cotejar remitos"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
+            title="Ir a la vista simplificada de Compras para revisar recepciones"
           >
-            <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
             <span>Ver Compras y Recepciones</span>
           </button>
 
-          <div className="h-6 w-px bg-slate-800 mx-1" />
+          {/* Pestañas de Navegación Compactas */}
+          <div className="flex items-center bg-slate-950/80 p-0.5 rounded-xl border border-slate-800 text-xs font-bold">
+            <button
+              onClick={() => changeTab('planillas')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'planillas'
+                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Planilla de Retiros</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-900/60 font-mono">
+                {filteredTransactions.length}
+              </span>
+            </button>
 
-          {/* Botones contextuales de acción en Pañol */}
+            <button
+              onClick={() => changeTab('gases')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'gases'
+                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>Control de Gases</span>
+            </button>
+
+            <button
+              onClick={() => changeTab('catalogo')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'catalogo'
+                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Catálogo & Stock (B.D)</span>
+              {kpiStats.criticalCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-slate-950 font-black">
+                  {kpiStats.criticalCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => changeTab('epp')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'epp'
+                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>Control EPP</span>
+            </button>
+          </div>
+
+          {/* Botón Principal de Alta */}
           {activeTab === 'planillas' && (
-            <>
-              <button
-                onClick={() => handleInsertRow(0)}
-                className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Insertar fila en la planilla"
-              >
-                <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Insertar Fila</span>
-              </button>
+            <button
+              type="button"
+              onClick={() => setShowWithdrawalModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>+ Registrar Retiro Multi-Material</span>
+            </button>
+          )}
 
-              <button
-                onClick={() => setShowWithdrawalModal(true)}
-                className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                <span>Registrar Retiro Multi-Material</span>
-              </button>
-            </>
+          {activeTab === 'catalogo' && (
+            <button
+              type="button"
+              onClick={() => setShowNewMaterialModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>+ Nuevo Material</span>
+            </button>
           )}
 
           {activeTab === 'gases' && (
             <button
+              type="button"
               onClick={() => setShowGasModal({ isOpen: true, operationType: 'PRIMERA_ENTREGA' })}
-              className="px-3.5 py-1.5 rounded-lg bg-purple-500 hover:bg-purple-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-purple-500/20 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer hover:scale-[1.02]"
             >
               <Flame className="w-4 h-4 stroke-[2.5]" />
-              <span>Nuevo Movimiento Tubo</span>
+              <span>+ Movimiento de Tubos</span>
             </button>
           )}
+        </div>
+      </div>
 
-          {activeTab === 'catalogo' && (
-            <>
-              {selectedMatIds.size > 0 && (
-                <button
-                  onClick={handleRequestPurchaseBatch}
-                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-cyan-500/20 transition-all cursor-pointer"
-                >
-                  <ShoppingCart className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Pedir Compra ({selectedMatIds.size} Materiales)</span>
-                </button>
-              )}
-
-              <button
-                onClick={() => setShowNewMaterialModal(true)}
-                className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                <span>Nuevo Material</span>
-              </button>
-            </>
+      {/* ============================================================================== */}
+      {/* ZONA 2: RADAR OPERATIVO DE KPIS Y ALERTAS (.alon-zone-kpis - Acento Ámbar)     */}
+      {/* ============================================================================== */}
+      <div className="alon-zone-kpis py-2.5 px-3 space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
+          <div className="flex flex-wrap items-baseline gap-2.5">
+            <span className="text-sm md:text-base font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              📊 RADAR DE KPIs Y ALERTAS OPERATIVAS
+            </span>
+            <span className="text-[11px] italic text-slate-400 font-normal">
+              • Clic en cualquier tarjeta para filtrar
+            </span>
+          </div>
+          {activeKpiFilter && (
+            <button
+              type="button"
+              onClick={() => setActiveKpiFilter(null)}
+              className="text-[10px] font-bold text-amber-300 hover:text-white bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded cursor-pointer transition-all"
+            >
+              ✕ Limpiar Filtro Activo
+            </button>
           )}
+        </div>
 
-          {/* Recargar */}
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className="p-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-            title="Recargar datos"
+        {/* Grilla de 6 Tarjetas con 6 Colores Distintivos (Sin Repetir) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {/* 1. Stock Crítico (Rojo Carmín) */}
+          <div
+            onClick={() => {
+              setActiveKpiFilter(activeKpiFilter === 'critico' ? null : 'critico')
+              if (activeTab !== 'catalogo') changeTab('catalogo')
+            }}
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+              activeKpiFilter === 'critico'
+                ? 'bg-rose-950 border-rose-400 ring-2 ring-white/60'
+                : 'bg-rose-950/30 border-rose-500/40 hover:border-rose-400'
+            }`}
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
-          </button>
-        </div>
-      </header>
-
-      {/* Selector de Pestañas Principales */}
-      <div className="bg-slate-900 border-b border-slate-800 px-6 flex items-center gap-2 overflow-x-auto">
-        <button
-          onClick={() => changeTab('planillas')}
-          className={`px-4 py-2.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'planillas'
-              ? 'border-emerald-500 text-emerald-400 bg-emerald-950/20'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          <span>📋 Planilla de Retiros</span>
-          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
-            {inventoryTx.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => changeTab('gases')}
-          className={`px-4 py-2.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'gases'
-              ? 'border-purple-500 text-purple-400 bg-purple-950/20'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Flame className="w-4 h-4" />
-          <span>💨 Control de Gases (Detalle de Tubos)</span>
-          {kpis.retencionProlongada > 0 && (
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-950 text-rose-400 border border-rose-800 font-bold">
-              {kpis.retencionProlongada} P-01
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => changeTab('catalogo')}
-          className={`px-4 py-2.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'catalogo'
-              ? 'border-cyan-500 text-cyan-400 bg-cyan-950/20'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Package className="w-4 h-4" />
-          <span>📦 Catálogo & Stock Físico (B.D)</span>
-          {kpis.criticalStock > 0 && (
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-950 text-rose-400 border border-rose-800">
-              {kpis.criticalStock}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => changeTab('epp')}
-          className={`px-4 py-2.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'epp'
-              ? 'border-amber-500 text-amber-400 bg-amber-950/20'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Shield className="w-4 h-4" />
-          <span>🦺 Control de EPP por Operario</span>
-        </button>
-      </div>
-
-      {/* ============================================================================== */}
-      {/* ZONA 2: RADAR DE 5 KPIS INTERACTIVOS                                           */}
-      {/* ============================================================================== */}
-      <div className="px-6 py-3 bg-slate-900/40 border-b border-slate-800 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {/* KPI 1: Stock Crítico / Quiebre */}
-        <div
-          onClick={() => {
-            changeTab('catalogo')
-            setActiveKpiFilter(activeKpiFilter === 'critico' ? null : 'critico')
-          }}
-          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-            activeKpiFilter === 'critico'
-              ? 'bg-rose-950/40 border-rose-500 shadow-md shadow-rose-950/30'
-              : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-semibold">Stock Crítico</span>
-            <AlertTriangle className={`w-3.5 h-3.5 ${kpis.criticalStock > 0 ? 'text-rose-400' : 'text-slate-600'}`} />
+            <div className="flex items-center justify-between text-rose-300 mb-1">
+              <span className="text-[11px] font-extrabold uppercase">Stock Crítico</span>
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+            </div>
+            <div className="text-lg font-black text-rose-200">{kpiStats.criticalCount}</div>
+            <div className="text-[10px] text-rose-300/80 font-semibold truncate">En o bajo mínimo</div>
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className={`text-xl font-black font-mono ${kpis.criticalStock > 0 ? 'text-rose-400' : 'text-slate-200'}`}>
-              {kpis.criticalStock}
-            </span>
-            <span className="text-[10px] text-slate-500">quiebres</span>
-          </div>
-        </div>
 
-        {/* KPI 2: Retiros Hoy */}
-        <div
-          onClick={() => {
-            changeTab('planillas')
-            setActiveKpiFilter(activeKpiFilter === 'hoy' ? null : 'hoy')
-          }}
-          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-            activeKpiFilter === 'hoy'
-              ? 'bg-emerald-950/40 border-emerald-500 shadow-md shadow-emerald-950/30'
-              : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-semibold">Retiros Hoy</span>
-            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+          {/* 2. Retiros Hoy (Verde Esmeralda) */}
+          <div
+            onClick={() => {
+              setActiveKpiFilter(activeKpiFilter === 'hoy' ? null : 'hoy')
+              if (activeTab !== 'planillas') changeTab('planillas')
+            }}
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+              activeKpiFilter === 'hoy'
+                ? 'bg-emerald-950 border-emerald-400 ring-2 ring-white/60'
+                : 'bg-emerald-950/30 border-emerald-500/40 hover:border-emerald-400'
+            }`}
+          >
+            <div className="flex items-center justify-between text-emerald-300 mb-1">
+              <span className="text-[11px] font-extrabold uppercase">Retiros Hoy</span>
+              <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            </div>
+            <div className="text-lg font-black text-emerald-200">{kpiStats.todayTxCount}</div>
+            <div className="text-[10px] text-emerald-300/80 font-semibold truncate">Movimientos de la fecha</div>
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-xl font-black font-mono text-emerald-400">
-              {kpis.retirosHoy}
-            </span>
-            <span className="text-[10px] text-slate-500">movimientos</span>
-          </div>
-        </div>
 
-        {/* KPI 3: Retiros sin OT (Nullable 0028) */}
-        <div
-          onClick={() => {
-            changeTab('planillas')
-            setActiveKpiFilter(activeKpiFilter === 'sin_ot' ? null : 'sin_ot')
-          }}
-          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-            activeKpiFilter === 'sin_ot'
-              ? 'bg-amber-950/40 border-amber-500 shadow-md shadow-amber-950/30'
-              : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-semibold">Sin Cargar OT</span>
-            <Anchor className={`w-3.5 h-3.5 ${kpis.sinOt > 0 ? 'text-amber-400' : 'text-slate-600'}`} />
+          {/* 3. Sin Cargar OT (Ámbar Dorado) */}
+          <div
+            onClick={() => {
+              setActiveKpiFilter(activeKpiFilter === 'sin_ot' ? null : 'sin_ot')
+              if (activeTab !== 'planillas') changeTab('planillas')
+            }}
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+              activeKpiFilter === 'sin_ot'
+                ? 'bg-amber-950 border-amber-400 ring-2 ring-white/60'
+                : 'bg-amber-950/30 border-amber-500/40 hover:border-amber-400'
+            }`}
+          >
+            <div className="flex items-center justify-between text-amber-300 mb-1">
+              <span className="text-[11px] font-extrabold uppercase">Sin Cargar OT</span>
+              <Anchor className="w-3.5 h-3.5 text-amber-400" />
+            </div>
+            <div className="text-lg font-black text-amber-200">{kpiStats.sinOtCount}</div>
+            <div className="text-[10px] text-amber-300/80 font-semibold truncate">Imputación directa buque</div>
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className={`text-xl font-black font-mono ${kpis.sinOt > 0 ? 'text-amber-400' : 'text-slate-200'}`}>
-              {kpis.sinOt}
-            </span>
-            <span className="text-[10px] text-slate-500">pendientes</span>
-          </div>
-        </div>
 
-        {/* KPI 4: Tubos Vacíos en Patio (P-02) */}
-        <div
-          onClick={() => changeTab('gases')}
-          className="p-3 rounded-xl border bg-slate-900/80 border-slate-800 hover:border-purple-500/50 transition-all cursor-pointer flex flex-col justify-between"
-        >
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-semibold">Vacíos en Patio</span>
-            <Flame className="w-3.5 h-3.5 text-purple-400" />
+          {/* 4. Vacíos en Patio (Azul Eléctrico) */}
+          <div
+            onClick={() => {
+              setActiveKpiFilter(activeKpiFilter === 'vacios' ? null : 'vacios')
+              if (activeTab !== 'gases') changeTab('gases')
+            }}
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+              activeKpiFilter === 'vacios'
+                ? 'bg-blue-950 border-blue-400 ring-2 ring-white/60'
+                : 'bg-blue-950/30 border-blue-500/40 hover:border-blue-400'
+            }`}
+          >
+            <div className="flex items-center justify-between text-blue-300 mb-1">
+              <span className="text-[11px] font-extrabold uppercase">Vacíos Patio</span>
+              <Flame className="w-3.5 h-3.5 text-blue-400" />
+            </div>
+            <div className="text-lg font-black text-blue-200">{kpiStats.emptyCylinders}</div>
+            <div className="text-[10px] text-blue-300/80 font-semibold truncate">Tubos a reponer (P-02)</div>
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-xl font-black font-mono text-purple-400">
-              {kpis.vaciosPatio}
-            </span>
-            <span className="text-[10px] text-slate-500">a reponer (P-02)</span>
-          </div>
-        </div>
 
-        {/* KPI 5: Cilindros >15 Días Retención (P-01) */}
-        <div
-          onClick={() => changeTab('gases')}
-          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-            kpis.retencionProlongada > 0
-              ? 'bg-rose-950/30 border-rose-700/60 shadow-md shadow-rose-950/20'
-              : 'bg-slate-900/80 border-slate-800'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-semibold">Retención &gt; 15d</span>
-            <Shield className={`w-3.5 h-3.5 ${kpis.retencionProlongada > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-600'}`} />
+          {/* 5. Retención > 15 Días (Púrpura / Violeta) */}
+          <div
+            onClick={() => {
+              setActiveKpiFilter(activeKpiFilter === 'retencion' ? null : 'retencion')
+              if (activeTab !== 'gases') changeTab('gases')
+            }}
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+              activeKpiFilter === 'retencion'
+                ? 'bg-purple-950 border-purple-400 ring-2 ring-white/60'
+                : 'bg-purple-950/30 border-purple-500/40 hover:border-purple-400'
+            }`}
+          >
+            <div className="flex items-center justify-between text-purple-300 mb-1">
+              <span className="text-[11px] font-extrabold uppercase">Retención &gt;15d</span>
+              <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
+            </div>
+            <div className="text-lg font-black text-purple-200">{kpiStats.longHeldGases}</div>
+            <div className="text-[10px] text-purple-300/80 font-semibold truncate">Tubos en taller/obra</div>
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className={`text-xl font-black font-mono ${kpis.retencionProlongada > 0 ? 'text-rose-400' : 'text-slate-200'}`}>
-              {kpis.retencionProlongada}
-            </span>
-            <span className="text-[10px] text-slate-500">talleres / obras</span>
+
+          {/* 6. Bajas Pendientes (Fucsia / Advertencia Admin) */}
+          <div
+            onClick={() => {
+              setActiveKpiFilter(activeKpiFilter === 'bajas_pendientes' ? null : 'bajas_pendientes')
+              if (activeTab !== 'planillas') changeTab('planillas')
+            }}
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+              activeKpiFilter === 'bajas_pendientes'
+                ? 'bg-fuchsia-950 border-fuchsia-400 ring-2 ring-white/60'
+                : 'bg-fuchsia-950/40 border-fuchsia-600/50 hover:border-fuchsia-400'
+            }`}
+          >
+            <div className="flex items-center justify-between text-fuchsia-300 mb-1">
+              <span className="text-[11px] font-extrabold uppercase">Bajas Pendientes</span>
+              <Trash2 className="w-3.5 h-3.5 text-fuchsia-400" />
+            </div>
+            <div className="text-lg font-black text-fuchsia-200">{kpiStats.deletionRequestsCount}</div>
+            <div className="text-[10px] text-fuchsia-300/80 font-semibold truncate">Requieren decisión Admin</div>
           </div>
         </div>
       </div>
 
       {/* ============================================================================== */}
-      {/* ZONA 3: BARRA DE HERRAMIENTAS Y FILTROS UNIVERSALES                            */}
+      {/* ZONA 3: BARRA DE CONTROL DECK Y FILTROS (.alon-zone-toolbar - Acento Cian)      */}
       {/* ============================================================================== */}
-      <div className="px-6 py-3 bg-slate-900/70 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        {/* Buscador Universal */}
-        <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-lg">
+      <div className="alon-zone-toolbar flex flex-wrap items-center justify-between gap-3 p-3.5">
+        {/* Buscador reactivo integrado */}
+        <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-md">
           <div className="relative w-full">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
-              ref={searchInputRef}
               type="text"
+              ref={searchInputRef}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por material, barco, OT, operario, grupo... (Esc para limpiar)"
-              className="w-full pl-9 pr-8 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-all font-sans"
+              placeholder="Buscar material, barco, OT, contratista, notas... [Ctrl+F | Esc limpia]"
+              className="w-full pl-9 pr-14 py-1.5 bg-slate-900/90 border border-slate-700 focus:border-cyan-500 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none transition-all shadow-inner"
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-slate-400 hover:text-white text-xs px-1"
+                >
+                  ✕
+                </button>
+              ) : (
+                <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                  Ctrl+F
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Filtros rápidos: Periodo, Categoría, Control de Stock y Barco */}
+        {/* Filtros en Cascada */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Selector de Periodo */}
-          <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-[11px]">
-            {['TODOS', 'HOY', 'QUINCENA', 'MES'].map((period) => (
-              <button
-                key={period}
-                onClick={() => setFilterPeriod(period)}
-                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
-                  filterPeriod === period
-                    ? 'bg-slate-800 text-cyan-400 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {period === 'TODOS' ? 'Histórico' : period}
-              </button>
-            ))}
-          </div>
+          {/* Filtro Período */}
+          <select
+            value={filterPeriod}
+            onChange={(e) => setFilterPeriod(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
+          >
+            <option value="TODOS">Todos los Períodos</option>
+            <option value="HOY">Solo Hoy</option>
+            <option value="QUINCENA">Quincena Actual</option>
+            <option value="MES">Mes Actual</option>
+          </select>
 
-          {/* Selector de Categoría */}
+          {/* Filtro Categoría */}
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-400 font-semibold"
+            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
           >
             <option value="TODAS">Todas las Categorías</option>
-            <option value="MATERIALES">Materiales Navales</option>
-            <option value="CONSUMIBLES">Consumibles de Taller</option>
-            <option value="ELEM.SEGURIDAD">Seguridad (EPP)</option>
-            <option value="GASES">Gases Industriales</option>
+            <option value="MATERIALES">MATERIALES</option>
+            <option value="CONSUMIBLES">CONSUMIBLES</option>
+            <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
+            <option value="GASES">GASES</option>
           </select>
 
-          {/* Filtro específico de Catálogo: Solo con Control de Stock */}
-          {activeTab === 'catalogo' && (
-            <button
-              onClick={() => setFilterStockOnly(!filterStockOnly)}
-              className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                filterStockOnly
-                  ? 'bg-cyan-950/80 border-cyan-500 text-cyan-300 shadow-sm'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              <Package className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Solo con Control de Stock</span>
-            </button>
-          )}
-
-          {/* Selector de Barco */}
+          {/* Filtro Barco */}
           <select
             value={filterShip}
             onChange={(e) => setFilterShip(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-400 font-semibold"
+            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
           >
             <option value="TODOS">Todos los Barcos</option>
             {ships.map((s) => (
@@ -1107,922 +1309,783 @@ export default function Panol() {
             ))}
           </select>
 
-          {/* Botón Limpiar Filtros */}
-          {(searchQuery || activeKpiFilter || filterPeriod !== 'TODOS' || filterCategory !== 'TODAS' || filterShip !== 'TODOS' || filterStockOnly) && (
+          {/* Toggle Control de Stock (Pestaña Catálogo) */}
+          {activeTab === 'catalogo' && (
             <button
-              onClick={() => {
-                setSearchQuery('')
-                setActiveKpiFilter(null)
-                setFilterPeriod('TODOS')
-                setFilterCategory('TODAS')
-                setFilterShip('TODOS')
-                setFilterStockOnly(false)
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs font-semibold flex items-center gap-1 hover:bg-rose-900/50 transition-all cursor-pointer"
-              title="Restablecer todos los filtros (Esc)"
+              type="button"
+              onClick={() => setFilterStockOnly(!filterStockOnly)}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                filterStockOnly
+                  ? 'bg-cyan-950 border-cyan-500 text-cyan-300 shadow-md'
+                  : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+              }`}
             >
-              <X className="w-3.5 h-3.5" />
-              <span>Limpiar</span>
+              <Package className="w-3.5 h-3.5" />
+              <span>Solo con Control de Stock</span>
             </button>
           )}
+
+          {/* Botón Deshacer Universal */}
+          <button
+            type="button"
+            disabled={!grid.canUndo}
+            onClick={grid.undo}
+            className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1.5 ${
+              grid.canUndo
+                ? 'bg-amber-950/80 border-amber-500/60 text-amber-300 hover:bg-amber-900 cursor-pointer shadow-md'
+                : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
+            }`}
+            title="Deshacer última acción (Ctrl+Z)"
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>Deshacer (Ctrl+Z)</span>
+            <span className="text-[10px] font-mono px-1 rounded bg-black/40 text-amber-400/90">
+              {grid.undoStack?.length || 0}/50
+            </span>
+          </button>
         </div>
       </div>
 
       {/* ============================================================================== */}
-      {/* ZONA 4: GRILLAS SPREADSHEET REACTIVAS SEGÚN LA PESTAÑA ACTIVA                 */}
+      {/* PESTAÑA 1: PLANILLA DE RETIROS (ZONA 4: .alon-zone-grid - Acento Esmeralda)   */}
       {/* ============================================================================== */}
-      <main className="flex-1 overflow-auto bg-slate-950 p-6">
-        {/* PESTAÑA 1: 📋 PLANILLA DE RETIROS DE MATERIALES */}
-        {activeTab === 'planillas' && (
-          <div className="border border-slate-800 rounded-xl bg-slate-900/50 overflow-hidden shadow-2xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/90 text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-10">
-                    <th className="py-2.5 px-3 w-12 text-center">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[10px] text-slate-500 font-mono">#</span>
-                        <input
-                          type="checkbox"
-                          checked={selectedTxIds.size > 0 && selectedTxIds.size === filteredTransactions.length}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedTxIds(new Set(filteredTransactions.map((t) => t.id)))
-                            } else {
-                              setSelectedTxIds(new Set())
-                            }
-                          }}
-                          className="rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
-                        />
-                      </div>
-                    </th>
-                    <th className="py-2.5 px-3">Fecha</th>
-                    <th className="py-2.5 px-3">Barco / Destino</th>
-                    <th className="py-2.5 px-3">Orden de Trabajo (OT)</th>
-                    <th className="py-2.5 px-3">Material Insumo</th>
-                    <th className="py-2.5 px-3 text-right">Cantidad</th>
-                    <th className="py-2.5 px-3 text-right">Peso (kg)</th>
-                    <th className="py-2.5 px-3">Retirado Por</th>
-                    <th className="py-2.5 px-3">Contratista / Grupo</th>
-                    <th className="py-2.5 px-3 text-center">Centro de Costo</th>
-                    <th className="py-2.5 px-3">Observaciones</th>
+      {activeTab === 'planillas' && (
+        <div className="alon-zone-grid">
+          {/* Ribbon Superior Informativo de la Hoja de Cálculo */}
+          <div className="alon-grid-ribbon">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px] inline-flex items-center gap-1">
+                <Navigation className="w-3 h-3 text-cyan-400 fill-cyan-400/20 shrink-0" />
+                <span>{grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : 'MODO PLANILLA'}</span>
+              </span>
+
+              {grid.selectionStats ? (
+                <div className="flex flex-wrap items-center gap-2 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-0.5 rounded-lg text-[10px] font-mono text-cyan-200">
+                  <span><strong># Recuento:</strong> {grid.selectionStats.count}</span>
+                  {grid.selectionStats.numericCount > 0 && (
+                    <>
+                      <span>•</span>
+                      <span><strong>Σ Suma:</strong> {grid.selectionStats.sum.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                      <span>•</span>
+                      <span><strong>x̄ Promedio:</strong> {grid.selectionStats.avg.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <span className="text-slate-400 text-[11px]">
+                  Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier celda para editar • Arrastrar esquina celeste o <strong className="text-slate-200">Ctrl+D</strong> para rellenar
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const targetIdx = grid.activeCell?.rowIndex !== undefined ? grid.activeCell.rowIndex + 1 : 0
+                  handleInsertRow(targetIdx)
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-bold text-xs transition-all cursor-pointer shadow-md hover:scale-[1.02]"
+                title={`➕ Insertar fila contigua debajo de la fila activa (#${(grid.activeCell?.rowIndex ?? 0) + 1})`}
+              >
+                <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                <span>+ Insertar Fila en #{(grid.activeCell?.rowIndex ?? 0) + 1}</span>
+              </button>
+              <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
+                <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
+                <span>•</span>
+                <span>{filteredTransactions.length} filas</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Datalists para autocompletado in-situ */}
+          <datalist id="panol-materials-datalist">
+            {materials.map((m) => (
+              <option key={m.id} value={m.name} />
+            ))}
+          </datalist>
+          <datalist id="panol-contractors-datalist">
+            {availableGroups.map((grp) => (
+              <option key={grp} value={grp} />
+            ))}
+          </datalist>
+
+          {/* Contenedor con Foco Interactivo para el Hook */}
+          <div
+            tabIndex={0}
+            onKeyDown={grid.handleKeyDown}
+            ref={grid.gridContainerRef}
+            className="w-full max-h-[620px] overflow-y-auto overflow-x-hidden relative focus:outline-none"
+          >
+            <table className="w-full text-left text-[11px] border-collapse">
+              {/* STICKY HEADER TIPO EXCEL */}
+              <thead className="sticky top-0 z-20 alon-grid-thead">
+                <tr>
+                  {/* Columna 1 Apilada: Checkbox + # */}
+                  <th className="py-1 px-1 w-8 text-center select-none">
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={toggleSelectAllTxs}
+                        className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                        title={selectedTxIds.size === filteredTransactions.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
+                      >
+                        {selectedTxIds.size === filteredTransactions.length && filteredTransactions.length > 0 ? (
+                          <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                        ) : (
+                          <Square className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <span className="font-mono text-[9px] text-slate-500 font-bold" title="Número de fila">#</span>
+                    </div>
+                  </th>
+                  <th className="py-2 px-1.5">Fecha ✎</th>
+                  <th className="py-2 px-1.5">Barco / Destino ✎</th>
+                  <th className="py-2 px-1.5">Orden de Trabajo (OT) ✎</th>
+                  <th className="py-2 px-1.5">Material Insumo ✎</th>
+                  <th className="py-2 px-1.5 text-right">Cant. ✎</th>
+                  <th className="py-2 px-1.5 text-right">Peso (kg) ✎</th>
+                  <th className="py-2 px-1.5">Contratista / Grupo ✎</th>
+                  <th className="py-2 px-1.5">Centro de Costo ✎</th>
+                  <th className="py-2 px-1.5">Observaciones ✎</th>
+                  <th className="py-2 px-1.5 text-center">Acciones</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-800/60 font-sans">
+                {loading ? (
+                  <tr>
+                    <td colSpan={11} className="py-12 text-center text-slate-500 text-xs">
+                      <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin mx-auto mb-2" />
+                      <span>Cargando planilla de retiros de Pañol...</span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 font-sans">
-                  {filteredTransactions.length === 0 ? (
-                    <tr>
-                      <td colSpan={11} className="py-12 text-center text-slate-500">
-                        <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        <p className="font-semibold">No se encontraron movimientos registrados con estos filtros.</p>
-                        <p className="text-[11px] text-slate-600 mt-1">Presiona "Registrar Retiro Multi-Material" para asentar una salida de pañol.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredTransactions.map((tx, idx) => {
-                      const isSelected = selectedTxIds.has(tx.id)
-                      const mat = materials.find((m) => m.id === tx.material_id)
-                      const ship = ships.find((s) => s.id === tx.ship_id)
-                      const wo = workOrders.find((w) => w.id === tx.work_order_id)
-                      const isSinOt = !tx.work_order_id
+                ) : filteredTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="py-12 text-center text-slate-500 text-xs">
+                      No se encontraron retiros con los filtros seleccionados.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTransactions.map((tx, rowIndex) => {
+                    const isSelected = selectedTxIds.has(tx.id)
+                    const mat = materials.find((m) => m.id === tx.material_id)
+                    const ship = ships.find((s) => s.id === tx.ship_id)
+                    const wo = workOrders.find((w) => w.id === tx.work_order_id)
+                    const isDeletionReq = Boolean(tx.is_deletion_requested)
 
-                      return (
-                        <tr
-                          key={tx.id}
-                          className={`hover:bg-slate-800/40 transition-colors ${
-                            isSelected ? 'bg-emerald-950/20' : ''
-                          }`}
-                        >
-                          {/* Columna apilada # y Checkbox */}
-                          <td className="py-2 px-3 text-center">
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className="text-[10px] text-slate-500 font-mono leading-none">
-                                {idx + 1}
-                              </span>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  const next = new Set(selectedTxIds)
-                                  if (e.target.checked) next.add(tx.id)
-                                  else next.delete(tx.id)
-                                  setSelectedTxIds(next)
-                                }}
-                                className="rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
-                              />
-                            </div>
-                          </td>
+                    return (
+                      <tr
+                        key={tx.id}
+                        className={`group transition-colors ${
+                          isDeletionReq
+                            ? 'bg-rose-950/60 text-rose-300 font-bold border-y-2 border-rose-500/60'
+                            : isSelected
+                            ? 'bg-cyan-950/30 hover:bg-cyan-950/40'
+                            : 'hover:bg-slate-800/50'
+                        }`}
+                      >
+                        {/* 1. Checkbox + Número de Fila (#) */}
+                        <td className="py-1 px-1 text-center w-8 select-none relative">
+                          <div className="flex flex-col items-center justify-center gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleSelectTx(tx.id)}
+                              className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                            >
+                              {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
+                            </button>
+                            <span
+                              className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded ${
+                                isDeletionReq
+                                  ? 'text-rose-400 line-through'
+                                  : isSelected
+                                  ? 'text-cyan-300'
+                                  : 'text-slate-500 group-hover:text-cyan-400'
+                              }`}
+                            >
+                              {rowIndex + 1}
+                            </span>
+                          </div>
+                        </td>
 
-                          {/* Fecha (Doble Clic para editar) */}
-                          <td
-                            onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'transaction_date', value: tx.transaction_date ? String(tx.transaction_date).split('T')[0] : '' })}
-                            className="py-2 px-3 text-slate-300 font-mono text-[11px] whitespace-nowrap cursor-pointer hover:text-cyan-300"
-                            title="Doble clic para editar fecha"
-                          >
-                            {inlineEdit.id === tx.id && inlineEdit.field === 'transaction_date' ? (
-                              <input
-                                type="date"
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                onBlur={() => handleSaveInlineTx(tx.id, 'transaction_date', inlineEdit.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'transaction_date', inlineEdit.value)
-                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                                }}
-                                className="px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-white font-mono text-[11px]"
-                              />
-                            ) : (
-                              tx.transaction_date ? String(tx.transaction_date).split('T')[0] : '-'
-                            )}
-                          </td>
+                        {/* 2. Fecha (Doble clic abre calendario con showPicker) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'transaction_date')
+                          const dateVal = tx.transaction_date ? String(tx.transaction_date).split('T')[0] : ''
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'transaction_date', value: dateVal })}
+                              className={`py-1.5 px-1.5 whitespace-nowrap font-mono cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
+                              title="Doble clic para editar fecha con calendario"
+                            >
+                              {inlineEdit.id === tx.id && inlineEdit.field === 'transaction_date' ? (
+                                <input
+                                  type="date"
+                                  autoFocus
+                                  ref={(el) => {
+                                    if (el && !el.dataset.pickerOpened) {
+                                      el.dataset.pickerOpened = '1'
+                                      try {
+                                        if (typeof el.showPicker === 'function') el.showPicker()
+                                      } catch {}
+                                    }
+                                  }}
+                                  value={inlineEdit.value}
+                                  onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                  onBlur={() => handleSaveInlineTx(tx.id, 'transaction_date', inlineEdit.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'transaction_date', inlineEdit.value)
+                                    if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] font-mono text-white focus:outline-none"
+                                />
+                              ) : (
+                                <span>{dateVal || '—'}</span>
+                              )}
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
+                                />
+                              )}
+                            </td>
+                          )
+                        })()}
 
-                          {/* Barco (Doble Clic para cambiar) */}
-                          <td
-                            onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'ship_id', value: tx.ship_id || '' })}
-                            className="py-2 px-3 font-semibold text-slate-200 cursor-pointer hover:text-cyan-300"
-                            title="Doble clic para cambiar buque"
-                          >
-                            {inlineEdit.id === tx.id && inlineEdit.field === 'ship_id' ? (
-                              <select
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => handleSaveInlineTx(tx.id, 'ship_id', e.target.value)}
-                                onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
-                                className="px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-white text-xs"
-                              >
-                                <option value="">Astillero / General</option>
-                                {ships.map((s) => (
-                                  <option key={s.id} value={s.id}>
-                                    {s.name}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <div className="flex items-center gap-1.5">
-                                <Anchor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                                <HighlightText text={ship?.name || 'STOCK GENERAL'} query={searchQuery} />
-                              </div>
-                            )}
-                          </td>
-
-                          {/* OT con Descripción Completa Visible */}
-                          <td
-                            onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'work_order_id', value: tx.work_order_id || '' })}
-                            className="py-2 px-3 cursor-pointer hover:text-cyan-300"
-                            title="Doble clic para cambiar o asignar OT"
-                          >
-                            {inlineEdit.id === tx.id && inlineEdit.field === 'work_order_id' ? (
-                              <select
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => handleSaveInlineTx(tx.id, 'work_order_id', e.target.value || null)}
-                                onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
-                                className="px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-white text-xs"
-                              >
-                                <option value="">(Dejar OT en blanco)</option>
-                                {workOrders
-                                  .filter((w) => !tx.ship_id || w.ship_id === tx.ship_id)
-                                  .map((w) => (
-                                    <option key={w.id} value={w.id}>
-                                      OT #{w.ot_number} - {w.description}
+                        {/* 3. Barco / Destino (Doble clic editable) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'ship_id')
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'ship_id', value: tx.ship_id || '' })}
+                              className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-semibold ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : 'text-slate-200'}`}
+                              title="Doble clic para cambiar Barco"
+                            >
+                              {inlineEdit.id === tx.id && inlineEdit.field === 'ship_id' ? (
+                                <select
+                                  autoFocus
+                                  value={inlineEdit.value}
+                                  onChange={(e) => {
+                                    handleSaveInlineTx(tx.id, 'ship_id', e.target.value)
+                                  }}
+                                  onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] font-bold text-white focus:outline-none"
+                                >
+                                  <option value="">(Sin Barco / Astillero)</option>
+                                  {ships.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.name}
                                     </option>
                                   ))}
-                              </select>
-                            ) : isSinOt ? (
-                              <span className="px-2 py-0.5 rounded-full bg-amber-950/50 border border-amber-800 text-amber-300 text-[10px] font-bold">
-                                ⚠️ Sin OT Cargada
-                              </span>
-                            ) : (
-                              <div className="max-w-[260px] truncate text-slate-300 font-semibold" title={wo?.description}>
-                                <span className="font-mono text-cyan-400 font-bold mr-1">OT #{wo?.ot_number}:</span>
-                                <HighlightText text={wo?.description || ''} query={searchQuery} />
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Material */}
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-2">
-                              {mat?.image_url && (
-                                <button
-                                  onClick={() => setPreviewImage(mat.image_url)}
-                                  className="w-5 h-5 rounded overflow-hidden shrink-0 border border-slate-700 hover:border-cyan-400 transition-all cursor-pointer"
-                                  title="Ver foto técnica del material"
-                                >
-                                  <img src={mat.image_url} alt="" className="w-full h-full object-cover" />
-                                </button>
+                                </select>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <Anchor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                  <HighlightText text={ship?.name || 'ASTILLERO'} query={searchQuery} />
+                                </div>
                               )}
-                              <span className="font-bold text-white">
-                                <HighlightText text={mat?.name || 'Material Desconocido'} query={searchQuery} />
-                              </span>
-                            </div>
-                          </td>
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                />
+                              )}
+                            </td>
+                          )
+                        })()}
 
-                          {/* Cantidad (Doble Clic para editar) */}
-                          <td
-                            onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'quantity_withdrawn', value: tx.quantity_withdrawn })}
-                            className="py-2 px-3 text-right font-mono font-black text-emerald-400 cursor-pointer hover:bg-slate-800/80"
-                            title="Doble clic para editar cantidad"
-                          >
-                            {inlineEdit.id === tx.id && inlineEdit.field === 'quantity_withdrawn' ? (
-                              <input
-                                type="number"
-                                step="any"
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                onBlur={() => handleSaveInlineTx(tx.id, 'quantity_withdrawn', inlineEdit.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'quantity_withdrawn', inlineEdit.value)
-                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                                }}
-                                className="w-16 px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-right text-emerald-400 font-mono font-bold text-xs"
-                              />
-                            ) : (
-                              `${tx.quantity_withdrawn} ${mat?.unit_measure || 'un.'}`
-                            )}
-                          </td>
+                        {/* 4. Orden de Trabajo (OT) (Doble clic editable) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'work_order_id')
+                          const shipWos = tx.ship_id ? workOrders.filter((w) => w.ship_id === tx.ship_id) : workOrders
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'work_order_id', value: tx.work_order_id || '' })}
+                              className={`py-1.5 px-1.5 max-w-[200px] truncate cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                              title={wo ? `OT #${wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - ${wo.description}` : 'Doble clic para imputar a OT o dejar vacía'}
+                            >
+                              {inlineEdit.id === tx.id && inlineEdit.field === 'work_order_id' ? (
+                                <select
+                                  autoFocus
+                                  value={inlineEdit.value}
+                                  onChange={(e) => handleSaveInlineTx(tx.id, 'work_order_id', e.target.value || null)}
+                                  onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-white focus:outline-none max-w-[240px]"
+                                >
+                                  <option value="">(Sin OT / Imputación directa)</option>
+                                  {shipWos.map((w) => (
+                                    <option key={w.id} value={w.id}>
+                                      OT #{w.order_number || w.ot_number || w.id?.slice(0, 4)} - {w.description}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : wo ? (
+                                <span className="text-cyan-400 font-bold">
+                                  OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}: <span className="text-slate-300 font-normal">{wo.description}</span>
+                                </span>
+                              ) : (
+                                <span className="text-amber-400/90 italic font-mono text-[10px]">
+                                  (Sin OT / Directo)
+                                </span>
+                              )}
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                />
+                              )}
+                            </td>
+                          )
+                        })()}
 
-                          {/* Peso Total (kg) */}
-                          <td className="py-2 px-3 text-right font-mono text-slate-300">
-                            {tx.weight_total ? `${Number(tx.weight_total).toFixed(2)} kg` : '-'}
-                          </td>
+                        {/* 5. Material Insumo (Doble clic editable con buscador datalist) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'material_id')
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'material_id', value: mat?.name || '' })}
+                              className={`py-1.5 px-1.5 max-w-[220px] truncate cursor-pointer font-bold ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : 'text-white'}`}
+                              title="Doble clic para cambiar material"
+                            >
+                              {inlineEdit.id === tx.id && inlineEdit.field === 'material_id' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  list="panol-materials-datalist"
+                                  value={inlineEdit.value}
+                                  onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                  onBlur={() => {
+                                    const match = materials.find((m) => m.name.toLowerCase() === inlineEdit.value.toLowerCase().trim())
+                                    if (match) {
+                                      handleSaveInlineTx(tx.id, 'material_id', match.id)
+                                    } else {
+                                      setInlineEdit({ id: null, field: null, value: '' })
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      const match = materials.find((m) => m.name.toLowerCase() === inlineEdit.value.toLowerCase().trim())
+                                      if (match) handleSaveInlineTx(tx.id, 'material_id', match.id)
+                                      else setInlineEdit({ id: null, field: null, value: '' })
+                                    }
+                                    if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none w-full"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  {mat?.image_url && (
+                                    <img
+                                      src={mat.image_url}
+                                      alt=""
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setPreviewImage(mat.image_url)
+                                      }}
+                                      className="w-4 h-4 rounded object-cover shrink-0 cursor-zoom-in border border-slate-700"
+                                    />
+                                  )}
+                                  <HighlightText text={mat?.name || 'Insumo sin asignar'} query={searchQuery} />
+                                </div>
+                              )}
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                />
+                              )}
+                            </td>
+                          )
+                        })()}
 
-                          {/* Retirado Por */}
-                          <td className="py-2 px-3 text-slate-300">
-                            <HighlightText text={tx.worker_name || '-'} query={searchQuery} />
-                          </td>
+                        {/* 6. Cantidad (Doble clic editable, recalcula peso) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'quantity_withdrawn')
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'quantity_withdrawn', value: String(tx.quantity_withdrawn || 1) })}
+                              className={`py-1.5 px-1.5 text-right font-mono font-bold cursor-pointer whitespace-nowrap ${cp.className} ${isDeletionReq ? 'line-through' : 'text-emerald-400'}`}
+                              title="Doble clic para editar cantidad retirada"
+                            >
+                              {inlineEdit.id === tx.id && inlineEdit.field === 'quantity_withdrawn' ? (
+                                <input
+                                  type="number"
+                                  autoFocus
+                                  step="any"
+                                  min="0"
+                                  value={inlineEdit.value}
+                                  onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                  onBlur={() => handleSaveInlineTx(tx.id, 'quantity_withdrawn', inlineEdit.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'quantity_withdrawn', inlineEdit.value)
+                                    if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none w-16 text-right"
+                                />
+                              ) : (
+                                <span>
+                                  {tx.quantity_withdrawn} {mat?.unit_measure || 'un.'}
+                                </span>
+                              )}
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                />
+                              )}
+                            </td>
+                          )
+                        })()}
 
-                          {/* Contratista / Grupo */}
-                          <td className="py-2 px-3 font-semibold text-slate-400">
-                            <HighlightText text={tx.contractor_name || '-'} query={searchQuery} />
-                          </td>
+                        {/* 7. Peso (kg) (Doble clic editable) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'weight_total')
+                          const w = Number(tx.weight_total) || 0
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'weight_total', value: String(w) })}
+                              className={`py-1.5 px-1.5 text-right font-mono text-slate-300 cursor-pointer whitespace-nowrap ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
+                              title="Doble clic para editar peso en kg"
+                            >
+                              {inlineEdit.id === tx.id && inlineEdit.field === 'weight_total' ? (
+                                <input
+                                  type="number"
+                                  autoFocus
+                                  step="any"
+                                  min="0"
+                                  value={inlineEdit.value}
+                                  onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                  onBlur={() => handleSaveInlineTx(tx.id, 'weight_total', inlineEdit.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'weight_total', inlineEdit.value)
+                                    if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none w-16 text-right"
+                                />
+                              ) : (
+                                <span>{w > 0 ? `${w.toFixed(2)} kg` : '—'}</span>
+                              )}
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                />
+                              )}
+                            </td>
+                          )
+                        })()}
 
-                          {/* Centro de Costo (CLIENTE vs CONTRATISTA) */}
-                          <td
-                            onDoubleClick={() => {
-                              if (!isAdmin) {
-                                showFeedback('error', 'Solo el Administrador puede editar el Centro de Costo de imputación.')
-                                return
-                              }
-                              setInlineEdit({ id: tx.id, field: 'cost_center', value: tx.cost_center || 'CLIENTE' })
-                            }}
-                            className="py-2 px-3 text-center cursor-pointer"
-                            title={isAdmin ? 'Doble clic para alternar Centro de Costo (Admin)' : 'Centro de Costo deducido automáticamente'}
-                          >
-                            {inlineEdit.id === tx.id && inlineEdit.field === 'cost_center' ? (
-                              <select
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => handleSaveInlineTx(tx.id, 'cost_center', e.target.value)}
-                                onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
-                                className="px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-white text-[10px] font-bold"
-                              >
-                                <option value="CLIENTE">CLIENTE / OBRA</option>
-                                <option value="CONTRATISTA">CONTRATISTA</option>
-                              </select>
-                            ) : (
+                        {/* 8. Contratista / Grupo (Doble clic editable) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'contractor_name')
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'contractor_name', value: tx.contractor_name || '' })}
+                              className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-bold text-cyan-300 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                              title="Doble clic para cambiar Contratista o Grupo"
+                            >
+                              {inlineEdit.id === tx.id && inlineEdit.field === 'contractor_name' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  list="panol-contractors-datalist"
+                                  value={inlineEdit.value}
+                                  onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                  onBlur={() => handleSaveInlineTx(tx.id, 'contractor_name', inlineEdit.value.toUpperCase())}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'contractor_name', inlineEdit.value.toUpperCase())
+                                    if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none w-28 uppercase"
+                                />
+                              ) : (
+                                <HighlightText text={tx.contractor_name || 'ALON CAR'} query={searchQuery} />
+                              )}
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                />
+                              )}
+                            </td>
+                          )
+                        })()}
+
+                        {/* 9. Centro de Costo (Doble clic: Admin puede alternar CLIENTE / CONTRATISTA) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'cost_center')
+                          const isCliente = tx.cost_center === 'CLIENTE'
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => {
+                                if (isAdmin) {
+                                  const next = isCliente ? 'CONTRATISTA' : 'CLIENTE'
+                                  handleSaveInlineTx(tx.id, 'cost_center', next)
+                                } else {
+                                  showFeedback('error', 'Solo el Administrador tiene permiso para modificar el Centro de Costo.')
+                                }
+                              }}
+                              className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer text-center ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
+                              title={isAdmin ? 'Doble clic para alternar CLIENTE / CONTRATISTA' : 'Centro de Costo deducido (Solo Admin)'}
+                            >
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                  tx.cost_center === 'CONTRATISTA'
-                                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                                    : 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                                className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                  isCliente
+                                    ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                                    : 'bg-amber-950 text-amber-300 border-amber-800'
                                 }`}
                               >
                                 {tx.cost_center || 'CLIENTE'}
                               </span>
-                            )}
-                          </td>
-
-                          {/* Observaciones (Doble Clic para editar) */}
-                          <td
-                            onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'notes', value: tx.notes || '' })}
-                            className="py-2 px-3 text-slate-500 text-[11px] max-w-[200px] truncate cursor-pointer hover:text-slate-300"
-                            title={tx.notes || 'Doble clic para escribir observaciones'}
-                          >
-                            {inlineEdit.id === tx.id && inlineEdit.field === 'notes' ? (
-                              <input
-                                type="text"
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                onBlur={() => handleSaveInlineTx(tx.id, 'notes', inlineEdit.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'notes', inlineEdit.value)
-                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                                }}
-                                className="w-full px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-white text-xs"
-                              />
-                            ) : (
-                              <HighlightText text={tx.notes || '-'} query={searchQuery} />
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* PESTAÑA 2: 💨 CONTROL DE GASES NAVALES Y DETALLE DE TUBOS */}
-        {activeTab === 'gases' && (
-          <div className="space-y-6">
-            {/* Panel de Patio: Llenos vs Vacíos por Proveedor (Regla P-02) */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <Flame className="w-4 h-4 text-purple-400" />
-                  <span>Estado de Patio de Cilindros por Proveedor (Regla P-02)</span>
-                </h3>
-                <span className="text-xs text-slate-400">
-                  Consolidado para reposición semanal (Air Liquide) o quincenal (Praxair Linde)
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {Object.values(gasStats.patioStock).map(({ supplier, full, empty }) => {
-                  const isAir = supplier.name.toUpperCase().includes('AIR LIQUIDE')
-
-                  return (
-                    <div
-                      key={supplier.id}
-                      className="p-4 rounded-xl border border-slate-800 bg-slate-900/80 flex flex-col justify-between shadow-lg"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <span className="font-black text-sm text-white tracking-wide">{supplier.name}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-bold">
-                            {supplier.trade || 'GASES'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          {supplier.order_cutoff_day ? `Cierre: ${supplier.order_cutoff_day}` : 'A demanda'}
-                        </p>
-
-                        <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-                          <div className="p-2 rounded-lg bg-emerald-950/30 border border-emerald-800/40">
-                            <span className="block text-xs text-emerald-400 font-semibold">Llenos en Pañol</span>
-                            <span className="text-xl font-black font-mono text-emerald-300">{full}</span>
-                          </div>
-                          <div className="p-2 rounded-lg bg-purple-950/30 border border-purple-800/40">
-                            <span className="block text-xs text-purple-400 font-semibold">Vacíos en Patio</span>
-                            <span className="text-xl font-black font-mono text-purple-300">{empty}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-slate-800/80">
-                        <button
-                          onClick={() => {
-                            if (isAir) {
-                              alert(`Regla P-02 Air Liquide:\nLlamar al 0810-222-5272\nN° Cliente Alon Car: 2234867\nVacíos a canjear: ${empty} tubos.`)
-                            } else {
-                              navigate('/compras?mode=simple&nuevo=true')
-                            }
-                          }}
-                          className="w-full py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-purple-600/20 cursor-pointer"
-                        >
-                          <Phone className="w-3.5 h-3.5" />
-                          <span>Pedir Reposición ({empty} Vacíos)</span>
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Los 3 Botones de Operaciones de Envases */}
-            <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h4 className="text-xs font-bold text-slate-300 uppercase">Acciones Rápidas de Pañol para Tubos</h4>
-                <p className="text-xs text-slate-500">Registra entregas a obras, recambios mano a mano o reingreso de envases</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setShowGasModal({ isOpen: true, operationType: 'PRIMERA_ENTREGA' })}
-                  className="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                  <span>1. Primera Entrega (Salida a Obra)</span>
-                </button>
-
-                <button
-                  onClick={() => setShowGasModal({ isOpen: true, operationType: 'RECAMBIO_1X1' })}
-                  className="px-3.5 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-500/20 cursor-pointer"
-                >
-                  <RefreshCw className="w-4 h-4 stroke-[2.5]" />
-                  <span>2. Recambio (1 x 1 Cruce Marcas)</span>
-                </button>
-
-                <button
-                  onClick={() => setShowGasModal({ isOpen: true, operationType: 'DEVOLUCION_FINAL' })}
-                  className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-                >
-                  <Check className="w-4 h-4 stroke-[3]" />
-                  <span>3. Devolución Final (Reingreso Patio)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Matriz de Tenencia de Tubos por Contratista / Taller / Buque */}
-            <div className="border border-slate-800 rounded-xl bg-slate-900/50 overflow-hidden shadow-2xl">
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-black text-white flex items-center gap-2">
-                    <span>DETALLE DE TUBOS EN CONTRATISTAS Y OBRAS</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
-                      Matriz de Tenencia
-                    </span>
-                  </h4>
-                  <p className="text-xs text-slate-500">
-                    Alerta automática en amarillo/naranja ante retenciones mayores a 15 días sin movimiento (Regla P-01)
-                  </p>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-900/90 text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-10">
-                      <th className="py-2.5 px-3">Contratista / Taller</th>
-                      <th className="py-2.5 px-3">Barco Asignado</th>
-                      <th className="py-2.5 px-3 text-right">Oxígeno</th>
-                      <th className="py-2.5 px-3 text-right">Acetileno</th>
-                      <th className="py-2.5 px-3 text-right">Atal / Mezcla</th>
-                      <th className="py-2.5 px-3 text-right">Propano 45kg</th>
-                      <th className="py-2.5 px-3 text-right font-black">Total Tubos</th>
-                      <th className="py-2.5 px-3">Último Movimiento</th>
-                      <th className="py-2.5 px-3 text-center">Días Retención</th>
-                      <th className="py-2.5 px-3 text-center">Acción P-01</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {gasStats.contractorList.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="py-12 text-center text-slate-500">
-                          <Flame className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                          <p className="font-semibold">No hay deudas de envases registradas en este momento.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      gasStats.contractorList.map((c, idx) => {
-                        const ship = ships.find((s) => s.id === c.shipId)
-                        const oxigeno = Object.entries(c.gases).find(([k]) => k.toUpperCase().includes('OXIGENO'))?.[1] || 0
-                        const acetileno = Object.entries(c.gases).find(([k]) => k.toUpperCase().includes('ACETILENO'))?.[1] || 0
-                        const atal = Object.entries(c.gases).find(([k]) => k.toUpperCase().includes('ATAL') || k.toUpperCase().includes('MEZCLA'))?.[1] || 0
-                        const propano = Object.entries(c.gases).find(([k]) => k.toUpperCase().includes('PROPANO') || k.toUpperCase().includes('45'))?.[1] || 0
-
-                        return (
-                          <tr
-                            key={idx}
-                            className={`hover:bg-slate-800/40 transition-colors ${
-                              c.isOverdue ? 'bg-rose-950/20' : ''
-                            }`}
-                          >
-                            <td className="py-2 px-3 font-bold text-white flex items-center gap-1.5">
-                              <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              <span>{c.name}</span>
-                            </td>
-                            <td className="py-2 px-3 text-slate-300">
-                              {ship?.name || 'Astillero / Varios'}
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono text-slate-300">{oxigeno || '-'}</td>
-                            <td className="py-2 px-3 text-right font-mono text-slate-300">{acetileno || '-'}</td>
-                            <td className="py-2 px-3 text-right font-mono text-slate-300">{atal || '-'}</td>
-                            <td className="py-2 px-3 text-right font-mono text-slate-300">{propano || '-'}</td>
-                            <td className="py-2 px-3 text-right font-mono font-black text-purple-400">
-                              {c.total}
-                            </td>
-                            <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">
-                              {c.lastDate ? String(c.lastDate).split('T')[0] : '-'}
-                            </td>
-                            <td className="py-2 px-3 text-center font-mono">
-                              <span
-                                className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                                  c.isOverdue
-                                    ? 'bg-rose-950 border border-rose-700 text-rose-300'
-                                    : 'bg-slate-800 text-slate-400'
-                                }`}
-                              >
-                                {c.daysHeld} días
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              {c.isOverdue && (
-                                <button
-                                  onClick={() => {
-                                    const msg = `Astillero Alon Car - Pañol:\nHola ${c.name}, figuran en su poder ${c.total} cilindros de gas desde hace más de ${c.daysHeld} días. Por favor, acerque los envases vacíos a pañol para su recambio o devolución final.`
-                                    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-[11px] flex items-center gap-1 mx-auto transition-all cursor-pointer shadow-sm"
-                                  title="Enviar recordatorio WhatsApp por retención >15 días"
-                                >
-                                  <MessageSquare className="w-3 h-3" />
-                                  <span>Reclamar (WhatsApp)</span>
-                                </button>
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                />
                               )}
                             </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+                          )
+                        })()}
 
-        {/* PESTAÑA 3: 📦 CATÁLOGO MAESTRO & STOCK FÍSICO (B.D MATERIALES) */}
-        {activeTab === 'catalogo' && (
-          <div className="border border-slate-800 rounded-xl bg-slate-900/50 overflow-hidden shadow-2xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/90 text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-10">
-                    <th className="py-2.5 px-3 w-12 text-center">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[10px] text-slate-500 font-mono">#</span>
-                        <input
-                          type="checkbox"
-                          checked={selectedMatIds.size > 0 && selectedMatIds.size === filteredMaterials.length}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedMatIds(new Set(filteredMaterials.map((m) => m.id)))
-                            } else {
-                              setSelectedMatIds(new Set())
-                            }
-                          }}
-                          className="rounded border-slate-700 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer w-3.5 h-3.5"
-                        />
-                      </div>
-                    </th>
-                    <th className="py-2.5 px-3 w-12 text-center">Foto</th>
-                    <th className="py-2.5 px-3">Material Técnico</th>
-                    <th className="py-2.5 px-3">Categoría</th>
-                    <th className="py-2.5 px-3">Rubro</th>
-                    <th className="py-2.5 px-3 text-center">Control Stock?</th>
-                    <th className="py-2.5 px-3 text-right">Stock Físico</th>
-                    <th className="py-2.5 px-3 text-right">Mínimo</th>
-                    <th className="py-2.5 px-3 text-center">Semáforo</th>
-                    <th className="py-2.5 px-3">U. Medida</th>
-                    <th className="py-2.5 px-3 text-right">Peso (kg)</th>
-                    <th className="py-2.5 px-3 text-center">% Seguridad</th>
-                    <th className="py-2.5 px-3 text-right">Costo Estimado</th>
+                        {/* 10. Observaciones (Doble clic editable) */}
+                        {(() => {
+                          const cp = getSpreadsheetCellProps(rowIndex, 'notes')
+                          return (
+                            <td
+                              {...cp.domProps}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'notes', value: tx.notes || '' })}
+                              className={`py-1.5 px-1.5 max-w-[160px] truncate cursor-pointer text-slate-400 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                              title="Doble clic para editar observaciones"
+                            >
+                              {inlineEdit.id === tx.id && inlineEdit.field === 'notes' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={inlineEdit.value}
+                                  onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                                  onBlur={() => handleSaveInlineTx(tx.id, 'notes', inlineEdit.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'notes', inlineEdit.value)
+                                    if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none w-full"
+                                />
+                              ) : (
+                                <HighlightText text={tx.notes || '—'} query={searchQuery} />
+                              )}
+                              {cp.renderHandle && (
+                                <div
+                                  onMouseDown={grid.handleFillHandleMouseDown}
+                                  onDoubleClick={grid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                />
+                              )}
+                            </td>
+                          )
+                        })()}
+
+                        {/* 11. Acciones: 1) Borrar Fila (Pinta rojo + Alerta Admin) 2) Pedido de Compra 3) Duplicar */}
+                        <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Acción 2: Pedido de Compra Directo */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuickPurchaseModal({
+                                  isOpen: true,
+                                  material: mat || { id: tx.material_id, name: 'Insumo', unit_measure: 'Unidad' },
+                                  quantity: String(tx.quantity_withdrawn || 1)
+                                })
+                              }}
+                              className="p-1 rounded hover:bg-cyan-950/80 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                              title="Generar Pedido de Compra directo a Compras (Estado: PEDIR)"
+                            >
+                              <ShoppingCart className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
+
+                            {/* Duplicar Registro */}
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateTx(tx)}
+                              className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                              title="Duplicar retiro con fecha de hoy"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Acción 1: Borrar Fila */}
+                            {isDeletionReq ? (
+                              isAdmin ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePermanentDeleteTx(tx)}
+                                    className="p-1 rounded bg-rose-600 hover:bg-rose-500 text-slate-950 font-black text-[9px] cursor-pointer"
+                                    title="Confirmar eliminación física definitiva"
+                                  >
+                                    <Trash2 className="w-3 h-3 stroke-[3]" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreTx(tx)}
+                                    className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[9px] cursor-pointer"
+                                    title="Restaurar fila a estado activo"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span
+                                  className="text-[9px] font-bold text-rose-400 bg-rose-950/90 border border-rose-800 px-1 py-0.5 rounded cursor-help"
+                                  title={`Eliminación solicitada por ${tx.deletion_requested_by || 'Operario'}. A la espera de Jorge Sentis.`}
+                                >
+                                  Baja solicitada
+                                </span>
+                              )
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleRequestDeletionTx(tx)}
+                                className="p-1 rounded hover:bg-rose-950/80 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                                title="Solicitar baja de fila a Jorge Sentis (pinta de rojo)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================== */}
+      {/* PESTAÑA 2: CONTROL DE GASES Y CILINDROS RETORNABLES                            */}
+      {/* ============================================================================== */}
+      {activeTab === 'gases' && (
+        <div className="space-y-4">
+          {/* Tarjetas de Stock en Patio por Marca Proveedor */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            {Object.values(gasStats.patioStock).map(({ supplier, full, empty }) => (
+              <div
+                key={supplier.id}
+                className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-lg flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2">
+                  <span className="font-black text-white text-xs truncate">{supplier.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono font-bold">
+                    {supplier.is_local_supplier ? 'Local MDP' : 'Nacional'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/40">
+                    <span className="block text-[10px] text-emerald-400 font-bold uppercase">Llenos</span>
+                    <span className="text-xl font-black text-emerald-300 font-mono">{full}</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-rose-950/50 border border-rose-500/40">
+                    <span className="block text-[10px] text-rose-400 font-bold uppercase">Vacíos</span>
+                    <span className="text-xl font-black text-rose-300 font-mono">{empty}</span>
+                  </div>
+                </div>
+                <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400">Total Patio:</span>
+                  <span className="font-mono font-bold text-white">{full + empty} tubos</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Matriz de Deuda de Tubos por Contratista */}
+          <div className="alon-zone-grid">
+            <div className="alon-grid-ribbon">
+              <span className="font-bold text-slate-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                <Flame className="w-4 h-4 text-amber-400" />
+                <span>Matriz de Deuda de Tubos por Contratista / Obra</span>
+              </span>
+              <span className="text-slate-500 text-[11px]">
+                Regla P-01: Alerta ante retención mayor a 15 días sin rotación
+              </span>
+            </div>
+
+            <div className="w-full max-h-[500px] overflow-y-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 z-20 alon-grid-thead">
+                  <tr>
+                    <th className="py-2.5 px-3">Contratista / Taller</th>
+                    <th className="py-2.5 px-3 text-center">Tubos en Poder</th>
+                    <th className="py-2.5 px-3">Estado de Retención</th>
                     <th className="py-2.5 px-3 text-center">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-sans">
-                  {filteredMaterials.length === 0 ? (
-                    <tr>
-                      <td colSpan={14} className="py-12 text-center text-slate-500">
-                        <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        <p className="font-semibold">No se encontraron materiales en el catálogo con estos filtros.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredMaterials.map((mat, idx) => {
-                      const isSelected = selectedMatIds.has(mat.id)
-                      const curr = Number(mat.current_stock) || 0
-                      const min = Number(mat.minimum_stock) || 0
-                      const isQuiebre = curr <= 0
-                      const isBajo = curr > 0 && curr <= min
-                      const secBadge = getSecurityFactorBadge(mat.security_factor)
-
-                      return (
-                        <tr
-                          key={mat.id}
-                          className={`hover:bg-slate-800/40 transition-colors ${
-                            isSelected ? 'bg-cyan-950/20' : ''
-                          }`}
-                        >
-                          {/* Columna apilada # y Checkbox */}
-                          <td className="py-2 px-3 text-center">
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className="text-[10px] text-slate-500 font-mono leading-none">
-                                {idx + 1}
-                              </span>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  const next = new Set(selectedMatIds)
-                                  if (e.target.checked) next.add(mat.id)
-                                  else next.delete(mat.id)
-                                  setSelectedMatIds(next)
-                                }}
-                                className="rounded border-slate-700 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer w-3.5 h-3.5"
-                              />
-                            </div>
-                          </td>
-
-                          {/* Foto Técnica (DEC-010) */}
-                          <td className="py-2 px-3 text-center">
-                            {mat.image_url ? (
-                              <button
-                                onClick={() => setPreviewImage(mat.image_url)}
-                                className="w-8 h-8 rounded-lg overflow-hidden border border-slate-700 hover:border-cyan-400 transition-all cursor-pointer inline-block"
-                                title="Clic para ampliar foto técnica"
-                              >
-                                <img src={mat.image_url} alt="" className="w-full h-full object-cover" />
-                              </button>
-                            ) : (
-                              <div className="w-8 h-8 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 mx-auto">
-                                <Package className="w-4 h-4" />
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Nombre (Doble Clic para editar) */}
-                          <td
-                            onDoubleClick={() => setInlineEdit({ id: mat.id, field: 'name', value: mat.name })}
-                            className="py-2 px-3 font-bold text-white cursor-pointer hover:text-cyan-300"
-                            title="Doble clic para editar nombre"
-                          >
-                            {inlineEdit.id === mat.id && inlineEdit.field === 'name' ? (
-                              <input
-                                type="text"
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                onBlur={() => handleSaveInlineMaterial(mat.id, 'name', inlineEdit.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveInlineMaterial(mat.id, 'name', inlineEdit.value)
-                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                                }}
-                                className="w-full px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-white font-bold text-xs"
-                              />
-                            ) : (
-                              <HighlightText text={mat.name} query={searchQuery} />
-                            )}
-                          </td>
-
-                          {/* Categoría */}
-                          <td className="py-2 px-3">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                mat.category === 'MATERIALES'
-                                  ? 'bg-blue-950 text-blue-300 border border-blue-800'
-                                  : mat.category === 'CONSUMIBLES'
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                  : 'bg-amber-950 text-amber-300 border border-amber-800'
-                              }`}
-                            >
-                              {mat.category || 'MATERIALES'}
-                            </span>
-                          </td>
-
-                          {/* Rubro */}
-                          <td className="py-2 px-3 text-slate-300">
-                            <HighlightText text={mat.rubro || '-'} query={searchQuery} />
-                          </td>
-
-                          {/* Casilla Control de Stock */}
-                          <td className="py-2 px-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(mat.requires_stock_control)}
-                              onChange={(e) => handleSaveInlineMaterial(mat.id, 'requires_stock_control', e.target.checked)}
-                              className="rounded border-slate-700 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer w-4 h-4"
-                              title="Marca si este material lleva inventario y auditoría física de stock"
-                            />
-                          </td>
-
-                          {/* Stock Actual */}
-                          <td className="py-2 px-3 text-right font-mono font-black text-sm">
-                            <span
-                              className={
-                                isQuiebre
-                                  ? 'text-rose-400'
-                                  : isBajo
-                                  ? 'text-amber-400'
-                                  : 'text-emerald-400'
-                              }
-                            >
-                              {curr}
-                            </span>
-                          </td>
-
-                          {/* Stock Mínimo (Doble Clic para editar) */}
-                          <td
-                            onDoubleClick={() => setInlineEdit({ id: mat.id, field: 'minimum_stock', value: mat.minimum_stock || 0 })}
-                            className="py-2 px-3 text-right font-mono text-slate-400 cursor-pointer hover:text-white"
-                            title="Doble clic para editar stock mínimo"
-                          >
-                            {inlineEdit.id === mat.id && inlineEdit.field === 'minimum_stock' ? (
-                              <input
-                                type="number"
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                onBlur={() => handleSaveInlineMaterial(mat.id, 'minimum_stock', inlineEdit.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveInlineMaterial(mat.id, 'minimum_stock', inlineEdit.value)
-                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                                }}
-                                className="w-16 px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-right text-white font-mono text-xs"
-                              />
-                            ) : (
-                              min
-                            )}
-                          </td>
-
-                          {/* Semáforo */}
-                          <td className="py-2 px-3 text-center">
-                            {isQuiebre ? (
-                              <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-400 border border-rose-800 text-[10px] font-bold">
-                                🔴 Quiebre
-                              </span>
-                            ) : isBajo ? (
-                              <span className="px-2 py-0.5 rounded-full bg-amber-950 text-amber-400 border border-amber-800 text-[10px] font-bold">
-                                🟡 Bajo Stock
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold">
-                                🟢 Óptimo
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Unidad de Medida */}
-                          <td className="py-2 px-3 text-slate-300 font-mono text-[11px]">
-                            {mat.unit_measure || 'Unidad'}
-                          </td>
-
-                          {/* Peso Unitario (Doble Clic para editar) */}
-                          <td
-                            onDoubleClick={() => setInlineEdit({ id: mat.id, field: 'weight_kg', value: mat.weight_kg || 0 })}
-                            className="py-2 px-3 text-right font-mono text-slate-300 text-[11px] cursor-pointer hover:text-cyan-300"
-                            title="Doble clic para editar peso unitario en kg"
-                          >
-                            {inlineEdit.id === mat.id && inlineEdit.field === 'weight_kg' ? (
-                              <input
-                                type="number"
-                                step="any"
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                onBlur={() => handleSaveInlineMaterial(mat.id, 'weight_kg', inlineEdit.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveInlineMaterial(mat.id, 'weight_kg', inlineEdit.value)
-                                  if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                                }}
-                                className="w-16 px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-right text-white font-mono text-xs"
-                              />
-                            ) : (
-                              mat.weight_kg ? `${Number(mat.weight_kg).toFixed(2)} kg` : '-'
-                            )}
-                          </td>
-
-                          {/* % Seguridad (Factor de Merma con color específico y bloqueo a Admin) */}
-                          <td
-                            onDoubleClick={() => {
-                              if (!isAdmin) {
-                                showFeedback('error', 'Solo el Administrador puede modificar el porcentaje de seguridad naval.')
-                                return
-                              }
-                              setInlineEdit({ id: mat.id, field: 'security_factor', value: mat.security_factor || 1.06 })
-                            }}
-                            className="py-2 px-3 text-center cursor-pointer"
-                            title={isAdmin ? 'Doble clic para cambiar factor de seguridad (Admin)' : 'Factor de seguridad naval (Solo Admin)'}
-                          >
-                            {inlineEdit.id === mat.id && inlineEdit.field === 'security_factor' ? (
-                              <select
-                                autoFocus
-                                value={inlineEdit.value}
-                                onChange={(e) => handleSaveInlineMaterial(mat.id, 'security_factor', e.target.value)}
-                                onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
-                                className="px-1.5 py-0.5 rounded bg-slate-950 border border-cyan-400 text-white text-[11px] font-mono font-bold"
-                              >
-                                <option value={1.02}>2% (1.02)</option>
-                                <option value={1.06}>6% (1.06 Estándar)</option>
-                                <option value={1.10}>10% (1.10)</option>
-                                <option value={1.15}>15% (1.15)</option>
-                                <option value={1.20}>20% (1.20)</option>
-                              </select>
-                            ) : (
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] border ${secBadge.style}`}>
-                                {secBadge.label}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Costo */}
-                          <td className="py-2 px-3 text-right font-mono text-slate-300 text-[11px]">
-                            ${mat.cost_ars?.toLocaleString() || '0'}
-                          </td>
-
-                          {/* Acciones */}
-                          <td className="py-2 px-3 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              {/* Botón Reponer (Garantiza precarga en Compras) */}
-                              <button
-                                onClick={() => handleRequestPurchaseSingle(mat)}
-                                className="p-1 rounded bg-cyan-950 border border-cyan-800 text-cyan-400 hover:bg-cyan-900 transition-all cursor-pointer"
-                                title="Pedir reposición en Compras (Precarga garantizada)"
-                              >
-                                <ShoppingCart className="w-3.5 h-3.5" />
-                              </button>
-
-                              {/* Botón Ajuste Físico */}
-                              <button
-                                onClick={() => setShowStockAdjustModal({ isOpen: true, material: mat })}
-                                className="p-1 rounded bg-purple-950 border border-purple-800 text-purple-400 hover:bg-purple-900 transition-all cursor-pointer"
-                                title="Ajuste de inventario físico"
-                              >
-                                <Scale className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* PESTAÑA 4: 🦺 CONTROL DE EPP POR OPERARIO */}
-        {activeTab === 'epp' && (
-          <div className="border border-slate-800 rounded-xl bg-slate-900/50 overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-slate-800">
-              <h4 className="text-sm font-black text-white flex items-center gap-2">
-                <Shield className="w-4 h-4 text-amber-400" />
-                <span>HISTORIAL DE ENTREGA DE ELEMENTOS DE SEGURIDAD (EPP)</span>
-              </h4>
-              <p className="text-xs text-slate-500">
-                Trazabilidad de indumentaria y protección entregada por operario para seguridad e higiene y deducciones
-              </p>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/90 text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-10">
-                    <th className="py-2.5 px-3">Operario</th>
-                    <th className="py-2.5 px-3">Grupo / Contratista</th>
-                    <th className="py-2.5 px-3">Oficio</th>
-                    <th className="py-2.5 px-3">Habilitado Pañol</th>
-                    <th className="py-2.5 px-3">Último EPP Retirado</th>
-                    <th className="py-2.5 px-3">Fecha de Entrega</th>
-                    <th className="py-2.5 px-3 text-right">Total EPPs Entregados</th>
-                    <th className="py-2.5 px-3 text-center">Acción</th>
-                  </tr>
-                </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {workers.map((w) => {
-                    const eppTx = inventoryTx.filter((t) => {
-                      if (t.worker_id && t.worker_id === w.id) return t.movement_type === 'ENTREGA_EPP'
-                      if (t.worker_name && t.worker_name.toUpperCase() === w.name.toUpperCase()) return t.movement_type === 'ENTREGA_EPP'
-                      return false
-                    })
-                    const lastEpp = eppTx[0]
-                    const mat = lastEpp ? materials.find((m) => m.id === lastEpp.material_id) : null
-
+                  {Object.entries(gasStats.contractorDebts).map(([cName, data]) => {
+                    const longHeld = gasStats.longHeldContractors.find((lh) => lh.contractor === cName)
                     return (
-                      <tr key={w.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-2 px-3 font-bold text-white flex items-center gap-2">
-                          <User className="w-3.5 h-3.5 text-slate-500" />
-                          <span>{w.name}</span>
+                      <tr key={cName} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="py-2.5 px-3 font-bold text-white flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-cyan-400" />
+                          <span>{cName}</span>
                         </td>
-                        <td className="py-2 px-3 font-bold text-cyan-400">
-                          {w.work_group || w.admin_center || 'ASTILLERO'}
+                        <td className="py-2.5 px-3 text-center">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-black text-xs ${
+                              data.totalHeld > 0 ? 'bg-amber-950 text-amber-300 border border-amber-600' : 'text-slate-500'
+                            }`}
+                          >
+                            {data.totalHeld} tubos
+                          </span>
                         </td>
-                        <td className="py-2 px-3 text-slate-400">{w.trade || 'GENERAL'}</td>
-                        <td className="py-2 px-3">
-                          {w.can_withdraw_materials ? (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold">
-                              ✓ Habilitado
+                        <td className="py-2.5 px-3">
+                          {longHeld ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950 border border-rose-600 text-rose-300 font-bold text-[10px]">
+                              <AlertTriangle className="w-3 h-3 text-rose-400" />
+                              <span>{longHeld.days} días retenidos (&gt;15d)</span>
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-400 border border-rose-800 text-[10px] font-bold">
-                              ✕ No Habilitado
+                            <span className="text-emerald-400 text-[11px] font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Normal</span>
                             </span>
                           )}
                         </td>
-                        <td className="py-2 px-3 font-semibold text-slate-200">
-                          {mat?.name || (eppTx.length > 0 ? 'EPP General' : '-')}
-                        </td>
-                        <td className="py-2 px-3 font-mono text-slate-400 text-[11px]">
-                          {lastEpp?.transaction_date ? String(lastEpp.transaction_date).split('T')[0] : '-'}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono font-bold text-amber-400">
-                          {eppTx.length} entregas
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          <button
-                            onClick={() => setShowWithdrawalModal(true)}
-                            className="px-2.5 py-1 rounded bg-amber-950/60 border border-amber-800 text-amber-300 font-bold text-[11px] hover:bg-amber-900 transition-all cursor-pointer"
-                          >
-                            + Entregar EPP
-                          </button>
+                        <td className="py-2.5 px-3 text-center">
+                          {longHeld && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const msg = `Hola ${cName}, desde Pañol Alon Car te recordamos que poseen cilindros de gas con más de ${longHeld.days} días de retiro. Por favor coordinar recambio o devolución final para evitar cargos de alquiler. Muchas gracias.`
+                                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+                              }}
+                              className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-800 border border-rose-600 text-rose-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <MessageSquare className="w-3 h-3" />
+                              <span>Reclamar WhatsApp</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )
@@ -2031,73 +2094,327 @@ export default function Panol() {
               </table>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
       {/* ============================================================================== */}
-      {/* ZONA 5: BARRA INFERIOR DE TOTALES Y ACCIONES EN BLOQUE                         */}
+      {/* PESTAÑA 3: CATÁLOGO MAESTRO B.D MATERIALES & STOCK FÍSICO                     */}
       {/* ============================================================================== */}
-      <footer className="border-t border-slate-800 bg-slate-900/90 px-6 py-3 flex flex-wrap items-center justify-between gap-4 text-xs">
-        <div className="flex items-center gap-4 text-slate-400">
-          <div>
-            <span className="text-slate-500">Mostrando:</span>{' '}
-            <span className="font-mono font-bold text-white">
-              {activeTab === 'planillas'
-                ? filteredTransactions.length
-                : activeTab === 'catalogo'
-                ? filteredMaterials.length
-                : gasStats.contractorList.length}
-            </span>{' '}
-            registros
+      {activeTab === 'catalogo' && (
+        <div className="alon-zone-grid">
+          {/* Ribbon Superior de Catálogo */}
+          <div className="alon-grid-ribbon">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px] inline-flex items-center gap-1">
+                <Layers className="w-3 h-3 text-cyan-400 shrink-0" />
+                <span>CATÁLOGO B.D MATERIALES</span>
+              </span>
+              <span className="text-slate-400 text-[11px]">
+                Doble clic en celdas para editar Nombre, Peso, Stock Mínimo y Control de Stock
+              </span>
+            </div>
+
+            {selectedMatIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const selectedList = materials
+                    .filter((m) => selectedMatIds.has(m.id))
+                    .map((m) => ({ id: m.id, name: m.name, unit_measure: m.unit_measure }))
+                  navigate(`/compras?nuevo=true&multiMaterials=${encodeURIComponent(JSON.stringify(selectedList))}`)
+                }}
+                className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg animate-in fade-in"
+              >
+                <ShoppingCart className="w-3.5 h-3.5 stroke-[3]" />
+                <span>🛒 Generar Pedido de Compra en Lote ({selectedMatIds.size})</span>
+              </button>
+            )}
           </div>
-          <div className="h-4 w-px bg-slate-800" />
-          <div>
-            <span className="text-slate-500">Catálogo Total:</span>{' '}
-            <span className="font-mono font-bold text-cyan-400">{materials.length} materiales</span>
+
+          <div className="w-full max-h-[620px] overflow-y-auto">
+            <table className="w-full text-left text-[11px] border-collapse">
+              <thead className="sticky top-0 z-20 alon-grid-thead">
+                <tr>
+                  <th className="py-1 px-1 w-8 text-center select-none">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllMats}
+                      className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                    >
+                      {selectedMatIds.size === filteredMaterials.length && filteredMaterials.length > 0 ? (
+                        <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                      ) : (
+                        <Square className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="py-2 px-1.5">Material / Insumo ✎</th>
+                  <th className="py-2 px-1.5">Rubro Técnico</th>
+                  <th className="py-2 px-1.5">Categoría</th>
+                  <th className="py-2 px-1.5 text-right">Peso Unit. (kg) ✎</th>
+                  <th className="py-2 px-1.5 text-right">Stock Actual</th>
+                  <th className="py-2 px-1.5 text-right">Stock Mínimo ✎</th>
+                  <th className="py-2 px-1.5 text-center">Lleva Stock Físico ✎</th>
+                  <th className="py-2 px-1.5 text-center">% Seg. Naval ✎</th>
+                  <th className="py-2 px-1.5 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-sans">
+                {filteredMaterials.map((mat, idx) => {
+                  const isSelected = selectedMatIds.has(mat.id)
+                  const curr = Number(mat.current_stock) || 0
+                  const min = Number(mat.minimum_stock) || 0
+                  const isCritical = curr <= min && mat.requires_stock_control
+                  const badge = getSecurityFactorBadge(mat.security_factor)
+
+                  return (
+                    <tr
+                      key={mat.id}
+                      className={`group transition-colors ${
+                        isSelected ? 'bg-cyan-950/30' : isCritical ? 'bg-rose-950/20' : 'hover:bg-slate-800/40'
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <td className="py-1 px-1 text-center w-8 select-none">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelectMat(mat.id)}
+                          className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                        >
+                          {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
+                        </button>
+                      </td>
+
+                      {/* Nombre Material */}
+                      <td
+                        onDoubleClick={() => setInlineEdit({ id: mat.id, field: 'name', value: mat.name || '' })}
+                        className="py-1.5 px-1.5 font-bold text-white cursor-pointer max-w-[240px] truncate"
+                        title="Doble clic para editar nombre"
+                      >
+                        {inlineEdit.id === mat.id && inlineEdit.field === 'name' ? (
+                          <input
+                            type="text"
+                            autoFocus
+                            value={inlineEdit.value}
+                            onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            onBlur={() => handleSaveInlineMaterial(mat.id, 'name', inlineEdit.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveInlineMaterial(mat.id, 'name', inlineEdit.value)
+                              if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                            }}
+                            className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none w-full"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            {mat.image_url ? (
+                              <img
+                                src={mat.image_url}
+                                alt=""
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPreviewImage(mat.image_url)
+                                }}
+                                className="w-5 h-5 rounded object-cover shrink-0 border border-slate-700 cursor-zoom-in"
+                              />
+                            ) : (
+                              <Package className="w-4 h-4 text-slate-500 shrink-0" />
+                            )}
+                            <HighlightText text={mat.name} query={searchQuery} />
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Rubro */}
+                      <td className="py-1.5 px-1.5 text-slate-300 font-semibold">{mat.rubro || '—'}</td>
+
+                      {/* Categoría */}
+                      <td className="py-1.5 px-1.5">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                          {mat.category}
+                        </span>
+                      </td>
+
+                      {/* Peso Unitario en kg */}
+                      <td
+                        onDoubleClick={() => setInlineEdit({ id: mat.id, field: 'weight_kg', value: String(mat.weight_kg || 0) })}
+                        className="py-1.5 px-1.5 text-right font-mono text-slate-300 cursor-pointer"
+                        title="Doble clic para editar peso por unidad"
+                      >
+                        {inlineEdit.id === mat.id && inlineEdit.field === 'weight_kg' ? (
+                          <input
+                            type="number"
+                            autoFocus
+                            step="any"
+                            min="0"
+                            value={inlineEdit.value}
+                            onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            onBlur={() => handleSaveInlineMaterial(mat.id, 'weight_kg', inlineEdit.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveInlineMaterial(mat.id, 'weight_kg', inlineEdit.value)
+                              if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                            }}
+                            className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-xs font-mono text-white focus:outline-none w-16 text-right"
+                          />
+                        ) : (
+                          <span>{Number(mat.weight_kg) > 0 ? `${mat.weight_kg} kg` : '—'}</span>
+                        )}
+                      </td>
+
+                      {/* Stock Actual */}
+                      <td className="py-1.5 px-1.5 text-right font-mono font-bold">
+                        <span className={isCritical ? 'text-rose-400' : 'text-emerald-400'}>
+                          {mat.current_stock} {mat.unit_measure || 'un.'}
+                        </span>
+                      </td>
+
+                      {/* Stock Mínimo */}
+                      <td
+                        onDoubleClick={() => setInlineEdit({ id: mat.id, field: 'minimum_stock', value: String(mat.minimum_stock || 0) })}
+                        className="py-1.5 px-1.5 text-right font-mono text-slate-400 cursor-pointer"
+                        title="Doble clic para editar stock mínimo de reposición"
+                      >
+                        {inlineEdit.id === mat.id && inlineEdit.field === 'minimum_stock' ? (
+                          <input
+                            type="number"
+                            autoFocus
+                            min="0"
+                            value={inlineEdit.value}
+                            onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            onBlur={() => handleSaveInlineMaterial(mat.id, 'minimum_stock', inlineEdit.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveInlineMaterial(mat.id, 'minimum_stock', inlineEdit.value)
+                              if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                            }}
+                            className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-xs font-mono text-white focus:outline-none w-16 text-right"
+                          />
+                        ) : (
+                          <span>{mat.minimum_stock || 0}</span>
+                        )}
+                      </td>
+
+                      {/* Lleva Control de Stock Físico */}
+                      <td
+                        onDoubleClick={() => handleSaveInlineMaterial(mat.id, 'requires_stock_control', !mat.requires_stock_control)}
+                        className="py-1.5 px-1.5 text-center cursor-pointer"
+                        title="Doble clic para alternar si lleva o no control de stock"
+                      >
+                        <span
+                          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                            mat.requires_stock_control
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}
+                        >
+                          {mat.requires_stock_control ? 'SÍ (Físico)' : 'NO (Eventual)'}
+                        </span>
+                      </td>
+
+                      {/* % Seguridad Naval */}
+                      <td
+                        onDoubleClick={() => {
+                          if (isAdmin) {
+                            setInlineEdit({ id: mat.id, field: 'security_factor', value: String(mat.security_factor || 1.06) })
+                          } else {
+                            showFeedback('error', 'Solo el Administrador puede modificar el porcentaje de seguridad.')
+                          }
+                        }}
+                        className="py-1.5 px-1.5 text-center cursor-pointer"
+                        title={isAdmin ? 'Doble clic para editar factor de seguridad (Solo Admin)' : 'Factor de seguridad naval'}
+                      >
+                        {inlineEdit.id === mat.id && inlineEdit.field === 'security_factor' ? (
+                          <select
+                            autoFocus
+                            value={inlineEdit.value}
+                            onChange={(e) => handleSaveInlineMaterial(mat.id, 'security_factor', e.target.value)}
+                            onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
+                            className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-white focus:outline-none"
+                          >
+                            <option value="1.02">2% (1.02)</option>
+                            <option value="1.06">6% (1.06 Estándar)</option>
+                            <option value="1.10">10% (1.10)</option>
+                            <option value="1.15">15% (1.15)</option>
+                            <option value="1.20">20% (1.20)</option>
+                          </select>
+                        ) : (
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] border ${badge.style}`}>
+                            {badge.label}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* Botón Reponer en Compras */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigate(`/compras?nuevo=true&materialId=${mat.id}&materialName=${encodeURIComponent(mat.name)}`)
+                            }}
+                            className="px-2 py-0.5 rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-600 text-cyan-300 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Generar pedido de reposición en Compras"
+                          >
+                            <ShoppingCart className="w-3 h-3" />
+                            <span>Reponer</span>
+                          </button>
+
+                          {/* Ajuste de Stock */}
+                          <button
+                            type="button"
+                            onClick={() => setShowStockAdjustModal({ isOpen: true, material: mat })}
+                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            title="Ajustar inventario físico"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
+      )}
 
-        {/* Acciones masivas cuando hay filas seleccionadas en la Planilla */}
-        {selectedTxIds.size > 0 && activeTab === 'planillas' && (
-          <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-emerald-500/40 shadow-lg">
-            <span className="text-emerald-400 font-bold">{selectedTxIds.size} seleccionados</span>
+      {/* ============================================================================== */}
+      {/* PESTAÑA 4: CONTROL DE EPP POR OPERARIO                                         */}
+      {/* ============================================================================== */}
+      {activeTab === 'epp' && (
+        <div className="alon-zone-grid p-6 text-center text-slate-400 space-y-3">
+          <Shield className="w-10 h-10 text-emerald-400 mx-auto" />
+          <h2 className="text-base font-bold text-white">Registro y Control de Elementos de Protección Personal (EPP)</h2>
+          <p className="text-xs max-w-md mx-auto">
+            Consolidado histórico de entregas de botines, cascos, antiparras y guantes asignados a cada operario y contratista.
+          </p>
+          <div className="pt-2">
             <button
-              onClick={() => {
-                if (confirm(`¿Deseas desasentar o eliminar las ${selectedTxIds.size} salidas seleccionadas?`)) {
-                  supabase
-                    .from('inventory_transactions')
-                    .delete()
-                    .in('id', Array.from(selectedTxIds))
-                    .then(() => {
-                      showFeedback('success', `${selectedTxIds.size} movimientos eliminados correctamente.`)
-                      setSelectedTxIds(new Set())
-                      fetchData()
-                    })
-                }
-              }}
-              className="px-2 py-1 rounded bg-rose-950 text-rose-300 border border-rose-800 hover:bg-rose-900 font-semibold cursor-pointer"
+              type="button"
+              onClick={() => setShowWithdrawalModal(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs cursor-pointer shadow-lg inline-flex items-center gap-1.5"
             >
-              Eliminar Selección
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Registrar Nueva Entrega de EPP</span>
             </button>
           </div>
-        )}
-      </footer>
+        </div>
+      )}
 
       {/* ============================================================================== */}
-      {/* MODALES: REGISTRO MULTI-MATERIAL, ALTA MATERIAL, AJUSTE STOCK Y GASES          */}
+      {/* MODALES DEL MÓDULO                                                             */}
       {/* ============================================================================== */}
 
-      {/* MODAL 1: REGISTRAR RETIRO MULTI-MATERIAL (REDISEÑADO CON CASCADA REAL) */}
+      {/* MODAL 1: RETIRO MULTI-MATERIAL (CASCADA CANÓNICA) */}
       {showWithdrawalModal && (
         <MultiWithdrawalModal
           materials={materials}
           ships={ships}
           workOrders={workOrders}
-          workers={workers}
+          availableGroups={availableGroups}
           isAdmin={isAdmin}
           onClose={() => setShowWithdrawalModal(false)}
           onSave={handleSaveMultiWithdrawal}
-          onRequestPermission={() => setShowPermissionRequestModal(true)}
         />
       )}
 
@@ -2156,13 +2473,13 @@ export default function Panol() {
         />
       )}
 
-      {/* MODAL 5: SOLICITAR HABILITACIÓN DE OPERARIO A JORGE SENTIS */}
-      {showPermissionRequestModal && (
-        <WorkerPermissionRequestModal
-          workers={workers.filter((w) => !w.can_withdraw_materials)}
-          ships={ships}
-          onClose={() => setShowPermissionRequestModal(false)}
-          onSubmit={handleRequestWorkerPermission}
+      {/* MODAL 5: PEDIDO DE COMPRA DIRECTO (ACCIÓN 2) */}
+      {quickPurchaseModal.isOpen && (
+        <QuickPurchaseModal
+          material={quickPurchaseModal.material}
+          initialQuantity={quickPurchaseModal.quantity}
+          onClose={() => setQuickPurchaseModal({ isOpen: false, material: null, quantity: '' })}
+          onConfirm={handleCreateDirectPurchaseOrder}
         />
       )}
 
@@ -2184,12 +2501,11 @@ export default function Panol() {
 // ==============================================================================
 // SUBCOMPONENTE: MODAL DE RETIRO MULTI-MATERIAL (CASCADA CANÓNICA)
 // ==============================================================================
-function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, onClose, onSave, onRequestPermission }) {
+function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, isAdmin, onClose, onSave }) {
   const [shipId, setShipId] = useState('')
   const [contractorGroup, setContractorGroup] = useState('')
   const [workOrderId, setWorkOrderId] = useState('')
   const [isOtEmpty, setIsOtEmpty] = useState(false)
-  const [workerId, setWorkerId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
 
@@ -2203,38 +2519,12 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
     }
   ])
 
-  // 1. Grupos de Trabajo / Contratistas Únicos (desde workers.work_group)
-  const availableGroups = useMemo(() => {
-    const set = new Set()
-    workers.forEach((w) => {
-      if (w.work_group) {
-        set.add(w.work_group.trim().toUpperCase())
-      }
-    })
-    set.add('ASTILLERO')
-    return Array.from(set).sort()
-  }, [workers])
-
-  // 2. OTs habilitadas para el Barco elegido
+  // OTs habilitadas para el Barco elegido
   const availableWos = useMemo(() => {
     if (!shipId) return workOrders
     return workOrders.filter((w) => w.ship_id === shipId)
   }, [workOrders, shipId])
 
-  // 3. Operarios del Grupo elegido con Permiso [P] HABILITADO
-  const eligibleWorkers = useMemo(() => {
-    if (!contractorGroup) return []
-    return workers.filter((w) => {
-      const g = (w.work_group || w.admin_center || '').trim().toUpperCase()
-      const matchGroup = g === contractorGroup || (contractorGroup === 'ASTILLERO' && w.admin_center === 'ASTILLERO')
-      // Regla: Solo operarios con permiso can_withdraw_materials = true
-      return matchGroup && w.can_withdraw_materials
-    })
-  }, [workers, contractorGroup])
-
-  const selectedWorker = useMemo(() => workers.find((w) => w.id === workerId), [workers, workerId])
-
-  // Añadir un renglón más
   const handleAddItem = () => {
     setItems((prev) => [
       ...prev,
@@ -2247,13 +2537,11 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
     ])
   }
 
-  // Eliminar un renglón
   const handleRemoveItem = (index) => {
     if (items.length <= 1) return
     setItems((prev) => prev.filter((_, idx) => idx !== index))
   }
 
-  // Actualizar un campo de un renglón
   const handleItemChange = (index, field, value) => {
     setItems((prev) => {
       const next = [...prev]
@@ -2267,7 +2555,6 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
     if (!shipId) return alert('Debes seleccionar un Barco.')
     if (!contractorGroup) return alert('Debes seleccionar un Contratista / Grupo.')
     if (!isOtEmpty && !workOrderId) return alert('Debes seleccionar una OT o marcar la casilla de OT vacía.')
-    if (!workerId) return alert('Debes seleccionar al operario que retira.')
 
     const validItems = items.filter((it) => it.material_id && Number(it.quantity) > 0)
     if (validItems.length === 0) {
@@ -2278,7 +2565,6 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
       shipId,
       workOrderId: isOtEmpty ? null : workOrderId,
       contractorGroup,
-      worker: selectedWorker,
       notes,
       date,
       items: validItems
@@ -2300,9 +2586,7 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
-          {/* ============================================================================== */}
-          {/* SECCIÓN 1: CASCADA CANÓNICA (Barco -> Contratista -> OT)                       */}
-          {/* ============================================================================== */}
+          {/* CASCADA CANÓNICA (Barco -> Contratista -> OT) */}
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
               <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
@@ -2336,17 +2620,14 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
                 </select>
               </div>
 
-              {/* Paso 2: Contratista / Grupo de Trabajo */}
+              {/* Paso 2: Contratista / Grupo */}
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">
                   2° Contratista / Grupo <span className="text-rose-400">*</span>
                 </label>
                 <select
                   value={contractorGroup}
-                  onChange={(e) => {
-                    setContractorGroup(e.target.value)
-                    setWorkerId('')
-                  }}
+                  onChange={(e) => setContractorGroup(e.target.value)}
                   required
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-cyan-400 font-black focus:outline-none focus:border-cyan-400"
                 >
@@ -2393,52 +2674,15 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
                   </option>
                   {availableWos.map((wo) => (
                     <option key={wo.id} value={wo.id}>
-                      OT #{wo.ot_number} - {wo.description}
+                      OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - {wo.description}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* Operario Solicitante y Fecha */}
+            {/* Fecha del Retiro */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-              <div className="md:col-span-2">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-300 font-semibold">
-                    Operario que Retira en Pañol <span className="text-rose-400">*</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={onRequestPermission}
-                    className="text-[11px] text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <UserCheck className="w-3 h-3" />
-                    <span>¿No aparece? Solicitar Habilitación a Jorge Sentis</span>
-                  </button>
-                </div>
-
-                <select
-                  value={workerId}
-                  onChange={(e) => setWorkerId(e.target.value)}
-                  required
-                  disabled={!contractorGroup}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="">
-                    {!contractorGroup
-                      ? 'Selecciona primero el Contratista/Grupo...'
-                      : eligibleWorkers.length === 0
-                      ? `(No hay operarios con permiso [P] en ${contractorGroup})`
-                      : `Seleccionar operario habilitado (${eligibleWorkers.length})...`}
-                  </option>
-                  {eligibleWorkers.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} ({w.trade || 'Oficio'}) ✓ Habilitado [P]
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Fecha del Retiro</label>
                 <input
@@ -2448,12 +2692,20 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
                 />
               </div>
+              <div className="md:col-span-2">
+                <label className="block text-slate-300 font-semibold mb-1">Observaciones Generales</label>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Ej: Retiro para reparación de mamparo en bodega de popa..."
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
+                />
+              </div>
             </div>
           </div>
 
-          {/* ============================================================================== */}
-          {/* SECCIÓN 2: RENGLONES DINÁMICOS DE MATERIALES (CARGA MÚLTIPLE)                  */}
-          {/* ============================================================================== */}
+          {/* RENGLONES DINÁMICOS DE MATERIALES */}
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
               <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
@@ -2473,127 +2725,101 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
             <div className="space-y-3">
               {items.map((item, idx) => {
                 const mat = materials.find((m) => m.id === item.material_id)
-                // Deducción de Centro de Costo
                 let autoCostCenter = 'CLIENTE'
                 if (mat?.category === 'CONSUMIBLES' || mat?.category === 'ELEM.SEGURIDAD') {
-                  if (selectedWorker?.consumables === 'CONTRATISTA') autoCostCenter = 'CONTRATISTA'
+                  autoCostCenter = 'CLIENTE'
                 }
-                const activeCostCenter = item.customCostCenter || autoCostCenter
-                const itemWeight = (Number(mat?.weight_kg) || 0) * (Number(item.quantity) || 1)
+                const weightRow = ((Number(mat?.weight_kg) || 0) * (Number(item.quantity) || 1)).toFixed(2)
 
                 return (
                   <div
                     key={idx}
-                    className="p-3 rounded-lg border border-slate-800/90 bg-slate-900/60 grid grid-cols-1 md:grid-cols-12 gap-3 items-center"
+                    className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-center gap-3"
                   >
-                    <div className="md:col-span-1 text-center font-mono font-bold text-slate-500">
-                      #{idx + 1}
-                    </div>
+                    <span className="text-slate-500 font-mono text-xs w-5 shrink-0 text-center">#{idx + 1}</span>
 
-                    {/* Buscador Inteligente de Material */}
-                    <div className="md:col-span-5">
+                    {/* Buscador inteligente de material */}
+                    <div className="flex-1 w-full min-w-[240px]">
                       <MaterialSearchInput
                         materials={materials}
                         value={item.material_id}
-                        onChange={(matId) => handleItemChange(idx, 'material_id', matId)}
+                        onChange={(mId) => handleItemChange(idx, 'material_id', mId)}
                       />
                     </div>
 
-                    {/* Cantidad y Unidad */}
-                    <div className="md:col-span-2">
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0.01"
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                          placeholder="Cant."
-                          className="w-full px-2 py-1.5 rounded bg-slate-950 border border-slate-700 text-white font-mono font-bold text-right text-xs focus:outline-none focus:border-cyan-400"
-                        />
-                        <span className="text-[11px] text-slate-400 font-mono shrink-0">
-                          {mat?.unit_measure || 'un.'}
-                        </span>
-                      </div>
-                      {itemWeight > 0 && (
-                        <span className="block text-[10px] text-slate-500 font-mono text-right mt-0.5">
-                          {itemWeight.toFixed(2)} kg
-                        </span>
-                      )}
+                    {/* Cantidad */}
+                    <div className="w-24 shrink-0">
+                      <input
+                        type="number"
+                        min="0.1"
+                        step="any"
+                        placeholder="Cant."
+                        value={item.quantity}
+                        onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                        required
+                        className="w-full px-2.5 py-1.5 rounded bg-slate-950 border border-slate-700 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-400"
+                      />
+                      <span className="text-[10px] text-slate-500 block text-center truncate">
+                        {mat?.unit_measure || 'un.'}
+                      </span>
                     </div>
 
-                    {/* Centro de Costo (Auto-Deducido, Solo editable por Admin) */}
-                    <div className="md:col-span-3">
-                      {isAdmin ? (
-                        <select
-                          value={activeCostCenter}
-                          onChange={(e) => handleItemChange(idx, 'customCostCenter', e.target.value)}
-                          className="w-full px-2 py-1.5 rounded bg-slate-950 border border-slate-700 text-white font-bold text-[10px]"
-                        >
-                          <option value="CLIENTE">CLIENTE / OBRA</option>
-                          <option value="CONTRATISTA">CONTRATISTA</option>
-                        </select>
-                      ) : (
-                        <div
-                          className={`px-2 py-1 rounded text-center font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 ${
-                            activeCostCenter === 'CONTRATISTA'
-                              ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                              : 'bg-cyan-950 text-cyan-300 border border-cyan-800'
-                          }`}
-                        >
-                          <Lock className="w-2.5 h-2.5 text-slate-500" />
-                          <span>{activeCostCenter}</span>
-                        </div>
-                      )}
+                    {/* Peso Total Calculado */}
+                    <div className="w-24 shrink-0 text-center font-mono text-slate-400 text-xs">
+                      <span className="block font-bold text-slate-200">{weightRow} kg</span>
+                      <span className="text-[9px] text-slate-500">({mat?.weight_kg || 0} c/u)</span>
                     </div>
 
-                    {/* Eliminar Renglón */}
-                    <div className="md:col-span-1 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(idx)}
-                        disabled={items.length <= 1}
-                        className={`p-1 rounded text-slate-500 hover:text-rose-400 transition-all ${
-                          items.length <= 1 ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-800'
+                    {/* Centro de Costo Deducido */}
+                    <div className="w-28 shrink-0">
+                      <select
+                        value={item.customCostCenter || autoCostCenter}
+                        disabled={!isAdmin}
+                        onChange={(e) => handleItemChange(idx, 'customCostCenter', e.target.value)}
+                        className={`w-full px-2 py-1.5 rounded text-[11px] font-bold border ${
+                          !isAdmin
+                            ? 'bg-slate-950 border-slate-800 text-cyan-400 opacity-90 cursor-not-allowed'
+                            : 'bg-slate-950 border-cyan-500 text-cyan-300'
                         }`}
-                        title="Eliminar este renglón"
+                        title={!isAdmin ? 'Deducido automáticamente (Solo Admin puede modificar)' : 'Centro de Costo'}
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <option value="CLIENTE">CLIENTE</option>
+                        <option value="CONTRATISTA">CONTRATISTA</option>
+                      </select>
                     </div>
+
+                    {/* Botón Eliminar Renglón */}
+                    <button
+                      type="button"
+                      disabled={items.length <= 1}
+                      onClick={() => handleRemoveItem(idx)}
+                      className={`p-1.5 rounded hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition-colors shrink-0 ${
+                        items.length <= 1 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 )
               })}
             </div>
           </div>
 
-          {/* Observaciones Generales */}
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Observaciones Generales de la Visita</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ej. Entrega completa para etapa de popa / retiro por urgencia de agua..."
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-            />
-          </div>
-
-          {/* Botones de Acción */}
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2">
+          {/* Pie del Formulario */}
+          <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black flex items-center gap-2 shadow-lg shadow-emerald-500/20 cursor-pointer text-xs"
+              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-600/30 cursor-pointer flex items-center gap-1.5"
             >
               <Check className="w-4 h-4 stroke-[3]" />
-              <span>Confirmar Retiro ({items.length} Insumos)</span>
+              <span>Confirmar Retiro ({items.length} materiales)</span>
             </button>
           </div>
         </form>
@@ -2603,7 +2829,7 @@ function MultiWithdrawalModal({ materials, ships, workOrders, workers, isAdmin, 
 }
 
 // ==============================================================================
-// SUBCOMPONENTE: BUSCADOR INTELIGENTE DE MATERIAL CON AUTOCOMPLETADO
+// SUBCOMPONENTE: BUSCADOR INTELIGENTE DE MATERIALES (COMBOBOX PREDICTIVO)
 // ==============================================================================
 function MaterialSearchInput({ materials, value, onChange }) {
   const [query, setQuery] = useState('')
@@ -2612,7 +2838,6 @@ function MaterialSearchInput({ materials, value, onChange }) {
 
   const selectedMat = useMemo(() => materials.find((m) => m.id === value), [materials, value])
 
-  // Filtrado reactivo mientras se escribe
   const matches = useMemo(() => {
     if (!query.trim()) return materials.slice(0, 30)
     const q = query.toLowerCase().trim()
@@ -2705,107 +2930,85 @@ function MaterialSearchInput({ materials, value, onChange }) {
 }
 
 // ==============================================================================
-// SUBCOMPONENTE: MODAL PARA SOLICITAR HABILITACIÓN DE OPERARIO (ALERTA A JORGE SENTIS)
+// SUBCOMPONENTE: MODAL DE PEDIDO DE COMPRA RÁPIDO (ACCIÓN 2)
 // ==============================================================================
-function WorkerPermissionRequestModal({ workers, ships, onClose, onSubmit }) {
-  const [workerId, setWorkerId] = useState('')
-  const [shipId, setShipId] = useState('')
-  const [reason, setReason] = useState('')
-
-  const selectedWorker = useMemo(() => workers.find((w) => w.id === workerId), [workers, workerId])
+function QuickPurchaseModal({ material, initialQuantity, onClose, onConfirm }) {
+  const [quantity, setQuantity] = useState(initialQuantity || '')
+  const today = new Date().toISOString().split('T')[0]
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (!workerId) return alert('Debes seleccionar un operario.')
-    onSubmit({
-      workerId,
-      workerName: selectedWorker?.name || '',
-      workGroup: selectedWorker?.work_group || 'ASTILLERO',
-      shipId: shipId || null,
-      reason
-    })
+    onConfirm({ material, quantity })
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden font-sans">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
-          <div className="flex items-center gap-2 text-white font-black text-sm">
-            <UserCheck className="w-4 h-4 text-cyan-400" />
-            <span>SOLICITAR HABILITACIÓN A JORGE SENTIS</span>
+      <div className="bg-slate-900 border border-cyan-500/50 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden font-sans flex flex-col">
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+          <div className="flex items-center gap-2 text-cyan-300 font-black text-sm">
+            <ShoppingCart className="w-5 h-5 text-cyan-400" />
+            <span>PEDIDO DIRECTO A COMPRAS</span>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white">
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
-          <p className="text-slate-400 leading-relaxed">
-            Este formulario emite una alerta directa a la cuenta de <strong>Jorge Sentis (Administrador)</strong> para
-            autorizar el permiso de retiro de materiales a un trabajador que actualmente figura inhabilitado en el
-            padrón.
-          </p>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
+          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Material Solicitado</div>
+            <div className="font-black text-white text-sm">{material?.name || 'Insumo'}</div>
+            <div className="flex items-center justify-between text-slate-400 text-[11px] pt-1 border-t border-slate-800/80">
+              <span>Rubro: <strong className="text-slate-200">{material?.rubro || 'General'}</strong></span>
+              <span>Stock actual: <strong className="text-emerald-400">{material?.current_stock || 0} {material?.unit_measure || 'un.'}</strong></span>
+            </div>
+          </div>
 
           <div>
             <label className="block text-slate-300 font-semibold mb-1">
-              Operario a Habilitar <span className="text-rose-400">*</span>
+              Cantidad a Pedir <span className="text-slate-500 text-[10px]">(puede quedar en blanco)</span>
             </label>
-            <select
-              value={workerId}
-              onChange={(e) => setWorkerId(e.target.value)}
-              required
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
-            >
-              <option value="">Seleccionar operario no habilitado...</option>
-              {workers.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name} ({w.work_group || w.trade || 'General'})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Barco / Obra de Destino</label>
-            <select
-              value={shipId}
-              onChange={(e) => setShipId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-            >
-              <option value="">Astillero / General</option>
-              {ships.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Motivo / Justificación</label>
-            <textarea
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Detalla por qué este operario debe retirar materiales hoy..."
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
+            <input
+              type="number"
+              min="0.1"
+              step="any"
+              autoFocus
+              placeholder="Ej: 10 (por defecto 1)"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-base font-bold focus:outline-none focus:border-cyan-400"
             />
           </div>
 
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2">
+          <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-[11px] space-y-1 text-slate-300">
+            <div className="font-bold text-cyan-300 flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Datos automáticos precargados en Compras:</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-[10px] pt-1 text-slate-400 font-mono">
+              <div>• Destino: <strong className="text-slate-200">PAÑOL</strong></div>
+              <div>• Buque: <strong className="text-slate-200">ASTILLERO / STOCK</strong></div>
+              <div>• Solicitante: <strong className="text-slate-200">PAÑOL</strong></div>
+              <div>• Estado: <strong className="text-cyan-300 font-bold">PEDIR</strong></div>
+              <div>• Fecha: <strong className="text-slate-200">{today}</strong></div>
+              <div>• Urgencia: <strong className="text-slate-200">SIN_APURO</strong></div>
+            </div>
+          </div>
+
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black flex items-center gap-1.5 shadow-md shadow-cyan-600/20 cursor-pointer"
+              className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-cyan-600/30 flex items-center gap-1.5"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>Emitir Alerta a Jorge Sentis</span>
+              <ShoppingCart className="w-4 h-4 stroke-[3]" />
+              <span>Pedir a Compras</span>
             </button>
           </div>
         </form>
@@ -2815,128 +3018,86 @@ function WorkerPermissionRequestModal({ workers, ships, onClose, onSubmit }) {
 }
 
 // ==============================================================================
-// SUBCOMPONENTE: MODAL DE ALTA FORMAL DE MATERIAL EN CATÁLOGO
+// SUBCOMPONENTE: MODAL ALTA FORMAL DE MATERIAL
 // ==============================================================================
 function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
   const [name, setName] = useState('')
-  const [category, setCategory] = useState('CONSUMIBLES')
   const [rubro, setRubro] = useState('')
+  const [category, setCategory] = useState('CONSUMIBLES')
   const [unitMeasure, setUnitMeasure] = useState('Unidad')
   const [weightKg, setWeightKg] = useState(0)
   const [requiresStockControl, setRequiresStockControl] = useState(true)
-  const [securityFactor, setSecurityFactor] = useState(1.06)
-  const [costArs, setCostArs] = useState(0)
   const [currentStock, setCurrentStock] = useState(0)
-  const [minimumStock, setMinimumStock] = useState(5)
-  const [imageUrl, setImageUrl] = useState('')
-  const [uploadingImage, setUploadingImage] = useState(false)
-
-  const handleNameChange = (val) => {
-    setName(val)
-    const upper = val.toUpperCase()
-    if (upper.includes('X METRO') || upper.includes('MT') || upper.includes('METRO')) {
-      setUnitMeasure('metro lineal')
-    } else if (upper.includes('X KG') || upper.includes('KG') || upper.includes('KILO')) {
-      setUnitMeasure('kg')
-    } else if (upper.includes('M2') || upper.includes('X M2')) {
-      setUnitMeasure('m2')
-    } else if (upper.includes('TUBO') || upper.includes('GAS')) {
-      setUnitMeasure('Tubo')
-    } else if (upper.includes('LITRO') || upper.includes('LT')) {
-      setUnitMeasure('litro')
-    }
-  }
-
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setUploadingImage(true)
-    try {
-      const ext = file.name.split('.').pop()
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
-      const filePath = `catalogo_materiales/${fileName}`
-
-      const { error: upErr } = await supabase.storage.from('compras').upload(filePath, file)
-      if (upErr) throw upErr
-
-      const { data: pubData } = supabase.storage.from('compras').getPublicUrl(filePath)
-      setImageUrl(pubData.publicUrl)
-    } catch (err) {
-      console.error(err)
-      alert('Error subiendo imagen: ' + err.message)
-    } finally {
-      setUploadingImage(false)
-    }
-  }
+  const [minimumStock, setMinimumStock] = useState(0)
+  const [securityFactor, setSecurityFactor] = useState(1.06)
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (!name.trim()) return alert('El nombre es obligatorio.')
+    if (!name.trim()) return alert('El nombre del material es obligatorio.')
+
     onSave({
       name: name.trim().toUpperCase(),
+      rubro: rubro || 'GENERAL',
       category,
-      rubro: rubro || 'VARIOS Y GENERAL',
       unit_measure: unitMeasure,
       weight_kg: Number(weightKg) || 0,
       requires_stock_control: requiresStockControl,
-      security_factor: Number(securityFactor) || 1.06,
-      cost_ars: Number(costArs) || 0,
       current_stock: Number(currentStock) || 0,
       minimum_stock: Number(minimumStock) || 0,
-      image_url: imageUrl || null
+      security_factor: Number(securityFactor) || 1.06
     })
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden font-sans">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
           <div className="flex items-center gap-2 text-white font-black text-sm">
-            <Plus className="w-4 h-4 text-emerald-400 stroke-[3]" />
-            <span>ALTA FORMAL DE MATERIAL EN CATÁLOGO (B.D)</span>
+            <Package className="w-5 h-5 text-emerald-400" />
+            <span>ALTA DE MATERIAL EN CATÁLOGO B.D</span>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white">
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              Nombre Técnico del Material <span className="text-rose-400">*</span>
-            </label>
+            <label className="block text-slate-300 font-semibold mb-1">Nombre Técnico Oficial *</label>
             <input
               type="text"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
               required
-              placeholder="Ej. ELECTRODO CONARCO 13A 3.25MM X KG"
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej: CHAPA NAVAL GRADO A 1/2' x 1500 x 6000..."
+              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold uppercase focus:outline-none focus:border-cyan-400"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Categoría Oficial</label>
+              <label className="block text-slate-300 font-semibold mb-1">Categoría General *</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-semibold focus:outline-none focus:border-cyan-400"
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
               >
-                <option value="MATERIALES">MATERIALES (Chapas, Tubos, Ejes)</option>
-                <option value="CONSUMIBLES">CONSUMIBLES (Soldadura, Discos, Gases)</option>
-                <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD (EPP)</option>
+                <option value="MATERIALES">MATERIALES</option>
+                <option value="CONSUMIBLES">CONSUMIBLES</option>
+                <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
               </select>
             </div>
+
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Rubro Técnico</label>
+              <label className="block text-slate-300 font-semibold mb-1">Rubro Técnico *</label>
               <select
                 value={rubro}
                 onChange={(e) => setRubro(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-semibold focus:outline-none focus:border-cyan-400"
+                required
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
               >
-                <option value="">Seleccionar rubro...</option>
+                <option value="">Seleccionar Rubro...</option>
                 {rubros.map((r) => (
                   <option key={r.id} value={r.name}>
                     {r.name}
@@ -2952,126 +3113,101 @@ function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
               <select
                 value={unitMeasure}
                 onChange={(e) => setUnitMeasure(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-semibold focus:outline-none focus:border-cyan-400"
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
               >
                 <option value="Unidad">Unidad</option>
-                <option value="kg">kg</option>
-                <option value="metro lineal">metro lineal</option>
-                <option value="m2">m2</option>
-                <option value="litro">litro</option>
-                <option value="Tubo">Tubo</option>
-                <option value="par">par</option>
-                <option value="caja">caja</option>
+                <option value="kg">Kilogramo (kg)</option>
+                <option value="metro">Metro lineal</option>
+                <option value="m2">Metro cuadrado (m2)</option>
+                <option value="Litro">Litro</option>
+                <option value="Bolsón">Bolsón</option>
+                <option value="Tubo">Tubo / Cilindro</option>
               </select>
             </div>
+
             <div>
               <label className="block text-slate-300 font-semibold mb-1">Peso Unitario (kg)</label>
               <input
                 type="number"
-                step="any"
                 min="0"
+                step="any"
                 value={weightKg}
                 onChange={(e) => setWeightKg(e.target.value)}
-                placeholder="0.00"
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-cyan-400"
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
               />
             </div>
+
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Stock Mínimo</label>
+              <label className="block text-slate-300 font-semibold mb-1">Stock Inicial</label>
               <input
                 type="number"
                 min="0"
-                value={minimumStock}
-                onChange={(e) => setMinimumStock(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-cyan-400"
+                step="any"
+                value={currentStock}
+                onChange={(e) => setCurrentStock(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 items-center">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Stock Inicial Físico</label>
+              <label className="block text-slate-300 font-semibold mb-1">Stock Mínimo de Alerta</label>
               <input
                 type="number"
                 min="0"
-                value={currentStock}
-                onChange={(e) => setCurrentStock(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Costo Estimado ARS</label>
-              <input
-                type="number"
-                min="0"
-                value={costArs}
-                onChange={(e) => setCostArs(Number(e.target.value))}
+                step="any"
+                value={minimumStock}
+                onChange={(e) => setMinimumStock(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
               />
             </div>
+
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">% Seguridad (Merma)</label>
+              <label className="block text-slate-300 font-semibold mb-1">% Seguridad Naval</label>
               <select
                 disabled={!isAdmin}
                 value={securityFactor}
-                onChange={(e) => setSecurityFactor(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-cyan-400 disabled:opacity-50"
+                onChange={(e) => setSecurityFactor(e.target.value)}
+                className={`w-full px-3 py-2 rounded-lg border ${
+                  !isAdmin ? 'bg-slate-950 border-slate-800 text-slate-500' : 'bg-slate-950 border-slate-700 text-white'
+                }`}
               >
-                <option value={1.02}>2% (1.02)</option>
-                <option value={1.06}>6% (1.06 Estándar)</option>
-                <option value={1.10}>10% (1.10)</option>
-                <option value={1.15}>15% (1.15)</option>
-                <option value={1.20}>20% (1.20)</option>
+                <option value="1.02">2% (1.02)</option>
+                <option value="1.06">6% (1.06 Estándar)</option>
+                <option value="1.10">10% (1.10)</option>
+                <option value="1.15">15% (1.15)</option>
+                <option value="1.20">20% (1.20)</option>
               </select>
             </div>
           </div>
 
-          {/* Casilla de Control de Stock */}
           <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
             <div>
               <span className="font-bold text-white block">Lleva Control de Stock Físico</span>
-              <span className="text-slate-500 text-[11px]">Habilita recuento, semáforo de quiebre y auditorías en pañol</span>
+              <span className="text-slate-500 text-[10px]">Desmarcar si es compra eventual que no se inventaría</span>
             </div>
             <input
               type="checkbox"
               checked={requiresStockControl}
               onChange={(e) => setRequiresStockControl(e.target.checked)}
-              className="rounded border-slate-700 bg-slate-900 text-cyan-400 focus:ring-0 cursor-pointer w-4 h-4"
+              className="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-700 cursor-pointer"
             />
           </div>
 
-          {/* Foto Técnica para Verificación Visual (DEC-010) */}
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Fotografía Técnica (Verificación Visual DEC-010)</label>
-            <div className="flex items-center gap-3">
-              <label className="px-3 py-2 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 hover:text-white flex items-center gap-2 cursor-pointer transition-all">
-                <Camera className="w-4 h-4 text-cyan-400" />
-                <span>{uploadingImage ? 'Subiendo imagen...' : 'Seleccionar Foto'}</span>
-                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploadingImage} />
-              </label>
-              {imageUrl && (
-                <div className="flex items-center gap-2">
-                  <img src={imageUrl} alt="" className="w-8 h-8 rounded object-cover border border-slate-700" />
-                  <span className="text-emerald-400 font-semibold text-[11px]">✓ Foto cargada</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2">
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-emerald-600/30"
             >
-              <Check className="w-4 h-4 stroke-[3]" />
-              <span>Guardar en Catálogo</span>
+              Guardar Material
             </button>
           </div>
         </form>
@@ -3081,87 +3217,56 @@ function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
 }
 
 // ==============================================================================
-// SUBCOMPONENTE: MODAL DE AJUSTE FÍSICO DE STOCK EN 1-CLIC
+// SUBCOMPONENTE: AJUSTE DE STOCK FÍSICO
 // ==============================================================================
 function StockAdjustModal({ material, onClose, onSave }) {
-  const [countedQty, setCountedQty] = useState(material?.current_stock || 0)
-
-  if (!material) return null
-  const currentStock = Number(material.current_stock) || 0
-  const diff = countedQty - currentStock
+  const [newStock, setNewStock] = useState(material?.current_stock || 0)
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    onSave(material.id, 'current_stock', countedQty)
+    onSave(material.id, 'current_stock', newStock)
     onClose()
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden font-sans">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
-          <div className="flex items-center gap-2 text-white font-black text-sm">
-            <Scale className="w-4 h-4 text-purple-400" />
-            <span>AJUSTE FÍSICO DE INVENTARIO</span>
-          </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4 text-xs font-sans">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <span className="font-bold text-white uppercase">Ajuste de Stock Físico</span>
+          <button onClick={onClose} className="text-slate-500 hover:text-white">✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
-          <div>
-            <span className="text-slate-400 block text-[11px]">Material a Ajustar:</span>
-            <span className="font-bold text-white text-sm">{material.name}</span>
-          </div>
+        <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+          <span className="font-bold text-white block truncate">{material?.name}</span>
+          <span className="text-[10px] text-slate-500">Stock Actual en Sistema: {material?.current_stock} {material?.unit_measure}</span>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <div>
-              <span className="text-slate-500 block text-[11px]">Stock en Sistema:</span>
-              <span className="text-lg font-black font-mono text-slate-300">
-                {currentStock} {material.unit_measure || 'un.'}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500 block text-[11px]">Diferencia Detectada:</span>
-              <span
-                className={`text-lg font-black font-mono ${
-                  diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-rose-400' : 'text-slate-400'
-                }`}
-              >
-                {diff > 0 ? `+${diff}` : diff} {material.unit_measure || 'un.'}
-              </span>
-            </div>
-          </div>
-
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              Cantidad Física Contada en Depósito <span className="text-rose-400">*</span>
-            </label>
+            <label className="block text-slate-300 font-semibold mb-1">Nuevo Recuento Físico</label>
             <input
               type="number"
               step="any"
-              value={countedQty}
-              onChange={(e) => setCountedQty(Number(e.target.value))}
-              required
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-black text-base focus:outline-none focus:border-purple-400"
+              autoFocus
+              value={newStock}
+              onChange={(e) => setNewStock(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-base font-bold focus:outline-none focus:border-cyan-400"
             />
           </div>
 
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700 cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-purple-500 hover:bg-purple-400 text-slate-950 font-black flex items-center gap-1.5 shadow-md shadow-purple-500/20 cursor-pointer"
+              className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black cursor-pointer shadow"
             >
-              <Check className="w-4 h-4 stroke-[3]" />
-              <span>Guardar Ajuste Físico</span>
+              Confirmar Ajuste
             </button>
           </div>
         </form>
@@ -3171,107 +3276,70 @@ function StockAdjustModal({ material, onClose, onSave }) {
 }
 
 // ==============================================================================
-// SUBCOMPONENTE: MODAL DE MOVIMIENTOS DE CILINDROS DE GASES (P-01 Y P-02)
+// SUBCOMPONENTE: MOVIMIENTO DE GASES Y CILINDROS
 // ==============================================================================
 function GasMovementModal({ operationType, materials, suppliers, ships, workOrders, workers, onClose, onSave }) {
-  const [opType, setOpType] = useState(operationType)
+  const [opType, setOpType] = useState(operationType || 'PRIMERA_ENTREGA')
   const [materialId, setMaterialId] = useState('')
-  const [contractorName, setContractorName] = useState('')
   const [shipId, setShipId] = useState('')
-  const [workOrderId, setWorkOrderId] = useState('')
+  const [contractorName, setContractorName] = useState('')
   const [supplierDeliveredId, setSupplierDeliveredId] = useState('')
   const [supplierReturnedId, setSupplierReturnedId] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [notes, setNotes] = useState('')
 
-  const availableWos = useMemo(() => {
-    if (!shipId) return workOrders
-    return workOrders.filter((w) => w.ship_id === shipId)
-  }, [workOrders, shipId])
-
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (!materialId) return alert('Debes seleccionar el tipo de gas.')
-    if (!contractorName.trim()) return alert('Debes indicar el contratista o taller.')
+    if (!materialId) return alert('Debes seleccionar un tipo de gas.')
+    if (!contractorName) return alert('Debes seleccionar un contratista.')
 
     onSave({
       operation_type: opType,
       material_id: materialId,
-      contractor_name: contractorName.trim().toUpperCase(),
       ship_id: shipId || null,
-      work_order_id: workOrderId || null,
-      supplier_delivered_id: opType !== 'DEVOLUCION_FINAL' ? supplierDeliveredId || null : null,
-      supplier_returned_id: opType !== 'PRIMERA_ENTREGA' ? supplierReturnedId || null : null,
-      quantity,
+      contractor_name: contractorName,
+      supplier_delivered_id: supplierDeliveredId || null,
+      supplier_returned_id: supplierReturnedId || null,
+      quantity: Number(quantity) || 1,
       notes
     })
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden font-sans">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
-          <div className="flex items-center gap-2 text-white font-black text-sm">
-            <Flame className="w-4 h-4 text-purple-400" />
-            <span>MOVIMIENTO DE CILINDROS / GASES INDUSTRIALES</span>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl p-5 space-y-4 text-xs font-sans">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="flex items-center gap-2 text-white font-black">
+            <Flame className="w-5 h-5 text-amber-400" />
+            <span>MOVIMIENTO DE TUBOS DE GAS</span>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
+          <button onClick={onClose} className="text-slate-500 hover:text-white">✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Operación de Envase</label>
-            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-lg bg-slate-950 border border-slate-800">
-              <button
-                type="button"
-                onClick={() => setOpType('PRIMERA_ENTREGA')}
-                className={`py-1.5 rounded-md font-bold text-center cursor-pointer transition-all ${
-                  opType === 'PRIMERA_ENTREGA'
-                    ? 'bg-emerald-500 text-slate-950 shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                1. Entrega Inicial
-              </button>
-              <button
-                type="button"
-                onClick={() => setOpType('RECAMBIO_1X1')}
-                className={`py-1.5 rounded-md font-bold text-center cursor-pointer transition-all ${
-                  opType === 'RECAMBIO_1X1'
-                    ? 'bg-cyan-500 text-slate-950 shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                2. Recambio 1x1
-              </button>
-              <button
-                type="button"
-                onClick={() => setOpType('DEVOLUCION_FINAL')}
-                className={`py-1.5 rounded-md font-bold text-center cursor-pointer transition-all ${
-                  opType === 'DEVOLUCION_FINAL'
-                    ? 'bg-amber-500 text-slate-950 shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                3. Devolución
-              </button>
-            </div>
+            <label className="block text-slate-300 font-semibold mb-1">Tipo de Operación Canónica</label>
+            <select
+              value={opType}
+              onChange={(e) => setOpType(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-amber-400 font-bold focus:outline-none focus:border-cyan-400"
+            >
+              <option value="PRIMERA_ENTREGA">1. Primera Entrega (+1 deuda contratista, -1 lleno pañol)</option>
+              <option value="RECAMBIO_1X1">2. Recambio 1x1 con Cruce (+1 vacío marca A, -1 lleno marca B)</option>
+              <option value="DEVOLUCION_FINAL">3. Devolución Final (-1 deuda contratista, +1 vacío pañol)</option>
+            </select>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
-              <label className="block text-slate-300 font-semibold mb-1">
-                Tipo de Gas <span className="text-rose-400">*</span>
-              </label>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Gas / Tubo</label>
               <select
                 value={materialId}
                 onChange={(e) => setMaterialId(e.target.value)}
                 required
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-semibold focus:outline-none focus:border-purple-400"
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
               >
-                <option value="">Seleccionar gas...</option>
+                <option value="">Seleccionar Gas...</option>
                 {materials.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
@@ -3279,28 +3347,29 @@ function GasMovementModal({ operationType, materials, suppliers, ships, workOrde
                 ))}
               </select>
             </div>
+
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Cant. Tubos</label>
+              <label className="block text-slate-300 font-semibold mb-1">Contratista</label>
               <input
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
+                type="text"
                 required
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-purple-400"
+                placeholder="Ej: TANO, BOLTRI..."
+                value={contractorName}
+                onChange={(e) => setContractorName(e.target.value.toUpperCase())}
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white uppercase focus:outline-none focus:border-cyan-400"
               />
             </div>
           </div>
 
-          {opType === 'PRIMERA_ENTREGA' && (
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Marca / Proveedor del Tubo Lleno</label>
+              <label className="block text-slate-300 font-semibold mb-1">Proveedor Marca Entregada</label>
               <select
                 value={supplierDeliveredId}
                 onChange={(e) => setSupplierDeliveredId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-semibold focus:outline-none focus:border-purple-400"
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
               >
-                <option value="">Seleccionar proveedor...</option>
+                <option value="">Seleccionar Marca...</option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -3308,52 +3377,15 @@ function GasMovementModal({ operationType, materials, suppliers, ships, workOrde
                 ))}
               </select>
             </div>
-          )}
 
-          {opType === 'RECAMBIO_1X1' && (
-            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800">
-              <div>
-                <label className="block text-purple-400 font-semibold mb-1">Vacío Devuelto (Patio)</label>
-                <select
-                  value={supplierReturnedId}
-                  onChange={(e) => setSupplierReturnedId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
-                >
-                  <option value="">Marca del vacío...</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-emerald-400 font-semibold mb-1">Lleno Entregado (Obra)</label>
-                <select
-                  value={supplierDeliveredId}
-                  onChange={(e) => setSupplierDeliveredId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
-                >
-                  <option value="">Marca del lleno...</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {opType === 'DEVOLUCION_FINAL' && (
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Marca / Proveedor del Vacío Reingresado</label>
+              <label className="block text-slate-300 font-semibold mb-1">Proveedor Marca Devuelta</label>
               <select
                 value={supplierReturnedId}
                 onChange={(e) => setSupplierReturnedId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-semibold focus:outline-none focus:border-purple-400"
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
               >
-                <option value="">Seleccionar proveedor...</option>
+                <option value="">Seleccionar Marca...</option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -3361,33 +3393,17 @@ function GasMovementModal({ operationType, materials, suppliers, ships, workOrde
                 ))}
               </select>
             </div>
-          )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">
-                Contratista / Taller <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={contractorName}
-                onChange={(e) => setContractorName(e.target.value)}
-                required
-                placeholder="Ej. TECO TALLER, TANO"
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-semibold focus:outline-none focus:border-purple-400"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Barco / Destino</label>
+              <label className="block text-slate-300 font-semibold mb-1">Buque / Destino</label>
               <select
                 value={shipId}
-                onChange={(e) => {
-                  setShipId(e.target.value)
-                  setWorkOrderId('')
-                }}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-purple-400"
+                onChange={(e) => setShipId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
               >
-                <option value="">Astillero / Sin Asignar</option>
+                <option value="">(Sin Barco / Astillero)</option>
                 {ships.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -3395,33 +3411,43 @@ function GasMovementModal({ operationType, materials, suppliers, ships, workOrde
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Cantidad de Tubos</label>
+              <input
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
+              />
+            </div>
           </div>
 
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Observaciones</label>
+            <label className="block text-slate-300 font-semibold mb-1">Observaciones / Trazabilidad</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ubicación a bordo, responsable, etc."
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-purple-400"
+              placeholder="Ej: Tubo de acetileno entregado para corte en grada..."
+              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
             />
           </div>
 
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-purple-500 hover:bg-purple-400 text-slate-950 font-black flex items-center gap-1.5 shadow-md shadow-purple-500/20 cursor-pointer"
+              className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-black cursor-pointer shadow-lg shadow-amber-600/30"
             >
-              <Check className="w-4 h-4 stroke-[3]" />
-              <span>Guardar Movimiento</span>
+              Guardar Movimiento
             </button>
           </div>
         </form>

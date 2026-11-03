@@ -81,10 +81,18 @@ Instrucciones para agentes de IA (Claude Code, Antigravity) trabajando en App_Al
 - `.agents/skills/caveman/` — compresión de output, leer antes de iniciar sesión larga
 - `.agents/skills/rtk/` — compresión de comandos Bash, leer si hay outputs largos de terminal
 
-## Estándares Mandatorios de Módulos (UI/UX)
+## Estándares Mandatorios de Módulos (UI/UX) — PROTOCOLO OBLIGATORIO
 
-- Consultar obligatoriamente `docs/02_producto/ESTANDARES_MODULOS_UI_UX.md` antes de crear o modificar cualquier módulo o pantalla del ERP.
-- Respetar siempre: arquitectura visual de 4 zonas cromáticas (`.alon-zone-*`), radar de KPIs compacto sin repetir colores y con título destacado, regla universal de calendario en toda carga o edición de fecha, barra de cálculos en vivo (Suma, Promedio, Recuento) al seleccionar celdas numéricas, ícono GPS en celda activa y atajos de hoja de cálculo (`Esc` para limpiar búsqueda/filtros al instante, navegación con flechas, `Ctrl+D`, `Ctrl+Z`, `Ctrl+Y`, tirador fill-handle).
+- **Referencia Maestra Indiscutible:** La pantalla y código de `app/src/pages/Compras.jsx` y la guía `docs/02_producto/ESTANDARES_MODULOS_UI_UX.md` son el modelo obligatorio para cualquier módulo del ERP AlonCar.
+- **Prohibición de Tablas HTML Huérfanas:** Queda estrictamente prohibido crear pantallas con `<table>` estándar o estilos aislados. Toda planilla debe instanciar e implementar obligatoriamente el hook `useSpreadsheetGrid` (`app/src/hooks/useSpreadsheetGrid.js`).
+- **Arquitectura de 5 Zonas Cromáticas Centralizada (`index.css`):**
+  1. `Zona 1 (.alon-zone-context)`: Borde cielo (`sky-400`), título con badge de versión, pestañas superiores compactas a la derecha y botón de acción principal.
+  2. `Zona 2 (.alon-zone-kpis)`: Borde ámbar (`amber-400`), encabezado destacado `📊 RADAR DE KPIS Y ALERTAS OPERATIVAS • Clic en cualquier tarjeta para filtrar` y **tarjetas de KPI con colores únicos sin repetir**. Prohibido usar la palabra "Filtrar".
+  3. `Zona 3 (.alon-zone-toolbar)`: Borde cian (`cyan-400`), buscador con `Ctrl+F` y limpieza instantánea con `Esc`, selects en cascada y botón `[↩ Deshacer (Ctrl+Z)]`.
+  4. `Zona 4 (.alon-zone-grid)`: Borde superior esmeralda (`emerald-400`), cinta `.alon-grid-ribbon` con coordenadas GPS (`Navigation`), cálculos en vivo (Suma, Promedio, Recuento), botón de inserción de fila `[+ + Insertar Fila en #N]` y cabecera `.alon-grid-thead` con columna 1 apilada `[ ]/#` y columnas marcadas con `✎`.
+  5. `Zona 5`: Barra flotante inferior de acciones masivas al tildar filas.
+- **Regla de Edición Total:** Cada celda visible en la grilla debe ser editable mediante doble clic (o `Enter`/`F2`), con activación de `showPicker()` en fechas, datalists o selects según corresponda y tirador de arrastre celeste (*Fill Handle* `■`) para `Ctrl+D`.
+- **Checklist de Entrega:** Antes de dar un módulo por finalizado, el agente debe auto-auditar visual y estructuralmente el módulo contra `Compras.jsx`, asegurando `Fit-to-Viewport` (cero scroll horizontal de ventana) y compilación limpia con `npm run build` y `npm run lint`.
 
 ## Agentes especializados
 
