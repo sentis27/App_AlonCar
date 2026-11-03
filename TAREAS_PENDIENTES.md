@@ -178,6 +178,23 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
     - Panel de stock en Patio clasificado por proveedor (Air Liquide, Praxair Linde, Ferremat, Astillero Propio) y estado (Llenos vs Vacíos).
     - Registro de las 3 operaciones canónicas: `Primera Entrega`, `Recambio 1x1 con Cruce de Marcas` y `Devolución Final`.
     - Matriz de deuda de tubos por contratista tipo Sheets y alertas de retención mayor a 15 días con generación de mensaje WhatsApp de reclamo (P-01/P-02).
+  - **Rediseño Visual de 5 Zonas y Estándar Compras (Migración 0035 + useSpreadsheetGrid):**
+    - Adopción integral de las clases maestras: `.alon-zone-context` (sky), `.alon-zone-kpis` (radar ámbar con 6 tarjetas y 6 colores distintivos sin repetir), `.alon-zone-toolbar` (cyan con atajo `Ctrl+F` y `Esc`) y `.alon-zone-grid` (emerald ribbon + thead sticky con columna 1 apilada `[ ]/#`).
+    - **Edición In-Situ con Doble Clic en TODAS las Celdas:** Cobertura del 100% de celdas visibles con edición ágil (Fecha con `showPicker()`, Barco, OT, Material con datalist, Cantidad con recálculo de peso en vivo, Peso en kg, Contratista con datalist, Centro de Costo y Observaciones).
+    - **Depuración de Campos:** Eliminada la columna y el dato redundante *"Retirado Por"*.
+    - **Columna de Acciones Operativas:**
+      - *Acción 1 (Borrar Fila):* Pinta toda la fila de rojo intenso (`bg-rose-950/60 line-through border-rose-500/60`), activa `is_deletion_requested` y dispara alerta al Administrador Jorge Sentis. Solo el Administrador puede confirmar la baja física definitiva (reintegrando stock al material) o restaurar la fila.
+      - *Acción 2 (Pedido Directo a Compras):* Modal rápido para ingresar cantidad que crea la orden de compra en Compras con estado `PEDIR`, Destino `PAÑOL`, Buque `ASTILLERO / STOCK` y Solicitante `PAÑOL`.
+      - *Acción 3 (Duplicar Fila):* Clona el retiro en 1 clic con fecha de hoy.
+
+- [ ] **3.bis. Dashboards de Usuario y Terminales por Rol (En Cola de Ejecución):**
+  - Implementar para cada puesto operativo un **Radar de Alertas Vivas (6-8 KPIs únicos)** + **Bandeja de Decisiones en 1 Clic**:
+    - **Terminal Administrador (`/admin`):** Jorge Sentis (Autorizaciones [P] en Pañol, Bajas de Pañol, Homologación de Rubros, Desvíos Salariales >5%, Auditoría de Costo Directo).
+    - **Terminal Dirección:** Hugo Sentis / Martín Sentis / Hugo Obregozo (Evaluaciones "SE COMPRA?", Anguilera en Varadero, Cierre Comercial de OTs).
+    - **Terminal Jefe de Obra:** Ale Camadelli / Pablo N. / Martín Obregozo (Asignación de OT a consumos en blanco Regla 0028, Descargo de Horas en 'R', Planos de Buque).
+    - **Terminal Compras / Logística:** Andrés (Cotizaciones pendientes, Reclamos WhatsApp por Pedidos Incompletos, Mandados locales en MDP).
+    - **Terminal Pañol Central:** Pañolero (Quiebres de stock bajo mínimo, Retención de tubos >15d P-01, Retiro de vacíos P-02).
+    - **Terminal Personal / Cuadrillas:** María José (Control de asistencia 9 hs/8 hs feriado, operarios sin jornada, vencimientos de libretas).
 
 - [ ] **4. Módulo M5: Tarifarios y Liquidaciones:**
   - Matriz de tarifas por hora de personal propio vs. contratistas/talleres.

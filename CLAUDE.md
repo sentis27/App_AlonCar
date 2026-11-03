@@ -1,7 +1,7 @@
 ---
-version: 1.0
-last_updated_by: claude-code
-last_updated: 2026-07-17
+version: 1.1
+last_updated_by: antigravity
+last_updated: 2026-11-03
 ---
 
 # CLAUDE.md

@@ -188,12 +188,46 @@ Cada registro en el Catálogo de Requisitos (`data_requirements`) y en la cola d
 * **Rol Responsable:** `admin` (Administrador Central en `/admin` -> Pestaña **Alertas**).
 * **Acción Obligatoria:** Revisar en la bandeja de alertas del Dashboard del Administrador el rubro propuesto, ajustarlo si corresponde y aprobarlo en 1 clic.
 
+#### Regla P-03: Solicitud de Baja / Eliminación de Retiro en Pañol (Pintado Rojo y Alerta Directiva)
+* **Código:** `REQ_PANOL_SOLICITUD_BAJA`
+* **Módulo:** `panol` / `admin`
+* **Campos Clave:** `inventory_transactions.is_deletion_requested = true`, `deletion_requested_at`, `deletion_requested_by`
+* **Trigger:** El pañolero o supervisor hace clic en el botón de borrar fila (`<Trash2 />`) en la Planilla de Retiros.
+* **Comportamiento en UI:** La fila completa se tiñe inmediatamente de rojo intenso (`bg-rose-950/60 text-rose-300 line-through border-rose-500/60`) con la leyenda emergente *"Baja solicitada a Jorge Sentis"*.
+* **Rol Responsable Exclusivo:** `admin` (Jorge Sentis). Solo el Administrador tiene autoridad legal y contable para eliminar registros de pañol.
+* **Acción Obligatoria:** En la bandeja de bajas del Panel Administrador, Jorge Sentis evalúa la solicitud y decide en 1 clic:
+  1. `[ 🗑️ Confirmar Eliminación ]`: Borra físicamente la fila en `inventory_transactions` y **reintegra automáticamente el stock** al material en catálogo.
+  2. `[ ↩ Restaurar Fila ]`: Desestima la baja, limpiando el flag `is_deletion_requested` y devolviendo la fila a su estado normal.
+
+#### Regla P-04: Solicitud de Habilitación de Operarios para Retiro de Materiales
+* **Código:** `REQ_PANOL_HABILITACION_OPERARIO`
+* **Módulo:** `panol` / `admin`
+* **Campos Clave:** `worker_permission_requests`, `workers.can_withdraw_materials`
+* **Trigger:** Un operario se presenta en la ventanilla de pañol a retirar materiales pero su usuario tiene desactivado el permiso de retiro `[P]` (`can_withdraw_materials = false`).
+* **Rol Responsable:** `admin` (Jorge Sentis).
+* **Acción Obligatoria:** El pañolero pulsa `[ ➕ ¿No aparece? Solicitar Habilitación a Jorge Sentis ]` enviando la solicitud formal. En `/admin`, Jorge Sentis aprueba el permiso en 1 clic activando `can_withdraw_materials = true`.
+
+#### Regla P-05: Pedido Directo de Reposición a Compras desde Pañol
+* **Código:** `REQ_PANOL_PEDIDO_DIRECTO_COMPRAS`
+* **Módulo:** `panol` / `compras`
+* **Campos Clave:** `purchase_orders.charge_type = 'VIA_PANOL'`, `status = 'PEDIR'`, `requester_name = 'PAÑOL'`
+* **Trigger:** El pañolero pulsa el icono de carrito (`<ShoppingCart />`) en una fila de la Planilla de Retiros o selecciona materiales en el Catálogo Maestro.
+* **Rol Responsable:** `compras` (Andrés / Jorge Sentis).
+* **Acción Obligatoria:** El sistema crea la orden directamente en Compras con Buque = `ASTILLERO / STOCK`, Destino = `PAÑOL`, OT = `null` y Estado = `PEDIR`. El comprador cotiza o despacha el pedido.
+
 ---
 
 ## 4. Datos y Reglas Pendientes de Definir (Recordatorio por Sesión)
 
 Para las próximas sesiones, conforme se sigan construyendo los módulos, se debe definir con el usuario:
 
+- [ ] **Implementación de Dashboards por Rol de Usuario:**
+  * Crear terminales personalizadas con Radar de Alertas Vivas + Bandeja de Entrada de Decisiones en 1 Clic para:
+    * **Terminal Administrador (`/admin`):** Jorge Sentis (Habilitaciones [P], Bajas en Pañol, Rubros x Homologar, Desvíos >5%, Auditoría Costo Directo).
+    * **Terminal Dirección:** Hugo Sentis / Martín Sentis / Hugo Obregozo (Evaluación "SE COMPRA?", Buques sin Anguilera, Cierres Comerciales de Obra).
+    * **Terminal Jefe de Obra:** Ale Camadelli / Pablo N. / Martín Obregozo (Asignación de OT a consumos en blanco, Horas en 'R', Planos de Buque).
+    * **Terminal Compras / Logística:** Andrés (Cotizaciones pendientes, Reclamos WhatsApp por Pedidos Incompletos, Mandados locales).
+    * **Terminal Pañol Central:** Pañolero (Insumos bajo mínimo, Retención de tubos >15d P-01, Vacíos listos para camión P-02).
 - [ ] **Teléfonos WhatsApp de los Responsables:**
   * Cargar en la tabla `workers` los números de teléfono móvil de:
     * María José
