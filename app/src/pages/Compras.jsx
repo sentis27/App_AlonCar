@@ -398,20 +398,48 @@ export default function Compras() {
     }
     if (searchParams.get('nuevo') === 'true') {
       const matId = searchParams.get('materialId')
-      if (matId && materials.length > 0) {
+      const matName = searchParams.get('materialName') || ''
+      const multiNames = searchParams.get('multiMaterials')
+
+      let initialItems = null
+      if (multiNames) {
+        try {
+          const parsed = JSON.parse(decodeURIComponent(multiNames))
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            initialItems = parsed.map(p => ({
+              material_id: p.id || null,
+              material_name_raw: p.name || '',
+              quantity: 1,
+              unit_measure: p.unit_measure || 'Unidad',
+              urgency: 'SIN_APURO'
+            }))
+          }
+        } catch (e) {
+          console.warn('Error parsing multiMaterials query param', e)
+        }
+      }
+
+      let resolvedId = null
+      let resolvedName = matName
+      let resolvedUnit = 'Unidad'
+
+      if (matId) {
+        resolvedId = matId
         const found = materials.find((m) => m.id === matId)
         if (found) {
-          setEditingOrder({
-            material_id: found.id,
-            material_name_raw: found.name,
-            charge_type: 'VIA_PANOL',
-            unit_measure: found.unit_measure || 'Unidad',
-            quantity: 1
-          })
+          resolvedName = found.name
+          resolvedUnit = found.unit_measure || 'Unidad'
         }
-      } else {
-        setEditingOrder(null)
       }
+
+      setEditingOrder({
+        material_id: resolvedId,
+        material_name_raw: resolvedName,
+        charge_type: 'VIA_PANOL',
+        unit_measure: resolvedUnit,
+        quantity: 1,
+        initialItems: initialItems
+      })
       setShowOrderModal(true)
     }
   }, [searchParams, materials])
@@ -5225,19 +5253,34 @@ function OrderFormModal({
   const [requestedByName, setRequestedByName] = useState(order?.requested_by_name || 'PAÑOL')
 
   // Renglones dinámicos de materiales
-  const [items, setItems] = useState([
-    {
-      material_id: order?.material_id || null,
-      material_name_raw: order?.material_name_raw || '',
-      is_new_material: order?.is_new_material || false,
-      quantity: order?.quantity || 1,
-      unit_measure: order?.unit_measure || 'unidad',
-      supplier_id: order?.supplier_id || '', // Vacío por defecto
-      supplier_quoted_price: order?.supplier_quoted_price || '', // Vacío por defecto
-      system_unit_price: order?.system_unit_price || 0,
-      observations: order?.observations || ''
+  const [items, setItems] = useState(() => {
+    if (order?.initialItems && Array.isArray(order.initialItems) && order.initialItems.length > 0) {
+      return order.initialItems.map((it) => ({
+        material_id: it.material_id || null,
+        material_name_raw: it.material_name_raw || '',
+        is_new_material: false,
+        quantity: it.quantity || 1,
+        unit_measure: it.unit_measure || 'Unidad',
+        supplier_id: '',
+        supplier_quoted_price: '',
+        system_unit_price: 0,
+        observations: ''
+      }))
     }
-  ])
+    return [
+      {
+        material_id: order?.material_id || null,
+        material_name_raw: order?.material_name_raw || '',
+        is_new_material: order?.is_new_material || false,
+        quantity: order?.quantity || 1,
+        unit_measure: order?.unit_measure || 'Unidad',
+        supplier_id: order?.supplier_id || '',
+        supplier_quoted_price: order?.supplier_quoted_price || '',
+        system_unit_price: order?.system_unit_price || 0,
+        observations: order?.observations || ''
+      }
+    ]
+  })
 
   const [saving, setSaving] = useState(false)
 
