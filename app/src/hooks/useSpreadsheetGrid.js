@@ -480,10 +480,123 @@ export function useSpreadsheetGrid({
     }
   }, [activeCell, internalClipboard, columns, selectionRange, rows, canEditCell, getRowId, pushUndoAction, onBatchUpdate, showFeedback, readCellValue])
 
+  // Borrar valor de celda activa o rango seleccionado (Tecla Supr / Delete / Backspace)
+  const deleteActiveCellOrRange = useCallback(async () => {
+    if (!activeCell) return
+
+    const colDef = columns[activeCell.colIndex]
+    if (!colDef || colDef.readOnly) {
+      if (showFeedback) showFeedback('error', 'Esta columna es de solo lectura.')
+      return
+    }
+
+    const startR = selectionRange ? Math.min(selectionRange.startRow, selectionRange.endRow) : activeCell.rowIndex
+    const endR = selectionRange ? Math.max(selectionRange.startRow, selectionRange.endRow) : activeCell.rowIndex
+    const startC = selectionRange ? Math.min(selectionRange.startCol, selectionRange.endCol) : activeCell.colIndex
+    const endC = selectionRange ? Math.max(selectionRange.startCol, selectionRange.endCol) : activeCell.colIndex
+
+    const multiColMutations = []
+    let totalCelled = 0
+
+    for (let cIdx = startC; cIdx <= endC; cIdx++) {
+      const currentCol = columns[cIdx]
+      if (!currentCol || currentCol.readOnly) continue
+
+      let cEmptyVal = null
+      if (typeof currentCol.getEmptyValue === 'function') {
+        cEmptyVal = currentCol.getEmptyValue()
+      } else if (currentCol.emptyValue !== undefined) {
+        cEmptyVal = currentCol.emptyValue
+      } else if (currentCol.type === 'text' || currentCol.type === 'string') {
+        cEmptyVal = ''
+      } else {
+        cEmptyVal = null
+      }
+
+      const targetRows = rows.slice(startR, endR + 1)
+      const validRows = targetRows.filter((r) => canEditCell(r, currentCol.key, cEmptyVal))
+      if (validRows.length === 0) continue
+
+      const previousValues = {}
+      validRows.forEach((r) => {
+        previousValues[getRowId(r)] = readCellValue(r, currentCol)
+      })
+
+      multiColMutations.push({
+        colKey: currentCol.key,
+        colLabel: currentCol.label || currentCol.key,
+        newValue: cEmptyVal,
+        previousValues,
+        targetIds: validRows.map(getRowId)
+      })
+      totalCelled += validRows.length
+    }
+
+    if (multiColMutations.length === 0) {
+      if (showFeedback) showFeedback('info', 'No se pudieron borrar celdas protegidas o de solo lectura.')
+      return
+    }
+
+    if (multiColMutations.length === 1) {
+      const mut = multiColMutations[0]
+      pushUndoAction({
+        colKey: mut.colKey,
+        colLabel: mut.colLabel,
+        actionLabel: 'Borrar (Supr)',
+        previousValues: mut.previousValues,
+        newValue: mut.newValue,
+        timestamp: Date.now()
+      })
+      if (onBatchUpdate) {
+        await onBatchUpdate({
+          colKey: mut.colKey,
+          newValue: mut.newValue,
+          targetIds: mut.targetIds,
+          isRevert: false,
+          actionLabel: 'Borrar (Supr)'
+        })
+      }
+    } else {
+      const undoPayload = []
+      for (const mut of multiColMutations) {
+        Object.entries(mut.previousValues).forEach(([rId, oldVal]) => {
+          undoPayload.push({
+            rowId: rId,
+            colKey: mut.colKey,
+            oldValue: oldVal,
+            newValue: mut.newValue,
+            actionLabel: 'Borrado múltiple (Supr)'
+          })
+        })
+        if (onBatchUpdate) {
+          await onBatchUpdate({
+            colKey: mut.colKey,
+            newValue: mut.newValue,
+            targetIds: mut.targetIds,
+            isRevert: false,
+            actionLabel: 'Borrado múltiple (Supr)'
+          })
+        }
+      }
+      pushUndoAction(undoPayload)
+    }
+
+    if (showFeedback) {
+      showFeedback('info', `Dato(s) borrado(s) con Supr en ${totalCelled} celda(s). Pulsa Ctrl+Z para deshacer.`)
+    }
+  }, [activeCell, selectionRange, columns, rows, canEditCell, getRowId, readCellValue, pushUndoAction, onBatchUpdate, showFeedback])
+
   // Manejador Central de Teclado (Navegación + Atajos)
   const handleKeyDown = useCallback((e) => {
     // Si el usuario está escribiendo dentro de un input, select o textarea activo, no interceptamos flechas comunes ni Enter
     const isEditingInput = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)
+
+    // Supr (Delete) o Backspace: Borrar dato de celda activa o rango
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditingInput && activeCell) {
+      e.preventDefault()
+      deleteActiveCellOrRange()
+      return
+    }
 
     // Ctrl + F: Enfocar buscador de la tabla
     if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
@@ -605,7 +718,7 @@ export function useSpreadsheetGrid({
         })
       }
     }
-  }, [activeCell, selectionRange, rows, columns, getRowId, onFocusSearch, onCellActivate, undo, redo, copyActiveCell, pasteToActiveOrRange, executeFillDown, showFeedback])
+  }, [activeCell, selectionRange, rows, columns, getRowId, onFocusSearch, onCellActivate, undo, redo, copyActiveCell, pasteToActiveOrRange, executeFillDown, deleteActiveCellOrRange, showFeedback])
 
   // Mouse: Clic en celda
   const handleCellClick = useCallback((rowIndex, colIndex, e) => {
@@ -849,6 +962,7 @@ export function useSpreadsheetGrid({
     internalClipboard,
     pasteToActiveOrRange,
     executeFillDown,
+    deleteActiveCellOrRange,
     handleKeyDown,
     handleCellClick,
     handleCellMouseDown,

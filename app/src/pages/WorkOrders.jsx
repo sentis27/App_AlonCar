@@ -2012,7 +2012,10 @@ export default function WorkOrders() {
   }, [])
 
   const woGridColumns = useMemo(() => [
+    { key: 'ship_id', label: 'Barco' },
+    { key: 'ot_number', label: 'Orden de Trabajo' },
     { key: 'description', label: 'Descripción del Trabajo' },
+    { key: 'contractors', label: 'Contratistas' },
     { key: 'foreman_name', label: 'Jefe de Obra' },
     { key: 'work_type', label: 'Tipo de Trabajo' },
     { key: 'status', label: 'Estado del Trabajo' }
@@ -2028,16 +2031,40 @@ export default function WorkOrders() {
     }
 
     let cleanVal = rawValue
-    if (colKey === 'description') {
+    if (colKey === 'ship_id') {
+      if (!rawValue) return null
+      const targetShip = ships.find(s => s.id === rawValue)
+      if (!targetShip) return null
+      const woPatch = { ship_id: rawValue, updated_at: new Date().toISOString() }
+      setWorkOrders(prev => prev.map(w => w.id === targetRow.work_order_id ? { ...w, ...woPatch, ships: targetShip } : w))
+      const { error } = await supabase
+        .from('work_orders')
+        .update({ ship_id: rawValue })
+        .eq('id', targetRow.work_order_id)
+      if (error) throw error
+      return rawValue
+    } else if (colKey === 'contractors') {
+      const nextContractors = Array.isArray(rawValue) ? rawValue : []
+      if (!targetRow.isPlaceholder) {
+        const itemPatch = { contractors: nextContractors, updated_at: new Date().toISOString() }
+        setWorkItems(prev => prev.map(i => i.id === rowId ? { ...i, ...itemPatch } : i))
+        const { error } = await supabase
+          .from('work_items')
+          .update({ contractors: nextContractors })
+          .eq('id', rowId)
+        if (error) throw error
+      }
+      return nextContractors
+    } else if (colKey === 'description') {
       cleanVal = String(rawValue ?? '').trim()
     } else if (colKey === 'work_type') {
       const upper = String(rawValue ?? 'HORA').trim().toUpperCase()
-      cleanVal = TIPOS_DE_TRABAJO.some(t => t.value === upper) ? upper : targetRow.work_type
+      cleanVal = TIPOS_DE_TRABAJO.some(t => t.value === upper) ? upper : 'HORA'
     } else if (colKey === 'status') {
       const valid = ESTADOS_TRABAJO.some(s => s.value === rawValue)
-      cleanVal = valid ? rawValue : targetRow.status
+      cleanVal = valid ? rawValue : 'En ejecución'
     } else if (colKey === 'foreman_name') {
-      cleanVal = String(rawValue ?? '').trim() || targetRow.foreman_name
+      cleanVal = String(rawValue ?? '').trim()
     }
 
     if (targetRow.isPlaceholder) {
@@ -2127,10 +2154,14 @@ export default function WorkOrders() {
         showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
         return
       }
+      if (colDef.key === 'ot_number' || colDef.key === 'contractors') {
+        handleOpenEditWorkModal(row)
+        return
+      }
       setInlineWoEdit({
         rowId: row.id,
         colKey: colDef.key,
-        value: row[colDef.key] ?? ''
+        value: colDef.key === 'ship_id' ? (row.wo?.ship_id || '') : (row[colDef.key] ?? '')
       })
     },
     showFeedback: showWoGridFeedback
@@ -2144,7 +2175,7 @@ export default function WorkOrders() {
     setInlineWoEdit(null)
     if (!row || isRowLockedDec011(row)) return
 
-    const oldVal = row[colKey]
+    const oldVal = colKey === 'ship_id' ? (row.wo?.ship_id || '') : row[colKey]
     if (String(oldVal ?? '') === String(nextRawVal ?? '')) return
 
     try {
@@ -2580,7 +2611,7 @@ export default function WorkOrders() {
                 {woGrid.activeCellBadge || 'PLANILLA UNIFICADA OTs'}
               </span>
               <span className="text-slate-400">
-                Doble clic o Enter en Descripción, Jefe de Obra, Tipo o Estado para editar · Arrastrá ■ o Ctrl+D para clonar · Ctrl+Z/Y
+                Doble clic o Enter en Barco, OT, Descripción, Contratistas, Jefe de Obra, Tipo o Estado para editar · Arrastrá ■ o Ctrl+D para clonar · Ctrl+Z/Y
               </span>
             </div>
             <span className="text-[10px] font-mono text-emerald-400">
@@ -2647,16 +2678,70 @@ export default function WorkOrders() {
                           {rowIndex + 1}
                         </td>
 
-                        {/* 1. Barco (Nombre limpio con resaltado de búsqueda) */}
-                        <td className="py-3 px-3">
-                          <div className="flex items-center gap-1.5 font-bold text-white">
-                            <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                            <span><HighlightText text={row.wo?.ships?.name || 'Sin barco'} query={searchQuery} /></span>
-                          </div>
+                        {/* Col 0: Barco */}
+                        <td
+                          onClick={(e) => woGrid.handleCellClick(rowIndex, 5, e)}
+                          onMouseDown={(e) => woGrid.handleCellMouseDown(rowIndex, 5, e)}
+                          onMouseEnter={() => woGrid.handleCellMouseEnter(rowIndex, 5)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            if (isLocked) {
+                              showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+                              return
+                            }
+                            setInlineWoEdit({ rowId: row.id, colKey: 'ship_id', value: row.wo?.ship_id || '' })
+                          }}
+                          title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic para cambiar Buque'}
+                          className={getWoCellClass(0, 'py-3 px-3')}
+                        >
+                          {isEditingCol('ship_id') ? (
+                            <select
+                              autoFocus
+                              value={inlineWoEdit.value}
+                              onChange={(e) => commitInlineWoEdit(e.target.value)}
+                              onBlur={() => commitInlineWoEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Escape') setInlineWoEdit(null)
+                              }}
+                              className="bg-slate-950 border border-emerald-400 rounded px-2 py-1 text-xs text-cyan-300 font-bold focus:outline-none"
+                            >
+                              <option value="">-- Seleccionar Buque --</option>
+                              {ships.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="flex items-center gap-1.5 font-bold text-white">
+                              <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                              <span><HighlightText text={row.wo?.ships?.name || 'Sin barco'} query={searchQuery} /></span>
+                            </div>
+                          )}
+                          {!isLocked && woGrid.shouldRenderFillHandle(rowIndex, 5) && (
+                            <div
+                              onMouseDown={woGrid.handleFillHandleMouseDown}
+                              onDoubleClick={woGrid.handleFillHandleDoubleClick}
+                              className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                            />
+                          )}
                         </td>
 
-                        {/* 2. Orden de Trabajo + Estado Calculado + Botón Separar OT */}
-                        <td className="py-3 px-3">
+                        {/* Col 1: Orden de Trabajo */}
+                        <td
+                          onClick={(e) => woGrid.handleCellClick(rowIndex, 4, e)}
+                          onMouseDown={(e) => woGrid.handleCellMouseDown(rowIndex, 4, e)}
+                          onMouseEnter={() => woGrid.handleCellMouseEnter(rowIndex, 4)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            if (isLocked) {
+                              showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+                              return
+                            }
+                            handleOpenEditWorkModal(row)
+                          }}
+                          title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic para editar Orden de Trabajo'}
+                          className={getWoCellClass(4, 'py-3 px-3')}
+                        >
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono text-[11px] font-black text-primary px-1.5 py-0.5 rounded bg-primary/10 border border-primary/30">
                               <HighlightText text={row.wo?.ot_number || 'OT-1'} query={searchQuery} />
@@ -2674,7 +2759,10 @@ export default function WorkOrders() {
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleOpenNewWorkModal(row.wo)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleOpenNewWorkModal(row.wo)
+                              }}
                               className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
                               title="Agregar otro trabajo dentro de esta misma OT"
                             >
@@ -2683,7 +2771,10 @@ export default function WorkOrders() {
                             {!row.isPlaceholder && (
                               <button
                                 type="button"
-                                onClick={() => handleOpenSeparateModal(row)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleOpenSeparateModal(row)
+                                }}
                                 className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold inline-flex items-center gap-1 cursor-pointer"
                                 title="Separar este trabajo en una OT propia o moverlo a otra OT del barco"
                               >
@@ -2692,6 +2783,13 @@ export default function WorkOrders() {
                               </button>
                             )}
                           </div>
+                          {!isLocked && woGrid.shouldRenderFillHandle(rowIndex, 4) && (
+                            <div
+                              onMouseDown={woGrid.handleFillHandleMouseDown}
+                              onDoubleClick={woGrid.handleFillHandleDoubleClick}
+                              className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                            />
+                          )}
                         </td>
 
                         {/* 3. Las 3 Fechas de la OT (Creación, Inicio Real y Fin Real) */}
@@ -2742,7 +2840,7 @@ export default function WorkOrders() {
                             setInlineWoEdit({ rowId: row.id, colKey: 'description', value: row.description || '' })
                           }}
                           title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic para editar descripción'}
-                          className={getWoCellClass(0, 'py-3 px-3 max-w-md')}
+                          className={getWoCellClass(2, 'py-3 px-3 max-w-md')}
                         >
                           {isEditingCol('description') ? (
                             <textarea
@@ -2782,8 +2880,22 @@ export default function WorkOrders() {
                           )}
                         </td>
 
-                        {/* 5. Contratistas */}
-                        <td className="py-3 px-3">
+                        {/* Col 3: Contratistas */}
+                        <td
+                          onClick={(e) => woGrid.handleCellClick(rowIndex, 6, e)}
+                          onMouseDown={(e) => woGrid.handleCellMouseDown(rowIndex, 6, e)}
+                          onMouseEnter={() => woGrid.handleCellMouseEnter(rowIndex, 6)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            if (isLocked) {
+                              showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+                              return
+                            }
+                            handleOpenEditWorkModal(row)
+                          }}
+                          title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic para editar o asignar contratistas'}
+                          className={getWoCellClass(3, 'py-3 px-3')}
+                        >
                           {contractors.length === 0 ? (
                             <span className="text-slate-500 italic text-[11px]">Sin asignar</span>
                           ) : (
@@ -2808,6 +2920,13 @@ export default function WorkOrders() {
                                 )
                               })}
                             </div>
+                          )}
+                          {!isLocked && woGrid.shouldRenderFillHandle(rowIndex, 6) && (
+                            <div
+                              onMouseDown={woGrid.handleFillHandleMouseDown}
+                              onDoubleClick={woGrid.handleFillHandleDoubleClick}
+                              className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+                            />
                           )}
                         </td>
 
@@ -2872,7 +2991,7 @@ export default function WorkOrders() {
                             setInlineWoEdit({ rowId: row.id, colKey: 'work_type', value: row.work_type || 'HORA' })
                           }}
                           title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic para cambiar Tipo de Trabajo'}
-                          className={getWoCellClass(2, 'py-3 px-2.5')}
+                          className={getWoCellClass(5, 'py-3 px-2.5')}
                         >
                           {isEditingCol('work_type') ? (
                             <select
@@ -2925,7 +3044,7 @@ export default function WorkOrders() {
                             setInlineWoEdit({ rowId: row.id, colKey: 'status', value: row.status })
                           }}
                           title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic o selector para cambiar Estado del Trabajo'}
-                          className={getWoCellClass(3, 'py-3 px-3 text-center')}
+                          className={getWoCellClass(6, 'py-3 px-3 text-center')}
                         >
                           <div className="flex flex-col items-center gap-1">
                             {isEditingCol('status') ? (

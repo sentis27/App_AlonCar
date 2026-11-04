@@ -542,6 +542,7 @@ export default function Ships() {
   // --- 2. GRID ESTADÍAS & MOVIMIENTOS (Tab 2) ---
   const staysGridColumns = useMemo(() => [
     { key: 'location', label: 'Locación', getValue: (st) => cleanLocation(st.location) },
+    { key: 'ship_id', label: 'Buque', getValue: (st) => st.ship_id || '', formatDisplay: (val, st) => cleanShipName(st?.ships?.name) },
     { key: 'start_date', label: 'Comienzo', getValue: (st) => st.start_date || '' },
     { key: 'end_date', label: 'Fin', getValue: (st) => st.end_date || '' }
   ], [])
@@ -557,6 +558,17 @@ export default function Ships() {
       const cleanLoc = cleanLocation(rawValue).toUpperCase()
       dbPatch = { location: cleanLoc }
       returnedVal = cleanLoc
+    } else if (colKey === 'ship_id') {
+      const nextShipId = rawValue ? String(rawValue).trim() : null
+      if (!nextShipId) return null
+      const targetShip = ships.find(s => s.id === nextShipId)
+      if (!targetShip) return null
+      dbPatch = { ship_id: nextShipId }
+      returnedVal = nextShipId
+      setStays(prev => prev.map(st => (st.id === rowId ? { ...st, ship_id: nextShipId, ships: targetShip } : st)))
+      const { error } = await supabase.from('ship_stays').update(dbPatch).eq('id', rowId)
+      if (error) throw error
+      return returnedVal
     } else if (colKey === 'start_date') {
       const dt = String(rawValue || '').trim()
       if (!dt) return null
@@ -2606,7 +2618,7 @@ export default function Ships() {
                   {staysGrid.activeCellBadge ? (
                     <span className="text-cyan-300 font-bold">{staysGrid.activeCellBadge}</span>
                   ) : (
-                    <span>Seleccioná Locación, Comienzo o Fin para editar rápido</span>
+                    <span>Seleccioná Locación, Buque, Comienzo o Fin para editar rápido</span>
                   )}
                 </div>
                 <div className="hidden md:flex items-center gap-3 text-[10px] text-slate-400">
@@ -2623,7 +2635,7 @@ export default function Ships() {
                   <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                     <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
                       <th className="py-3 px-4">Locación ✎</th>
-                      <th className="py-3 px-4">Buque</th>
+                      <th className="py-3 px-4">Buque ✎</th>
                       <th className="py-3 px-4 text-center">Comienzo ✎</th>
                       <th className="py-3 px-4 text-center">Fin ✎</th>
                       <th className="py-3 px-4 text-center text-cyan-300">Días de Estadía</th>
@@ -2643,6 +2655,7 @@ export default function Ships() {
                         const days = calculateStayDays(stay.start_date, stay.end_date)
                         const locClean = cleanLocation(stay.location)
                         const cpLoc = getStaysCellProps(rowIndex, 'location')
+                        const cpShip = getStaysCellProps(rowIndex, 'ship_id')
                         const cpStart = getStaysCellProps(rowIndex, 'start_date')
                         const cpEnd = getStaysCellProps(rowIndex, 'end_date')
 
@@ -2692,9 +2705,44 @@ export default function Ships() {
                               )}
                             </td>
 
-                            {/* 2. Barco */}
-                            <td className="py-3 px-4 font-extrabold text-white text-sm">
-                              {cleanShipName(stay.ships?.name)}
+                            {/* 2. Barco (Doble clic editable) */}
+                            <td
+                              {...cpShip.domProps}
+                              onDoubleClick={() => setInlineStayEdit({ rowId: stay.id, colKey: 'ship_id', value: stay.ship_id || '' })}
+                              className={`py-3 px-4 font-extrabold text-white text-sm cursor-pointer ${cpShip.className}`}
+                              title="Doble clic para cambiar buque de la estadía"
+                            >
+                              {inlineStayEdit?.rowId === stay.id && inlineStayEdit?.colKey === 'ship_id' ? (
+                                <select
+                                  autoFocus
+                                  value={inlineStayEdit.value}
+                                  onChange={(e) => commitInlineStayEdit(e.target.value)}
+                                  onBlur={() => setInlineStayEdit(null)}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation()
+                                    if (e.key === 'Escape') setInlineStayEdit(null)
+                                  }}
+                                  className="bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-xs font-bold text-white focus:outline-none"
+                                >
+                                  <option value="">-- Seleccionar Buque --</option>
+                                  {ships.map(s => (
+                                    <option key={s.id} value={s.id}>{cleanShipName(s.name)}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="flex items-center gap-1.5 font-bold text-white">
+                                  <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                  <span>{cleanShipName(stay.ships?.name)}</span>
+                                </div>
+                              )}
+                              {cpShip.renderHandle && (
+                                <div
+                                  onMouseDown={staysGrid.handleFillHandleMouseDown}
+                                  onDoubleClick={staysGrid.handleFillHandleDoubleClick}
+                                  className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastrar para rellenar hacia abajo (Ctrl+D)"
+                                />
+                              )}
                             </td>
 
                             {/* 3. Fecha Comienzo (Doble clic editable) */}

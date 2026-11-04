@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import {
   Package,
   Plus,
@@ -156,6 +157,7 @@ export default function Panol() {
   const [showGasModal, setShowGasModal] = useState({ isOpen: false, operationType: 'PRIMERA_ENTREGA' })
   const [quickPurchaseModal, setQuickPurchaseModal] = useState({ isOpen: false, material: null, quantity: '', urgency: 'SIN_APURO' })
   const [adminDeleteConfirmModal, setAdminDeleteConfirmModal] = useState({ isOpen: false, tx: null })
+  const [pickerModal, setPickerModal] = useState({ isOpen: false, txId: null, shipId: '', workOrderId: '', workerName: '', contractorName: '' })
   const [requestOtModal, setRequestOtModal] = useState({ isOpen: false, txId: null, shipId: '', targetWorkerOrContractor: '', reason: '' })
   const [workerPermissionModal, setWorkerPermissionModal] = useState({ isOpen: false, workerId: '', reason: '' })
   const [pendingAlerts, setPendingAlerts] = useState([])
@@ -595,6 +597,69 @@ export default function Panol() {
   // Referencia para evitar circularidad en pegado de filas
   const onPasteRowRef = useRef(null)
 
+  // Guardar asignación combinada Barco + OT con cascada canónica
+  const handleSaveShipAndWorkOrder = async (txId, newShipId, newWorkOrderId) => {
+    try {
+      const cleanShipId = (newShipId === '__ASTILLERO_STOCK__' || !newShipId) ? null : newShipId
+      const cleanWoId = (!cleanShipId || !newWorkOrderId) ? null : newWorkOrderId
+      const tx = inventoryTx.find(t => t.id === txId)
+      if (!tx) return
+
+      const prevShipId = tx.ship_id
+      const prevWoId = tx.work_order_id
+
+      if (grid?.pushUndoAction) {
+        grid.pushUndoAction([
+          { rowId: txId, colKey: 'ship_id', oldValue: prevShipId, newValue: cleanShipId, actionLabel: 'Cambio Barco' },
+          { rowId: txId, colKey: 'work_order_id', oldValue: prevWoId, newValue: cleanWoId, actionLabel: 'Cambio OT' }
+        ])
+      }
+
+      const updates = {
+        ship_id: cleanShipId,
+        work_order_id: cleanWoId
+      }
+
+      const currentWorkerOrContractor = tx.worker_name || tx.contractor_name
+      if (currentWorkerOrContractor && cleanShipId) {
+        const enabled = getEnabledWorkersAndContractors(cleanShipId, cleanWoId)
+        const isValid =
+          enabled.astilleroWorkers.some(w => normalizeText(w.name) === normalizeText(currentWorkerOrContractor)) ||
+          enabled.contractorGroups.some(g => normalizeText(g) === normalizeText(currentWorkerOrContractor))
+        if (!isValid) {
+          updates.contractor_name = ''
+          updates.worker_name = ''
+          updates.worker_id = null
+          showFeedback('info', 'Imputación actualizada. Operario desasignado por no estar habilitado en la nueva combinación.')
+        } else {
+          showFeedback('success', 'Barco y Orden de Trabajo actualizados correctamente.')
+        }
+      } else {
+        showFeedback('success', 'Barco y Orden de Trabajo actualizados correctamente.')
+      }
+
+      if (cleanShipId && !cleanWoId) {
+        supabase.from('compliance_alerts').insert({
+          alert_type: 'SIN_OT',
+          entity_type: 'inventory_transactions',
+          entity_id: txId,
+          ship_id: cleanShipId,
+          alert_message: `Retiro de pañol registrado (⚠️ Sin OT) para buque ${ships.find(s => s.id === cleanShipId)?.name || cleanShipId} por ${currentWorkerOrContractor || 'Personal'}.`,
+          notes: 'Imputación directa sin OT registrada en grilla.',
+          status: 'PENDIENTE'
+        }).then(() => {})
+      }
+
+      const { error } = await supabase.from('inventory_transactions').update(updates).eq('id', txId)
+      if (error) throw error
+
+      setInventoryTx(prev => prev.map(t => t.id === txId ? { ...t, ...updates } : t))
+    } catch (err) {
+      console.error('Error guardando Barco/OT:', err)
+      showFeedback('error', 'Error al guardar imputación: ' + err.message)
+    }
+  }
+
   // Guardar celda en Supabase (Planilla de Retiros)
   const handleSaveInlineTx = async (txId, field, value) => {
     try {
@@ -777,6 +842,17 @@ export default function Panol() {
     onPasteRow: (args) => onPasteRowRef.current?.(args),
     onCellActivate: (row, colDef) => {
       if (!row || !colDef || colDef.readOnly) return
+      if (colDef.key === 'ship_id' || colDef.key === 'work_order_id') {
+        setPickerModal({
+          isOpen: true,
+          txId: row.id,
+          shipId: row.ship_id,
+          workOrderId: row.work_order_id,
+          workerName: row.worker_name,
+          contractorName: row.contractor_name
+        })
+        return
+      }
       const currentVal = row[colDef.key]
       setInlineEdit({
         id: row.id,
@@ -2034,51 +2110,42 @@ export default function Panol() {
                           )
                         })()}
 
-                        {/* 3. Barco / Destino (Doble clic editable) */}
+                        {/* 3. Barco / Destino (Doble clic abre selector canónico modal) */}
                         {(() => {
                           const cp = getSpreadsheetCellProps(rowIndex, 'ship_id')
                           return (
                             <td
                               {...cp.domProps}
-                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'ship_id', value: tx.ship_id || '' })}
+                              onDoubleClick={() => {
+                                setPickerModal({
+                                  isOpen: true,
+                                  txId: tx.id,
+                                  shipId: tx.ship_id,
+                                  workOrderId: tx.work_order_id,
+                                  workerName: tx.worker_name,
+                                  contractorName: tx.contractor_name
+                                })
+                              }}
                               className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-semibold ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : 'text-slate-200'}`}
-                              title="Doble clic para cambiar Barco"
+                              title="Doble clic para cambiar Buque u Orden de Trabajo"
                             >
-                              {inlineEdit.id === tx.id && inlineEdit.field === 'ship_id' ? (
-                                <select
-                                  autoFocus
-                                  value={inlineEdit.value}
-                                  onChange={(e) => {
-                                    handleSaveInlineTx(tx.id, 'ship_id', e.target.value)
-                                  }}
-                                  onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
-                                  className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] font-bold text-white focus:outline-none"
-                                >
-                                  <option value="">(Sin Barco / Astillero)</option>
-                                  {ships.map((s) => (
-                                    <option key={s.id} value={s.id}>
-                                      {s.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <div className="flex items-center gap-1.5">
-                                  <Anchor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                                  <HighlightText text={ship?.name || 'ASTILLERO'} query={searchQuery} />
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1.5 font-bold text-white truncate" title={ship?.name || 'ASTILLERO'}>
+                                <Anchor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                <HighlightText text={ship?.name || 'ASTILLERO'} query={searchQuery} />
+                              </div>
                               {cp.renderHandle && (
                                 <div
                                   onMouseDown={grid.handleFillHandleMouseDown}
                                   onDoubleClick={grid.handleFillHandleDoubleClick}
                                   className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
                                 />
                               )}
                             </td>
                           )
                         })()}
 
-                        {/* 4. Orden de Trabajo (OT) (Doble clic editable con cascada de Contratista) */}
+                        {/* 4. Orden de Trabajo (OT) (Doble clic abre selector canónico modal) */}
                         {(() => {
                           const cp = getSpreadsheetCellProps(rowIndex, 'work_order_id')
                           const contractorVal = tx.contractor_name || tx.worker_name
@@ -2096,33 +2163,30 @@ export default function Panol() {
                           return (
                             <td
                               {...cp.domProps}
-                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'work_order_id', value: tx.work_order_id || '' })}
+                              onDoubleClick={() => {
+                                setPickerModal({
+                                  isOpen: true,
+                                  txId: tx.id,
+                                  shipId: tx.ship_id,
+                                  workOrderId: tx.work_order_id,
+                                  workerName: tx.worker_name,
+                                  contractorName: tx.contractor_name
+                                })
+                              }}
                               className={`py-1.5 px-1.5 max-w-[220px] truncate cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
                               title={otTooltip}
                             >
-                              {inlineEdit.id === tx.id && inlineEdit.field === 'work_order_id' ? (
-                                <select
-                                  autoFocus
-                                  value={inlineEdit.value}
-                                  onChange={(e) => handleSaveInlineTx(tx.id, 'work_order_id', e.target.value || null)}
-                                  onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
-                                  className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-white focus:outline-none max-w-[240px]"
-                                >
-                                  <option value="">(⚠️ Sin OT)</option>
-                                  {enabledShipWos.map((w) => (
-                                    <option key={w.id} value={w.id}>
-                                      OT #{w.order_number || w.ot_number || w.id?.slice(0, 4)} - {w.title || w.description}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : wo ? (
-                                <span className="text-cyan-400 font-bold">
-                                  OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}: <span className="text-slate-300 font-normal">{wo.title || wo.description}</span>
-                                </span>
+                              {wo ? (
+                                <div className="truncate">
+                                  <span className="font-mono text-cyan-300 font-bold bg-cyan-950/60 px-1 py-0.5 rounded border border-cyan-800/50 mr-1.5">
+                                    OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}
+                                  </span>
+                                  <span className="text-slate-200 text-xs truncate">{wo.title || wo.description}</span>
+                                </div>
                               ) : (
                                 <div className="flex items-center justify-between gap-1">
-                                  <span className="text-amber-400/90 italic font-mono text-[10px]">
-                                    (⚠️ Sin OT)
+                                  <span className="text-amber-400 font-bold font-mono text-[10px]">
+                                    ⚠️ Sin OT
                                   </span>
                                   {allocState.needsOtRequest && (
                                     allocState.isOtRequestPending ? (
@@ -2159,6 +2223,7 @@ export default function Panol() {
                                   onMouseDown={grid.handleFillHandleMouseDown}
                                   onDoubleClick={grid.handleFillHandleDoubleClick}
                                   className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                                  title="Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)"
                                 />
                               )}
                             </td>
@@ -3110,6 +3175,25 @@ export default function Panol() {
           </div>
         </div>
       )}
+
+            {/* MODAL CANÓNICO: ASIGNACIÓN DE BUQUE Y ORDEN DE TRABAJO */}
+      <ShipWorkOrderPickerModal
+        isOpen={pickerModal.isOpen}
+        onClose={() => setPickerModal({ isOpen: false, txId: null, shipId: '', workOrderId: '', workerName: '', contractorName: '' })}
+        ships={ships}
+        workOrders={workOrders}
+        workItems={workItems}
+        currentShipId={pickerModal.shipId}
+        currentWorkOrderId={pickerModal.workOrderId}
+        allowAstilleroStock={true}
+        contractorName={pickerModal.contractorName}
+        workerName={pickerModal.workerName}
+        onSave={async ({ shipId, workOrderId }) => {
+          if (!pickerModal.txId) return
+          await handleSaveShipAndWorkOrder(pickerModal.txId, shipId, workOrderId)
+          setPickerModal({ isOpen: false, txId: null, shipId: '', workOrderId: '', workerName: '', contractorName: '' })
+        }}
+      />
 
       {/* MODAL 7: SOLICITAR APERTURA DE OT A JORGE SENTIS (ADMINISTRADOR) */}
       {requestOtModal.isOpen && (
