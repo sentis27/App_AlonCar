@@ -1379,7 +1379,7 @@ export default function Terceros() {
   }, [selectedIds, filteredServices])
 
   return (
-    <div className="space-y-6 w-full pb-20">
+    <div className="space-y-4 w-full pb-24">
       {/* ALERTA DE FEEDBACK / TOAST */}
       {feedbackMessage && (
         <div
@@ -1407,124 +1407,119 @@ export default function Terceros() {
         </div>
       )}
 
-      {/* CABECERA & SELECTOR DE TERMINAL */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-800/80 pb-6">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-            <span>Alon Car ERP</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span className="text-primary font-medium">Módulo M3: Terceros y Talleres Externos (GS-005)</span>
-          </div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-            <Wrench className="w-8 h-8 text-primary" />
-            <span>Costos de Contratistas & Servicios de Terceros</span>
-          </h1>
-        </div>
-
-        {/* SELECTOR DE TERMINALES DE TRABAJO */}
-        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
-          <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1 text-xs shadow-inner">
-            <span className="text-[10px] uppercase font-bold text-slate-400 px-2 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Terminal Activa:
-            </span>
-            <button
-              type="button"
-              onClick={() => setActiveRolePerspective('admin')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeRolePerspective === 'admin'
-                  ? 'bg-primary text-slate-950 shadow-md ring-1 ring-primary/50'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Terminal Jorge Sentis: Control total, edición de montos autorizada, auditoría y configuración general"
-            >
-              <span>👑 Terminal Admin</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveRolePerspective('maria_jose')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeRolePerspective === 'maria_jose'
-                  ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/50'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Terminal María José: Carga y valorización de comprobantes, control de facturación, reclamos de RPF, edición de montos y evolución a factura"
-            >
-              <span>📋 Terminal María José</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveRolePerspective('jefe_obra')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeRolePerspective === 'jefe_obra'
-                  ? 'bg-emerald-400 text-slate-950 shadow-md ring-1 ring-emerald-400/50'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Terminal Jefe de Obra: Auditoría técnica y conformidad de trabajos ejecutados en obra, notas técnicas"
-            >
-              <span>🛠️ Terminal Jefe de Obra</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveRolePerspective('direccion')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeRolePerspective === 'direccion'
-                  ? 'bg-purple-400 text-slate-950 shadow-md ring-1 ring-purple-400/50'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Terminal Dirección: Solo lectura gerencial en USD por buque y órdenes de trabajo"
-            >
-              <span>👁️ Terminal Dirección</span>
-            </button>
+      {/* ============================================================================== */}
+      {/* ZONA 1: CONTEXTO OPERATIVO (.alon-zone-context - Acento Azul Cielo)             */}
+      {/* ============================================================================== */}
+      <div className="alon-zone-context space-y-3 p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-slate-950 shrink-0">
+              <Wrench className="w-5 h-5 stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl font-black text-white tracking-wide">
+                  TERCEROS & TALLERES EXTERNOS
+                </h1>
+                <span className="text-[10px] font-mono tracking-widest text-cyan-400/90 bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 rounded-md uppercase font-bold">
+                  M3 · Servicios & Facturación
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Gestión y auditoría de comprobantes (PRC, RMO, RPF, FCR, SDT), cotización quincenal y conformidad de obra.
+              </p>
+            </div>
           </div>
 
-          {/* Botón Nuevo Comprobante */}
-          {activeRolePerspective !== 'direccion' && (
-            <button
-              type="button"
-              onClick={handleOpenNewModal}
-              className="px-4 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,254,0.25)] transition-all"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>+ Cargar Comprobante / Gasto</span>
-            </button>
-          )}
-        </div>
-      </div>
+          {/* SELECTOR DE TERMINALES & ACCIÓN RÁPIDA */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="bg-slate-950/90 border border-slate-800 p-1 rounded-xl flex items-center gap-1 text-xs shadow-inner">
+              <span className="text-[10px] uppercase font-bold text-slate-400 px-2 flex items-center gap-1 hidden sm:flex">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Terminal:
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveRolePerspective('admin')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeRolePerspective === 'admin'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md ring-1 ring-cyan-400/50'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+                title="Terminal Jorge Sentis: Control total, edición de montos autorizada, auditoría y configuración general"
+              >
+                <span>👑 Admin</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveRolePerspective('maria_jose')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeRolePerspective === 'maria_jose'
+                    ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/50'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+                title="Terminal María José: Carga y valorización de comprobantes, control de facturación, reclamos de RPF, edición de montos y evolución a factura"
+              >
+                <span>📋 María José</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveRolePerspective('jefe_obra')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeRolePerspective === 'jefe_obra'
+                    ? 'bg-emerald-400 text-slate-950 shadow-md ring-1 ring-emerald-400/50'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+                title="Terminal Jefe de Obra: Auditoría técnica y conformidad de trabajos ejecutados en obra, notas técnicas"
+              >
+                <span>🛠️ Jefe Obra</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveRolePerspective('direccion')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeRolePerspective === 'direccion'
+                    ? 'bg-purple-400 text-slate-950 shadow-md ring-1 ring-purple-400/50'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+                title="Terminal Dirección: Solo lectura gerencial en USD por buque y órdenes de trabajo"
+              >
+                <span>👁️ Dirección</span>
+              </button>
+            </div>
 
-      {/* ZONA 1: BANNER DINÁMICO DE CONTEXTO POR PUESTO DE TRABAJO */}
-      <div className="alon-zone-context p-4 md:p-5 text-xs text-slate-300 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-primary font-bold tracking-wide uppercase text-[11px]">
-            <Sparkles className="w-4 h-4 text-primary" />
+            {/* Botón Nuevo Comprobante */}
+            {activeRolePerspective !== 'direccion' && (
+              <button
+                type="button"
+                onClick={handleOpenNewModal}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>+ Cargar Comprobante</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* SUB-BARRA DE ORIENTACIÓN DEL PUESTO ACTIVO */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-sky-500/20 text-xs">
+          <div className="flex items-center gap-2 text-cyan-300 font-bold tracking-wide uppercase text-[11px]">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             <span>
-              {activeRolePerspective === 'admin' && 'Terminal Administrador General — Control Maestro & Finanzas'}
+              {activeRolePerspective === 'admin' && 'Terminal Administrador General — Control Maestro, Tasas & Finanzas'}
               {activeRolePerspective === 'maria_jose' && 'Terminal Administración Comercial (María José) — Ciclo de Comprobantes & Valorización'}
-              {activeRolePerspective === 'jefe_obra' && 'Terminal Jefes de Obra (Omar / Pablo / Ale) — Conformidad Técnica & Control de Obra'}
-              {activeRolePerspective === 'direccion' && 'Terminal Dirección Estratégica (Hugo) — Supervisión de Costos & Alertas'}
+              {activeRolePerspective === 'jefe_obra' && 'Terminal Jefes de Obra — Conformidad Técnica de Trabajos en Barco'}
+              {activeRolePerspective === 'direccion' && 'Terminal Dirección Estratégica (Hugo) — Supervisión Ejecutiva de Costos'}
             </span>
           </div>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
-            {canEditAmounts ? '🔓 Edición de montos AR$/US$ Habilitada' : '🔒 Edición de montos AR$/US$ Bloqueada'}
-          </span>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-400 pt-1">
-          <div className="flex items-start gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
-            <span className="font-bold text-slate-200 shrink-0">📌 Qué debes completar:</span>
-            <span>
-              {activeRolePerspective === 'admin' && 'Aprobar evoluciones excepcionales (SDT), auditar montos sensibles y configurar cotizaciones oficiales de dólar por quincena.'}
-              {activeRolePerspective === 'maria_jose' && 'Cargar facturas (FCR), presupuestos (PRC) y remitos (RMO/RPF). Reclamar facturas a proveedores con alerta RPF y evolucionarlos a FCR.'}
-              {activeRolePerspective === 'jefe_obra' && 'Revisar trabajos ejecutados por contratistas, dar conformidad técnica (Conforme / Observado) y anotar observaciones técnicas.'}
-              {activeRolePerspective === 'direccion' && 'Supervisión ejecutiva. Módulo en modo consulta.'}
-            </span>
-          </div>
-          <div className="flex items-start gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
-            <span className="font-bold text-slate-200 shrink-0">🔍 Qué puedes consultar / consumir:</span>
-            <span>
-              {activeRolePerspective === 'admin' && 'Total acumulado en USD, auditoría completa de bajas y modificaciones, historial de pases y cruce de remitos con Pañol.'}
-              {activeRolePerspective === 'maria_jose' && 'Contratistas autorizados en Padrón (con permiso 3ros), cotización quincenal congelada, y estado de reclamos por facturar.'}
-              {activeRolePerspective === 'jefe_obra' && 'Costos y servicios asignados a cada buque y OT, piezas enviadas a taller externo con Remito Aloncar, y observaciones directas.'}
-              {activeRolePerspective === 'direccion' && 'Total de costos de terceros imputados a cada buque en USD, OTs sin costo y comparador de contratistas.'}
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold border ${
+              canEditAmounts 
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60' 
+                : 'bg-slate-900 text-slate-400 border-slate-800'
+            }`}>
+              {canEditAmounts ? '🔓 Edición de montos AR$/US$ Habilitada' : '🔒 Solo Lectura de Montos'}
             </span>
           </div>
         </div>
@@ -1899,7 +1894,7 @@ export default function Terceros() {
               <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
                 <tr>
                   {/* Selector / Checkbox Maestro */}
-                  <th className="py-3 px-2 w-9 text-center bg-slate-950">
+                  <th className="py-2.5 px-2 w-9 text-center">
                     <input
                       type="checkbox"
                       checked={filteredServices.length > 0 && selectedIds.size === filteredServices.length}
@@ -1914,23 +1909,23 @@ export default function Terceros() {
                     />
                   </th>
                   {/* 1. Fecha */}
-                  <th className="py-3 px-2 w-[8%] bg-slate-950">Fecha</th>
+                  <th className="py-2.5 px-2 w-[8%]">Fecha</th>
                   {/* 2. Barco / OT */}
-                  <th className="py-3 px-2 w-[14%] bg-slate-950">Barco / OT</th>
+                  <th className="py-2.5 px-2 w-[14%]">Barco / OT</th>
                   {/* 3. Contratista / Rubro */}
-                  <th className="py-3 px-2 w-[15%] bg-slate-950">Contratista / Rubro</th>
+                  <th className="py-2.5 px-2 w-[15%]">Contratista / Rubro</th>
                   {/* 4. Importe AR$ */}
-                  <th className="py-3 px-2 w-[11%] text-right bg-slate-950">Importe AR$</th>
+                  <th className="py-2.5 px-2 w-[11%] text-right">Importe AR$</th>
                   {/* 5. Dólar / US$ */}
-                  <th className="py-3 px-2 w-[10%] text-right bg-slate-950">Dólar / US$</th>
+                  <th className="py-2.5 px-2 w-[10%] text-right">Dólar / US$</th>
                   {/* 6. Comprobante */}
-                  <th className="py-3 px-2 w-[7%] text-center bg-slate-950">Comprobante</th>
+                  <th className="py-2.5 px-2 w-[7%] text-center">Comprobante</th>
                   {/* 7. Nº Comprobante */}
-                  <th className="py-3 px-2 w-[12%] bg-slate-950">Nº Comprobante</th>
+                  <th className="py-2.5 px-2 w-[12%]">Nº Comprobante</th>
                   {/* 8. Comentarios */}
-                  <th className="py-3 px-2 w-[13%] bg-slate-950">Comentarios</th>
+                  <th className="py-2.5 px-2 w-[13%]">Comentarios</th>
                   {/* 9. Acciones */}
-                  <th className="py-3 px-2 w-[10%] text-right bg-slate-950">Acciones</th>
+                  <th className="py-2.5 px-2 w-[10%] text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">

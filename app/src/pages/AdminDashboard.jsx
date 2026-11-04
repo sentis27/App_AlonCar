@@ -1022,34 +1022,172 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* HEADER PRINCIPAL DEL ADMINISTRADOR */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800/90 to-slate-900 border border-slate-700/60 p-6 md:p-8 shadow-2xl">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-bold mb-3">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Centro de Gobierno & Control Maestro Alon Car
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight flex items-center gap-2.5">
-              Dashboard del Administrador
-            </h1>
-            <p className="text-slate-400 text-xs md:text-sm mt-1 max-w-2xl leading-relaxed">
-              Administración central de variables macroeconómicas quincenales, matriz de puestos institucionales y asignación de permisos de seguridad por módulo.
-            </p>
+    <div className="space-y-4 w-full pb-24">
+      {/* ============================================================================== */}
+      {/* ZONA 1: CONTEXTO OPERATIVO (.alon-zone-context - Acento Azul Cielo)             */}
+      {/* ============================================================================== */}
+      <div className="alon-zone-context flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20 text-slate-950 shrink-0">
+            <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
           </div>
-
-          <div className="flex items-center gap-2 bg-slate-950/80 px-4 py-2.5 rounded-xl border border-slate-700/60 self-start md:self-auto">
-            <Lock className="w-4 h-4 text-amber-400" />
-            <div className="text-xs">
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Sesión Activa:</span>
-              <span className="font-extrabold text-white">{profile?.full_name || user?.email || 'Administrador Central'}</span>
+          <div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-xl font-black text-white tracking-wide">
+                PANEL DE CONTROL ADMINISTRADOR
+              </h1>
+              <span className="text-[10px] font-mono tracking-widest text-purple-300 bg-purple-950/60 border border-purple-800/60 px-2 py-0.5 rounded-md uppercase font-bold">
+                M9 · Gobernanza & Control Central
+              </span>
             </div>
+            <p className="text-xs text-slate-400">
+              Administración de variables macroeconómicas, cotización oficial, matriz de puestos y radar de auditoría operativa.
+            </p>
           </div>
         </div>
 
-        {/* Glow de fondo */}
-        <div className="absolute right-0 top-0 w-96 h-full bg-gradient-to-l from-rose-500/10 to-transparent pointer-events-none" />
+        {/* Sesión Activa del Administrador */}
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          <div className="flex items-center gap-2/80 px-3 py-1.5 rounded-xl border border-purple-500/30 text-xs shadow-inner">
+            <Lock className="w-3.5 h-3.5 text-purple-400" />
+            <div>
+              <span className="text-slate-500 block text-[9px] uppercase font-bold">Sesión Activa:</span>
+              <span className="font-extrabold text-white text-xs">{profile?.full_name || user?.email || 'Jorge Sentis (Admin)'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================================== */}
+      {/* ZONA 2: RADAR OPERATIVO DE KPIS Y ALERTAS EN VIVO (.alon-zone-kpis)            */}
+      {/* ============================================================================== */}
+      <div className="alon-zone-kpis p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-wider text-amber-400">📊 RADAR DE KPIs Y ALERTAS EN VIVO</span>
+            <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">Indicadores en tiempo real de gobernanza y control</span>
+          </div>
+          {complianceAlerts.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('alertas')}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              <span>{complianceAlerts.length} Solicitudes Pendientes</span>
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Alerta 1: Contratistas en Zona Roja */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('alertas')}
+            className="p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-slate-900/80 border-slate-800 hover:border-rose-500/40 hover:bg-slate-850"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-rose-400" />
+                Zona Roja (+5%)
+              </span>
+              {alertSummary.redContractorsCount > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-400/20 text-rose-300 font-bold border border-rose-400/30">
+                  Desvío
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-rose-300 font-mono">{alertSummary.redContractorsCount}</span>
+              <span className="text-xs text-slate-400">contratistas con desvíos</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Diferencia salarial mayor a paritaria oficial
+            </p>
+          </button>
+
+          {/* Alerta 2: Bandeja de Cumplimiento (Compliance Alerts) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('alertas')}
+            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              complianceAlerts.length > 0
+                ? 'bg-amber-950/80 border-amber-400 shadow-lg shadow-amber-500/20 ring-1 ring-amber-400'
+                : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40 hover:bg-slate-850'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-400" />
+                Bandeja Cumplimiento
+              </span>
+              {complianceAlerts.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                  {complianceAlerts.length} Pend.
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-amber-300 font-mono">{complianceAlerts.length}</span>
+              <span className="text-xs text-slate-400">solicitudes OT / permisos</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {complianceAlerts.length > 0 ? '⚠️ Requiere resolución de Jorge Sentis' : '✓ Al día sin solicitudes pendientes'}
+            </p>
+          </button>
+
+          {/* Alerta 3: Pañol sin Horas */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('alertas')}
+            className="p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-slate-900/80 border-slate-800 hover:border-purple-500/40 hover:bg-slate-850"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-purple-400" />
+                Pañol sin Horas
+              </span>
+              {alertSummary.panolWithoutHoursCount > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-400/20 text-purple-300 font-bold border border-purple-400/30">
+                  Auditar
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-purple-300 font-mono">{alertSummary.panolWithoutHoursCount}</span>
+              <span className="text-xs text-slate-400">retiros de materiales</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Consumibles retirados sin horas en la quincena
+            </p>
+          </button>
+
+          {/* Alerta 4: Horas en Auditoría */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('alertas')}
+            className="p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between bg-slate-900/80 border-slate-800 hover:border-cyan-500/40 hover:bg-slate-850"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-cyan-400" />
+                Horas en Auditoría
+              </span>
+              {alertSummary.auditedHoursCount > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 font-bold border border-cyan-400/30">
+                  R / RR / RRR
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-2xl font-black text-cyan-300 font-mono">{alertSummary.auditedHoursCount}</span>
+              <span className="text-xs text-slate-400">partes observados</span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Marcas pendientes de dictamen técnico
+            </p>
+          </button>
+        </div>
       </div>
 
       {/* MENSAJES DE ESTADO */}
@@ -1066,20 +1204,22 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* PESTAÑAS DE CONTROL */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">
+      {/* ============================================================================== */}
+      {/* NAVEGACIÓN PRINCIPAL DE PESTAÑAS (ESTANDARIZADA)                              */}
+      {/* ============================================================================== */}
+      <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl/80 border border-slate-800">
         <button
           type="button"
           onClick={() => setActiveTab('matriz')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'matriz'
-              ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(0,242,254,0.3)]'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
           }`}
         >
-          <Building2 className="w-4 h-4" />
+          <Building2 className="w-4 h-4 text-purple-400" />
           <span>Matriz de Puestos & Permisos</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-950/50">
+          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-900 border border-slate-700 text-slate-300 font-mono">
             {roles.length}
           </span>
         </button>
@@ -1087,52 +1227,57 @@ export default function AdminDashboard() {
         <button
           type="button"
           onClick={() => setActiveTab('macro')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'macro'
-              ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(0,242,254,0.3)]'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
           }`}
         >
-          <DollarSign className="w-4 h-4" />
+          <DollarSign className="w-4 h-4 text-emerald-400" />
           <span>Variables Macro & Cierre Quincenal</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('alertas')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'alertas'
-              ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(0,242,254,0.3)]'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
           }`}
         >
-          <ShieldAlert className="w-4 h-4" />
-          <span>Radar de Alertas Operativas</span>
+          <ShieldAlert className="w-4 h-4 text-amber-400" />
+          <span>Alertas & Cumplimiento</span>
+          {complianceAlerts.length > 0 && (
+            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-slate-950 font-bold font-mono">
+              {complianceAlerts.length}
+            </span>
+          )}
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('ia')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'ia'
-              ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(0,242,254,0.3)]'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
           }`}
         >
-          <Brain className="w-4 h-4" />
+          <Brain className="w-4 h-4 text-cyan-400" />
           <span>🧠 Gobernanza IA & Prompts</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('compras')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'compras'
-              ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(0,242,254,0.3)]'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
           }`}
         >
-          <ShoppingCart className="w-4 h-4" />
+          <ShoppingCart className="w-4 h-4 text-blue-400" />
           <span>Config. Compras & WhatsApp</span>
         </button>
       </div>
@@ -1184,7 +1329,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* BARRA DE BÚSQUEDA ESTÁNDAR (ESTÁNDAR COMPRAS) */}
-            <div className="alon-zone-toolbar p-2.5 rounded-xl border border-slate-800 bg-slate-950/60 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+            <div className="alon-zone-toolbar p-2.5 rounded-xl border border-slate-800/60 flex flex-wrap items-center justify-between gap-2.5 text-xs">
               <div className="relative flex-1 min-w-[240px]">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
                 <input
@@ -1199,7 +1344,7 @@ export default function AdminDashboard() {
                       e.target.blur()
                     }
                   }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-10 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
+                  className="w-full border border-slate-800 rounded-lg pl-9 pr-10 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
                 />
                 {roleSearch && (
                   <button
@@ -1219,7 +1364,7 @@ export default function AdminDashboard() {
 
             {/* ESQUEMA VISUAL DEL CIRCUITO OPERATIVO INTER-DEPARTAMENTAL ALON CAR */}
             {showWorkflowCircuit && (
-              <div className="p-4 bg-slate-950/90 border border-purple-500/30 rounded-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-4/90 border border-purple-500/30 rounded-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
                   <div>
                     <h3 className="text-xs uppercase tracking-wider font-extrabold text-purple-300 flex items-center gap-2">
@@ -1280,7 +1425,7 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               onClick={() => setRoleDetailModal({ isOpen: true, role: matchingRole })}
-                              className="w-full py-1 px-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-bold text-cyan-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                              className="w-full py-1 px-2 rounded-lg hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-bold text-cyan-300 flex items-center justify-center gap-1 transition-colors cursor-pointer"
                             >
                               <Eye className="w-3 h-3" />
                               <span>Ver Ficha & Tareas</span>
@@ -1297,15 +1442,15 @@ export default function AdminDashboard() {
             {/* TABLA MAESTRA CON MATRIZ VISUAL INTERACTIVA (OPCIÓN A) */}
             <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
+                <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
-                    <th className="py-2.5 px-3 bg-slate-950">Puesto / Función Técnica</th>
-                    <th className="py-2.5 px-3 bg-slate-950">Persona a Cargo</th>
-                    <th className="py-2.5 px-2 text-center bg-slate-950">Nivel</th>
+                    <th className="py-2.5 px-3">Puesto / Función Técnica</th>
+                    <th className="py-2.5 px-3">Persona a Cargo</th>
+                    <th className="py-2.5 px-2 text-center">Nivel</th>
                     {SYSTEM_MODULES.map(mod => {
                       const Icon = mod.icon
                       return (
-                        <th key={mod.key} className="py-2.5 px-1.5 text-center bg-slate-950">
+                        <th key={mod.key} className="py-2.5 px-1.5 text-center">
                           <div className="flex items-center justify-center gap-1" title={`Módulo: ${mod.label}`}>
                             <Icon className={`w-3 h-3 ${mod.color}`} />
                             <span>{mod.label}</span>
@@ -1313,8 +1458,8 @@ export default function AdminDashboard() {
                         </th>
                       )
                     })}
-                    <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
+                    <th className="py-2.5 px-2 text-center">Estado</th>
+                    <th className="py-2.5 px-3 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -1487,7 +1632,7 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            <form onSubmit={handleSaveMacroSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <form onSubmit={handleSaveMacroSubmit} className="alon-zone-entry grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                   Año
@@ -1587,15 +1732,15 @@ export default function AdminDashboard() {
 
             <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
+                <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
-                    <th className="py-2.5 px-3 bg-slate-950">Mes y Año</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Dólar Referencia ($ / USD)</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Inflación Mensual (%)</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Quincenas que Rige</th>
-                    <th className="py-2.5 px-3 bg-slate-950">Registrado por</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Fecha de Carga</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
+                    <th className="py-2.5 px-3">Mes y Año</th>
+                    <th className="py-2.5 px-3 text-right">Dólar Referencia ($ / USD)</th>
+                    <th className="py-2.5 px-3 text-center">Inflación Mensual (%)</th>
+                    <th className="py-2.5 px-3 text-center">Quincenas que Rige</th>
+                    <th className="py-2.5 px-3">Registrado por</th>
+                    <th className="py-2.5 px-3 text-center">Fecha de Carga</th>
+                    <th className="py-2.5 px-3 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -1705,9 +1850,9 @@ export default function AdminDashboard() {
 
             <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
+                <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
-                    <th className="py-2.5 px-3 w-10 text-center bg-slate-950">
+                    <th className="py-2.5 px-3 w-10 text-center">
                       <input
                         type="checkbox"
                         checked={ratePeriods.length > 0 && selectedPeriods.size === ratePeriods.length}
@@ -1716,13 +1861,13 @@ export default function AdminDashboard() {
                         title="Seleccionar todas las quincenas"
                       />
                     </th>
-                    <th className="py-2.5 px-3 bg-slate-950">Quincena (Período)</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Dólar Quincenal (AR$/USD)</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Inflación Mensual</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Tarifario de Mano de Obra</th>
-                    <th className="py-2.5 px-3 text-center bg-slate-950">Estado del Período</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Control de Cierre</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Acción</th>
+                    <th className="py-2.5 px-3">Quincena (Período)</th>
+                    <th className="py-2.5 px-3 text-right">Dólar Quincenal (AR$/USD)</th>
+                    <th className="py-2.5 px-3 text-center">Inflación Mensual</th>
+                    <th className="py-2.5 px-3 text-center">Tarifario de Mano de Obra</th>
+                    <th className="py-2.5 px-3 text-center">Estado del Período</th>
+                    <th className="py-2.5 px-3 text-right">Control de Cierre</th>
+                    <th className="py-2.5 px-3 text-right">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -1962,14 +2107,14 @@ export default function AdminDashboard() {
             </div>
 
             {complianceAlerts.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl bg-slate-950/40">
+              <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl/40">
                 ✓ No hay solicitudes operativas pendientes de resolución en la base de datos.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[10px]">
+                    <tr className="alon-grid-thead">
                       <th className="py-2.5 px-3">Fecha</th>
                       <th className="py-2.5 px-3">Tipo de Requerimiento</th>
                       <th className="py-2.5 px-3">Buque / Obra</th>
@@ -2062,14 +2207,14 @@ export default function AdminDashboard() {
             </div>
 
             {pendingRubroMaterials.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl bg-slate-950/40">
+              <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl/40">
                 No hay solicitudes pendientes de apertura de rubro en el catálogo maestro de materiales.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[10px]">
+                    <tr className="alon-grid-thead">
                       <th className="py-2.5 px-3">Material Creado</th>
                       <th className="py-2.5 px-3">Categoría</th>
                       <th className="py-2.5 px-3">Unidad / % Seg.</th>
@@ -2127,7 +2272,7 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
             {/* Header del Modal */}
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-800 flex items-center justify-center text-cyan-400">
                   <Briefcase className="w-5 h-5" />
@@ -2181,7 +2326,7 @@ export default function AdminDashboard() {
                 </div>
 
                 {Array.isArray(roleDetailModal.role.key_responsibilities) && roleDetailModal.role.key_responsibilities.length > 0 ? (
-                  <ul className="space-y-2 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                  <ul className="space-y-2/80 p-3.5 rounded-xl border border-slate-800">
                     {roleDetailModal.role.key_responsibilities.map((resp, idx) => (
                       <li key={idx} className="flex items-start gap-2.5 text-xs text-slate-300 leading-snug">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
@@ -2190,7 +2335,7 @@ export default function AdminDashboard() {
                     ))}
                   </ul>
                 ) : (
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-500 italic">
+                  <div className="p-3 rounded-xl border border-slate-800 text-xs text-slate-500 italic">
                     No se han registrado tareas específicas todavía. Podés cargarlas haciendo clic en "Editar Puesto".
                   </div>
                 )}
@@ -2221,7 +2366,7 @@ export default function AdminDashboard() {
                         : 'bg-purple-950 text-purple-300 border-purple-700'
 
                       return (
-                        <div key={idx} className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1.5 flex flex-col justify-between">
+                        <div key={idx} className="p-3 rounded-xl border border-slate-800/80 space-y-1.5 flex flex-col justify-between">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-[11px] font-extrabold text-white">
                               {link.related_department}
@@ -2239,7 +2384,7 @@ export default function AdminDashboard() {
                     })}
                   </div>
                 ) : (
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-500 italic">
+                  <div className="p-3 rounded-xl border border-slate-800 text-xs text-slate-500 italic">
                     Sin vinculaciones formalizadas cargadas aún.
                   </div>
                 )}
@@ -2278,7 +2423,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Footer con Acciones */}
-            <div className="px-6 py-3 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
+            <div className="px-6 py-3 border-t border-slate-800 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => {
@@ -2311,7 +2456,7 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
             {/* Cabecera del Modal */}
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Building2 className="w-5 h-5 text-primary" />
                 <h3 className="font-bold text-white text-base">
@@ -2345,7 +2490,7 @@ export default function AdminDashboard() {
                         setRoleForm({ ...roleForm, role_title: '' })
                       }
                     }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
+                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
                   >
                     {STANDARD_JOB_TITLES.map((title) => (
                       <option key={title} value={title}>{title}</option>
@@ -2377,7 +2522,7 @@ export default function AdminDashboard() {
                     value={roleForm.holder_name}
                     onChange={(e) => setRoleForm({ ...roleForm, holder_name: e.target.value })}
                     placeholder="ej. Hugo Obregozo / María José"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold font-mono"
+                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold font-mono"
                   />
                 </div>
 
@@ -2396,7 +2541,7 @@ export default function AdminDashboard() {
                         setRoleForm({ ...roleForm, department: '' })
                       }
                     }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
+                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
                   >
                     {STANDARD_DEPARTMENTS.map((dept) => (
                       <option key={dept} value={dept}>{dept}</option>
@@ -2425,7 +2570,7 @@ export default function AdminDashboard() {
                   <select
                     value={roleForm.reports_to || 'Dirección General & Administración Central'}
                     onChange={(e) => setRoleForm({ ...roleForm, reports_to: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
+                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
                   >
                     {REPORTING_LINES.map((rep) => (
                       <option key={rep} value={rep}>{rep}</option>
@@ -2441,7 +2586,7 @@ export default function AdminDashboard() {
                   <select
                     value={roleForm.security_level}
                     onChange={(e) => setRoleForm({ ...roleForm, security_level: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
+                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
                   >
                     <option value="ADMINISTRADOR">👑 Administrador (Acceso Maestro)</option>
                     <option value="DIRECCION">👔 Dirección / Gerencia</option>
@@ -2462,7 +2607,7 @@ export default function AdminDashboard() {
                   value={roleForm.job_mission}
                   onChange={(e) => setRoleForm({ ...roleForm, job_mission: e.target.value })}
                   placeholder="ej. Conducir las operaciones y producción en astillero, acordar tarifas quincenales y coordinar la ejecución técnica de obras navales."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary leading-relaxed"
+                  className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary leading-relaxed"
                 />
               </div>
 
@@ -2476,7 +2621,7 @@ export default function AdminDashboard() {
                   value={roleForm.key_responsibilities}
                   onChange={(e) => setRoleForm({ ...roleForm, key_responsibilities: e.target.value })}
                   placeholder="Escribí una tarea o responsabilidad por línea:&#10;• Negociación de valores hora con contratistas&#10;• Fijación de la paritaria testigo del astillero&#10;• Autorización de órdenes de trabajo"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-mono leading-relaxed"
+                  className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-mono leading-relaxed"
                 />
               </div>
 
@@ -2495,7 +2640,7 @@ export default function AdminDashboard() {
                         security_level: preset.security_level,
                         allowed_sections: preset.sections
                       })}
-                      className="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl text-left transition-all cursor-pointer"
+                      className="p-2 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl text-left transition-all cursor-pointer"
                     >
                       <strong className="text-xs text-white block">{preset.name}</strong>
                       <span className="text-[10px] text-slate-400 block leading-tight mt-0.5">{preset.desc}</span>
@@ -2509,7 +2654,7 @@ export default function AdminDashboard() {
                 <span className="text-xs font-bold text-slate-400 block mb-2">
                   Módulos de la App Habilitados:
                 </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 rounded-xl border border-slate-800">
                   {SYSTEM_MODULES.map(mod => {
                     const isChecked = roleForm.allowed_sections.includes(mod.key)
                     const Icon = mod.icon
@@ -2569,7 +2714,7 @@ export default function AdminDashboard() {
       {/* MODAL 1: EDICIÓN COMPLETA DE VARIABLES MACROECONÓMICAS (LÁPIZ DE MES)    */}
       {/* ========================================================================= */}
       {macroEditModal.isOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
@@ -2588,7 +2733,7 @@ export default function AdminDashboard() {
             </div>
 
             <form onSubmit={handleSaveMacroModalSubmit} className="space-y-4">
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 flex items-center justify-between">
+              <div className="p-3 rounded-xl border border-slate-800 text-xs text-slate-300 flex items-center justify-between">
                 <div>
                   <span className="text-slate-500 block text-[10px] uppercase font-bold">Mes y Año de Aplicación</span>
                   <span className="font-extrabold text-cyan-300 text-sm">{MONTH_NAMES[macroEditModal.month - 1]} {macroEditModal.year}</span>
@@ -2612,7 +2757,7 @@ export default function AdminDashboard() {
                   required
                   value={macroEditModal.monthly_inflation_pct}
                   onChange={(e) => setMacroEditModal({ ...macroEditModal, monthly_inflation_pct: parseFloat(e.target.value) || 0 })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono font-extrabold text-amber-300 focus:outline-none focus:border-amber-400"
+                  className="w-full border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono font-extrabold text-amber-300 focus:outline-none focus:border-amber-400"
                 />
               </div>
 
@@ -2625,7 +2770,7 @@ export default function AdminDashboard() {
                 </p>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1">
+                  <div className="p-3/70 border border-slate-800 rounded-xl space-y-1">
                     <label className="text-[11px] font-bold text-cyan-300 block font-mono">
                       Dólar 1ª Quincena (1Q)
                     </label>
@@ -2639,7 +2784,7 @@ export default function AdminDashboard() {
                     />
                   </div>
 
-                  <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1">
+                  <div className="p-3/70 border border-slate-800 rounded-xl space-y-1">
                     <label className="text-[11px] font-bold text-cyan-300 block font-mono">
                       Dólar 2ª Quincena (2Q)
                     </label>
@@ -2681,7 +2826,7 @@ export default function AdminDashboard() {
       {/* MODAL 2: AJUSTE RÁPIDO DE DÓLAR POR QUINCENA (LÁPIZ DE QUINCENA)          */}
       {/* ========================================================================= */}
       {quincenaDollarModal.isOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
@@ -2704,7 +2849,7 @@ export default function AdminDashboard() {
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                   Quincena Seleccionada
                 </span>
-                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 font-mono font-bold text-cyan-300 text-sm flex items-center justify-between">
+                <div className="p-2.5 rounded-lg border border-slate-800 font-mono font-bold text-cyan-300 text-sm flex items-center justify-between">
                   <span>{quincenaDollarModal.period}</span>
                   <span className="text-xs text-slate-400 font-normal font-sans">
                     {quincenaDollarModal.quincena === 1 ? '1ª Quincena' : '2ª Quincena'} de {MONTH_NAMES[quincenaDollarModal.month - 1]}
@@ -2723,7 +2868,7 @@ export default function AdminDashboard() {
                   autoFocus
                   value={quincenaDollarModal.dollar_rate}
                   onChange={(e) => setQuincenaDollarModal({ ...quincenaDollarModal, dollar_rate: parseFloat(e.target.value) || 0 })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-base font-mono font-black text-emerald-300 focus:outline-none focus:border-emerald-400"
+                  className="w-full border border-slate-700 rounded-xl px-3 py-2 text-base font-mono font-black text-emerald-300 focus:outline-none focus:border-emerald-400"
                 />
               </div>
 
