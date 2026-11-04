@@ -139,12 +139,14 @@ export default function Panol() {
 
   // Modales
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
+  const [editingWithdrawalRow, setEditingWithdrawalRow] = useState(null)
   const [showNewMaterialModal, setShowNewMaterialModal] = useState(false)
   const [showStockAdjustModal, setShowStockAdjustModal] = useState({ isOpen: false, material: null })
   const [showGasModal, setShowGasModal] = useState({ isOpen: false, operationType: 'PRIMERA_ENTREGA' })
-  const [quickPurchaseModal, setQuickPurchaseModal] = useState({ isOpen: false, material: null, quantity: '' })
+  const [quickPurchaseModal, setQuickPurchaseModal] = useState({ isOpen: false, material: null, quantity: '', urgency: 'SIN_APURO' })
   const [adminDeleteConfirmModal, setAdminDeleteConfirmModal] = useState({ isOpen: false, tx: null })
   const [previewImage, setPreviewImage] = useState(null)
+  const [workItems, setWorkItems] = useState([])
 
   // Sincronizar parámetro URL tab
   useEffect(() => {
@@ -201,7 +203,8 @@ export default function Panol() {
         supRes,
         shipsRes,
         woRes,
-        workersRes
+        workersRes,
+        workItemsRes
       ] = await Promise.all([
         supabase.from('materials').select('*').order('name'),
         supabase
@@ -218,7 +221,8 @@ export default function Panol() {
         supabase.from('suppliers').select('*').order('name'),
         supabase.from('ships').select('*').order('name'),
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
-        supabase.from('workers').select('*').order('name')
+        supabase.from('workers').select('*').order('name'),
+        supabase.from('work_items').select('id, work_order_id, contractors, description, status, foreman_name').order('created_at', { ascending: true })
       ])
 
       if (matRes.data) setMaterials(matRes.data)
@@ -229,6 +233,7 @@ export default function Panol() {
       if (shipsRes.data) setShips(shipsRes.data)
       if (woRes.data) setWorkOrders(woRes.data)
       if (workersRes.data) setWorkers(workersRes.data)
+      if (workItemsRes.data) setWorkItems(workItemsRes.data)
     } catch (err) {
       console.error('Error cargando Pañol:', err)
       showFeedback('error', 'Error cargando datos de Pañol: ' + err.message)
@@ -330,6 +335,46 @@ export default function Panol() {
     set.add('IMPERPUR')
     return Array.from(set).sort()
   }, [workers])
+
+  // Filtrar OTs habilitadas para un Barco y un Contratista
+  const getEnabledWosForShipAndContractor = useCallback(
+    (shipId, contractorName) => {
+      if (!shipId) return []
+      const shipWos = workOrders.filter((w) => w.ship_id === shipId)
+      if (!contractorName || contractorName === 'ASTILLERO') return shipWos
+      const norm = contractorName.trim().toUpperCase()
+      return shipWos.filter((wo) => {
+        const items = workItems.filter((wi) => wi.work_order_id === wo.id)
+        if (items.length === 0) return true
+        return items.some(
+          (it) => Array.isArray(it.contractors) && it.contractors.some((c) => c && c.trim().toUpperCase() === norm)
+        )
+      })
+    },
+    [workOrders, workItems]
+  )
+
+  // Formatear Tooltip enriquecido de OT (Imagen 1)
+  const formatWorkOrderTooltip = useCallback(
+    (wo, ship) => {
+      if (!wo) return '(⚠️ Sin OT)'
+      const otItems = workItems.filter((wi) => wi.work_order_id === wo.id)
+      const fullDesc =
+        otItems
+          .map((i) => i.description)
+          .filter(Boolean)
+          .join(' | ') ||
+        wo.description ||
+        wo.title ||
+        'Sin descripción técnica adicional'
+      const foremen =
+        Array.from(new Set(otItems.map((i) => i.foreman_name).filter(Boolean))).join(', ') || 'Sin asignar'
+      const shipName = ship?.name || 'Astillero'
+
+      return `OT #${wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}: ${wo.title || ''}\nDescripción Técnica: ${fullDesc}\nJefe de obra: ${foremen}\nBuque: ${shipName} | Estado: ${wo.status || 'En ejecución'}`
+    },
+    [workItems]
+  )
 
   // ==============================================================================
   // RADAR DE KPIS: CÁLCULO DE MÉTRICAS OPERATIVAS
@@ -491,7 +536,7 @@ export default function Panol() {
         label: 'Orden de Trabajo (OT)',
         getValue: (r) => {
           const wo = workOrders.find((w) => w.id === r.work_order_id)
-          return wo ? `OT #${wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - ${wo.description || ''}` : '(Sin OT)'
+          return wo ? `OT #${wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - ${wo.title || wo.description || ''}` : '(⚠️ Sin OT)'
         }
       },
       {
@@ -549,6 +594,32 @@ export default function Panol() {
         if (mat) {
           updates.weight_total = (Number(mat.weight_kg) || 0) * targetQty
         }
+      }
+
+      // Regla canónica de cascada: Si se cambia el Barco, borrar la OT y validar Contratista
+      if (field === 'ship_id') {
+        updates.work_order_id = null
+        const tx = inventoryTx.find((t) => t.id === txId)
+        const currentContractor = tx?.contractor_name
+        if (currentContractor && currentContractor !== 'ASTILLERO' && value) {
+          const isEnabledOnNewShip = workItems.some((wi) => {
+            const wo = workOrders.find((w) => w.id === wi.work_order_id)
+            return (
+              wo?.ship_id === value &&
+              Array.isArray(wi.contractors) &&
+              wi.contractors.some(
+                (c) => c && c.trim().toUpperCase() === currentContractor.trim().toUpperCase()
+              )
+            )
+          })
+          if (!isEnabledOnNewShip) {
+            updates.contractor_name = ''
+          }
+        }
+      }
+
+      if (field === 'work_order_id') {
+        updates.work_order_id = value || null
       }
 
       if (field === 'cost_center' && !isAdmin) {
@@ -614,20 +685,20 @@ export default function Panol() {
     }
   }
 
-  // Insertar nueva fila editable en 1 clic
-  const handleInsertRow = async (targetIndex = 0) => {
+  // Insertar nueva fila 100% en blanco al final de la planilla (solo fecha de hoy)
+  const handleInsertRow = async () => {
     try {
-      const defaultMat = materials[0]
+      const todayStr = new Date().toISOString().split('T')[0]
       const newTx = {
-        material_id: defaultMat?.id || null,
-        quantity_withdrawn: 1,
-        ship_id: ships[0]?.id || null,
+        material_id: null,
+        quantity_withdrawn: null,
+        ship_id: null,
         work_order_id: null,
-        contractor_name: 'ALON CAR',
+        contractor_name: '',
         cost_center: 'CLIENTE',
-        weight_total: defaultMat?.weight_kg || 0,
-        notes: 'Fila insertada manualmente',
-        transaction_date: new Date().toISOString()
+        weight_total: null,
+        notes: '',
+        transaction_date: todayStr
       }
 
       const { data, error } = await supabase
@@ -638,13 +709,9 @@ export default function Panol() {
 
       if (error) throw error
 
-      setInventoryTx((prev) => {
-        const next = [...prev]
-        next.splice(targetIndex, 0, data)
-        return next
-      })
+      setInventoryTx((prev) => [...prev, data])
 
-      showFeedback('success', 'Nueva fila insertada correctamente en la planilla.')
+      showFeedback('success', 'Fila 100% en blanco insertada al pie de la planilla (solo fecha de hoy).')
     } catch (err) {
       console.error(err)
       showFeedback('error', 'Error al insertar fila: ' + err.message)
@@ -751,9 +818,17 @@ export default function Panol() {
   }
 
   // ACCIÓN 2: Pedido directo a Compras (Estado: PEDIR, Astillero, Stock, Pañol, Fecha Hoy)
-  const handleCreateDirectPurchaseOrder = async ({ material, quantity }) => {
+  const handleCreateDirectPurchaseOrder = async ({ material, quantity, urgency = 'SIN_APURO' }) => {
     try {
       if (!material) throw new Error('Material no especificado')
+
+      const today = new Date()
+      const yyyy = today.getFullYear()
+      const mm = String(today.getMonth() + 1).padStart(2, '0')
+      const dd = today.getDate()
+      const q = dd <= 15 ? 'Q1' : 'Q2'
+      const fortnight = `${yyyy}-${mm}-${q}`
+      const todayStr = today.toISOString().split('T')[0]
 
       // Buscar barco astillero
       const astilleroShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO')) || ships[0]
@@ -762,28 +837,33 @@ export default function Panol() {
         material_id: material.id || null,
         material_name_raw: material.name || 'Insumo',
         quantity: quantity ? Number(quantity) : 1,
-        unit_measure: material.unit_measure || 'Unidad',
+        unit_measure: material.unit_measure || 'unidad',
         charge_type: 'VIA_PANOL',
         ship_id: astilleroShip?.id || null,
         work_order_id: null,
-        requester_name: 'PAÑOL',
-        order_date: new Date().toISOString().split('T')[0],
+        supplier_id: null,
+        requested_by_name: 'PAÑOL',
+        order_date: todayStr,
+        fortnight_period: fortnight,
         status: 'PEDIR',
-        urgency: 'SIN_APURO',
-        notes: 'Solicitud directa generada desde Planilla de Pañol'
+        urgency: urgency || 'SIN_APURO',
+        notes: 'Solicitud directa generada desde Planilla de Pañol',
+        is_new_material: false,
+        no_catalog_required: false
       }
 
       const { data, error } = await supabase.from('purchase_orders').insert([newOrder]).select().single()
       if (error) throw error
 
-      setQuickPurchaseModal({ isOpen: false, material: null, quantity: '' })
+      setQuickPurchaseModal({ isOpen: false, material: null, quantity: '', urgency: 'SIN_APURO' })
       showFeedback(
         'success',
-        `Pedido de "${material.name}" (${newOrder.quantity} ${newOrder.unit_measure}) creado con éxito en Compras (Estado: PEDIR).`
+        `Pedido de "${material.name}" (${newOrder.quantity} ${newOrder.unit_measure}) creado con éxito en Compras (Estado: PEDIR | Urgencia: ${newOrder.urgency}).`
       )
     } catch (err) {
       console.error(err)
       showFeedback('error', 'Error al generar pedido en Compras: ' + err.message)
+      throw err
     }
   }
 
@@ -818,10 +898,52 @@ export default function Panol() {
     }
   }
 
-  // RETIRO MULTI-MATERIAL (CASCADA CANÓNICA BARCO -> CONTRATISTA -> OT)
-  const handleSaveMultiWithdrawal = async ({ shipId, workOrderId, contractorGroup, notes, date, items }) => {
+  // RETIRO MULTI-MATERIAL (CASCADA CANÓNICA BARCO -> CONTRATISTA -> OT) Y MODO EDICIÓN
+  const handleSaveMultiWithdrawal = async ({ shipId, workOrderId, contractorGroup, notes, date, items, editId }) => {
     try {
       if (!items || items.length === 0) throw new Error('No se agregaron materiales al retiro.')
+
+      if (editId) {
+        // MODO EDICIÓN: Ajuste integral de la fila seleccionada
+        const item = items[0]
+        const mat = materials.find((m) => m.id === item.material_id)
+        const qty = item.quantity ? Number(item.quantity) : 1
+        const weightTotal = (Number(mat?.weight_kg) || 0) * qty
+
+        let costCenter = 'CLIENTE'
+        if (mat?.category === 'CONSUMIBLES' || mat?.category === 'ELEM.SEGURIDAD') {
+          costCenter = 'CLIENTE'
+        }
+        if (item.customCostCenter) costCenter = item.customCostCenter
+
+        const updates = {
+          material_id: item.material_id || null,
+          quantity_withdrawn: qty,
+          ship_id: shipId || null,
+          work_order_id: workOrderId || null,
+          contractor_name: contractorGroup || 'ALON CAR',
+          cost_center: costCenter,
+          weight_total: weightTotal,
+          movement_type: mat?.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
+          notes: item.notes ? `${notes} - ${item.notes}`.trim() : notes,
+          transaction_date: date || new Date().toISOString()
+        }
+
+        const { data: updatedTx, error: updErr } = await supabase
+          .from('inventory_transactions')
+          .update(updates)
+          .eq('id', editId)
+          .select()
+          .single()
+
+        if (updErr) throw updErr
+
+        setInventoryTx((prev) => prev.map((t) => (t.id === editId ? { ...t, ...updates } : t)))
+        setShowWithdrawalModal(false)
+        setEditingWithdrawalRow(null)
+        showFeedback('success', 'Fila modificada con éxito mediante la ventana de ajuste.')
+        return
+      }
 
       const txInserts = []
       const matUpdates = []
@@ -956,133 +1078,150 @@ export default function Panol() {
             <Package className="w-5 h-5 stroke-[2.5]" />
           </div>
           <div>
-            <h1 className="text-xl font-black text-white tracking-wide flex items-center gap-2">
-              PAÑOL CENTRAL & MATERIALES
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-400 uppercase">
-                M4 LOGÍSTICA NAVAL
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-xl font-black text-white tracking-wide">
+                PAÑOL CENTRAL & MATERIALES
+              </h1>
+              <span className="text-[10px] font-mono tracking-widest text-emerald-400/90 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-md uppercase font-bold">
+                M4 · Logística Naval
               </span>
-            </h1>
+            </div>
             <p className="text-xs text-slate-400">
               Planilla de retiros multi-material, control de tubos de gases (P-01/P-02) y catálogo físico de stock.
             </p>
           </div>
         </div>
 
-        {/* Acciones Superiores y Pestañas */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Navegación a Compras */}
-          <button
-            type="button"
-            onClick={() => navigate('/compras?nuevo=true')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 font-bold text-xs transition-all cursor-pointer shadow-md hover:scale-[1.02]"
-            title="Cargar solicitud de compra de materiales"
-          >
-            <Plus className="w-3.5 h-3.5 text-cyan-400 stroke-[3]" />
-            <span>+ Pedir Materiales</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate('/compras?mode=simple')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
-            title="Ir a la vista simplificada de Compras para revisar recepciones"
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-            <span>Ver Compras y Recepciones</span>
-          </button>
-
-          {/* Pestañas de Navegación Compactas */}
-          <div className="flex items-center bg-slate-950/80 p-0.5 rounded-xl border border-slate-800 text-xs font-bold">
+        {/* Acciones Superiores: Bloque Compras | Bloque Pañol */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* BLOQUE COMPRAS (Acento Cian) */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-cyan-950/30 border border-cyan-500/30 shadow-inner">
+            <span className="px-2 py-0.5 text-[9px] font-mono font-black text-cyan-400 uppercase tracking-wider hidden sm:inline-block">
+              COMPRAS
+            </span>
             <button
-              onClick={() => changeTab('planillas')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'planillas'
-                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              type="button"
+              onClick={() => navigate('/compras?nuevo=true')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 font-bold text-xs transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+              title="Cargar solicitud de compra de materiales"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Planilla de Retiros</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-900/60 font-mono">
-                {filteredTransactions.length}
-              </span>
+              <Plus className="w-3.5 h-3.5 text-cyan-400 stroke-[3]" />
+              <span>+ Pedir Materiales</span>
             </button>
 
             <button
-              onClick={() => changeTab('gases')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'gases'
-                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              type="button"
+              onClick={() => navigate('/compras?mode=simple')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
+              title="Ir a la vista simplificada de Compras para revisar recepciones"
             >
-              <Flame className="w-3.5 h-3.5" />
-              <span>Control de Gases</span>
-            </button>
-
-            <button
-              onClick={() => changeTab('catalogo')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'catalogo'
-                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Catálogo & Stock (B.D)</span>
-              {kpiStats.criticalCount > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-slate-950 font-black">
-                  {kpiStats.criticalCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => changeTab('epp')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'epp'
-                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5" />
-              <span>Control EPP</span>
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              <span className="hidden md:inline">Ver Compras y Recepciones</span>
+              <span className="md:hidden">Recepciones</span>
             </button>
           </div>
 
-          {/* Botón Principal de Alta */}
-          {activeTab === 'planillas' && (
-            <button
-              type="button"
-              onClick={() => setShowWithdrawalModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer hover:scale-[1.02]"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>+ Registrar Retiro Multi-Material</span>
-            </button>
-          )}
+          {/* DIVISOR VERTICAL */}
+          <div className="h-7 w-px bg-slate-800 hidden lg:block" />
 
-          {activeTab === 'catalogo' && (
-            <button
-              type="button"
-              onClick={() => setShowNewMaterialModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer hover:scale-[1.02]"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>+ Nuevo Material</span>
-            </button>
-          )}
+          {/* BLOQUE PAÑOL (Acento Esmeralda) */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Pestañas de Navegación Compactas */}
+            <div className="flex items-center bg-slate-950/80 p-0.5 rounded-xl border border-slate-800 text-xs font-bold">
+              <button
+                onClick={() => changeTab('planillas')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === 'planillas'
+                    ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Planilla de Retiros</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-900/60 font-mono">
+                  {filteredTransactions.length}
+                </span>
+              </button>
 
-          {activeTab === 'gases' && (
-            <button
-              type="button"
-              onClick={() => setShowGasModal({ isOpen: true, operationType: 'PRIMERA_ENTREGA' })}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer hover:scale-[1.02]"
-            >
-              <Flame className="w-4 h-4 stroke-[2.5]" />
-              <span>+ Movimiento de Tubos</span>
-            </button>
-          )}
+              <button
+                onClick={() => changeTab('gases')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === 'gases'
+                    ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5" />
+                <span>Control de Gases</span>
+              </button>
+
+              <button
+                onClick={() => changeTab('catalogo')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === 'catalogo'
+                    ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Catálogo & Stock (B.D)</span>
+                {kpiStats.criticalCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-slate-950 font-black">
+                    {kpiStats.criticalCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => changeTab('epp')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === 'epp'
+                    ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>Control EPP</span>
+              </button>
+            </div>
+
+            {/* Botón Principal de Alta */}
+            {activeTab === 'planillas' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingWithdrawalRow(null)
+                  setShowWithdrawalModal(true)
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer hover:scale-[1.02]"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>+ Registrar Retiro Multi-Material</span>
+              </button>
+            )}
+
+            {activeTab === 'catalogo' && (
+              <button
+                type="button"
+                onClick={() => setShowNewMaterialModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer hover:scale-[1.02]"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>+ Nuevo Material</span>
+              </button>
+            )}
+
+            {activeTab === 'gases' && (
+              <button
+                type="button"
+                onClick={() => setShowGasModal({ isOpen: true, operationType: 'PRIMERA_ENTREGA' })}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer hover:scale-[1.02]"
+              >
+                <Flame className="w-4 h-4 stroke-[2.5]" />
+                <span>+ Movimiento de Tubos</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1381,15 +1520,12 @@ export default function Panol() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  const targetIdx = grid.activeCell?.rowIndex !== undefined ? grid.activeCell.rowIndex + 1 : 0
-                  handleInsertRow(targetIdx)
-                }}
+                onClick={handleInsertRow}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-bold text-xs transition-all cursor-pointer shadow-md hover:scale-[1.02]"
-                title={`➕ Insertar fila contigua debajo de la fila activa (#${(grid.activeCell?.rowIndex ?? 0) + 1})`}
+                title="Insertar fila 100% en blanco al final de la planilla (solo fecha de hoy)"
               >
                 <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                <span>+ Insertar Fila en #{(grid.activeCell?.rowIndex ?? 0) + 1}</span>
+                <span>+ Insertar Fila en Blanco al Final</span>
               </button>
               <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
                 <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
@@ -1601,16 +1737,17 @@ export default function Panol() {
                           )
                         })()}
 
-                        {/* 4. Orden de Trabajo (OT) (Doble clic editable) */}
+                        {/* 4. Orden de Trabajo (OT) (Doble clic editable con cascada de Contratista) */}
                         {(() => {
                           const cp = getSpreadsheetCellProps(rowIndex, 'work_order_id')
-                          const shipWos = tx.ship_id ? workOrders.filter((w) => w.ship_id === tx.ship_id) : workOrders
+                          const enabledShipWos = getEnabledWosForShipAndContractor(tx.ship_id, tx.contractor_name)
+                          const otTooltip = formatWorkOrderTooltip(wo, ship)
                           return (
                             <td
                               {...cp.domProps}
                               onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'work_order_id', value: tx.work_order_id || '' })}
                               className={`py-1.5 px-1.5 max-w-[200px] truncate cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
-                              title={wo ? `OT #${wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - ${wo.description}` : 'Doble clic para imputar a OT o dejar vacía'}
+                              title={otTooltip}
                             >
                               {inlineEdit.id === tx.id && inlineEdit.field === 'work_order_id' ? (
                                 <select
@@ -1620,20 +1757,20 @@ export default function Panol() {
                                   onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
                                   className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-white focus:outline-none max-w-[240px]"
                                 >
-                                  <option value="">(Sin OT / Imputación directa)</option>
-                                  {shipWos.map((w) => (
+                                  <option value="">(⚠️ Sin OT)</option>
+                                  {enabledShipWos.map((w) => (
                                     <option key={w.id} value={w.id}>
-                                      OT #{w.order_number || w.ot_number || w.id?.slice(0, 4)} - {w.description}
+                                      OT #{w.order_number || w.ot_number || w.id?.slice(0, 4)} - {w.title || w.description}
                                     </option>
                                   ))}
                                 </select>
                               ) : wo ? (
                                 <span className="text-cyan-400 font-bold">
-                                  OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}: <span className="text-slate-300 font-normal">{wo.description}</span>
+                                  OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}: <span className="text-slate-300 font-normal">{wo.title || wo.description}</span>
                                 </span>
                               ) : (
                                 <span className="text-amber-400/90 italic font-mono text-[10px]">
-                                  (Sin OT / Directo)
+                                  (⚠️ Sin OT)
                                 </span>
                               )}
                               {cp.renderHandle && (
@@ -1903,9 +2040,22 @@ export default function Panol() {
                           )
                         })()}
 
-                        {/* 11. Acciones: 1) Borrar Fila (Pinta rojo + Alerta Admin) 2) Pedido de Compra 3) Duplicar */}
+                        {/* 11. Acciones: 1) Editar en Modal 2) Pedido de Compra 3) Duplicar 4) Borrar Fila */}
                         <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1">
+                            {/* Acción 0: Editar Fila en Modal de Salida */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingWithdrawalRow(tx)
+                                setShowWithdrawalModal(true)
+                              }}
+                              className="p-1 rounded hover:bg-emerald-950/80 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                              title="Editar fila en ventana de salida multi-material"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
+
                             {/* Acción 2: Pedido de Compra Directo */}
                             <button
                               type="button"
@@ -1913,7 +2063,8 @@ export default function Panol() {
                                 setQuickPurchaseModal({
                                   isOpen: true,
                                   material: mat || { id: tx.material_id, name: 'Insumo', unit_measure: 'Unidad' },
-                                  quantity: String(tx.quantity_withdrawn || 1)
+                                  quantity: String(tx.quantity_withdrawn || 1),
+                                  urgency: 'SIN_APURO'
                                 })
                               }}
                               className="p-1 rounded hover:bg-cyan-950/80 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
@@ -2405,15 +2556,20 @@ export default function Panol() {
       {/* MODALES DEL MÓDULO                                                             */}
       {/* ============================================================================== */}
 
-      {/* MODAL 1: RETIRO MULTI-MATERIAL (CASCADA CANÓNICA) */}
+      {/* MODAL 1: RETIRO MULTI-MATERIAL (CASCADA CANÓNICA) Y EDICIÓN */}
       {showWithdrawalModal && (
         <MultiWithdrawalModal
           materials={materials}
           ships={ships}
           workOrders={workOrders}
+          workItems={workItems}
           availableGroups={availableGroups}
           isAdmin={isAdmin}
-          onClose={() => setShowWithdrawalModal(false)}
+          editingRow={editingWithdrawalRow}
+          onClose={() => {
+            setShowWithdrawalModal(false)
+            setEditingWithdrawalRow(null)
+          }}
           onSave={handleSaveMultiWithdrawal}
         />
       )}
@@ -2478,7 +2634,8 @@ export default function Panol() {
         <QuickPurchaseModal
           material={quickPurchaseModal.material}
           initialQuantity={quickPurchaseModal.quantity}
-          onClose={() => setQuickPurchaseModal({ isOpen: false, material: null, quantity: '' })}
+          initialUrgency={quickPurchaseModal.urgency || 'SIN_APURO'}
+          onClose={() => setQuickPurchaseModal({ isOpen: false, material: null, quantity: '', urgency: 'SIN_APURO' })}
           onConfirm={handleCreateDirectPurchaseOrder}
         />
       )}
@@ -2499,31 +2656,65 @@ export default function Panol() {
 }
 
 // ==============================================================================
-// SUBCOMPONENTE: MODAL DE RETIRO MULTI-MATERIAL (CASCADA CANÓNICA)
+// SUBCOMPONENTE: MODAL DE RETIRO MULTI-MATERIAL (CASCADA CANÓNICA Y EDICIÓN)
 // ==============================================================================
-function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, isAdmin, onClose, onSave }) {
-  const [shipId, setShipId] = useState('')
-  const [contractorGroup, setContractorGroup] = useState('')
-  const [workOrderId, setWorkOrderId] = useState('')
-  const [isOtEmpty, setIsOtEmpty] = useState(false)
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
-  const [notes, setNotes] = useState('')
+function MultiWithdrawalModal({
+  materials,
+  ships,
+  workOrders,
+  workItems,
+  availableGroups,
+  isAdmin,
+  editingRow,
+  onClose,
+  onSave
+}) {
+  const [shipId, setShipId] = useState(editingRow?.ship_id || '')
+  const [contractorGroup, setContractorGroup] = useState(editingRow?.contractor_name || '')
+  const [workOrderId, setWorkOrderId] = useState(editingRow?.work_order_id || '')
+  const [isOtEmpty, setIsOtEmpty] = useState(!editingRow?.work_order_id)
+  const [date, setDate] = useState(
+    editingRow?.transaction_date
+      ? String(editingRow.transaction_date).split('T')[0]
+      : new Date().toISOString().split('T')[0]
+  )
+  const [notes, setNotes] = useState(editingRow?.notes || '')
 
   // Renglones de materiales dinámicos
-  const [items, setItems] = useState([
-    {
-      material_id: '',
-      quantity: 1,
-      customCostCenter: '',
-      notes: ''
-    }
-  ])
+  const [items, setItems] = useState(
+    editingRow
+      ? [
+          {
+            material_id: editingRow.material_id || '',
+            quantity: editingRow.quantity_withdrawn || 1,
+            customCostCenter: editingRow.cost_center || '',
+            notes: ''
+          }
+        ]
+      : [
+          {
+            material_id: '',
+            quantity: 1,
+            customCostCenter: '',
+            notes: ''
+          }
+        ]
+  )
 
-  // OTs habilitadas para el Barco elegido
+  // OTs habilitadas para el Barco y Contratista elegidos
   const availableWos = useMemo(() => {
-    if (!shipId) return workOrders
-    return workOrders.filter((w) => w.ship_id === shipId)
-  }, [workOrders, shipId])
+    if (!shipId) return []
+    const shipWos = workOrders.filter((w) => w.ship_id === shipId)
+    if (!contractorGroup || contractorGroup === 'ASTILLERO') return shipWos
+    const norm = contractorGroup.trim().toUpperCase()
+    return shipWos.filter((wo) => {
+      const wItems = (workItems || []).filter((wi) => wi.work_order_id === wo.id)
+      if (wItems.length === 0) return true
+      return wItems.some(
+        (it) => Array.isArray(it.contractors) && it.contractors.some((c) => c && c.trim().toUpperCase() === norm)
+      )
+    })
+  }, [workOrders, shipId, contractorGroup, workItems])
 
   const handleAddItem = () => {
     setItems((prev) => [
@@ -2554,7 +2745,7 @@ function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, i
     e.preventDefault()
     if (!shipId) return alert('Debes seleccionar un Barco.')
     if (!contractorGroup) return alert('Debes seleccionar un Contratista / Grupo.')
-    if (!isOtEmpty && !workOrderId) return alert('Debes seleccionar una OT o marcar la casilla de OT vacía.')
+    if (!isOtEmpty && !workOrderId) return alert('Debes seleccionar una OT o marcar la casilla (⚠️ Sin OT).')
 
     const validItems = items.filter((it) => it.material_id && Number(it.quantity) > 0)
     if (validItems.length === 0) {
@@ -2567,7 +2758,8 @@ function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, i
       contractorGroup,
       notes,
       date,
-      items: validItems
+      items: validItems,
+      editId: editingRow?.id || null
     })
   }
 
@@ -2577,10 +2769,14 @@ function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, i
         {/* Cabecera Modal */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
           <div className="flex items-center gap-2 text-white font-black text-sm">
-            <Package className="w-5 h-5 text-emerald-400" />
-            <span>REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL</span>
+            {editingRow ? <Edit3 className="w-5 h-5 text-cyan-400" /> : <Package className="w-5 h-5 text-emerald-400" />}
+            <span>
+              {editingRow
+                ? 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL - MODO EDICIÓN'
+                : 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL'}
+            </span>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">
+          <button onClick={onClose} className="text-slate-500 hover:text-white cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -2605,8 +2801,22 @@ function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, i
                 <select
                   value={shipId}
                   onChange={(e) => {
-                    setShipId(e.target.value)
+                    const newShipId = e.target.value
+                    setShipId(newShipId)
                     setWorkOrderId('')
+                    if (contractorGroup && contractorGroup !== 'ASTILLERO' && newShipId) {
+                      const enabled = (workItems || []).some((wi) => {
+                        const wo = workOrders.find((w) => w.id === wi.work_order_id)
+                        return (
+                          wo?.ship_id === newShipId &&
+                          Array.isArray(wi.contractors) &&
+                          wi.contractors.some(
+                            (c) => c && c.trim().toUpperCase() === contractorGroup.trim().toUpperCase()
+                          )
+                        )
+                      })
+                      if (!enabled) setContractorGroup('')
+                    }
                   }}
                   required
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
@@ -2656,7 +2866,7 @@ function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, i
                       }}
                       className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0 cursor-pointer"
                     />
-                    <span>OT en blanco (0028)</span>
+                    <span>(⚠️ Sin OT)</span>
                   </label>
                 </div>
 
@@ -2669,12 +2879,10 @@ function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, i
                     isOtEmpty ? 'opacity-40 cursor-not-allowed bg-slate-950' : 'font-semibold'
                   }`}
                 >
-                  <option value="">
-                    {isOtEmpty ? '(Imputación a Buque sin OT)' : 'Seleccionar OT activa...'}
-                  </option>
+                  <option value="">(⚠️ Sin OT)</option>
                   {availableWos.map((wo) => (
                     <option key={wo.id} value={wo.id}>
-                      OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - {wo.description}
+                      OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - {wo.title || wo.description}
                     </option>
                   ))}
                 </select>
@@ -2819,7 +3027,7 @@ function MultiWithdrawalModal({ materials, ships, workOrders, availableGroups, i
               className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-600/30 cursor-pointer flex items-center gap-1.5"
             >
               <Check className="w-4 h-4 stroke-[3]" />
-              <span>Confirmar Retiro ({items.length} materiales)</span>
+              <span>{editingRow ? 'Guardar Cambios' : `Confirmar Retiro (${items.length} materiales)`}</span>
             </button>
           </div>
         </form>
@@ -2930,15 +3138,24 @@ function MaterialSearchInput({ materials, value, onChange }) {
 }
 
 // ==============================================================================
-// SUBCOMPONENTE: MODAL DE PEDIDO DE COMPRA RÁPIDO (ACCIÓN 2)
+// SUBCOMPONENTE: MODAL DE PEDIDO DE COMPRA RÁPIDO (ACCIÓN 2 CON SELECTOR DE URGENCIA)
 // ==============================================================================
-function QuickPurchaseModal({ material, initialQuantity, onClose, onConfirm }) {
+function QuickPurchaseModal({ material, initialQuantity, initialUrgency = 'SIN_APURO', onClose, onConfirm }) {
   const [quantity, setQuantity] = useState(initialQuantity || '')
+  const [urgency, setUrgency] = useState(initialUrgency || 'SIN_APURO')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const today = new Date().toISOString().split('T')[0]
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    onConfirm({ material, quantity })
+    setIsSubmitting(true)
+    try {
+      await onConfirm({ material, quantity, urgency })
+    } catch {
+      // En caso de error, el toast ya se mostró en handleCreateDirectPurchaseOrder
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -2949,7 +3166,7 @@ function QuickPurchaseModal({ material, initialQuantity, onClose, onConfirm }) {
             <ShoppingCart className="w-5 h-5 text-cyan-400" />
             <span>PEDIDO DIRECTO A COMPRAS</span>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">
+          <button onClick={onClose} className="text-slate-500 hover:text-white cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -2980,6 +3197,48 @@ function QuickPurchaseModal({ material, initialQuantity, onClose, onConfirm }) {
             />
           </div>
 
+          {/* Selector de Urgencia */}
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1.5">
+              Urgencia del Pedido en Compras <span className="text-cyan-400">*</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setUrgency('SIN_APURO')}
+                className={`py-2 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                  urgency === 'SIN_APURO'
+                    ? 'bg-emerald-950/80 border-emerald-400 text-emerald-300 ring-2 ring-emerald-500/50 shadow-md shadow-emerald-900/30'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                🟢 Sin Apuro
+              </button>
+              <button
+                type="button"
+                onClick={() => setUrgency('URGENTE')}
+                className={`py-2 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                  urgency === 'URGENTE'
+                    ? 'bg-amber-950/80 border-amber-400 text-amber-300 ring-2 ring-amber-500/50 shadow-md shadow-amber-900/30'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                🟡 Urgente
+              </button>
+              <button
+                type="button"
+                onClick={() => setUrgency('PROXIMA_SALIDA')}
+                className={`py-2 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                  urgency === 'PROXIMA_SALIDA'
+                    ? 'bg-rose-950/80 border-rose-400 text-rose-300 ring-2 ring-rose-500/50 shadow-md shadow-rose-900/30'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                🔴 Próx. Salida
+              </button>
+            </div>
+          </div>
+
           <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-[11px] space-y-1 text-slate-300">
             <div className="font-bold text-cyan-300 flex items-center gap-1.5">
               <Check className="w-3.5 h-3.5 text-cyan-400" />
@@ -2991,7 +3250,7 @@ function QuickPurchaseModal({ material, initialQuantity, onClose, onConfirm }) {
               <div>• Solicitante: <strong className="text-slate-200">PAÑOL</strong></div>
               <div>• Estado: <strong className="text-cyan-300 font-bold">PEDIR</strong></div>
               <div>• Fecha: <strong className="text-slate-200">{today}</strong></div>
-              <div>• Urgencia: <strong className="text-slate-200">SIN_APURO</strong></div>
+              <div>• Urgencia: <strong className={urgency === 'PROXIMA_SALIDA' ? 'text-rose-400 font-bold' : urgency === 'URGENTE' ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>{urgency}</strong></div>
             </div>
           </div>
 
@@ -2999,16 +3258,27 @@ function QuickPurchaseModal({ material, initialQuantity, onClose, onConfirm }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-bold cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-cyan-600/30 flex items-center gap-1.5"
+              disabled={isSubmitting}
+              className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-cyan-600/30 flex items-center gap-1.5 transition-all"
             >
-              <ShoppingCart className="w-4 h-4 stroke-[3]" />
-              <span>Pedir a Compras</span>
+              {isSubmitting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Enviando a Compras...</span>
+                </>
+              ) : (
+                <>
+                  <ShoppingCart className="w-4 h-4 stroke-[3]" />
+                  <span>Pedir a Compras</span>
+                </>
+              )}
             </button>
           </div>
         </form>

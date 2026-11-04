@@ -135,7 +135,18 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
     - **Cumplimiento Fit-to-Viewport:** Eliminación del desborde horizontal de la tabla y registro de la regla de ancho de pantalla en `ESTANDARES_MODULOS_UI_UX.md`.
     - **Radar de KPIs Compras:** 8 tarjetas de métricas con casillas compactas, tipografía 16px destacada para rápida localización visual, 8 colores distintos sin repetición y sin la palabra redundante "Filtrar".
 
-- [ ] **4. Validación Operativa M3:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
+- [x] **3. Módulo M4: Pañol Central & Materiales (`/panol`, `Panol.jsx` - Migraciones 0033 a 0036):**
+  - **Planilla de Retiros Multi-Material:** Retiros multi-renglón agrupados por barco, contratista y OT, deduciendo automáticamente el Centro de Costo (`CLIENTE` vs `CONTRATISTA`) según la categoría del material.
+  - **Cascada Canónica en Grilla y Modales:** `1° Barco ➔ 2° Contratista Habilitado ➔ 3° OT en Ejecución`. Al cambiar Barco en la grilla se limpia la OT (`work_order_id = null`) y se revalida si el contratista está habilitado en el nuevo barco; en la celda de OT solo se listan las OTs habilitadas para ese contratista, con opción canónica `(⚠️ Sin OT)`.
+  - **Tooltip Enriquecido de OT:** Al pasar el cursor por la celda de OT se despliega la ficha descriptiva completa: Descripción técnica cargada en `work_items`, Jefe de Obra asignado, Buque y Estado; o `(⚠️ Sin OT)` en imputaciones directas.
+  - **Acción "Editar Fila" (`<Edit3 />`):** Abre la ventana `REGISTRAR / MODIFICAR SALIDA DE PAÑOL` pre-cargada con los datos de la fila para realizar ajustes generales directos sobre el registro.
+  - **Acción "Pedido Directo a Compras" con Selector de Urgencia:** Modal rápido que permite ingresar cantidad y seleccionar urgencia (`🟢 Sin Apuro`, `🟡 Urgente`, `🔴 Próx. Salida`), calculando automáticamente `fortnight_period` y registrando la orden en Compras con solicitante `PAÑOL` y estado `PEDIR`.
+  - **Inserción de Fila 100% en Blanco al Final:** Inserción al pie de la tabla con todos los campos vacíos salvo la fecha actual (respaldada por la Migración 0036 que desacopla `NOT NULL` en `inventory_transactions`).
+  - **Control de Tubos de Gases (P-01 / P-02):** Registro de Primera Entrega, Reposición / Cambio y Devolución Definitiva. Alerta P-01 para tubos retenidos >15 días y alerta P-02 para tubos vacíos acumulados en patio.
+  - **Catálogo & Control de Stock Físico:** B.D. unificada de materiales con toggle `requires_stock_control`, columna de peso por unidad en kg con cálculo reactivo de peso total retirado, factor de seguridad naval editable solo por Admin con código cromático de 5 niveles (2%, 6%, 10%, 15%, 20%) y buscador inteligente `MaterialSearchInput`.
+  - **Arquitectura de 5 Zonas y Hoja de Cálculo (useSpreadsheetGrid):** Layout canónico institucional con división visual clara en la cabecera entre el **Bloque Compras** (Acento Cian) y el **Bloque Pañol** (Acento Esmeralda), eliminando el óvalo redundante y reemplazándolo por el tag tipográfico naval `M4 · Logística Naval`.
+
+- [ ] **4. Validación Operativa M3 y M4:** Prueba con supervisores en varadero/muelle cargando partes diarios reales.
 - [ ] **2. Módulo M1: Barcos y Ficha Técnica Naval (`/barcos`):**
   - Ficha técnica naval de buques, historial de varadas y estados de puesta en seco.
   - Vinculación a propietarios y clientes.
