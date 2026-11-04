@@ -48,8 +48,66 @@ import {
   UserX,
   Navigation,
   Copy,
-  Inbox
+  Inbox,
+  AlertCircle
 } from 'lucide-react'
+
+// Nómina oficial de Personal Propio del Astillero (Aloncar)
+const NOMINA_ASTILLERO_BASE = [
+  { name: 'Rodriguez, Enzo', defaultRubro: 'Raschinear' },
+  { name: 'Colonga, Franco', defaultRubro: 'Raschinear' },
+  { name: 'Gari, Mario Andres', defaultRubro: 'Calderería' },
+  { name: 'Georgetti, Jorge', defaultRubro: 'Mandados' },
+  { name: 'Hernández, Santiago', defaultRubro: 'Maquinaria' },
+  { name: 'Lescano, Alexander', defaultRubro: 'Raschinear' },
+  { name: 'López, Ricardo Héctor', defaultRubro: 'Raschinear' },
+  { name: 'Lorenzi, Martin', defaultRubro: 'Supervisión' },
+  { name: 'Merlos, Cristian', defaultRubro: 'Mecánica' },
+  { name: 'Putallaz, Leonel', defaultRubro: 'Mecánica' },
+  { name: 'Maciel, Rodrigo', defaultRubro: 'Raschinear' },
+  { name: 'Palotta Jara, Valentin', defaultRubro: 'Mecánica' },
+  { name: 'Peralta Pablo', defaultRubro: 'Carpintería' },
+  { name: 'Navarro, Matias', defaultRubro: 'Carpintería' },
+  { name: 'Rancatti, Gonzalo', defaultRubro: 'Carpintería' },
+  { name: 'Rodriguez, Diego', defaultRubro: 'Calderería' },
+  { name: 'Rodriguez, Mariano R O', defaultRubro: 'Pañolero' },
+  { name: 'Sosa, José Mauricio', defaultRubro: 'Raschinear' },
+  { name: 'Sostoa Gonzalez, Higinio', defaultRubro: 'Raschinear' },
+  { name: 'Caballero, Daniel Emanuel', defaultRubro: 'Calderería' },
+  { name: 'Toledo, Luciano', defaultRubro: 'Calderería' },
+  { name: 'Alanis, Carlos', defaultRubro: 'Raschinear' },
+  { name: 'Hernandez, Jorge', defaultRubro: 'Carpintería' },
+  { name: 'Gonzalez, Luciano', defaultRubro: 'Supervisión' },
+  { name: 'Rancatti, Franco', defaultRubro: 'Raschinear' },
+  { name: 'Caballero, Cristian', defaultRubro: 'Calderería' },
+  { name: 'Salvador Alan', defaultRubro: 'Carpintería' },
+  { name: 'Salvador Oscar', defaultRubro: 'Carpintería' },
+  { name: 'Incorvaia, Emanuel', defaultRubro: 'Raschinear' }
+]
+
+// Contratistas externos frecuentes (Grupos de Trabajo en Planta)
+const CONTRATISTAS_FRECUENTES = [
+  '4RG SERV. INDUSTRIALES',
+  'ALDO (CARPINTERO)',
+  'ARENADO PUERTO',
+  'ATENEO',
+  'AVALOS',
+  'AVALOS AYUDANTE',
+  'BOLTRI',
+  'CAMILO MARTINEZ',
+  'CARLOS VIDONDO',
+  'CHACANO',
+  'DAMIAN',
+  'DE ANGELIS',
+  'EDUARDO FERNANDEZ',
+  'ELECTRICIDAD NAVAL SA',
+  'IMPERPUR',
+  'JHONNY',
+  'JUAREZ JUAN',
+  'LUAYZA',
+  'TANO',
+  'TOBARES'
+]
 
 // ==============================================================================
 // COMPONENTE AUXILIAR: Resaltador de coincidencias de búsqueda en amarillo
@@ -145,6 +203,7 @@ export default function Panol() {
   const [showGasModal, setShowGasModal] = useState({ isOpen: false, operationType: 'PRIMERA_ENTREGA' })
   const [quickPurchaseModal, setQuickPurchaseModal] = useState({ isOpen: false, material: null, quantity: '', urgency: 'SIN_APURO' })
   const [adminDeleteConfirmModal, setAdminDeleteConfirmModal] = useState({ isOpen: false, tx: null })
+  const [requestOtModal, setRequestOtModal] = useState({ isOpen: false, txId: null, shipId: '', targetWorkerOrContractor: '', reason: '' })
   const [previewImage, setPreviewImage] = useState(null)
   const [workItems, setWorkItems] = useState([])
 
@@ -323,35 +382,203 @@ export default function Panol() {
     }
   }, [suppliers, gasMovements])
 
-  // Contratistas / Grupos de Trabajo únicos
-  const availableGroups = useMemo(() => {
+  // Personal propio de Astillero (Aloncar) - Personas individuales con oficio
+  const astilleroWorkers = useMemo(() => {
+    if (workers.length > 0) {
+      const ast = workers.filter(
+        (w) =>
+          (w.admin_center === 'ASTILLERO' || w.worker_type === 'Astillero' || w.work_group === 'ASTILLERO') &&
+          w.status !== 'INACTIVO'
+      )
+      if (ast.length > 0) {
+        return ast.map((w) => ({
+          id: w.id,
+          name: w.name,
+          trade: w.trade || 'General',
+          admin_center: 'ASTILLERO'
+        }))
+      }
+    }
+    return NOMINA_ASTILLERO_BASE.map((w) => ({
+      id: w.name,
+      name: w.name,
+      trade: w.defaultRubro,
+      admin_center: 'ASTILLERO'
+    }))
+  }, [workers])
+
+  // Contratistas externos frecuentes (Grupos de Trabajo en Planta)
+  const contractorGroups = useMemo(() => {
     const set = new Set()
     workers.forEach((w) => {
-      if (w.work_group) set.add(w.work_group.trim().toUpperCase())
+      if ((w.admin_center === 'CONTRATISTA' || w.admin_center === 'TALLER') && w.work_group) {
+        set.add(w.work_group.trim().toUpperCase())
+      }
     })
-    set.add('ASTILLERO')
-    set.add('TANO')
-    set.add('BOLTRI')
-    set.add('IMPERPUR')
+    CONTRATISTAS_FRECUENTES.forEach((c) => set.add(c.trim().toUpperCase()))
     return Array.from(set).sort()
   }, [workers])
 
-  // Filtrar OTs habilitadas para un Barco y un Contratista
+  // Alias retrocompatible
+  const availableGroups = useMemo(() => {
+    return [...astilleroWorkers.map((w) => w.name), ...contractorGroups]
+  }, [astilleroWorkers, contractorGroups])
+
+  // Helper para obtener operarios de Astillero y Contratistas habilitados para Barco y OT
+  const getEnabledWorkersAndContractors = useCallback(
+    (shipId, workOrderId) => {
+      const baseAstillero = astilleroWorkers
+      const baseContractors = contractorGroups
+
+      if (!shipId) {
+        return {
+          astilleroWorkers: baseAstillero,
+          contractorGroups: baseContractors
+        }
+      }
+
+      // Si no hay OT seleccionada (⚠️ Sin OT):
+      if (!workOrderId) {
+        const shipWos = workOrders.filter((w) => w.ship_id === shipId)
+        const shipWoIds = new Set(shipWos.map((w) => w.id))
+        const activeShipItems = workItems.filter((wi) => shipWoIds.has(wi.work_order_id))
+        const shipContractorNames = new Set()
+        activeShipItems.forEach((wi) => {
+          if (Array.isArray(wi.contractors)) {
+            wi.contractors.forEach((c) => {
+              if (c && !c.toUpperCase().startsWith('ASTILLERO')) {
+                shipContractorNames.add(c.trim().toUpperCase())
+              }
+            })
+          }
+        })
+        const filteredContractors =
+          shipContractorNames.size > 0
+            ? baseContractors.filter((c) => shipContractorNames.has(c.toUpperCase()))
+            : baseContractors
+
+        return {
+          astilleroWorkers: baseAstillero,
+          contractorGroups: filteredContractors.length > 0 ? filteredContractors : baseContractors
+        }
+      }
+
+      // Con OT especificada:
+      const items = workItems.filter((wi) => wi.work_order_id === workOrderId)
+      if (items.length === 0) {
+        return {
+          astilleroWorkers: baseAstillero,
+          contractorGroups: baseContractors
+        }
+      }
+
+      const rawContractors = items.flatMap((wi) =>
+        Array.isArray(wi.contractors)
+          ? wi.contractors
+          : wi.contractor_name
+          ? [wi.contractor_name]
+          : []
+      )
+
+      const hasAstilleroGeneral = rawContractors.some(
+        (c) => c && (c.trim().toUpperCase() === 'ASTILLERO' || c.trim().toUpperCase() === 'ALON CAR')
+      )
+
+      // Identificar rubros específicos de Astillero en la OT (ej: ASTILLERO.CALDERERIA, ASTILLERO.MECANICA)
+      const astilleroTrades = rawContractors
+        .filter((c) => c && c.toUpperCase().startsWith('ASTILLERO.'))
+        .map((c) => c.split('.')[1].toUpperCase().trim())
+
+      let filteredAstillero = []
+      if (hasAstilleroGeneral || rawContractors.length === 0) {
+        filteredAstillero = baseAstillero
+      } else if (astilleroTrades.length > 0) {
+        filteredAstillero = baseAstillero.filter((w) => {
+          const normTrade = (w.trade || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          return astilleroTrades.some((tradeKey) => {
+            if (tradeKey === 'RASCHINAJE') return normTrade.includes('RASCHIN')
+            if (tradeKey === 'CALDERERIA') return normTrade.includes('CALDER') || normTrade.includes('SOLDAD')
+            if (tradeKey === 'MECANICA') return normTrade.includes('MECAN') || normTrade.includes('TORNER')
+            if (tradeKey === 'CARPINTERIA') return normTrade.includes('CARPINT')
+            return normTrade.includes(tradeKey)
+          })
+        })
+        if (filteredAstillero.length === 0) {
+          filteredAstillero = baseAstillero
+        }
+      } else {
+        filteredAstillero = []
+      }
+
+      const enabledContractorSet = new Set(
+        rawContractors
+          .filter((c) => c && !c.toUpperCase().startsWith('ASTILLERO'))
+          .map((c) => c.trim().toUpperCase())
+      )
+
+      const filteredContractors = baseContractors.filter((grp) =>
+        enabledContractorSet.has(grp.toUpperCase())
+      )
+
+      return {
+        astilleroWorkers: filteredAstillero,
+        contractorGroups: filteredContractors
+      }
+    },
+    [astilleroWorkers, contractorGroups, workOrders, workItems]
+  )
+
+  // Filtrar OTs habilitadas para un Barco y un Operario/Contratista
   const getEnabledWosForShipAndContractor = useCallback(
-    (shipId, contractorName) => {
+    (shipId, workerOrContractor) => {
       if (!shipId) return []
       const shipWos = workOrders.filter((w) => w.ship_id === shipId)
-      if (!contractorName || contractorName === 'ASTILLERO') return shipWos
-      const norm = contractorName.trim().toUpperCase()
+      if (!workerOrContractor) return shipWos
+      const norm = workerOrContractor.trim().toUpperCase()
+
+      const astWorker = astilleroWorkers.find((w) => w.name.toUpperCase() === norm)
+
       return shipWos.filter((wo) => {
         const items = workItems.filter((wi) => wi.work_order_id === wo.id)
         if (items.length === 0) return true
-        return items.some(
-          (it) => Array.isArray(it.contractors) && it.contractors.some((c) => c && c.trim().toUpperCase() === norm)
+        const rawContractors = items.flatMap((wi) =>
+          Array.isArray(wi.contractors)
+            ? wi.contractors
+            : wi.contractor_name
+            ? [wi.contractor_name]
+            : []
         )
+
+        if (astWorker) {
+          const hasAstilleroGen = rawContractors.some(
+            (c) => c && (c.toUpperCase() === 'ASTILLERO' || c.toUpperCase() === 'ALON CAR')
+          )
+          if (hasAstilleroGen) return true
+
+          const astTrades = rawContractors
+            .filter((c) => c && c.toUpperCase().startsWith('ASTILLERO.'))
+            .map((c) => c.split('.')[1].toUpperCase().trim())
+
+          if (astTrades.length > 0) {
+            const normTrade = (astWorker.trade || '')
+              .toUpperCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+            return astTrades.some((tradeKey) => {
+              if (tradeKey === 'RASCHINAJE') return normTrade.includes('RASCHIN')
+              if (tradeKey === 'CALDERERIA') return normTrade.includes('CALDER') || normTrade.includes('SOLDAD')
+              if (tradeKey === 'MECANICA') return normTrade.includes('MECAN') || normTrade.includes('TORNER')
+              if (tradeKey === 'CARPINTERIA') return normTrade.includes('CARPINT')
+              return normTrade.includes(tradeKey)
+            })
+          }
+          return false
+        }
+
+        return rawContractors.some((c) => c && c.trim().toUpperCase() === norm)
       })
     },
-    [workOrders, workItems]
+    [workOrders, workItems, astilleroWorkers]
   )
 
   // Formatear Tooltip enriquecido de OT (Imagen 1)
@@ -521,73 +748,48 @@ export default function Panol() {
   // ==============================================================================
   const spreadsheetColumns = useMemo(
     () => [
-      {
-        key: 'transaction_date',
-        label: 'Fecha',
-        getValue: (r) => (r.transaction_date ? String(r.transaction_date).split('T')[0] : '')
-      },
-      {
-        key: 'ship_id',
-        label: 'Barco / Destino',
-        getValue: (r) => ships.find((s) => s.id === r.ship_id)?.name || 'ASTILLERO'
-      },
-      {
-        key: 'work_order_id',
-        label: 'Orden de Trabajo (OT)',
-        getValue: (r) => {
-          const wo = workOrders.find((w) => w.id === r.work_order_id)
-          return wo ? `OT #${wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - ${wo.title || wo.description || ''}` : '(⚠️ Sin OT)'
-        }
-      },
-      {
-        key: 'material_id',
-        label: 'Material Insumo',
-        getValue: (r) => materials.find((m) => m.id === r.material_id)?.name || 'Insumo'
-      },
-      {
-        key: 'quantity_withdrawn',
-        label: 'Cant.',
-        isNumeric: true,
-        getValue: (r) => Number(r.quantity_withdrawn) || 0
-      },
-      {
-        key: 'weight_total',
-        label: 'Peso (kg)',
-        isNumeric: true,
-        getValue: (r) => Number(r.weight_total) || 0
-      },
-      {
-        key: 'contractor_name',
-        label: 'Contratista / Grupo',
-        getValue: (r) => r.contractor_name || 'ALON CAR'
-      },
-      {
-        key: 'cost_center',
-        label: 'Centro de Costo',
-        getValue: (r) => r.cost_center || 'CLIENTE'
-      },
-      {
-        key: 'notes',
-        label: 'Observaciones',
-        getValue: (r) => r.notes || ''
-      }
+      { key: 'transaction_date', label: 'Fecha', readOnly: false },
+      { key: 'ship_id', label: 'Barco / Destino', readOnly: false },
+      { key: 'work_order_id', label: 'Orden de Trabajo (OT)', readOnly: false },
+      { key: 'material_id', label: 'Material Insumo', readOnly: false },
+      { key: 'quantity_withdrawn', label: 'Cant.', isNumeric: true, readOnly: false },
+      { key: 'weight_total', label: 'Peso (kg)', isNumeric: true, readOnly: false },
+      { key: 'contractor_name', label: 'Operario / Contratista', readOnly: false },
+      { key: 'cost_center', label: 'Centro de Costo', readOnly: false },
+      { key: 'notes', label: 'Observaciones', readOnly: false }
     ],
-    [ships, workOrders, materials]
+    []
   )
 
   // ==============================================================================
   // ACCIONES OPERATIVAS Y GUARDADO IN-SITU
   // ==============================================================================
 
+  // Referencia para evitar circularidad en pegado de filas
+  const onPasteRowRef = useRef(null)
+
   // Guardar celda en Supabase (Planilla de Retiros)
   const handleSaveInlineTx = async (txId, field, value) => {
     try {
       let finalValue = value
       const updates = { [field]: finalValue }
+      const tx = inventoryTx.find((t) => t.id === txId)
+      const prevVal = tx ? tx[field] : ''
+
+      // Registrar acción en la pila de deshacer (Ctrl+Z)
+      if (grid?.pushUndoAction && prevVal !== value) {
+        grid.pushUndoAction({
+          colKey: field,
+          colLabel: field,
+          actionLabel: 'Edición en celda',
+          previousValues: { [txId]: prevVal },
+          newValue: value,
+          timestamp: Date.now()
+        })
+      }
 
       // Si se cambia la cantidad o el material, actualizar peso total
       if (field === 'quantity_withdrawn' || field === 'material_id') {
-        const tx = inventoryTx.find((t) => t.id === txId)
         const targetMatId = field === 'material_id' ? value : tx?.material_id
         const targetQty = field === 'quantity_withdrawn' ? Number(value) : Number(tx?.quantity_withdrawn) || 1
         const mat = materials.find((m) => m.id === targetMatId)
@@ -596,30 +798,58 @@ export default function Panol() {
         }
       }
 
-      // Regla canónica de cascada: Si se cambia el Barco, borrar la OT y validar Contratista
+      // Regla canónica de cascada: Si se cambia el Barco, borrar la OT y validar Contratista/Operario
       if (field === 'ship_id') {
         updates.work_order_id = null
-        const tx = inventoryTx.find((t) => t.id === txId)
-        const currentContractor = tx?.contractor_name
-        if (currentContractor && currentContractor !== 'ASTILLERO' && value) {
-          const isEnabledOnNewShip = workItems.some((wi) => {
-            const wo = workOrders.find((w) => w.id === wi.work_order_id)
-            return (
-              wo?.ship_id === value &&
-              Array.isArray(wi.contractors) &&
-              wi.contractors.some(
-                (c) => c && c.trim().toUpperCase() === currentContractor.trim().toUpperCase()
-              )
-            )
-          })
-          if (!isEnabledOnNewShip) {
+        const currentWorkerOrContractor = tx?.worker_name || tx?.contractor_name
+        if (currentWorkerOrContractor && value) {
+          const enabled = getEnabledWorkersAndContractors(value, null)
+          const isValid =
+            enabled.astilleroWorkers.some((w) => w.name.toUpperCase() === currentWorkerOrContractor.toUpperCase()) ||
+            enabled.contractorGroups.some((g) => g.toUpperCase() === currentWorkerOrContractor.toUpperCase())
+          if (!isValid) {
             updates.contractor_name = ''
+            updates.worker_name = ''
+            updates.worker_id = null
+            showFeedback('info', 'OT reseteada y operario desasignado por no pertenecer al nuevo barco.')
           }
         }
       }
 
+      // Regla canónica de cascada: Si se cambia la OT, validar Contratista/Operario
       if (field === 'work_order_id') {
         updates.work_order_id = value || null
+        const currentWorkerOrContractor = tx?.worker_name || tx?.contractor_name
+        const effShipId = tx?.ship_id
+        if (currentWorkerOrContractor && value) {
+          const enabled = getEnabledWorkersAndContractors(effShipId, value)
+          const isValid =
+            enabled.astilleroWorkers.some((w) => w.name.toUpperCase() === currentWorkerOrContractor.toUpperCase()) ||
+            enabled.contractorGroups.some((g) => g.toUpperCase() === currentWorkerOrContractor.toUpperCase())
+          if (!isValid) {
+            updates.contractor_name = ''
+            updates.worker_name = ''
+            updates.worker_id = null
+            showFeedback('info', 'Operario/contratista desasignado por no estar habilitado en la OT seleccionada.')
+          }
+        }
+      }
+
+      // Asignación de Contratista / Operario
+      if (field === 'contractor_name') {
+        const foundAst = astilleroWorkers.find((w) => w.name.toUpperCase() === String(value || '').toUpperCase())
+        if (foundAst) {
+          updates.contractor_name = foundAst.name
+          updates.worker_name = foundAst.name
+          updates.worker_id = foundAst.id && foundAst.id !== foundAst.name ? foundAst.id : null
+        } else {
+          updates.contractor_name = (value || '').toUpperCase()
+          updates.worker_name = (value || '').toUpperCase()
+          const matchedWorker = workers.find(
+            (w) => w.work_group && w.work_group.toUpperCase() === String(value || '').toUpperCase()
+          )
+          updates.worker_id = matchedWorker?.id || null
+        }
       }
 
       if (field === 'cost_center' && !isAdmin) {
@@ -642,6 +872,46 @@ export default function Panol() {
     }
   }
 
+  // Pegar fila completa con soporte de portapapeles de grilla
+  const handlePasteRow = useCallback(
+    async ({ sourceRow, targetRow, targetRowIndex }) => {
+      if (!sourceRow || !targetRow) return
+      try {
+        const fieldsToCopy = {
+          ship_id: sourceRow.ship_id || null,
+          work_order_id: sourceRow.work_order_id || null,
+          material_id: sourceRow.material_id || null,
+          quantity_withdrawn: sourceRow.quantity_withdrawn ?? null,
+          weight_total: sourceRow.weight_total ?? null,
+          contractor_name: sourceRow.contractor_name || '',
+          worker_name: sourceRow.worker_name || '',
+          worker_id: sourceRow.worker_id || null,
+          cost_center: sourceRow.cost_center || 'CLIENTE',
+          notes: sourceRow.notes || ''
+        }
+
+        const { error } = await supabase
+          .from('inventory_transactions')
+          .update(fieldsToCopy)
+          .eq('id', targetRow.id)
+        if (error) throw error
+
+        setInventoryTx((prev) =>
+          prev.map((t) => (t.id === targetRow.id ? { ...t, ...fieldsToCopy } : t))
+        )
+        showFeedback('success', `Fila pegada exitosamente en fila #${targetRowIndex + 1}.`)
+      } catch (err) {
+        console.error('Error al pegar fila:', err)
+        showFeedback('error', 'Error al pegar fila: ' + err.message)
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    onPasteRowRef.current = handlePasteRow
+  }, [handlePasteRow])
+
   // Instanciación del Hook de Hoja de Cálculo
   const grid = useSpreadsheetGrid({
     rows: filteredTransactions,
@@ -649,14 +919,44 @@ export default function Panol() {
     getRowId: (r) => r.id,
     storageKey: 'aloncar_panol_grid',
     showFeedback: (type, text) => showFeedback(type, text),
-    onBatchUpdate: async (updates) => {
-      for (const u of updates) {
-        await handleSaveInlineTx(u.rowId, u.colKey, u.newValue)
+    onPasteRow: (args) => onPasteRowRef.current?.(args),
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef || colDef.readOnly) return
+      const currentVal = row[colDef.key]
+      setInlineEdit({
+        id: row.id,
+        field: colDef.key,
+        value: currentVal !== null && currentVal !== undefined ? currentVal : ''
+      })
+    },
+    canEditCell: (row, colKey) => {
+      if (colKey === 'cost_center' && !isAdmin) {
+        showFeedback('error', 'Solo el Administrador puede editar el Centro de Costo.')
+        return false
+      }
+      return true
+    },
+    onBatchUpdate: async ({ colKey, newValue, targetIds, isRevert, revertMap }) => {
+      try {
+        if (isRevert && revertMap) {
+          // Deshacer / Rehacer (Ctrl+Z / Ctrl+Y)
+          for (const [id, val] of Object.entries(revertMap)) {
+            await handleSaveInlineTx(id, colKey, val)
+          }
+        } else if (targetIds && targetIds.length > 0) {
+          // Pegado en bloque o Rellenar hacia abajo (Ctrl+V / Ctrl+D)
+          for (const id of targetIds) {
+            await handleSaveInlineTx(id, colKey, newValue)
+          }
+        }
+      } catch (err) {
+        console.error('Error en batch update de Pañol:', err)
+        showFeedback('error', 'Error al actualizar lote: ' + err.message)
       }
     }
   })
 
-  // Helper de propiedades y eventos para celdas spreadsheet
+  // Helper de propiedades y eventos para celdas spreadsheet con foco garantizado
   function getSpreadsheetCellProps(rowIndex, colKey) {
     const colIdx = spreadsheetColumns.findIndex((c) => c.key === colKey)
     if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
@@ -669,8 +969,14 @@ export default function Panol() {
     return {
       renderHandle,
       domProps: {
-        onClick: (e) => grid.handleCellClick(rowIndex, colIdx, e),
-        onMouseDown: (e) => grid.handleCellMouseDown(rowIndex, colIdx, e),
+        onClick: (e) => {
+          grid.gridContainerRef.current?.focus()
+          grid.handleCellClick(rowIndex, colIdx, e)
+        },
+        onMouseDown: (e) => {
+          grid.gridContainerRef.current?.focus()
+          grid.handleCellMouseDown(rowIndex, colIdx, e)
+        },
         onMouseEnter: () => grid.handleCellMouseEnter(rowIndex, colIdx)
       },
       className: `relative select-none transition-colors ${
@@ -684,6 +990,44 @@ export default function Panol() {
       }`
     }
   }
+
+  // Atajos de teclado globales para la grilla (Ctrl+C, Ctrl+V, Ctrl+Z, Ctrl+Y, Ctrl+D)
+  useEffect(() => {
+    const handleGlobalShortcuts = (e) => {
+      // Si el foco está dentro de un input, select o textarea, no interceptar
+      const isInput = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)
+      if (isInput) return
+
+      // Si hay un modal abierto, no interceptar
+      if (
+        showWithdrawalModal ||
+        showNewMaterialModal ||
+        showStockAdjustModal.isOpen ||
+        showGasModal.isOpen ||
+        quickPurchaseModal.isOpen ||
+        requestOtModal.isOpen ||
+        adminDeleteConfirmModal.isOpen
+      ) {
+        return
+      }
+
+      if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'z', 'y', 'd', 'f'].includes(e.key.toLowerCase())) {
+        grid.handleKeyDown(e)
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalShortcuts)
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts)
+  }, [
+    grid,
+    showWithdrawalModal,
+    showNewMaterialModal,
+    showStockAdjustModal.isOpen,
+    showGasModal.isOpen,
+    quickPurchaseModal.isOpen,
+    requestOtModal.isOpen,
+    adminDeleteConfirmModal.isOpen
+  ])
 
   // Insertar nueva fila 100% en blanco al final de la planilla (solo fecha de hoy)
   const handleInsertRow = async () => {
@@ -817,6 +1161,58 @@ export default function Panol() {
     }
   }
 
+  // ACCIÓN 3: Solicitar apertura de OT a Jorge Sentis (Administrador)
+  const handleSubmitRequestOt = async () => {
+    if (!requestOtModal.targetWorkerOrContractor) {
+      showFeedback('error', 'Por favor seleccione el operario o contratista que requiere la OT.')
+      return
+    }
+    const targetShip = ships.find((s) => s.id === requestOtModal.shipId)
+    const shipName = targetShip?.name || 'Astillero General'
+    const userIdentifier = profile?.full_name || profile?.email || user?.email || 'Pañolero'
+
+    try {
+      const alertPayload = {
+        ship_id: requestOtModal.shipId || null,
+        entity_type: 'work_orders',
+        entity_id: requestOtModal.shipId || '00000000-0000-0000-0000-000000000000',
+        responsible_role: 'admin',
+        status: 'PENDIENTE',
+        escalated_to_admin: true,
+        alert_message: `Solicitud de Apertura de OT en buque ${shipName} para ${requestOtModal.targetWorkerOrContractor}. Motivo: ${requestOtModal.reason || 'Sin detalles adicionales'}`.trim(),
+        notes: `Solicitado desde Pañol Central por ${userIdentifier}`
+      }
+      const { error: alertErr } = await supabase.from('compliance_alerts').insert([alertPayload])
+      if (alertErr) console.warn('Aviso compliance_alerts:', alertErr)
+
+      // Si se invocó desde una fila existente de la grilla:
+      if (requestOtModal.txId) {
+        const foundAst = astilleroWorkers.find((w) => w.name.toUpperCase() === requestOtModal.targetWorkerOrContractor.toUpperCase())
+        const rowUpdates = {
+          ship_id: requestOtModal.shipId || null,
+          work_order_id: null,
+          contractor_name: requestOtModal.targetWorkerOrContractor,
+          worker_name: requestOtModal.targetWorkerOrContractor,
+          worker_id: foundAst?.id && foundAst.id !== foundAst.name ? foundAst.id : null,
+          notes: `[Apertura OT solicitada a Jorge Sentis: ${requestOtModal.reason || 'Sin detalle'}]`
+        }
+        await supabase.from('inventory_transactions').update(rowUpdates).eq('id', requestOtModal.txId)
+        setInventoryTx((prev) =>
+          prev.map((t) => (t.id === requestOtModal.txId ? { ...t, ...rowUpdates } : t))
+        )
+      }
+
+      setRequestOtModal({ isOpen: false, txId: null, shipId: '', targetWorkerOrContractor: '', reason: '' })
+      showFeedback(
+        'success',
+        `🔔 Alerta enviada a Jorge Sentis para apertura de OT de ${requestOtModal.targetWorkerOrContractor} en ${shipName}. Entrega provisoria habilitada bajo (⚠️ Sin OT).`
+      )
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al enviar alerta a Administrador: ' + err.message)
+    }
+  }
+
   // ACCIÓN 2: Pedido directo a Compras (Estado: PEDIR, Astillero, Stock, Pañol, Fecha Hoy)
   const handleCreateDirectPurchaseOrder = async ({ material, quantity, urgency = 'SIN_APURO' }) => {
     try {
@@ -903,6 +1299,13 @@ export default function Panol() {
     try {
       if (!items || items.length === 0) throw new Error('No se agregaron materiales al retiro.')
 
+      const matchedAst = astilleroWorkers.find(
+        (w) => w.name.toUpperCase() === String(contractorGroup || '').toUpperCase()
+      )
+      const workerName = matchedAst ? matchedAst.name : contractorGroup || 'Sin asignar'
+      const contractorName = matchedAst ? matchedAst.name : contractorGroup || 'Sin asignar'
+      const workerId = matchedAst && matchedAst.id !== matchedAst.name ? matchedAst.id : null
+
       if (editId) {
         // MODO EDICIÓN: Ajuste integral de la fila seleccionada
         const item = items[0]
@@ -921,7 +1324,9 @@ export default function Panol() {
           quantity_withdrawn: qty,
           ship_id: shipId || null,
           work_order_id: workOrderId || null,
-          contractor_name: contractorGroup || 'ALON CAR',
+          contractor_name: contractorName,
+          worker_name: workerName,
+          worker_id: workerId,
           cost_center: costCenter,
           weight_total: weightTotal,
           movement_type: mat?.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
@@ -973,7 +1378,9 @@ export default function Panol() {
           quantity_withdrawn: qty,
           ship_id: shipId || null,
           work_order_id: workOrderId || null,
-          contractor_name: contractorGroup || 'ALON CAR',
+          contractor_name: contractorName,
+          worker_name: workerName,
+          worker_id: workerId,
           cost_center: costCenter,
           weight_total: weightTotal,
           movement_type: mat.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
@@ -1927,32 +2334,65 @@ export default function Panol() {
                           )
                         })()}
 
-                        {/* 8. Contratista / Grupo (Doble clic editable) */}
+                        {/* 8. Operario / Contratista (Doble clic editable - Estilo Horas sin rubro en paréntesis) */}
                         {(() => {
                           const cp = getSpreadsheetCellProps(rowIndex, 'contractor_name')
+                          const enabled = getEnabledWorkersAndContractors(tx.ship_id, tx.work_order_id)
+                          const currentVal = tx.worker_name || tx.contractor_name || ''
                           return (
                             <td
                               {...cp.domProps}
-                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'contractor_name', value: tx.contractor_name || '' })}
+                              onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'contractor_name', value: currentVal })}
                               className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-bold text-cyan-300 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
-                              title="Doble clic para cambiar Contratista o Grupo"
+                              title="Doble clic para cambiar Operario o Contratista"
                             >
                               {inlineEdit.id === tx.id && inlineEdit.field === 'contractor_name' ? (
-                                <input
-                                  type="text"
+                                <select
                                   autoFocus
-                                  list="panol-contractors-datalist"
                                   value={inlineEdit.value}
-                                  onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                  onBlur={() => handleSaveInlineTx(tx.id, 'contractor_name', inlineEdit.value.toUpperCase())}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleSaveInlineTx(tx.id, 'contractor_name', inlineEdit.value.toUpperCase())
-                                    if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    if (val === '__SOLICITAR_APERTURA_OT__') {
+                                      setInlineEdit({ id: null, field: null, value: '' })
+                                      setRequestOtModal({
+                                        isOpen: true,
+                                        txId: tx.id,
+                                        shipId: tx.ship_id || '',
+                                        targetWorkerOrContractor: '',
+                                        reason: ''
+                                      })
+                                      return
+                                    }
+                                    handleSaveInlineTx(tx.id, 'contractor_name', val)
                                   }}
-                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none w-28 uppercase"
-                                />
+                                  onBlur={() => setInlineEdit({ id: null, field: null, value: '' })}
+                                  className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] font-bold text-white focus:outline-none"
+                                >
+                                  <option value="">-- Seleccionar Operario / Contratista --</option>
+                                  {enabled.astilleroWorkers.length > 0 && (
+                                    <optgroup label={`⭐ Personal Astillero (${enabled.astilleroWorkers.length})`}>
+                                      {enabled.astilleroWorkers.map((w) => (
+                                        <option key={`cell_ast_${w.id || w.name}`} value={w.name}>
+                                          {w.name}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                  {enabled.contractorGroups.length > 0 && (
+                                    <optgroup label={`🏗️ Contratistas (${enabled.contractorGroups.length})`}>
+                                      {enabled.contractorGroups.map((grp) => (
+                                        <option key={`cell_cnt_${grp}`} value={grp}>
+                                          {grp}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                  <option value="__SOLICITAR_APERTURA_OT__" className="text-amber-400 font-bold bg-slate-900">
+                                    ➕ Solicitar Apertura de OT a Admin...
+                                  </option>
+                                </select>
                               ) : (
-                                <HighlightText text={tx.contractor_name || 'ALON CAR'} query={searchQuery} />
+                                <HighlightText text={currentVal || 'Sin asignar'} query={searchQuery} />
                               )}
                               {cp.renderHandle && (
                                 <div
@@ -2563,9 +3003,20 @@ export default function Panol() {
           ships={ships}
           workOrders={workOrders}
           workItems={workItems}
-          availableGroups={availableGroups}
+          astilleroWorkers={astilleroWorkers}
+          contractorGroups={contractorGroups}
+          getEnabledWorkersAndContractors={getEnabledWorkersAndContractors}
           isAdmin={isAdmin}
           editingRow={editingWithdrawalRow}
+          onRequestOt={(targetShipId, preselectedWorker) => {
+            setRequestOtModal({
+              isOpen: true,
+              txId: null,
+              shipId: targetShipId || '',
+              targetWorkerOrContractor: preselectedWorker || '',
+              reason: ''
+            })
+          }}
           onClose={() => {
             setShowWithdrawalModal(false)
             setEditingWithdrawalRow(null)
@@ -2651,6 +3102,104 @@ export default function Panol() {
           </div>
         </div>
       )}
+
+      {/* MODAL 7: SOLICITAR APERTURA DE OT A JORGE SENTIS (ADMINISTRADOR) */}
+      {requestOtModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                <AlertCircle className="w-5 h-5" />
+                <span>Solicitar Apertura de OT a Jorge Sentis</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRequestOtModal({ isOpen: false, txId: null, shipId: '', targetWorkerOrContractor: '', reason: '' })}
+                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              El operario o contratista no cuenta con una OT habilitada en este buque. 
+              Al confirmar, se enviará una notificación prioritaria a <strong>Jorge Sentis (Administrador)</strong> para la apertura de la nueva OT y se habilitará la entrega provisoria bajo <strong>(⚠️ Sin OT)</strong>.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Buque / Destino</label>
+                <select
+                  value={requestOtModal.shipId}
+                  onChange={(e) => setRequestOtModal((prev) => ({ ...prev, shipId: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                >
+                  <option value="">-- Seleccionar Buque --</option>
+                  {ships.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Operario o Contratista Requerido</label>
+                <select
+                  value={requestOtModal.targetWorkerOrContractor}
+                  onChange={(e) => setRequestOtModal((prev) => ({ ...prev, targetWorkerOrContractor: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-400"
+                >
+                  <option value="">-- Seleccionar de la nómina completa --</option>
+                  <optgroup label="⭐ Personal Astillero (Aloncar)">
+                    {astilleroWorkers.map((w) => (
+                      <option key={`req_ast_${w.id || w.name}`} value={w.name}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="🏗️ Contratistas Externos">
+                    {contractorGroups.map((grp) => (
+                      <option key={`req_cnt_${grp}`} value={grp}>
+                        {grp}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Motivo / Tareas a Realizar</label>
+                <textarea
+                  rows={3}
+                  value={requestOtModal.reason}
+                  onChange={(e) => setRequestOtModal((prev) => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Ej: Se requiere retirar insumos para tareas urgentes no contempladas en las OTs actuales..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setRequestOtModal({ isOpen: false, txId: null, shipId: '', targetWorkerOrContractor: '', reason: '' })}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitRequestOt}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 shadow-lg shadow-amber-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Enviar Alerta a Jorge Sentis</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2663,14 +3212,17 @@ function MultiWithdrawalModal({
   ships,
   workOrders,
   workItems,
-  availableGroups,
+  astilleroWorkers = [],
+  contractorGroups = [],
+  getEnabledWorkersAndContractors,
   isAdmin,
   editingRow,
+  onRequestOt,
   onClose,
   onSave
 }) {
   const [shipId, setShipId] = useState(editingRow?.ship_id || '')
-  const [contractorGroup, setContractorGroup] = useState(editingRow?.contractor_name || '')
+  const [contractorGroup, setContractorGroup] = useState(editingRow?.worker_name || editingRow?.contractor_name || '')
   const [workOrderId, setWorkOrderId] = useState(editingRow?.work_order_id || '')
   const [isOtEmpty, setIsOtEmpty] = useState(!editingRow?.work_order_id)
   const [date, setDate] = useState(
@@ -2701,20 +3253,62 @@ function MultiWithdrawalModal({
         ]
   )
 
-  // OTs habilitadas para el Barco y Contratista elegidos
+  const enabled = useMemo(() => {
+    if (typeof getEnabledWorkersAndContractors === 'function') {
+      return getEnabledWorkersAndContractors(shipId, isOtEmpty ? null : workOrderId)
+    }
+    return { astilleroWorkers, contractorGroups }
+  }, [getEnabledWorkersAndContractors, shipId, workOrderId, isOtEmpty, astilleroWorkers, contractorGroups])
+
+  // OTs habilitadas para el Barco y Contratista/Operario elegidos
   const availableWos = useMemo(() => {
     if (!shipId) return []
     const shipWos = workOrders.filter((w) => w.ship_id === shipId)
-    if (!contractorGroup || contractorGroup === 'ASTILLERO') return shipWos
+    if (!contractorGroup) return shipWos
     const norm = contractorGroup.trim().toUpperCase()
+
+    const astWorker = astilleroWorkers.find((w) => w.name.toUpperCase() === norm)
+
     return shipWos.filter((wo) => {
       const wItems = (workItems || []).filter((wi) => wi.work_order_id === wo.id)
       if (wItems.length === 0) return true
-      return wItems.some(
-        (it) => Array.isArray(it.contractors) && it.contractors.some((c) => c && c.trim().toUpperCase() === norm)
+      const rawContractors = wItems.flatMap((wi) =>
+        Array.isArray(wi.contractors)
+          ? wi.contractors
+          : wi.contractor_name
+          ? [wi.contractor_name]
+          : []
       )
+
+      if (astWorker) {
+        const hasAstilleroGen = rawContractors.some(
+          (c) => c && (c.toUpperCase() === 'ASTILLERO' || c.toUpperCase() === 'ALON CAR')
+        )
+        if (hasAstilleroGen) return true
+
+        const astTrades = rawContractors
+          .filter((c) => c && c.toUpperCase().startsWith('ASTILLERO.'))
+          .map((c) => c.split('.')[1].toUpperCase().trim())
+
+        if (astTrades.length > 0) {
+          const normTrade = (astWorker.trade || '')
+            .toUpperCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+          return astTrades.some((tradeKey) => {
+            if (tradeKey === 'RASCHINAJE') return normTrade.includes('RASCHIN')
+            if (tradeKey === 'CALDERERIA') return normTrade.includes('CALDER') || normTrade.includes('SOLDAD')
+            if (tradeKey === 'MECANICA') return normTrade.includes('MECAN') || normTrade.includes('TORNER')
+            if (tradeKey === 'CARPINTERIA') return normTrade.includes('CARPINT')
+            return normTrade.includes(tradeKey)
+          })
+        }
+        return false
+      }
+
+      return rawContractors.some((c) => c && c.trim().toUpperCase() === norm)
     })
-  }, [workOrders, shipId, contractorGroup, workItems])
+  }, [workOrders, shipId, contractorGroup, workItems, astilleroWorkers])
 
   const handleAddItem = () => {
     setItems((prev) => [
@@ -2744,7 +3338,7 @@ function MultiWithdrawalModal({
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!shipId) return alert('Debes seleccionar un Barco.')
-    if (!contractorGroup) return alert('Debes seleccionar un Contratista / Grupo.')
+    if (!contractorGroup) return alert('Debes seleccionar un Operario o Contratista.')
     if (!isOtEmpty && !workOrderId) return alert('Debes seleccionar una OT o marcar la casilla (⚠️ Sin OT).')
 
     const validItems = items.filter((it) => it.material_id && Number(it.quantity) > 0)
@@ -2789,7 +3383,7 @@ function MultiWithdrawalModal({
                 <Anchor className="w-4 h-4 text-cyan-400" />
                 <span>1. Destino e Imputación de Obra</span>
               </span>
-              <span className="text-slate-500 text-[11px]">Cascada: Barco ➔ Contratista ➔ OT</span>
+              <span className="text-slate-500 text-[11px]">Cascada: Barco ➔ Operario/Contratista ➔ OT</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2804,18 +3398,12 @@ function MultiWithdrawalModal({
                     const newShipId = e.target.value
                     setShipId(newShipId)
                     setWorkOrderId('')
-                    if (contractorGroup && contractorGroup !== 'ASTILLERO' && newShipId) {
-                      const enabled = (workItems || []).some((wi) => {
-                        const wo = workOrders.find((w) => w.id === wi.work_order_id)
-                        return (
-                          wo?.ship_id === newShipId &&
-                          Array.isArray(wi.contractors) &&
-                          wi.contractors.some(
-                            (c) => c && c.trim().toUpperCase() === contractorGroup.trim().toUpperCase()
-                          )
-                        )
-                      })
-                      if (!enabled) setContractorGroup('')
+                    if (contractorGroup && newShipId && typeof getEnabledWorkersAndContractors === 'function') {
+                      const newEnabled = getEnabledWorkersAndContractors(newShipId, null)
+                      const isValid =
+                        newEnabled.astilleroWorkers.some((w) => w.name.toUpperCase() === contractorGroup.toUpperCase()) ||
+                        newEnabled.contractorGroups.some((g) => g.toUpperCase() === contractorGroup.toUpperCase())
+                      if (!isValid) setContractorGroup('')
                     }
                   }}
                   required
@@ -2830,23 +3418,46 @@ function MultiWithdrawalModal({
                 </select>
               </div>
 
-              {/* Paso 2: Contratista / Grupo */}
+              {/* Paso 2: Operario / Contratista */}
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">
-                  2° Contratista / Grupo <span className="text-rose-400">*</span>
+                  2° Operario / Contratista <span className="text-rose-400">*</span>
                 </label>
                 <select
                   value={contractorGroup}
-                  onChange={(e) => setContractorGroup(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    if (val === '__SOLICITAR_APERTURA_OT__') {
+                      onRequestOt && onRequestOt(shipId, '')
+                      return
+                    }
+                    setContractorGroup(val)
+                  }}
                   required
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-cyan-400 font-black focus:outline-none focus:border-cyan-400"
                 >
-                  <option value="">Seleccionar Contratista / Grupo...</option>
-                  {availableGroups.map((grp) => (
-                    <option key={grp} value={grp}>
-                      {grp}
-                    </option>
-                  ))}
+                  <option value="">-- Seleccionar Operario / Contratista --</option>
+                  {enabled.astilleroWorkers.length > 0 && (
+                    <optgroup label={`⭐ Personal Astillero (${enabled.astilleroWorkers.length})`}>
+                      {enabled.astilleroWorkers.map((w) => (
+                        <option key={`m_ast_${w.id || w.name}`} value={w.name}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {enabled.contractorGroups.length > 0 && (
+                    <optgroup label={`🏗️ Contratistas (${enabled.contractorGroups.length})`}>
+                      {enabled.contractorGroups.map((grp) => (
+                        <option key={`m_cnt_${grp}`} value={grp}>
+                          {grp}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <option value="__SOLICITAR_APERTURA_OT__" className="text-amber-400 font-bold bg-slate-900">
+                    ➕ Solicitar Apertura de OT a Admin...
+                  </option>
                 </select>
               </div>
 
@@ -2873,7 +3484,17 @@ function MultiWithdrawalModal({
                 <select
                   value={workOrderId}
                   disabled={isOtEmpty}
-                  onChange={(e) => setWorkOrderId(e.target.value)}
+                  onChange={(e) => {
+                    const newWoId = e.target.value
+                    setWorkOrderId(newWoId)
+                    if (contractorGroup && typeof getEnabledWorkersAndContractors === 'function') {
+                      const newEnabled = getEnabledWorkersAndContractors(shipId, newWoId)
+                      const isValid =
+                        newEnabled.astilleroWorkers.some((w) => w.name.toUpperCase() === contractorGroup.toUpperCase()) ||
+                        newEnabled.contractorGroups.some((g) => g.toUpperCase() === contractorGroup.toUpperCase())
+                      if (!isValid) setContractorGroup('')
+                    }
+                  }}
                   required={!isOtEmpty}
                   className={`w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 ${
                     isOtEmpty ? 'opacity-40 cursor-not-allowed bg-slate-950' : 'font-semibold'
