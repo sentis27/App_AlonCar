@@ -18,12 +18,12 @@ import { useAuth } from '../context/AuthContext'
 const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
   { name: 'Órdenes de Trabajo', path: '/ots', icon: ClipboardList },
-  { name: 'Barcos y Obras', path: '/barcos', icon: Ship },
-  { name: 'Terceros y Talleres', path: '/terceros', icon: Wrench },
   { name: 'Carga de Horas', path: '/horas', icon: Clock },
   { name: 'Pañol / Materiales', path: '/panol', icon: Package },
+  { name: 'Terceros y Talleres', path: '/terceros', icon: Wrench },
   { name: 'Compras', path: '/compras', icon: ShoppingCart },
   { name: 'Personal & Tarifas', path: '/personal', icon: Users },
+  { name: 'Barcos y Obras', path: '/barcos', icon: Ship },
   { name: 'Comparador de Obras', path: '/comparador', icon: BarChart3 },
   { name: 'Panel Administrador', path: '/admin', icon: ShieldCheck },
 ]

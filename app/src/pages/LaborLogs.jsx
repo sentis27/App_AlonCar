@@ -403,7 +403,7 @@ export default function LaborLogs() {
     if (set.size === 0) {
       set.add('ASTILLERO.GENERAL')
       dbWorkers
-        .filter(w => w.admin_center === 'CONTRATISTA' || w.admin_center === 'TALLER')
+        .filter(w => w.admin_center === 'CONTRATISTA' && w.status !== 'INACTIVO' && w.can_impute_hours !== false || w.admin_center === 'TALLER' && w.status !== 'INACTIVO' && w.can_impute_hours !== false)
         .forEach(w => { if (w.work_group) set.add(w.work_group) })
     }
     return Array.from(set).sort()
@@ -1268,7 +1268,7 @@ export default function LaborLogs() {
   // Fuentes reactivas desde Supabase (workers) o nómina oficial de respaldo
   const astilleroSource = useMemo(() => {
     if (dbWorkers.length > 0) {
-      const filtered = dbWorkers.filter(w => w.admin_center === 'ASTILLERO' && w.status === 'ACTIVO')
+      const filtered = dbWorkers.filter(w => w.admin_center === 'ASTILLERO' && w.status === 'ACTIVO' && w.can_impute_hours !== false)
       if (filtered.length > 0) return filtered.map(w => ({ name: w.name, defaultRubro: w.trade || 'General' }))
     }
     return NOMINA_ASTILLERO_BASE

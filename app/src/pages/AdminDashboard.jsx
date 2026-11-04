@@ -309,6 +309,7 @@ export default function AdminDashboard() {
     pendingRubroCount: 0
   })
   const [pendingRubroMaterials, setPendingRubroMaterials] = useState([])
+  const [complianceAlerts, setComplianceAlerts] = useState([])
 
   useEffect(() => {
     loadRoles()
@@ -939,21 +940,66 @@ export default function AdminDashboard() {
   // =============================================================
   async function loadAlertSummary() {
     try {
-      const [rateCardsRes, pendingMatsRes] = await Promise.all([
+      const [rateCardsRes, pendingMatsRes, complianceRes] = await Promise.all([
         supabase.from('rate_cards').select('rate_oficial_ars, admin_center, entity_name, period').limit(200),
-        supabase.from('materials').select('*').eq('rubro_status', 'PENDIENTE_HOMOLOGACION').order('created_at', { ascending: false })
+        supabase.from('materials').select('*').eq('rubro_status', 'PENDIENTE_HOMOLOGACION').order('created_at', { ascending: false }),
+        supabase.from('compliance_alerts').select('*, ships(name), workers(name)').eq('status', 'PENDIENTE').order('created_at', { ascending: false })
       ])
       const pendingMats = pendingMatsRes.data || []
       setPendingRubroMaterials(pendingMats)
-      // Cálculo básico de alertas
+      const compAlerts = complianceRes.data || []
+      setComplianceAlerts(compAlerts)
+
+      // Cálculo de alertas y solicitudes operativas
       setAlertSummary({
-        redContractorsCount: 2, // Alertas activas según semáforo
-        panolWithoutHoursCount: 1, // Casos de retiro de pañol sin horas
-        auditedHoursCount: 4, // Horas observadas en auditoría
-        pendingRubroCount: pendingMats.length
+        redContractorsCount: 2,
+        panolWithoutHoursCount: compAlerts.filter((a) => a.entity_type === 'inventory_transactions').length,
+        auditedHoursCount: 4,
+        pendingRubroCount: pendingMats.length,
+        complianceAlertsCount: compAlerts.length
       })
     } catch (err) {
       console.error('Error cargando alertas:', err)
+    }
+  }
+
+  async function handleResolveComplianceAlert(alertItem, resolutionNotes = 'Resuelto por Administrador') {
+    try {
+      const userIdentifier = profile?.full_name || user?.email || 'Jorge Sentis'
+      const { error } = await supabase
+        .from('compliance_alerts')
+        .update({
+          status: 'COMPLETADO',
+          completed_at: new Date().toISOString(),
+          completed_by: userIdentifier,
+          notes: alertItem.notes ? `${alertItem.notes} - [${resolutionNotes}]` : resolutionNotes
+        })
+        .eq('id', alertItem.id)
+
+      if (error) throw error
+
+      setComplianceAlerts((prev) => prev.filter((a) => a.id !== alertItem.id))
+      setAlertSummary((prev) => ({
+        ...prev,
+        complianceAlertsCount: Math.max(0, (prev.complianceAlertsCount || 1) - 1)
+      }))
+    } catch (err) {
+      alert('Error al resolver la alerta: ' + err.message)
+    }
+  }
+
+  async function handleApproveWorkerPermission(alertItem) {
+    try {
+      if (alertItem.entity_id) {
+        const { error: workerErr } = await supabase
+          .from('workers')
+          .update({ can_withdraw_materials: true })
+          .eq('id', alertItem.entity_id)
+        if (workerErr) throw workerErr
+      }
+      await handleResolveComplianceAlert(alertItem, 'Permiso de retiro en Pañol habilitado')
+    } catch (err) {
+      alert('Error habilitando permiso de operario: ' + err.message)
     }
   }
 
@@ -1898,6 +1944,106 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* BANDEJA DE RESOLUCIÓN: ALERTAS OPERATIVAS & SOLICITUDES DE APERTURA DE OT / PERMISOS */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+                  Bandeja de Cumplimiento: Solicitudes de Apertura de OT y Habilitaciones (Compliance Alerts)
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Solicitudes enviadas en tiempo real desde Pañol Central y Horas por contratistas no asignados, pedidos de habilitación de operarios y retiros bajo (⚠️ Sin OT).
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-amber-950 border border-amber-800 text-amber-300 text-xs font-bold">
+                {complianceAlerts.length} pendiente(s)
+              </span>
+            </div>
+
+            {complianceAlerts.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl bg-slate-950/40">
+                ✓ No hay solicitudes operativas pendientes de resolución en la base de datos.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[10px]">
+                      <th className="py-2.5 px-3">Fecha</th>
+                      <th className="py-2.5 px-3">Tipo de Requerimiento</th>
+                      <th className="py-2.5 px-3">Buque / Obra</th>
+                      <th className="py-2.5 px-3">Detalle / Motivo</th>
+                      <th className="py-2.5 px-3">Origen / Notas</th>
+                      <th className="py-2.5 px-3 text-center">Acción Administrador</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {complianceAlerts.map((alert) => {
+                      const isOtReq = alert.entity_type === 'work_orders'
+                      const isWorkerReq = alert.entity_type === 'workers'
+                      const isSinOtAudit = alert.entity_type === 'inventory_transactions'
+
+                      return (
+                        <tr key={alert.id} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px] whitespace-nowrap">
+                            {alert.created_at ? new Date(alert.created_at).toLocaleDateString('es-AR') : '—'}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            {isOtReq && (
+                              <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold text-[10px]">
+                                ➕ Apertura de OT
+                              </span>
+                            )}
+                            {isWorkerReq && (
+                              <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold text-[10px]">
+                                👤 Permiso Pañol (P)
+                              </span>
+                            )}
+                            {isSinOtAudit && (
+                              <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold text-[10px]">
+                                ⚠️ Retiro sin OT
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-white">
+                            {alert.ships?.name || 'Astillero General'}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-200">
+                            {alert.alert_message}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-400 text-[11px] font-mono">
+                            {alert.notes || '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            {isWorkerReq ? (
+                              <button
+                                type="button"
+                                onClick={() => handleApproveWorkerPermission(alert)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs cursor-pointer shadow transition-colors"
+                              >
+                                ✓ Habilitar Permiso (P) y Resolver
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleResolveComplianceAlert(alert, isOtReq ? 'OT Creada / Asignada' : 'Auditado por Administrador')}
+                                className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-xs cursor-pointer shadow transition-colors"
+                              >
+                                ✓ Marcar Resuelto
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          
           {/* BANDEJA DE RESOLUCIÓN: SOLICITUDES DE NUEVO RUBRO DE MATERIALES */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">

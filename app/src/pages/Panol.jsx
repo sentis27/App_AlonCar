@@ -52,62 +52,15 @@ import {
   AlertCircle
 } from 'lucide-react'
 
-// Nómina oficial de Personal Propio del Astillero (Aloncar)
-const NOMINA_ASTILLERO_BASE = [
-  { name: 'Rodriguez, Enzo', defaultRubro: 'Raschinear' },
-  { name: 'Colonga, Franco', defaultRubro: 'Raschinear' },
-  { name: 'Gari, Mario Andres', defaultRubro: 'Calderería' },
-  { name: 'Georgetti, Jorge', defaultRubro: 'Mandados' },
-  { name: 'Hernández, Santiago', defaultRubro: 'Maquinaria' },
-  { name: 'Lescano, Alexander', defaultRubro: 'Raschinear' },
-  { name: 'López, Ricardo Héctor', defaultRubro: 'Raschinear' },
-  { name: 'Lorenzi, Martin', defaultRubro: 'Supervisión' },
-  { name: 'Merlos, Cristian', defaultRubro: 'Mecánica' },
-  { name: 'Putallaz, Leonel', defaultRubro: 'Mecánica' },
-  { name: 'Maciel, Rodrigo', defaultRubro: 'Raschinear' },
-  { name: 'Palotta Jara, Valentin', defaultRubro: 'Mecánica' },
-  { name: 'Peralta Pablo', defaultRubro: 'Carpintería' },
-  { name: 'Navarro, Matias', defaultRubro: 'Carpintería' },
-  { name: 'Rancatti, Gonzalo', defaultRubro: 'Carpintería' },
-  { name: 'Rodriguez, Diego', defaultRubro: 'Calderería' },
-  { name: 'Rodriguez, Mariano R O', defaultRubro: 'Pañolero' },
-  { name: 'Sosa, José Mauricio', defaultRubro: 'Raschinear' },
-  { name: 'Sostoa Gonzalez, Higinio', defaultRubro: 'Raschinear' },
-  { name: 'Caballero, Daniel Emanuel', defaultRubro: 'Calderería' },
-  { name: 'Toledo, Luciano', defaultRubro: 'Calderería' },
-  { name: 'Alanis, Carlos', defaultRubro: 'Raschinear' },
-  { name: 'Hernandez, Jorge', defaultRubro: 'Carpintería' },
-  { name: 'Gonzalez, Luciano', defaultRubro: 'Supervisión' },
-  { name: 'Rancatti, Franco', defaultRubro: 'Raschinear' },
-  { name: 'Caballero, Cristian', defaultRubro: 'Calderería' },
-  { name: 'Salvador Alan', defaultRubro: 'Carpintería' },
-  { name: 'Salvador Oscar', defaultRubro: 'Carpintería' },
-  { name: 'Incorvaia, Emanuel', defaultRubro: 'Raschinear' }
-]
-
-// Contratistas externos frecuentes (Grupos de Trabajo en Planta)
-const CONTRATISTAS_FRECUENTES = [
-  '4RG SERV. INDUSTRIALES',
-  'ALDO (CARPINTERO)',
-  'ARENADO PUERTO',
-  'ATENEO',
-  'AVALOS',
-  'AVALOS AYUDANTE',
-  'BOLTRI',
-  'CAMILO MARTINEZ',
-  'CARLOS VIDONDO',
-  'CHACANO',
-  'DAMIAN',
-  'DE ANGELIS',
-  'EDUARDO FERNANDEZ',
-  'ELECTRICIDAD NAVAL SA',
-  'IMPERPUR',
-  'JHONNY',
-  'JUAREZ JUAN',
-  'LUAYZA',
-  'TANO',
-  'TOBARES'
-]
+import {
+  NOMINA_ASTILLERO_BASE,
+  CONTRATISTAS_FRECUENTES,
+  normalizeText,
+  filterEligiblePersonnel,
+  getShipEnabledContractors,
+  getContractorEnabledWos,
+  evaluateAllocationState
+} from '../lib/allocationEngine'
 
 // ==============================================================================
 // COMPONENTE AUXILIAR: Resaltador de coincidencias de búsqueda en amarillo
@@ -204,6 +157,8 @@ export default function Panol() {
   const [quickPurchaseModal, setQuickPurchaseModal] = useState({ isOpen: false, material: null, quantity: '', urgency: 'SIN_APURO' })
   const [adminDeleteConfirmModal, setAdminDeleteConfirmModal] = useState({ isOpen: false, tx: null })
   const [requestOtModal, setRequestOtModal] = useState({ isOpen: false, txId: null, shipId: '', targetWorkerOrContractor: '', reason: '' })
+  const [workerPermissionModal, setWorkerPermissionModal] = useState({ isOpen: false, workerId: '', reason: '' })
+  const [pendingAlerts, setPendingAlerts] = useState([])
   const [previewImage, setPreviewImage] = useState(null)
   const [workItems, setWorkItems] = useState([])
 
@@ -263,7 +218,8 @@ export default function Panol() {
         shipsRes,
         woRes,
         workersRes,
-        workItemsRes
+        workItemsRes,
+        alertsRes
       ] = await Promise.all([
         supabase.from('materials').select('*').order('name'),
         supabase
@@ -281,7 +237,8 @@ export default function Panol() {
         supabase.from('ships').select('*').order('name'),
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('workers').select('*').order('name'),
-        supabase.from('work_items').select('id, work_order_id, contractors, description, status, foreman_name').order('created_at', { ascending: true })
+        supabase.from('work_items').select('id, work_order_id, contractors, description, status, foreman_name').order('created_at', { ascending: true }),
+        supabase.from('compliance_alerts').select('*').eq('status', 'PENDIENTE')
       ])
 
       if (matRes.data) setMaterials(matRes.data)
@@ -293,6 +250,7 @@ export default function Panol() {
       if (woRes.data) setWorkOrders(woRes.data)
       if (workersRes.data) setWorkers(workersRes.data)
       if (workItemsRes.data) setWorkItems(workItemsRes.data)
+      if (alertsRes.data) setPendingAlerts(alertsRes.data)
     } catch (err) {
       console.error('Error cargando Pañol:', err)
       showFeedback('error', 'Error cargando datos de Pañol: ' + err.message)
@@ -382,94 +340,29 @@ export default function Panol() {
     }
   }, [suppliers, gasMovements])
 
-  // Personal propio de Astillero (Aloncar) - Personas individuales con oficio
-  const astilleroWorkers = useMemo(() => {
-    if (workers.length > 0) {
-      const ast = workers.filter(
-        (w) =>
-          (w.admin_center === 'ASTILLERO' || w.worker_type === 'Astillero' || w.work_group === 'ASTILLERO') &&
-          w.status !== 'INACTIVO'
-      )
-      if (ast.length > 0) {
-        return ast.map((w) => ({
-          id: w.id,
-          name: w.name,
-          trade: w.trade || 'General',
-          admin_center: 'ASTILLERO'
-        }))
-      }
-    }
-    return NOMINA_ASTILLERO_BASE.map((w) => ({
-      id: w.name,
-      name: w.name,
-      trade: w.defaultRubro,
-      admin_center: 'ASTILLERO'
-    }))
+  // Padrón oficial filtrado según permiso de Pañol (can_withdraw_materials) y exclusión de inactivos
+  const eligiblePersonnel = useMemo(() => {
+    return filterEligiblePersonnel(workers, { permissionField: 'can_withdraw_materials' })
   }, [workers])
 
-  // Contratistas externos frecuentes (Grupos de Trabajo en Planta)
-  const contractorGroups = useMemo(() => {
-    const set = new Set()
-    workers.forEach((w) => {
-      if ((w.admin_center === 'CONTRATISTA' || w.admin_center === 'TALLER') && w.work_group) {
-        set.add(w.work_group.trim().toUpperCase())
-      }
-    })
-    CONTRATISTAS_FRECUENTES.forEach((c) => set.add(c.trim().toUpperCase()))
-    return Array.from(set).sort()
-  }, [workers])
+  const astilleroWorkers = eligiblePersonnel.astilleroWorkers
+  const contractorGroups = eligiblePersonnel.contractorGroups
+  const unauthorizedWorkers = eligiblePersonnel.unauthorizedWorkers
 
   // Alias retrocompatible
-  const availableGroups = useMemo(() => {
-    return [...astilleroWorkers.map((w) => w.name), ...contractorGroups]
-  }, [astilleroWorkers, contractorGroups])
+  const availableGroups = eligiblePersonnel.allEligibleNames
 
-  // Helper para obtener operarios de Astillero y Contratistas habilitados para Barco y OT
+  // Helper canónico para obtener operarios de Astillero y Contratistas habilitados para Barco y OT
   const getEnabledWorkersAndContractors = useCallback(
     (shipId, workOrderId) => {
-      const baseAstillero = astilleroWorkers
-      const baseContractors = contractorGroups
-
-      if (!shipId) {
-        return {
-          astilleroWorkers: baseAstillero,
-          contractorGroups: baseContractors
-        }
-      }
-
-      // Si no hay OT seleccionada (⚠️ Sin OT):
       if (!workOrderId) {
-        const shipWos = workOrders.filter((w) => w.ship_id === shipId)
-        const shipWoIds = new Set(shipWos.map((w) => w.id))
-        const activeShipItems = workItems.filter((wi) => shipWoIds.has(wi.work_order_id))
-        const shipContractorNames = new Set()
-        activeShipItems.forEach((wi) => {
-          if (Array.isArray(wi.contractors)) {
-            wi.contractors.forEach((c) => {
-              if (c && !c.toUpperCase().startsWith('ASTILLERO')) {
-                shipContractorNames.add(c.trim().toUpperCase())
-              }
-            })
-          }
-        })
-        const filteredContractors =
-          shipContractorNames.size > 0
-            ? baseContractors.filter((c) => shipContractorNames.has(c.toUpperCase()))
-            : baseContractors
-
-        return {
-          astilleroWorkers: baseAstillero,
-          contractorGroups: filteredContractors.length > 0 ? filteredContractors : baseContractors
-        }
+        return getShipEnabledContractors(shipId, workOrders, workItems, eligiblePersonnel)
       }
 
       // Con OT especificada:
-      const items = workItems.filter((wi) => wi.work_order_id === workOrderId)
+      const items = workItems.filter((wi) => wi.work_order_id === workOrderId && wi.status !== 'Desestimado')
       if (items.length === 0) {
-        return {
-          astilleroWorkers: baseAstillero,
-          contractorGroups: baseContractors
-        }
+        return { astilleroWorkers, contractorGroups }
       }
 
       const rawContractors = items.flatMap((wi) =>
@@ -480,105 +373,39 @@ export default function Panol() {
           : []
       )
 
-      const hasAstilleroGeneral = rawContractors.some(
-        (c) => c && (c.trim().toUpperCase() === 'ASTILLERO' || c.trim().toUpperCase() === 'ALON CAR')
-      )
+      // Regla idéntica a Horas: Si la OT tiene ASTILLERO o ASTILLERO.*, habilita a TODO el personal propio elegible
+      const hasAstillero = rawContractors.some((c) => {
+        const norm = normalizeText(c)
+        return norm === 'ASTILLERO' || norm.startsWith('ASTILLERO.') || norm === 'ALON CAR'
+      })
 
-      // Identificar rubros específicos de Astillero en la OT (ej: ASTILLERO.CALDERERIA, ASTILLERO.MECANICA)
-      const astilleroTrades = rawContractors
-        .filter((c) => c && c.toUpperCase().startsWith('ASTILLERO.'))
-        .map((c) => c.split('.')[1].toUpperCase().trim())
-
-      let filteredAstillero = []
-      if (hasAstilleroGeneral || rawContractors.length === 0) {
-        filteredAstillero = baseAstillero
-      } else if (astilleroTrades.length > 0) {
-        filteredAstillero = baseAstillero.filter((w) => {
-          const normTrade = (w.trade || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          return astilleroTrades.some((tradeKey) => {
-            if (tradeKey === 'RASCHINAJE') return normTrade.includes('RASCHIN')
-            if (tradeKey === 'CALDERERIA') return normTrade.includes('CALDER') || normTrade.includes('SOLDAD')
-            if (tradeKey === 'MECANICA') return normTrade.includes('MECAN') || normTrade.includes('TORNER')
-            if (tradeKey === 'CARPINTERIA') return normTrade.includes('CARPINT')
-            return normTrade.includes(tradeKey)
-          })
-        })
-        if (filteredAstillero.length === 0) {
-          filteredAstillero = baseAstillero
-        }
-      } else {
-        filteredAstillero = []
-      }
+      const enabledAst = hasAstillero || rawContractors.length === 0 ? astilleroWorkers : []
 
       const enabledContractorSet = new Set(
         rawContractors
-          .filter((c) => c && !c.toUpperCase().startsWith('ASTILLERO'))
+          .filter((c) => {
+            const norm = normalizeText(c)
+            return norm && !norm.startsWith('ASTILLERO') && norm !== 'ALON CAR'
+          })
           .map((c) => c.trim().toUpperCase())
       )
 
-      const filteredContractors = baseContractors.filter((grp) =>
-        enabledContractorSet.has(grp.toUpperCase())
-      )
+      const enabledCnt = contractorGroups.filter((grp) => enabledContractorSet.has(grp.toUpperCase()))
 
       return {
-        astilleroWorkers: filteredAstillero,
-        contractorGroups: filteredContractors
+        astilleroWorkers: enabledAst,
+        contractorGroups: enabledCnt
       }
     },
-    [astilleroWorkers, contractorGroups, workOrders, workItems]
+    [eligiblePersonnel, astilleroWorkers, contractorGroups, workOrders, workItems]
   )
 
-  // Filtrar OTs habilitadas para un Barco y un Operario/Contratista
+  // Filtrar OTs habilitadas para un Barco y un Operario/Contratista usando el motor canónico
   const getEnabledWosForShipAndContractor = useCallback(
     (shipId, workerOrContractor) => {
-      if (!shipId) return []
-      const shipWos = workOrders.filter((w) => w.ship_id === shipId)
-      if (!workerOrContractor) return shipWos
-      const norm = workerOrContractor.trim().toUpperCase()
-
-      const astWorker = astilleroWorkers.find((w) => w.name.toUpperCase() === norm)
-
-      return shipWos.filter((wo) => {
-        const items = workItems.filter((wi) => wi.work_order_id === wo.id)
-        if (items.length === 0) return true
-        const rawContractors = items.flatMap((wi) =>
-          Array.isArray(wi.contractors)
-            ? wi.contractors
-            : wi.contractor_name
-            ? [wi.contractor_name]
-            : []
-        )
-
-        if (astWorker) {
-          const hasAstilleroGen = rawContractors.some(
-            (c) => c && (c.toUpperCase() === 'ASTILLERO' || c.toUpperCase() === 'ALON CAR')
-          )
-          if (hasAstilleroGen) return true
-
-          const astTrades = rawContractors
-            .filter((c) => c && c.toUpperCase().startsWith('ASTILLERO.'))
-            .map((c) => c.split('.')[1].toUpperCase().trim())
-
-          if (astTrades.length > 0) {
-            const normTrade = (astWorker.trade || '')
-              .toUpperCase()
-              .normalize('NFD')
-              .replace(/[\u0300-\u036f]/g, '')
-            return astTrades.some((tradeKey) => {
-              if (tradeKey === 'RASCHINAJE') return normTrade.includes('RASCHIN')
-              if (tradeKey === 'CALDERERIA') return normTrade.includes('CALDER') || normTrade.includes('SOLDAD')
-              if (tradeKey === 'MECANICA') return normTrade.includes('MECAN') || normTrade.includes('TORNER')
-              if (tradeKey === 'CARPINTERIA') return normTrade.includes('CARPINT')
-              return normTrade.includes(tradeKey)
-            })
-          }
-          return false
-        }
-
-        return rawContractors.some((c) => c && c.trim().toUpperCase() === norm)
-      })
+      return getContractorEnabledWos(shipId, workerOrContractor, workOrders, workItems, eligiblePersonnel)
     },
-    [workOrders, workItems, astilleroWorkers]
+    [workOrders, workItems, eligiblePersonnel]
   )
 
   // Formatear Tooltip enriquecido de OT (Imagen 1)
@@ -805,13 +632,13 @@ export default function Panol() {
         if (currentWorkerOrContractor && value) {
           const enabled = getEnabledWorkersAndContractors(value, null)
           const isValid =
-            enabled.astilleroWorkers.some((w) => w.name.toUpperCase() === currentWorkerOrContractor.toUpperCase()) ||
-            enabled.contractorGroups.some((g) => g.toUpperCase() === currentWorkerOrContractor.toUpperCase())
+            enabled.astilleroWorkers.some((w) => normalizeText(w.name) === normalizeText(currentWorkerOrContractor)) ||
+            enabled.contractorGroups.some((g) => normalizeText(g) === normalizeText(currentWorkerOrContractor))
           if (!isValid) {
             updates.contractor_name = ''
             updates.worker_name = ''
             updates.worker_id = null
-            showFeedback('info', 'OT reseteada y operario desasignado por no pertenecer al nuevo barco.')
+            showFeedback('info', 'OT reseteada y operario desasignado por no estar habilitado en el nuevo barco.')
           }
         }
       }
@@ -824,20 +651,38 @@ export default function Panol() {
         if (currentWorkerOrContractor && value) {
           const enabled = getEnabledWorkersAndContractors(effShipId, value)
           const isValid =
-            enabled.astilleroWorkers.some((w) => w.name.toUpperCase() === currentWorkerOrContractor.toUpperCase()) ||
-            enabled.contractorGroups.some((g) => g.toUpperCase() === currentWorkerOrContractor.toUpperCase())
+            enabled.astilleroWorkers.some((w) => normalizeText(w.name) === normalizeText(currentWorkerOrContractor)) ||
+            enabled.contractorGroups.some((g) => normalizeText(g) === normalizeText(currentWorkerOrContractor))
           if (!isValid) {
             updates.contractor_name = ''
             updates.worker_name = ''
             updates.worker_id = null
-            showFeedback('info', 'Operario/contratista desasignado por no estar habilitado en la OT seleccionada.')
+            showFeedback('info', 'Operario/contratista desasignado por no estar asignado a la OT seleccionada.')
           }
+        }
+        // Excepción / Bypass (⚠️ Sin OT): avisar a Administrador
+        if (!value && effShipId && currentWorkerOrContractor) {
+          const targetShip = ships.find((s) => s.id === effShipId)
+          const shipName = targetShip?.name || 'Astillero General'
+          const userIdentifier = profile?.full_name || profile?.email || user?.email || 'Pañolero'
+          supabase.from('compliance_alerts').insert([{
+            ship_id: effShipId,
+            entity_type: 'inventory_transactions',
+            entity_id: txId,
+            responsible_role: 'admin',
+            status: 'PENDIENTE',
+            escalated_to_admin: true,
+            alert_message: `⚠️ Fila cambiada a (⚠️ Sin OT) en buque ${shipName} para ${currentWorkerOrContractor}.`,
+            notes: `[RETIRO_SIN_OT] Modificado desde grilla por ${userIdentifier}`
+          }]).then(({ error }) => {
+            if (error) console.warn('Aviso sin OT:', error)
+          })
         }
       }
 
       // Asignación de Contratista / Operario
       if (field === 'contractor_name') {
-        const foundAst = astilleroWorkers.find((w) => w.name.toUpperCase() === String(value || '').toUpperCase())
+        const foundAst = astilleroWorkers.find((w) => normalizeText(w.name) === normalizeText(value))
         if (foundAst) {
           updates.contractor_name = foundAst.name
           updates.worker_name = foundAst.name
@@ -846,9 +691,19 @@ export default function Panol() {
           updates.contractor_name = (value || '').toUpperCase()
           updates.worker_name = (value || '').toUpperCase()
           const matchedWorker = workers.find(
-            (w) => w.work_group && w.work_group.toUpperCase() === String(value || '').toUpperCase()
+            (w) => w.work_group && normalizeText(w.work_group) === normalizeText(value)
           )
           updates.worker_id = matchedWorker?.id || null
+        }
+
+        // Si la fila ya tenía una OT que no está habilitada para el nuevo contratista, borrar la OT
+        if (tx?.work_order_id && tx?.ship_id && value) {
+          const enabledWos = getEnabledWosForShipAndContractor(tx.ship_id, value)
+          const isWoValid = enabledWos.some((w) => w.id === tx.work_order_id)
+          if (!isWoValid) {
+            updates.work_order_id = null
+            showFeedback('info', 'OT reseteada a (⚠️ Sin OT) porque no coincide con el nuevo contratista.')
+          }
         }
       }
 
@@ -1180,10 +1035,14 @@ export default function Panol() {
         status: 'PENDIENTE',
         escalated_to_admin: true,
         alert_message: `Solicitud de Apertura de OT en buque ${shipName} para ${requestOtModal.targetWorkerOrContractor}. Motivo: ${requestOtModal.reason || 'Sin detalles adicionales'}`.trim(),
-        notes: `Solicitado desde Pañol Central por ${userIdentifier}`
+        notes: `[SOLICITUD_OT] [CONTRATISTA: ${requestOtModal.targetWorkerOrContractor}] Solicitado desde Pañol Central por ${userIdentifier}`
       }
       const { error: alertErr } = await supabase.from('compliance_alerts').insert([alertPayload])
       if (alertErr) console.warn('Aviso compliance_alerts:', alertErr)
+
+      // Actualizar alertas reactivamente en el estado para que la UI muestre Solicitud enviada (1)
+      const { data: updatedAlerts } = await supabase.from('compliance_alerts').select('*').eq('status', 'PENDIENTE')
+      if (updatedAlerts) setPendingAlerts(updatedAlerts)
 
       // Si se invocó desde una fila existente de la grilla:
       if (requestOtModal.txId) {
@@ -1210,6 +1069,43 @@ export default function Panol() {
     } catch (err) {
       console.error(err)
       showFeedback('error', 'Error al enviar alerta a Administrador: ' + err.message)
+    }
+  }
+
+  // ACCIÓN 4: Solicitar habilitación de operario en Pañol (Permiso P) a Jorge Sentis
+  const handleSubmitWorkerPermission = async () => {
+    if (!workerPermissionModal.workerId) {
+      showFeedback('error', 'Por favor seleccione el operario a habilitar.')
+      return
+    }
+    const targetWorker = workers.find((w) => w.id === workerPermissionModal.workerId)
+    const workerName = targetWorker?.name || 'Operario'
+    const userIdentifier = profile?.full_name || profile?.email || user?.email || 'Pañolero'
+
+    try {
+      const alertPayload = {
+        ship_id: null,
+        entity_type: 'workers',
+        entity_id: targetWorker.id,
+        responsible_role: 'admin',
+        status: 'PENDIENTE',
+        escalated_to_admin: true,
+        alert_message: `Solicitud de Habilitación para retiro de Pañol: ${workerName}. Motivo: ${workerPermissionModal.reason || 'Sin detalles'}`.trim(),
+        notes: `[HABILITACION_OPERARIO] Solicitado desde Pañol Central por ${userIdentifier}`
+      }
+      const { error: alertErr } = await supabase.from('compliance_alerts').insert([alertPayload])
+      if (alertErr) throw alertErr
+
+      setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })
+      showFeedback(
+        'success',
+        `🔔 Solicitud enviada a Jorge Sentis para habilitar a ${workerName} en Pañol (Permiso P).`
+      )
+      const { data: updatedAlerts } = await supabase.from('compliance_alerts').select('*').eq('status', 'PENDIENTE')
+      if (updatedAlerts) setPendingAlerts(updatedAlerts)
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al solicitar habilitación: ' + err.message)
     }
   }
 
@@ -1343,6 +1239,25 @@ export default function Panol() {
 
         if (updErr) throw updErr
 
+        // Excepción / Bypass (⚠️ Sin OT): avisar a Administrador
+        if (!workOrderId && shipId) {
+          const targetShip = ships.find((s) => s.id === shipId)
+          const shipName = targetShip?.name || 'Astillero General'
+          const userIdentifier = profile?.full_name || profile?.email || user?.email || 'Pañolero'
+          supabase.from('compliance_alerts').insert([{
+            ship_id: shipId,
+            entity_type: 'inventory_transactions',
+            entity_id: editId,
+            responsible_role: 'admin',
+            status: 'PENDIENTE',
+            escalated_to_admin: true,
+            alert_message: `⚠️ Retiro sin OT en buque ${shipName} por ${contractorName}. Modificado desde ventana de ajuste.`,
+            notes: `[RETIRO_SIN_OT] Editado desde Pañol Central por ${userIdentifier}`
+          }]).then(({ error }) => {
+            if (error) console.warn('Aviso sin OT:', error)
+          })
+        }
+
         setInventoryTx((prev) => prev.map((t) => (t.id === editId ? { ...t, ...updates } : t)))
         setShowWithdrawalModal(false)
         setEditingWithdrawalRow(null)
@@ -1402,6 +1317,25 @@ export default function Panol() {
       // Actualizar stocks en materials
       for (const upd of matUpdates) {
         await supabase.from('materials').update({ current_stock: upd.newStock }).eq('id', upd.id)
+      }
+
+      // Excepción / Bypass (⚠️ Sin OT): avisar a Administrador
+      if (!workOrderId && shipId) {
+        const targetShip = ships.find((s) => s.id === shipId)
+        const shipName = targetShip?.name || 'Astillero General'
+        const userIdentifier = profile?.full_name || profile?.email || user?.email || 'Pañolero'
+        supabase.from('compliance_alerts').insert([{
+          ship_id: shipId,
+          entity_type: 'inventory_transactions',
+          entity_id: (createdTxs && createdTxs[0]?.id) || '00000000-0000-0000-0000-000000000000',
+          responsible_role: 'admin',
+          status: 'PENDIENTE',
+          escalated_to_admin: true,
+          alert_message: `⚠️ Retiro sin OT en buque ${shipName} por ${contractorGroup}. ${txInserts.length} materiales entregados bajo régimen provisorio.`,
+          notes: `[RETIRO_SIN_OT] Registrado desde Pañol Central por ${userIdentifier}`
+        }]).then(({ error }) => {
+          if (error) console.warn('Aviso sin OT:', error)
+        })
       }
 
       // Actualizar estado local reactivamente
@@ -2147,13 +2081,23 @@ export default function Panol() {
                         {/* 4. Orden de Trabajo (OT) (Doble clic editable con cascada de Contratista) */}
                         {(() => {
                           const cp = getSpreadsheetCellProps(rowIndex, 'work_order_id')
-                          const enabledShipWos = getEnabledWosForShipAndContractor(tx.ship_id, tx.contractor_name)
+                          const contractorVal = tx.contractor_name || tx.worker_name
+                          const enabledShipWos = getEnabledWosForShipAndContractor(tx.ship_id, contractorVal)
                           const otTooltip = formatWorkOrderTooltip(wo, ship)
+                          const allocState = evaluateAllocationState({
+                            shipId: tx.ship_id,
+                            workOrderId: tx.work_order_id,
+                            contractorName: contractorVal,
+                            isSinOt: !tx.work_order_id,
+                            availableWos: enabledShipWos,
+                            pendingAlerts
+                          })
+
                           return (
                             <td
                               {...cp.domProps}
                               onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'work_order_id', value: tx.work_order_id || '' })}
-                              className={`py-1.5 px-1.5 max-w-[200px] truncate cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                              className={`py-1.5 px-1.5 max-w-[220px] truncate cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
                               title={otTooltip}
                             >
                               {inlineEdit.id === tx.id && inlineEdit.field === 'work_order_id' ? (
@@ -2176,9 +2120,39 @@ export default function Panol() {
                                   OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}: <span className="text-slate-300 font-normal">{wo.title || wo.description}</span>
                                 </span>
                               ) : (
-                                <span className="text-amber-400/90 italic font-mono text-[10px]">
-                                  (⚠️ Sin OT)
-                                </span>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-amber-400/90 italic font-mono text-[10px]">
+                                    (⚠️ Sin OT)
+                                  </span>
+                                  {allocState.needsOtRequest && (
+                                    allocState.isOtRequestPending ? (
+                                      <span
+                                        className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shrink-0"
+                                        title="Solicitud de apertura de OT registrada en base de datos. Pendiente de resolución por Jorge Sentis."
+                                      >
+                                        Solicitud enviada (1)
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setRequestOtModal({
+                                            isOpen: true,
+                                            txId: tx.id,
+                                            shipId: tx.ship_id || '',
+                                            targetWorkerOrContractor: contractorVal || '',
+                                            reason: ''
+                                          })
+                                        }}
+                                        className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-rose-600 hover:bg-rose-500 text-white shadow animate-pulse shrink-0 cursor-pointer"
+                                        title="No hay OT habilitada para este contratista en este buque. Clic para pedir apertura a Jorge Sentis."
+                                      >
+                                        ➕ Pedir Apertura OT
+                                      </button>
+                                    )
+                                  )}
+                                </div>
                               )}
                               {cp.renderHandle && (
                                 <div
@@ -2339,6 +2313,15 @@ export default function Panol() {
                           const cp = getSpreadsheetCellProps(rowIndex, 'contractor_name')
                           const enabled = getEnabledWorkersAndContractors(tx.ship_id, tx.work_order_id)
                           const currentVal = tx.worker_name || tx.contractor_name || ''
+                          const allocState = evaluateAllocationState({
+                            shipId: tx.ship_id,
+                            workOrderId: tx.work_order_id,
+                            contractorName: currentVal,
+                            isSinOt: !tx.work_order_id,
+                            availableWos: getEnabledWosForShipAndContractor(tx.ship_id, currentVal),
+                            pendingAlerts
+                          })
+
                           return (
                             <td
                               {...cp.domProps}
@@ -2358,7 +2341,16 @@ export default function Panol() {
                                         isOpen: true,
                                         txId: tx.id,
                                         shipId: tx.ship_id || '',
-                                        targetWorkerOrContractor: '',
+                                        targetWorkerOrContractor: currentVal || '',
+                                        reason: ''
+                                      })
+                                      return
+                                    }
+                                    if (val === '__SOLICITAR_HABILITACION_OPERARIO__') {
+                                      setInlineEdit({ id: null, field: null, value: '' })
+                                      setWorkerPermissionModal({
+                                        isOpen: true,
+                                        workerId: '',
                                         reason: ''
                                       })
                                       return
@@ -2387,8 +2379,15 @@ export default function Panol() {
                                       ))}
                                     </optgroup>
                                   )}
-                                  <option value="__SOLICITAR_APERTURA_OT__" className="text-amber-400 font-bold bg-slate-900">
-                                    ➕ Solicitar Apertura de OT a Admin...
+                                  <option
+                                    value="__SOLICITAR_APERTURA_OT__"
+                                    disabled={allocState.isOtRequestPending}
+                                    className={`${allocState.isOtRequestPending ? 'text-slate-500 bg-slate-900' : 'text-rose-400 font-bold bg-slate-900'}`}
+                                  >
+                                    {allocState.isOtRequestPending ? 'Solicitud de OT enviada (1)' : '➕ Solicitar Apertura de OT a Admin...'}
+                                  </option>
+                                  <option value="__SOLICITAR_HABILITACION_OPERARIO__" className="text-cyan-400 font-bold bg-slate-900">
+                                    ➕ Solicitar Habilitación de Operario a Admin...
                                   </option>
                                 </select>
                               ) : (
@@ -3005,7 +3004,9 @@ export default function Panol() {
           workItems={workItems}
           astilleroWorkers={astilleroWorkers}
           contractorGroups={contractorGroups}
+          unauthorizedWorkers={unauthorizedWorkers}
           getEnabledWorkersAndContractors={getEnabledWorkersAndContractors}
+          pendingAlerts={pendingAlerts}
           isAdmin={isAdmin}
           editingRow={editingWithdrawalRow}
           onRequestOt={(targetShipId, preselectedWorker) => {
@@ -3014,6 +3015,13 @@ export default function Panol() {
               txId: null,
               shipId: targetShipId || '',
               targetWorkerOrContractor: preselectedWorker || '',
+              reason: ''
+            })
+          }}
+          onRequestWorkerPermission={() => {
+            setWorkerPermissionModal({
+              isOpen: true,
+              workerId: '',
               reason: ''
             })
           }}
@@ -3200,6 +3208,79 @@ export default function Panol() {
           </div>
         </div>
       )}
+
+      {/* MODAL 8: SOLICITAR HABILITACIÓN DE OPERARIO A JORGE SENTIS */}
+      {workerPermissionModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-cyan-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
+                <UserCheck className="w-5 h-5" />
+                <span>Solicitar Habilitación de Operario a Jorge Sentis</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })}
+                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              El operario seleccionado no cuenta actualmente con el permiso de retiro de materiales en Pañol (<strong>P</strong>).
+              Al enviar esta solicitud, <strong>Jorge Sentis (Administrador)</strong> podrá habilitarlo formalmente en el Padrón de Personal.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Operario sin Permiso</label>
+                <select
+                  value={workerPermissionModal.workerId}
+                  onChange={(e) => setWorkerPermissionModal((prev) => ({ ...prev, workerId: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-cyan-400 font-bold focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="">-- Seleccionar Operario a Habilitar --</option>
+                  {unauthorizedWorkers.map((w) => (
+                    <option key={`unauth_${w.id}`} value={w.id}>
+                      {w.name} ({w.trade || 'General'} - {w.admin_center || 'Astillero'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Motivo / Justificación</label>
+                <textarea
+                  rows={3}
+                  value={workerPermissionModal.reason}
+                  onChange={(e) => setWorkerPermissionModal((prev) => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Ej: Asignado a tareas urgentes en dique, requiere retirar insumos de trabajo y EPP..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitWorkerPermission}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Enviar Solicitud a Jorge Sentis</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -3214,10 +3295,13 @@ function MultiWithdrawalModal({
   workItems,
   astilleroWorkers = [],
   contractorGroups = [],
+  unauthorizedWorkers = [],
   getEnabledWorkersAndContractors,
+  pendingAlerts = [],
   isAdmin,
   editingRow,
   onRequestOt,
+  onRequestWorkerPermission,
   onClose,
   onSave
 }) {
@@ -3260,55 +3344,21 @@ function MultiWithdrawalModal({
     return { astilleroWorkers, contractorGroups }
   }, [getEnabledWorkersAndContractors, shipId, workOrderId, isOtEmpty, astilleroWorkers, contractorGroups])
 
-  // OTs habilitadas para el Barco y Contratista/Operario elegidos
+  // OTs habilitadas para el Barco y Contratista/Operario elegidos usando el motor canónico
   const availableWos = useMemo(() => {
-    if (!shipId) return []
-    const shipWos = workOrders.filter((w) => w.ship_id === shipId)
-    if (!contractorGroup) return shipWos
-    const norm = contractorGroup.trim().toUpperCase()
+    return getContractorEnabledWos(shipId, contractorGroup, workOrders, workItems, { astilleroWorkers, contractorGroups })
+  }, [shipId, contractorGroup, workOrders, workItems, astilleroWorkers, contractorGroups])
 
-    const astWorker = astilleroWorkers.find((w) => w.name.toUpperCase() === norm)
-
-    return shipWos.filter((wo) => {
-      const wItems = (workItems || []).filter((wi) => wi.work_order_id === wo.id)
-      if (wItems.length === 0) return true
-      const rawContractors = wItems.flatMap((wi) =>
-        Array.isArray(wi.contractors)
-          ? wi.contractors
-          : wi.contractor_name
-          ? [wi.contractor_name]
-          : []
-      )
-
-      if (astWorker) {
-        const hasAstilleroGen = rawContractors.some(
-          (c) => c && (c.toUpperCase() === 'ASTILLERO' || c.toUpperCase() === 'ALON CAR')
-        )
-        if (hasAstilleroGen) return true
-
-        const astTrades = rawContractors
-          .filter((c) => c && c.toUpperCase().startsWith('ASTILLERO.'))
-          .map((c) => c.split('.')[1].toUpperCase().trim())
-
-        if (astTrades.length > 0) {
-          const normTrade = (astWorker.trade || '')
-            .toUpperCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-          return astTrades.some((tradeKey) => {
-            if (tradeKey === 'RASCHINAJE') return normTrade.includes('RASCHIN')
-            if (tradeKey === 'CALDERERIA') return normTrade.includes('CALDER') || normTrade.includes('SOLDAD')
-            if (tradeKey === 'MECANICA') return normTrade.includes('MECAN') || normTrade.includes('TORNER')
-            if (tradeKey === 'CARPINTERIA') return normTrade.includes('CARPINT')
-            return normTrade.includes(tradeKey)
-          })
-        }
-        return false
-      }
-
-      return rawContractors.some((c) => c && c.trim().toUpperCase() === norm)
+  const allocState = useMemo(() => {
+    return evaluateAllocationState({
+      shipId,
+      workOrderId: isOtEmpty ? null : workOrderId,
+      contractorName: contractorGroup,
+      isSinOt: isOtEmpty,
+      availableWos,
+      pendingAlerts
     })
-  }, [workOrders, shipId, contractorGroup, workItems, astilleroWorkers])
+  }, [shipId, isOtEmpty, workOrderId, contractorGroup, availableWos, pendingAlerts])
 
   const handleAddItem = () => {
     setItems((prev) => [
@@ -3428,7 +3478,11 @@ function MultiWithdrawalModal({
                   onChange={(e) => {
                     const val = e.target.value
                     if (val === '__SOLICITAR_APERTURA_OT__') {
-                      onRequestOt && onRequestOt(shipId, '')
+                      onRequestOt && onRequestOt(shipId, contractorGroup || '')
+                      return
+                    }
+                    if (val === '__SOLICITAR_HABILITACION_OPERARIO__') {
+                      onRequestWorkerPermission && onRequestWorkerPermission()
                       return
                     }
                     setContractorGroup(val)
@@ -3455,8 +3509,15 @@ function MultiWithdrawalModal({
                       ))}
                     </optgroup>
                   )}
-                  <option value="__SOLICITAR_APERTURA_OT__" className="text-amber-400 font-bold bg-slate-900">
-                    ➕ Solicitar Apertura de OT a Admin...
+                  <option
+                    value="__SOLICITAR_APERTURA_OT__"
+                    disabled={allocState.isOtRequestPending}
+                    className={`${allocState.isOtRequestPending ? 'text-slate-500 bg-slate-900' : 'text-rose-400 font-bold bg-slate-900'}`}
+                  >
+                    {allocState.isOtRequestPending ? 'Solicitud de OT enviada (1)' : '➕ Solicitar Apertura de OT a Admin...'}
+                  </option>
+                  <option value="__SOLICITAR_HABILITACION_OPERARIO__" className="text-cyan-400 font-bold bg-slate-900">
+                    ➕ Solicitar Habilitación de Operario a Admin...
                   </option>
                 </select>
               </div>
@@ -3509,6 +3570,36 @@ function MultiWithdrawalModal({
                 </select>
               </div>
             </div>
+
+            {/* Aviso de Inconsistencia de OT & Botón Rojo de Apertura */}
+            {shipId && contractorGroup && availableWos.length === 0 && !isOtEmpty && (
+              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/80 flex items-center justify-between gap-3 animate-in fade-in">
+                <div className="flex items-center gap-2 text-rose-300 font-semibold text-xs">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>No hay OT habilitada para este contratista en este buque.</span>
+                </div>
+                {allocState.isOtRequestPending ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-500 border border-slate-700 font-bold text-xs cursor-not-allowed shrink-0"
+                    title="La solicitud de apertura de OT ya fue enviada a Jorge Sentis y está registrada en la base de datos."
+                  >
+                    Solicitud enviada (1)
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onRequestOt && onRequestOt(shipId, contractorGroup)}
+                    className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-xs animate-pulse shadow-md cursor-pointer flex items-center gap-1.5 shrink-0"
+                    title="Clic para solicitar formalmente a Jorge Sentis la apertura de una nueva OT para este contratista."
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>Solicitar Apertura de OT a Admin</span>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Fecha del Retiro */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
@@ -3751,6 +3842,79 @@ function MaterialSearchInput({ materials, value, onChange }) {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 8: SOLICITAR HABILITACIÓN DE OPERARIO A JORGE SENTIS */}
+      {workerPermissionModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-cyan-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
+                <UserCheck className="w-5 h-5" />
+                <span>Solicitar Habilitación de Operario a Jorge Sentis</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })}
+                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              El operario seleccionado no cuenta actualmente con el permiso de retiro de materiales en Pañol (<strong>P</strong>).
+              Al enviar esta solicitud, <strong>Jorge Sentis (Administrador)</strong> podrá habilitarlo formalmente en el Padrón de Personal.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Operario sin Permiso</label>
+                <select
+                  value={workerPermissionModal.workerId}
+                  onChange={(e) => setWorkerPermissionModal((prev) => ({ ...prev, workerId: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-cyan-400 font-bold focus:outline-none focus:border-cyan-400"
+                >
+                  <option value="">-- Seleccionar Operario a Habilitar --</option>
+                  {unauthorizedWorkers.map((w) => (
+                    <option key={`unauth_${w.id}`} value={w.id}>
+                      {w.name} ({w.trade || 'General'} - {w.admin_center || 'Astillero'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Motivo / Justificación</label>
+                <textarea
+                  rows={3}
+                  value={workerPermissionModal.reason}
+                  onChange={(e) => setWorkerPermissionModal((prev) => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Ej: Asignado a tareas urgentes en dique, requiere retirar insumos de trabajo y EPP..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitWorkerPermission}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Enviar Solicitud a Jorge Sentis</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
