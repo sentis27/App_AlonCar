@@ -81,6 +81,10 @@ Instrucciones para agentes de IA (Claude Code, Antigravity) trabajando en App_Al
 - `.agents/skills/caveman/` — compresión de output, leer antes de iniciar sesión larga
 - `.agents/skills/rtk/` — compresión de comandos Bash, leer si hay outputs largos de terminal
 - `.agents/skills/transversal/control-calidad-entrega/` — **OBLIGATORIA (SKL-007)**: ejecutar antes de declarar terminada cualquier tarea con cambios y antes de todo commit/push; cerrar con su reporte de calidad.
+- `.agents/skills/transversal/planificacion-por-etapas/` — **SKL-008**: clasificación por capas, Fast-Track y freno por riesgo.
+- `.agents/skills/transversal/ingenieria-codigo-senior/` — **SKL-009**: 10 principios senior (foco P1 y P6) y modo auditoría.
+- `.agents/skills/transversal/chasis-docker-multiapp/` — **SKL-010**: aislamiento Docker multi-app por `APP_SLUG`, proxy `/api` y env fail-fast.
+- `.agents/skills/transversal/motor-backend-capas/` — **SKL-011**: arquitectura backend Node/Express + PostgreSQL en 4 capas y `errorHandler` centralizado.
 
 ## Estándares Mandatorios de Módulos (UI/UX) — PROTOCOLO OBLIGATORIO
 

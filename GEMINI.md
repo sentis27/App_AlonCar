@@ -59,8 +59,11 @@ En tu primera línea de análisis antes de proponer soluciones o modificar códi
 > **[Gobernanza AlonCar]** Arquetipo detectado: `CARGA_EDICION` | `METRICAS_ANALISIS`  
 > **Estándares aplicados:** `[Lista de documentos de estandares/ consultados]`
 
-### 2.1 Compuerta Obligatoria de Calidad (SKL-007)
-Antes de declarar terminada **cualquier** tarea que modifique código, datos, configuración o documentación, y antes de todo commit/push, es **OBLIGATORIO** leer y ejecutar la skill `.agents/skills/transversal/control-calidad-entrega/SKILL.md` y cerrar la respuesta con su reporte (Estado general, matriz de requisitos con evidencia, Barrido de clase, Impacto en otros módulos, Pendientes y su motivo).
+### 2.1 Compuerta Obligatoria de Calidad y Ecosistema de Ingeniería (SKL-007 a SKL-011)
+1. **Planificación (`SKL-008`):** Ante múltiples tareas o cambios que crucen capas, aplicar `.agents/skills/transversal/planificacion-por-etapas/SKILL.md` (Modo Fast-Track si hay alta correlación en una sola capa; Freno por Riesgo si requiere 2 o más etapas).
+2. **Ingeniería Senior (`SKL-009`):** Al escribir, modificar o auditar código, cumplir los 10 principios de `.agents/skills/transversal/ingenieria-codigo-senior/SKILL.md` (con foco crítico en P1: separación en 4 capas y P6: diseño defensivo / fail-fast).
+3. **Chasis y Motor Backend (`SKL-010` y `SKL-011`):** Para infraestructura Docker multi-app y servicios backend Node/Express + PostgreSQL, aplicar `.agents/skills/transversal/chasis-docker-multiapp/SKILL.md` y `.agents/skills/transversal/motor-backend-capas/SKILL.md`.
+4. **Control de Calidad Pre-Entrega (`SKL-007`):** Antes de declarar terminada **cualquier** tarea que modifique código, datos, configuración o documentación, y antes de todo commit/push, es **OBLIGATORIO** ejecutar `.agents/skills/transversal/control-calidad-entrega/SKILL.md` y cerrar la respuesta con su reporte.
 
 ---
 

@@ -43,6 +43,10 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | SKL-005 | rtk | architecture | transversal | active | ninguno | [Leer SKILL.md para descripción] | transversal/rtk/SKILL.md |
 | SKL-006 | session-audit | governance | transversal | active | SKL-001 | Audita estado del repo al cierre de sesión, asegura consistencia y trazabilidad | transversal/session-audit/SKILL.md |
 | SKL-007 | control-calidad-entrega | governance | transversal | active | ninguno | Compuerta obligatoria de control de calidad antes de declarar terminada una tarea: intención, trazabilidad de requisitos, estándares, integridad de datos, rendimiento y reporte con evidencia | transversal/control-calidad-entrega/SKILL.md |
+| SKL-008 | planificacion-por-etapas | governance | transversal | active | SKL-007 | Clasifica pedidos múltiples por afinidad técnica y riesgo (Fast-Track o Quirúrgico) y los divide en etapas verificables | transversal/planificacion-por-etapas/SKILL.md |
+| SKL-009 | ingenieria-codigo-senior | architecture | transversal | active | SKL-007 | 10 principios de ingeniería senior (foco P1 separación en 4 capas y P6 diseño defensivo) y matriz de auditoría técnica | transversal/ingenieria-codigo-senior/SKILL.md |
+| SKL-010 | chasis-docker-multiapp | architecture | transversal | active | SKL-009 | Chasis Docker autohospedable (Vite/Nginx + Node/Express + Postgres) con aislamiento multi-app por APP_SLUG, proxy /api y env fail-fast | transversal/chasis-docker-multiapp/SKILL.md |
+| SKL-011 | motor-backend-capas | architecture | transversal | active | SKL-009\|SKL-010 | Motor lógico Backend en 4 capas (Routes, Controllers, Services, Repositories/Models), serializador toDTO y errorHandler centralizado | transversal/motor-backend-capas/SKILL.md |
 
 ---
 
@@ -59,6 +63,10 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | SKL-005 | rtk | active | [Leer SKILL.md] |
 | SKL-006 | session-audit | active | Audita repo al cierre de sesión |
 | SKL-007 | control-calidad-entrega | active | Control de calidad obligatorio pre-entrega |
+| SKL-008 | planificacion-por-etapas | active | Planificación en etapas con Fast-Track / Freno por Riesgo |
+| SKL-009 | ingenieria-codigo-senior | active | Arquitectura en 4 capas, diseño defensivo y auditoría senior |
+| SKL-010 | chasis-docker-multiapp | active | Infraestructura Docker multi-app aislada por APP_SLUG |
+| SKL-011 | motor-backend-capas | active | Motor lógico Backend REST en 4 capas con manejo central de errores |
 
 ### M1-activos
 
