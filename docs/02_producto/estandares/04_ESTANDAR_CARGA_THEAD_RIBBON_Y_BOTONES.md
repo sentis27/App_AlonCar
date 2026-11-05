@@ -4,40 +4,28 @@ Toda vista del **Arquetipo Transaccional / Carga de Datos** debe presentar la mi
 
 ---
 
-## 1. Ribbon Superior de la Grilla (Zona 4.A)
+## 1. Ribbon Superior Canónico de la Grilla (Zona 4.A): Componente `GridRibbon.jsx`
 
-En la parte superior de la tabla, un contenedor flex con fondo oscuro y borde esmeralda proyecta el estado del modo operativo:
+En lugar de copiar y pegar JSX en cada página, la cinta superior está 100% modularizada en el componente canónico `app/src/components/GridRibbon.jsx`.
+
+Proyecta:
+- Modo operativo: `[⚡ MODO PLANILLA]` o `[CELDA A1]`
+- Leyenda operativa de atajos de teclado (`Ctrl+D`, `Enter`, etc.)
+- Botón canónico de inserción: `[+ Insertar Fila en #X]`
+- **Botón canónico de exportación a Excel / Sheets:** `[📥 Exportar]` (vía `exportEngine.js`)
+- Contador de memoria Undo (`X/50`) y conteo de filas visibles
 
 ```jsx
-<div className="flex items-center justify-between p-2.5 bg-slate-950/80 border border-slate-800 rounded-t-xl text-xs">
-  {/* Lado Izquierdo: Modo y Leyenda Operativa */}
-  <div className="flex items-center gap-2">
-    <span className="px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-500/60 text-emerald-300 font-bold text-[10px] tracking-wider uppercase">
-      ⚡ Modo Planilla
-    </span>
-    <span className="text-slate-400 text-[11px] hidden md:inline">
-      Doble clic o <kbd className="px-1 py-0.5 bg-slate-900 border border-slate-700 rounded text-[9px] font-mono text-slate-300">Enter</kbd> en cualquier celda para editar • Arrastrar esquina celeste o <kbd className="px-1 py-0.5 bg-slate-900 border border-slate-700 rounded text-[9px] font-mono text-slate-300">Ctrl+D</kbd> para rellenar
-    </span>
-  </div>
-
-  {/* Lado Derecho: Inserción Contigua y Memoria Undo */}
-  <div className="flex items-center gap-3">
-    <button
-      type="button"
-      onClick={handleInsertContextRow}
-      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-bold text-xs transition-all cursor-pointer shadow-md hover:scale-[1.02]"
-      title="Insertar fila contigua debajo de la fila activa heredando contexto"
-    >
-      <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-      <span>+ Insertar Fila en #{activeRowIndex + 1}</span>
-    </button>
-    <div className="flex items-center gap-1.5 text-slate-500 font-mono text-[10px]">
-      <span>Memoria Undo: {undoStack.length}/50</span>
-      <span>•</span>
-      <span>{rows.length} filas</span>
-    </div>
-  </div>
-</div>
+<GridRibbon
+  activeCellBadge={grid.activeCellBadge}
+  onInsertRow={handleInsertRow}
+  insertRowLabel="+ Insertar Fila en #1"
+  undoCount={grid.undoStack?.length || 0}
+  totalRows={filteredRows.length}
+  entityName="pedidos"
+  exportRows={filteredRows}
+  exportFilename="compras_export"
+/>
 ```
 
 ---

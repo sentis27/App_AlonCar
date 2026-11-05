@@ -68,6 +68,8 @@ import { useAuth } from '../context/AuthContext'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import CrawlerSearchBar from '../components/CrawlerSearchBar'
+import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText } from '../lib/searchEngine'
 
 // Regla de Negocio: Para que una compra se cargue directamente a costo: destino=DIRECTO y estado=RECIB.COMP.DIRECT.
@@ -2417,31 +2419,14 @@ export default function Compras() {
 
           {/* ZONA 3: BARRA DE FILTROS & HERRAMIENTAS */}
           <div className="alon-zone-toolbar p-2.5 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-            {/* Buscador con soporte Esc para limpiar filtros en 1 toque */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F | Esc limpia todo)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    clearAllFilters()
-                    e.target.blur()
-                  }
-                }}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-              />
-              <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
-                Ctrl+F
-              </span>
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2 text-slate-500 hover:text-white">✕</button>
-              )}
-            </div>
+            {/* Buscador Canónico con atajos Ctrl+F y Esc */}
+            <CrawlerSearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onClear={clearAllFilters}
+              inputRef={searchInputRef}
+              placeholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F | Esc limpia todo)"
+            />
 
             {/* Selectores */}
             <div className="flex flex-wrap items-center gap-1.5">
@@ -2558,55 +2543,25 @@ export default function Compras() {
           {/* ZONA 4: PLANILLA / HOJA DE CÁLCULO EDITABLE DE COMPRAS */}
           {/* ========================================================= */}
           <div className="alon-zone-grid">
-            <div className="alon-grid-ribbon">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px] inline-flex items-center gap-1">
-                  <Navigation className="w-3 h-3 text-cyan-400 fill-cyan-400/20 shrink-0" />
-                  <span>{grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : 'MODO PLANILLA'}</span>
-                </span>
-                {grid.selectionStats ? (
-                  <div className="flex flex-wrap items-center gap-2 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-0.5 rounded-lg text-[10px] font-mono text-cyan-200">
-                    <span><strong># Recuento:</strong> {grid.selectionStats.count}</span>
-                    {grid.selectionStats.numericCount > 0 && (
-                      <>
-                        <span>•</span>
-                        <span><strong>Σ Suma:</strong> {grid.selectionStats.sum.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
-                        <span>•</span>
-                        <span><strong>x̄ Promedio:</strong> {grid.selectionStats.avg.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-slate-400 text-[11px]">
-                    Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier celda para editar • Arrastrar esquina celeste o <strong className="text-slate-200">Ctrl+D</strong> para rellenar
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const targetIdx = grid.activeCell?.rowIndex >= 0 ? grid.activeCell.rowIndex : 0
-                    const targetPo = filteredOrders[targetIdx]
-                    if (targetPo) {
-                      handleInsertOrderContext(targetPo, targetIdx, 'below')
-                    } else {
-                      handleAddNewBlankOrder()
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-bold text-xs transition-all cursor-pointer shadow-md shadow-emerald-950/40 hover:scale-[1.02]"
-                  title={`➕ Insertar fila contigua debajo de la fila activa (#${(grid.activeCell?.rowIndex ?? 0) + 1})`}
-                >
-                  <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                  <span>+ Insertar Fila en #{(grid.activeCell?.rowIndex ?? 0) + 1}</span>
-                </button>
-                <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
-                  <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
-                  <span>•</span>
-                  <span>{filteredOrders.length} filas</span>
-                </div>
-              </div>
-            </div>
+            {/* Ribbon Canónico (Estándar 04) con Exportación integrada */}
+            <GridRibbon
+              activeCellBadge={grid.activeCellBadge}
+              onInsertRow={() => {
+                const targetIdx = grid.activeCell?.rowIndex >= 0 ? grid.activeCell.rowIndex : 0
+                const targetPo = filteredOrders[targetIdx]
+                if (targetPo) {
+                  handleInsertOrderContext(targetPo, targetIdx, 'below')
+                } else {
+                  handleAddNewBlankOrder()
+                }
+              }}
+              insertRowLabel={`+ Insertar Fila en #${(grid.activeCell?.rowIndex ?? 0) + 1}`}
+              undoCount={grid.undoStack?.length || 0}
+              totalRows={filteredOrders.length}
+              entityName="pedidos"
+              exportRows={filteredOrders}
+              exportFilename={`compras_pedidos_${new Date().toISOString().split('T')[0]}`}
+            />
 
             <datalist id="compras-materials-datalist">
               {materials.slice(0, 300).map((m) => (

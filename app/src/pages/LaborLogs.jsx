@@ -65,6 +65,8 @@ function HighlightText({ text, query, className = '' }) {
 
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import CrawlerSearchBar from '../components/CrawlerSearchBar'
+import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
 import {
   OFFICIAL_RUBROS_CATALOG,
@@ -3202,41 +3204,19 @@ export default function LaborLogs() {
             {/* ZONA 3: BARRA DE BÚSQUEDA Y FILTROS ESTANDARIZADOS (ESTÁNDAR COMPRAS) */}
             <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2.5">
-                {/* Buscador Flexible */}
-                <div className="relative flex-1 min-w-[260px]">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
-                  <input
-                    ref={logSearchInputRef}
-                    type="text"
-                    placeholder="Buscar operario, buque, OT, rubro... (Ctrl+F | Esc limpia todo)"
-                    value={filterWorker}
-                    onChange={(e) => setFilterWorker(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault()
-                        setFilterWorker('')
-                        setFilterDate('')
-                        setFilterShip('')
-                        setActiveKpiFilter('todos')
-                        e.target.blur()
-                      }
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
-                  />
-                  <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
-                    Ctrl+F
-                  </span>
-                  {filterWorker && (
-                    <button
-                      type="button"
-                      onClick={() => setFilterWorker('')}
-                      className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
-                      title="Limpiar búsqueda"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
+                {/* Buscador Canónico (Estándar 03) */}
+                <CrawlerSearchBar
+                  value={filterWorker}
+                  onChange={setFilterWorker}
+                  onClear={() => {
+                    setFilterWorker('')
+                    setFilterDate('')
+                    setFilterShip('')
+                    setActiveKpiFilter('todos')
+                  }}
+                  inputRef={logSearchInputRef}
+                  placeholder="Buscar operario, buque, OT, rubro... (Ctrl+F | Esc limpia todo)"
+                />
 
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
@@ -3310,32 +3290,17 @@ export default function LaborLogs() {
               </div>
             ) : (
               <div className="alon-zone-grid">
-                <div className="alon-grid-ribbon">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px]">
-                      {horasGrid.activeCellBadge ? `CELDA ${horasGrid.activeCellBadge}` : '⚡ MODO PLANILLA'}
-                    </span>
-                    <span className="text-slate-400">
-                      Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier casilla (Fecha, Barco/OT, Operario, Rubro, Horas) para editar • <strong className="text-slate-200">Ctrl+C/V/D • Ctrl+Z/Y</strong>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleInsertRow}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/40 cursor-pointer transition-all"
-                      title="Insertar una nueva imputación en blanco en la primera posición"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>+ Insertar Fila en #1</span>
-                    </button>
-                    <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
-                      <span>Undo: {horasGrid.undoStack?.length || 0}/50</span>
-                      <span>•</span>
-                      <span>{filteredLogs.length} filas</span>
-                    </div>
-                  </div>
-                </div>
+                {/* Ribbon Canónico (Estándar 04) con Exportación integrada */}
+                <GridRibbon
+                  activeCellBadge={horasGrid.activeCellBadge}
+                  onInsertRow={handleInsertRow}
+                  insertRowLabel="+ Insertar Fila en #1"
+                  undoCount={horasGrid.undoStack?.length || 0}
+                  totalRows={filteredLogs.length}
+                  entityName="imputaciones"
+                  exportRows={filteredLogs}
+                  exportFilename={`horas_imputaciones_${new Date().toISOString().split('T')[0]}`}
+                />
 
                 <div
                   tabIndex={0}

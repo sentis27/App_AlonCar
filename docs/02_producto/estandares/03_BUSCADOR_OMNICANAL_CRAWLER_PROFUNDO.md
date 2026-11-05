@@ -65,7 +65,21 @@ export function normalizeSearchText(str) {
 
 ---
 
-## 3. Ergonomía y Atajos de Teclado
+## 4. Componente Canónico: `CrawlerSearchBar.jsx`
+
+En lugar de crear inputs HTML repetidos en cada módulo, toda la interfaz del buscador de la Zona 3 está encapsulada en `app/src/components/CrawlerSearchBar.jsx`:
+
+```jsx
+import CrawlerSearchBar from '../components/CrawlerSearchBar'
+
+<CrawlerSearchBar
+  value={searchQuery}
+  onChange={setSearchQuery}
+  onClear={clearAllFilters}
+  placeholder="Buscar por material, proveedor, buque, OT... (Ctrl+F | Esc limpia todo)"
+/>
+```
+* **Ventaja Arquitectónica:** Si se cambia el diseño, color, bordes o animaciones del buscador en `CrawlerSearchBar.jsx`, impacta en todos los módulos de inmediato sin tocar archivos individuales.
 - **Atajo `Ctrl+F`:** Pone el foco inmediatamente en el input del buscador (`inputRef.current.focus()`).
 - **Atajo `Escape`:** Si el buscador tiene foco o texto, limpia la búsqueda y restablece la grilla al estado general.
 - **Resaltado Visual de Coincidencias (`HighlightText`):**  

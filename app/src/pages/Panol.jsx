@@ -6,6 +6,8 @@ import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import CrawlerSearchBar from '../components/CrawlerSearchBar'
+import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText } from '../lib/searchEngine'
 import {
   Package,
@@ -1847,35 +1849,13 @@ export default function Panol() {
       {/* ZONA 3: BARRA DE CONTROL DECK Y FILTROS (.alon-zone-toolbar - Acento Cian)      */}
       {/* ============================================================================== */}
       <div className="alon-zone-toolbar flex flex-wrap items-center justify-between gap-3 p-3.5">
-        {/* Buscador reactivo integrado */}
-        <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-md">
-          <div className="relative w-full">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              ref={searchInputRef}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar material, barco, OT, contratista, notas... [Ctrl+F | Esc limpia]"
-              className="w-full pl-9 pr-14 py-1.5 bg-slate-900/90 border border-slate-700 focus:border-cyan-500 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none transition-all shadow-inner"
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              {searchQuery ? (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="text-slate-400 hover:text-white text-xs px-1"
-                >
-                  ✕
-                </button>
-              ) : (
-                <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                  Ctrl+F
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Buscador reactivo integrado Canónico */}
+        <CrawlerSearchBar
+          value={searchQuery}
+          onChange={setSearchQuery}
+          inputRef={searchInputRef}
+          placeholder="Buscar material, barco, OT, contratista, notas... [Ctrl+F | Esc limpia]"
+        />
 
         {/* Filtros en Cascada */}
         <div className="flex flex-wrap items-center gap-2">
@@ -1960,35 +1940,17 @@ export default function Panol() {
       {/* ============================================================================== */}
       {activeTab === 'planillas' && (
         <div className="alon-zone-grid">
-          {/* Ribbon Superior Informativo de la Hoja de Cálculo (Estándar AlonCar) */}
-          <div className="alon-grid-ribbon">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px] inline-flex items-center gap-1">
-                <Navigation className="w-3 h-3 text-cyan-400 fill-cyan-400/20 shrink-0" />
-                <span>{grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : 'MODO PLANILLA'}</span>
-              </span>
-              <span className="text-slate-400 text-[11px] hidden sm:inline">
-                Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier celda para editar • Arrastrar esquina celeste o <strong className="text-slate-200">Ctrl+D</strong> para rellenar
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleInsertRow}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-bold text-xs transition-all cursor-pointer shadow-md hover:scale-[1.02]"
-                title={`+ Insertar fila en blanco en #${(grid.activeCell?.rowIndex ?? 0) + 1}`}
-              >
-                <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                <span>+ Insertar Fila en #{(grid.activeCell?.rowIndex ?? 0) + 1}</span>
-              </button>
-              <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
-                <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
-                <span>•</span>
-                <span>{filteredTransactions.length} filas</span>
-              </div>
-            </div>
-          </div>
+          {/* Ribbon Superior Canónico (Estándar 04) */}
+          <GridRibbon
+            activeCellBadge={grid.activeCellBadge}
+            onInsertRow={handleInsertRow}
+            insertRowLabel={`+ Insertar Fila en #${(grid.activeCell?.rowIndex ?? 0) + 1}`}
+            undoCount={grid.undoStack?.length || 0}
+            totalRows={filteredTransactions.length}
+            entityName="filas"
+            exportRows={filteredTransactions}
+            exportFilename={`panol_retiros_${new Date().toISOString().split('T')[0]}`}
+          />
 
           {/* Datalists para autocompletado in-situ */}
           <datalist id="panol-materials-datalist">

@@ -17,15 +17,24 @@ Toda pantalla, vista o requerimiento del sistema se clasifica estrictamente por 
   5. `docs/02_producto/estandares/05_BARRA_INFERIOR_FLOTANTE_CALCULOS_Y_LIMPIEZA.md`
   6. `docs/02_producto/estandares/06_COMPONENTES_CANONICOS_MODALES.md`
 
+* **COMPONENTES CANÓNICOS OBLIGATORIOS (PROHIBIDO DUPLICAR JSX EN PÁGINAS):**
+  1. `KpiRadar.jsx` ➔ Zona 2 (Radar de tarjetas cromáticas con filtro por clic)
+  2. `CrawlerSearchBar.jsx` ➔ Zona 3 (Buscador omnicanal con atajos Ctrl+F / Esc y pulso crawler)
+  3. `GridRibbon.jsx` ➔ Zona 4.A (Cinta [⚡ MODO PLANILLA] + [+ Insertar Fila] + [📥 Exportar CSV/Excel])
+  4. `GridStatusBarBottom.jsx` ➔ Zona 5 (Barra flotante con Filtro Activo + [✕ Limpiar Todo] + Sheets-like)
+  5. `ShipWorkOrderPickerModal.jsx` ➔ Disparador 1 (Doble clic Barco/OT)
+  6. `ContractorPickerModal.jsx` ➔ Disparador 2 (Doble clic Contratista)
+  7. `exportEngine.js` ➔ Motor universal de exportación a Excel / Sheets (.csv con BOM)
+
 * **REGLAS INVIOLABLES DE CARGA:**
   - **Cabeceras Sticky (`thead`):** Indicador `✎` obligatorio en toda columna editable.
-  - **Buscador Omnicanal:** Crawler profundo que barre todas las columnas, notas, comprobantes y PDFs adjuntos.
+  - **Buscador Omnicanal:** `CrawlerSearchBar` + `searchEngine.js` (`buildUniversalSearchCorpus`).
   - **Los 3 Disparadores Canónicos:**
     1. Doble clic Buque/Destino ➔ `ShipWorkOrderPickerModal`
     2. Doble clic Contratista/Persona ➔ `ContractorPickerModal` (OT en blanco = padrón completo; OT asignada = filtrado por OT con fallback al padrón completo)
     3. Clic en Lápiz (✏️) ➔ Modal integral de fila completa
-  - **Barra Inferior Flotante:** Badge `[⚠️ Filtro Activo (X de Y)  [✕ Limpiar Todo]]` + Agregaciones dinámicas (`Σ`, `Ø`) y **`RECUENTO: N celdas`** cuando se seleccionan celdas de texto.
-  - **Prohibición:** Terminantemente prohibido crear inputs nativos, datalists o selects crudos en las celdas para reemplazar estos componentes.
+  - **Barra Inferior Flotante:** `GridStatusBarBottom` con Badge `[⚠️ Filtro Activo (X de Y)  [✕ Limpiar Todo]]` + Agregaciones dinámicas (`Σ`, `Ø`) y **`RECUENTO: N celdas`** cuando se seleccionan celdas de texto.
+  - **Prohibición:** Terminantemente prohibido crear inputs nativos, datalists o selects crudos en las celdas o toolbars para reemplazar estos componentes.
 
 ### B. ARQUETIPO 2: ANALÍTICO (CONSULTA, ANÁLISIS, COMPARACIÓN Y DECISIÓN)
 * **Definición:** Pantallas de visualización agregada, auditoría, comparación de obras o tableros ejecutivos (ejemplos: *Tablero de OTs, Resumen Gerencial, Comparador de Obras, Auditoría de Stock, Reconciliación*).
@@ -37,3 +46,11 @@ Toda pantalla, vista o requerimiento del sistema se clasifica estrictamente por 
 En tu primera línea de análisis antes de modificar código, debes indicar explícitamente:
 > **[Gobernanza AlonCar]** Arquetipo detectado: `CARGA_DE_DATOS` | `ANALISIS_DE_DATOS`  
 > **Estándares aplicados:** `[Lista de documentos de estandares/ consultados]`
+
+---
+
+## 3. Protocolo para Nuevas Funciones y Módulos
+1. **Para agregar una utilidad global a todas las pantallas:**  
+   Basta con indicar *"Agregá a la barra superior / inferior / buscador la función de [X]"*. La IA debe modificar **exclusivamente el componente canónico correspondiente** (`GridRibbon`, `GridStatusBarBottom`, `CrawlerSearchBar`, etc.), propagando la utilidad instantáneamente a todas las pantallas sin tocar los módulos uno por uno.
+2. **Para crear un módulo nuevo:**  
+   Basta con indicar el arquetipo (*Carga* o *Análisis*) y los datos de la entidad. La pantalla debe componerse ensamblando las piezas canónicas existentes sin reinventar JSX ni escribir estilos repetidos.

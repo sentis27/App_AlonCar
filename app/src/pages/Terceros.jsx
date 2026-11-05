@@ -30,6 +30,8 @@ function HighlightText({ text, query, className = '' }) {
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import CrawlerSearchBar from '../components/CrawlerSearchBar'
+import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
 import { getEnabledWorkersAndContractors } from '../lib/allocationEngine'
 import {
@@ -1663,38 +1665,14 @@ export default function Terceros() {
       {/* ZONA 3: BARRA DE FILTROS, BÚSQUEDA Y COMANDOS DE PLANILLA */}
       <div className="alon-zone-toolbar p-4 space-y-3">
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-          {/* Buscador Estándar Compras */}
-          <div className="relative flex-1 min-w-[260px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F | Esc limpia todo)"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  clearAllFilters()
-                  e.target.blur()
-                }
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
-            />
-            <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
-              Ctrl+F
-            </span>
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
-                title="Limpiar búsqueda"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+          {/* Buscador Canónico (Estándar 03) */}
+          <CrawlerSearchBar
+            value={searchTerm}
+            onChange={setSearchTerm}
+            onClear={clearAllFilters}
+            inputRef={searchInputRef}
+            placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F | Esc limpia todo)"
+          />
 
           <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
             Mostrando {filteredServices.length} de {services.length} servicios
@@ -1854,34 +1832,17 @@ export default function Terceros() {
       ) : viewMode === 'filas' ? (
         /* ZONA 4: PLANILLA / HOJA DE CÁLCULO EDITABLE DE TERCEROS */
         <div className="alon-zone-grid flex flex-col">
-          <div className="alon-grid-ribbon">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px]">
-                {grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : '⚡ MODO PLANILLA'}
-              </span>
-              <span className="text-slate-400">
-                Doble clic o <strong className="text-slate-200">Enter</strong> para editar celda • <strong className="text-slate-200">Ctrl+D</strong> o esquina celeste para rellenar hacia abajo
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              {activeRolePerspective !== 'direccion' && (
-                <button
-                  type="button"
-                  onClick={handleOpenNewModal}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/40 cursor-pointer transition-all"
-                  title="Insertar un nuevo comprobante de contratista"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Insertar Fila en #1</span>
-                </button>
-              )}
-              <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
-                <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
-                <span>•</span>
-                <span>{filteredServices.length} comprobantes</span>
-              </div>
-            </div>
-          </div>
+          {/* Ribbon Canónico (Estándar 04) con Exportación integrada */}
+          <GridRibbon
+            activeCellBadge={grid.activeCellBadge}
+            onInsertRow={activeRolePerspective !== 'direccion' ? handleOpenNewModal : null}
+            insertRowLabel="+ Insertar Fila en #1"
+            undoCount={grid.undoStack?.length || 0}
+            totalRows={filteredServices.length}
+            entityName="comprobantes"
+            exportRows={filteredServices}
+            exportFilename={`terceros_${new Date().toISOString().split('T')[0]}`}
+          />
 
           <datalist id="terceros-contractors-datalist">
             {contractors.map((c) => (
