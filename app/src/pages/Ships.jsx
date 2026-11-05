@@ -45,6 +45,10 @@ import {
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+import CrawlerSearchBar from '../components/CrawlerSearchBar'
+import GridRibbon from '../components/GridRibbon'
+import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import { matchesUniversalSearch } from '../lib/searchEngine'
 
 // ==============================================================================
 // COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
@@ -310,18 +314,16 @@ export default function Ships() {
     }
   }
 
-  // Barcos filtrados para la lista (Tabla o Tarjetas)
+  // Barcos filtrados para la lista (Tabla o Tarjetas) con Crawler Omnicanal
   const filteredShips = useMemo(() => {
     return ships.filter(s => {
-      const term = searchTerm.toLowerCase()
       const locClean = cleanLocation(s.current_location)
-      const matchSearch = !term ||
-        cleanShipName(s.name).toLowerCase().includes(term) ||
-        (s.owners?.name || '').toLowerCase().includes(term) ||
-        (s.owners?.armador_name || '').toLowerCase().includes(term) ||
-        locClean.toLowerCase().includes(term) ||
-        (s.matricula || '').toLowerCase().includes(term) ||
-        (s.vessel_type || '').toLowerCase().includes(term)
+      const matchSearch = matchesUniversalSearch(
+        { ...s, cleanName: cleanShipName(s.name), ownerName: s.owners?.name, armadorName: s.owners?.armador_name, locationClean: locClean },
+        searchTerm
+      )
+
+      if (!matchSearch) return false
 
       const matchLocation = locationFilter === 'todos' ||
         (locationFilter === 'PUERTO' ? locClean.includes('PUERTO') : locClean === locationFilter)
@@ -345,31 +347,24 @@ export default function Ships() {
         matchRole = (getShipOtMetrics[s.id]?.orphanTotal || 0) > 0
       }
 
-      return matchSearch && matchLocation && matchRequest && matchRole
+      return matchLocation && matchRequest && matchRole
     })
   }, [ships, searchTerm, locationFilter, requestFilter, roleQuickFilter, activeRolePerspective, getShipOtMetrics])
 
-  // Movimientos filtrados para el Calendario
+  // Movimientos filtrados para el Calendario (Crawler Omnicanal)
   const filteredStays = useMemo(() => {
     return stays.filter(st => {
-      const term = searchTerm.toLowerCase()
-      const shipName = cleanShipName(st.ships?.name || '')
-      const locClean = cleanLocation(st.location)
-      return !term || shipName.toLowerCase().includes(term) || locClean.toLowerCase().includes(term) || (st.start_date || '').includes(term)
+      return matchesUniversalSearch(
+        { ...st, shipName: cleanShipName(st.ships?.name || ''), locClean: cleanLocation(st.location) },
+        searchTerm
+      )
     })
   }, [stays, searchTerm])
 
-  // Armadores filtrados para Empresas Propietarias
+  // Armadores filtrados para Empresas Propietarias (Crawler Omnicanal)
   const filteredOwners = useMemo(() => {
     return owners.filter(ow => {
-      const term = searchTerm.toLowerCase()
-      return !term ||
-        (ow.name || '').toLowerCase().includes(term) ||
-        (ow.armador_name || '').toLowerCase().includes(term) ||
-        (ow.armador_phone || '').toLowerCase().includes(term) ||
-        (ow.email_principal || '').toLowerCase().includes(term) ||
-        (ow.email_secundario || '').toLowerCase().includes(term) ||
-        (ow.cuit || '').toLowerCase().includes(term)
+      return matchesUniversalSearch(ow, searchTerm)
     })
   }, [owners, searchTerm])
 
@@ -1862,50 +1857,72 @@ export default function Ships() {
           </div>
         </div>
 
-        {/* BARRA DE BÚSQUEDA Y FILTROS TRANSVERSALES (ESTÁNDAR COMPRAS) */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="relative flex-1 min-w-[260px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
-            <input
-              ref={shipsSearchInputRef}
-              type="text"
-              placeholder={
-                activeTab === 'buques'
-                  ? 'Buscar por buque, tipo, armador, matrícula o locación... (Ctrl+F | Esc limpia todo)'
-                  : activeTab === 'movimientos'
-                  ? 'Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)'
-                  : 'Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)'
-              }
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  setSearchTerm('')
-                  setLocationFilter('todos')
-                  setRequestFilter('todos')
-                  setRoleQuickFilter('todos')
-                  e.target.blur()
-                }
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
-            />
-            <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
-              Ctrl+F
-            </span>
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
-                title="Limpiar búsqueda"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        {/* BARRA DE BÚSQUEDA Y FILTROS TRANSVERSALES (ZONA 3 CANÓNICA) */}
+        <div className="flex flex-col gap-2.5">
+          <CrawlerSearchBar
+            value={searchTerm}
+            onChange={setSearchTerm}
+            onClear={() => {
+              setSearchTerm('')
+              setLocationFilter('todos')
+              setRequestFilter('todos')
+              setRoleQuickFilter('todos')
+            }}
+            inputRef={shipsSearchInputRef}
+            placeholder={
+              activeTab === 'buques'
+                ? 'Buscar por buque, eslora (m), tipo, armador, matrícula o locación... (Ctrl+F | Esc limpia todo)'
+                : activeTab === 'movimientos'
+                ? 'Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)'
+                : 'Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)'
+            }
+          />
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {activeTab === 'buques' && (
+                <>
+                  <select
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
+                  >
+                    <option value="todos">Todas las Locaciones</option>
+                    <option value="VARADERO">Varadero</option>
+                    <option value="MUELLE">Muelle</option>
+                    <option value="PUERTO">Puertos Aldana</option>
+                  </select>
+
+                  <select
+                    value={requestFilter}
+                    onChange={(e) => setRequestFilter(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
+                  >
+                    <option value="todos">Todos los Estados</option>
+                    <option value="pendientes">⚠️ Con Solicitud Activa</option>
+                    <option value="completos">✅ Datos Completos</option>
+                  </select>
+                </>
+              )}
+
+              {(locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos' || searchTerm) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocationFilter('todos')
+                    setRequestFilter('todos')
+                    setRoleQuickFilter('todos')
+                    setSearchTerm('')
+                  }}
+                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+                  title="Limpiar todos los filtros (Esc)"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Limpiar filtros</span>
+                </button>
+              )}
+            </div>
+
             <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
               {activeTab === 'buques'
                 ? `Mostrando ${filteredShips.length} de ${ships.length} buques`
@@ -1913,48 +1930,6 @@ export default function Ships() {
                 ? `Mostrando ${filteredStays.length} de ${stays.length} estadías`
                 : `Mostrando ${filteredOwners.length} de ${owners.length} armadores`}
             </span>
-
-            {activeTab === 'buques' && (
-              <>
-                <select
-                  value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
-                >
-                  <option value="todos">Todas las Locaciones</option>
-                  <option value="VARADERO">Varadero</option>
-                  <option value="MUELLE">Muelle</option>
-                  <option value="PUERTO">Puertos Aldana</option>
-                </select>
-
-                <select
-                  value={requestFilter}
-                  onChange={(e) => setRequestFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
-                >
-                  <option value="todos">Todos los Estados</option>
-                  <option value="pendientes">⚠️ Con Solicitud Activa</option>
-                  <option value="completos">✅ Datos Completos</option>
-                </select>
-              </>
-            )}
-
-            {(locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos' || searchTerm) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setLocationFilter('todos')
-                  setRequestFilter('todos')
-                  setRoleQuickFilter('todos')
-                  setSearchTerm('')
-                }}
-                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
-                title="Limpiar todos los filtros (Esc)"
-              >
-                <X className="w-3.5 h-3.5" />
-                <span>Limpiar filtros</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -1972,25 +1947,17 @@ export default function Ships() {
               onKeyDown={shipsGrid.handleKeyDown}
               className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
             >
-              <div className="alon-grid-ribbon">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold uppercase tracking-wider text-[10px]">
-                    Planilla Flota Naval
-                  </span>
-                  {shipsGrid.activeCellBadge ? (
-                    <span className="text-cyan-300 font-bold">{shipsGrid.activeCellBadge}</span>
-                  ) : (
-                    <span>Seleccioná una celda para navegar con flechas</span>
-                  )}
-                </div>
-                <div className="hidden md:flex items-center gap-3 text-[10px] text-slate-400">
-                  <span>Doble clic o Enter/F2: editar celda</span>
-                  <span>&bull;</span>
-                  <span>Arrastrar ■ / Ctrl+D: rellenar abajo</span>
-                  <span>&bull;</span>
-                  <span>Ctrl+Z / Ctrl+Y: deshacer/rehacer</span>
-                </div>
-              </div>
+              {/* Ribbon Canónico (Estándar 04) con Exportación integrada */}
+              <GridRibbon
+                activeCellBadge={shipsGrid.activeCellBadge || 'FLOTA NAVAL'}
+                onInsertRow={handleOpenNewShip}
+                insertRowLabel="+ Insertar Buque"
+                undoCount={shipsGrid.undoStack?.length || 0}
+                totalRows={filteredShips.length}
+                entityName="buques"
+                exportRows={filteredShips}
+                exportFilename={`barcos_flota_${new Date().toISOString().split('T')[0]}`}
+              />
 
               <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
                 <table className="w-full text-left border-collapse text-xs">
@@ -2574,6 +2541,28 @@ export default function Ships() {
               })}
             </div>
           )}
+
+          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+          <GridStatusBarBottom
+            filteredCount={filteredShips.length}
+            totalCount={ships.length}
+            entityName="buques"
+            hasActiveFilter={Boolean(searchTerm || locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos')}
+            onClearFilters={() => {
+              setSearchTerm('')
+              setLocationFilter('todos')
+              setRequestFilter('todos')
+              setRoleQuickFilter('todos')
+            }}
+            selectionStats={shipsGrid.selectionStats}
+            onClearSelection={() => shipsGrid.setSelectionRange(null)}
+            globalAggregates={[
+              { label: 'Varadero', value: varaderoCount, highlight: true },
+              { label: 'Muelle', value: muelleCount },
+              { label: 'Puertos', value: puertoCount },
+              { label: 'Con Solicitud', value: pendingRequestsCount },
+            ]}
+          />
         </div>
       )}
 
@@ -2930,11 +2919,23 @@ export default function Ships() {
               })}
             </div>
           )}
+
+          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+          <GridStatusBarBottom
+            filteredCount={filteredStays.length}
+            totalCount={stays.length}
+            entityName="estadías"
+            hasActiveFilter={Boolean(searchTerm)}
+            onClearFilters={() => setSearchTerm('')}
+            selectionStats={staysGrid.selectionStats}
+            onClearSelection={() => staysGrid.setSelectionRange(null)}
+            globalAggregates={[
+              { label: 'Total Estadías', value: stays.length, highlight: true },
+            ]}
+          />
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* PESTAÑA 3: ARMADORES & PROPIETARIOS (VISTA FILAS / VISTA FICHAS)          */}
       {/* ========================================================================= */}
       {activeTab === 'armadores' && (
         <div className="space-y-4">
@@ -3312,11 +3313,23 @@ export default function Ships() {
               })}
             </div>
           )}
+
+          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+          <GridStatusBarBottom
+            filteredCount={filteredOwners.length}
+            totalCount={owners.length}
+            entityName="armadores"
+            hasActiveFilter={Boolean(searchTerm)}
+            onClearFilters={() => setSearchTerm('')}
+            selectionStats={ownersGrid.selectionStats}
+            onClearSelection={() => ownersGrid.setSelectionRange(null)}
+            globalAggregates={[
+              { label: 'Empresas Registradas', value: owners.length, highlight: true },
+            ]}
+          />
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: FICHA 360° DEL BUQUE                                               */}
       {/* ========================================================================= */}
       {selectedShip360 && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-6 animate-in fade-in">

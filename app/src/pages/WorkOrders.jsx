@@ -32,6 +32,10 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+import CrawlerSearchBar from '../components/CrawlerSearchBar'
+import GridRibbon from '../components/GridRibbon'
+import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import { matchesUniversalSearch } from '../lib/searchEngine'
 
 // ==============================================================================
 // COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
@@ -763,16 +767,17 @@ export default function WorkOrders() {
         if (!list.includes(selectedContractorFilter)) return false
       }
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
-        const matchShip = (row.wo?.ships?.name || '').toLowerCase().includes(q)
-        const matchOtTitle = (row.wo?.title || '').toLowerCase().includes(q)
-        const matchOtNum = (row.wo?.ot_number || '').toLowerCase().includes(q)
-        const matchDesc = (row.description || '').toLowerCase().includes(q)
-        const matchForeman = (row.foreman_name || '').toLowerCase().includes(q)
-        const matchContractor = (row.contractors || []).some(c => c.toLowerCase().includes(q))
-        if (!matchShip && !matchOtTitle && !matchOtNum && !matchDesc && !matchForeman && !matchContractor) {
-          return false
-        }
+        const matchSearch = matchesUniversalSearch(
+          {
+            ...row,
+            shipName: row.wo?.ships?.name,
+            otTitle: row.wo?.title,
+            otNumber: row.wo?.ot_number,
+            contractorsList: (row.contractors || []).join(' ')
+          },
+          searchQuery
+        )
+        if (!matchSearch) return false
       }
       return true
     })
@@ -2452,41 +2457,17 @@ export default function WorkOrders() {
           )}
         </div>
 
-        {/* FILA 2: BARRA DE BÚSQUEDA UNIVERSAL (ESTÁNDAR COMPRAS) */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="relative flex-1 min-w-[260px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
-            <input
-              ref={woSearchInputRef}
-              type="text"
-              placeholder="Buscar barco, OT, descripción, jefe, contratista... (Ctrl+F | Esc limpia todo)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  clearAllFilters()
-                  e.target.blur()
-                }
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
-            />
-            <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
-              Ctrl+F
-            </span>
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
-                title="Limpiar búsqueda"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        {/* FILA 2: BARRA DE BÚSQUEDA UNIVERSAL (ZONA 3 CANÓNICA) */}
+        <div className="flex flex-col gap-2.5">
+          <CrawlerSearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onClear={clearAllFilters}
+            inputRef={woSearchInputRef}
+            placeholder="Buscar por barco, OT, descripción, contratistas, jefe de obra... (Ctrl+F | Esc limpia todo)"
+          />
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
               Mostrando {filteredRows.length} de {unifiedRows.length} trabajos
             </span>
@@ -2605,30 +2586,28 @@ export default function WorkOrders() {
           onKeyDown={woGrid.handleKeyDown}
           className="alon-zone-grid rounded-2xl shadow-xl overflow-hidden focus:outline-none"
         >
-          <div className="alon-grid-ribbon px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
-                {woGrid.activeCellBadge || 'PLANILLA UNIFICADA OTs'}
-              </span>
-              <span className="text-slate-400">
-                Doble clic o Enter en Barco, OT, Descripción, Contratistas, Jefe de Obra, Tipo o Estado para editar · Arrastrá ■ o Ctrl+D para clonar · Ctrl+Z/Y
-              </span>
-            </div>
-            <span className="text-[10px] font-mono text-emerald-400">
-              {woGrid.undoStack.length > 0 ? `${woGrid.undoStack.length} cambio(s) en memoria` : `${filteredRows.length} trabajos visibles`}
-            </span>
-          </div>
+          {/* Ribbon Canónico (Estándar 04) con Exportación integrada */}
+          <GridRibbon
+            activeCellBadge={woGrid.activeCellBadge || 'PLANILLA UNIFICADA OTs'}
+            onInsertRow={() => handleOpenNewWorkModal(null)}
+            insertRowLabel="+ Insertar Trabajo en OT"
+            undoCount={woGrid.undoStack?.length || 0}
+            totalRows={filteredRows.length}
+            entityName="trabajos"
+            exportRows={filteredRows}
+            exportFilename={`ordenes_trabajo_${new Date().toISOString().split('T')[0]}`}
+          />
 
           <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                 <tr>
                   <th className="py-3 px-2 text-center w-10">#</th>
-                  <th className="py-3 px-3">Barco</th>
-                  <th className="py-3 px-3">Orden de Trabajo (Estado Calculado)</th>
+                  <th className="py-3 px-3">Barco ✎</th>
+                  <th className="py-3 px-3">Orden de Trabajo (Estado Calculado) ✎</th>
                   <th className="py-3 px-3 min-w-[155px]">Fechas OT (Creac. / Inicio / Fin)</th>
                   <th className="py-3 px-3 min-w-[240px]">Descripción del Trabajo ✎</th>
-                  <th className="py-3 px-3">Contratista(s) / Permiso 3ros</th>
+                  <th className="py-3 px-3">Contratista(s) / Permiso 3ros ✎</th>
                   <th className="py-3 px-3">Jefe de Obra ✎</th>
                   <th className="py-3 px-2.5">Tipo / Facturación ✎</th>
                   <th className="py-3 px-3 text-center">Estado del Trabajo ✎</th>
@@ -3186,6 +3165,23 @@ export default function WorkOrders() {
               </tbody>
             </table>
           </div>
+
+          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+          <GridStatusBarBottom
+            filteredCount={filteredRows.length}
+            totalCount={unifiedRows.length}
+            entityName="trabajos"
+            hasActiveFilter={hasActiveFilters}
+            onClearFilters={clearAllFilters}
+            selectionStats={woGrid.selectionStats}
+            onClearSelection={() => woGrid.setSelectionRange(null)}
+            globalAggregates={[
+              { label: 'En Ejecución', value: stats.enEjecucion, highlight: true },
+              { label: 'Pendientes', value: stats.pendientes },
+              { label: 'Pdte Remito', value: stats.pdteRemito },
+              { label: 'Sin OT', value: stats.totalSinOt },
+            ]}
+          />
         </div>
       ) : activeMainTab === 'ots' ? (
         /* ========================================================= */

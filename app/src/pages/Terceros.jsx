@@ -2415,7 +2415,7 @@ export default function Terceros() {
             totalCount={services.length}
             entityName="comprobantes"
             hasActiveFilter={hasActiveFilters}
-            onClearFilters={handleClearAllFilters}
+            onClearFilters={clearAllFilters}
             selectionStats={grid.selectionStats}
             onClearSelection={() => grid.setSelectionRange(null)}
             customSelection={selectedIds.size > 0 ? {

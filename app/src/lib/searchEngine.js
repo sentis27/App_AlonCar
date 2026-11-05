@@ -3,7 +3,7 @@
  * 
  * Crawler profundo y normalizador universal para el Buscador Omnicanal de AlonCar.
  * Barre automáticamente todas las propiedades nativas de un registro más entidades
- * hijas vinculadas (Fletes, Comprobantes, Documentos PDF indexados, Notas técnicas).
+ * hijas vinculadas (Fletes, Comprobantes, Documentos PDF indexados, Notas técnicas, Dimensiones y Tarifas).
  */
 
 export function normalizeSearchText(str) {
@@ -18,6 +18,7 @@ export function normalizeSearchText(str) {
 /**
  * Construye el corpus de búsqueda universal para un registro.
  * Inmune a nuevas columnas o cambios de esquema.
+ * Indexa textos, números enteros, decimales (. y ,) y entidades relacionadas.
  */
 export function buildUniversalSearchCorpus(record, options = {}) {
   if (!record || typeof record !== 'object') return ''
@@ -31,10 +32,22 @@ export function buildUniversalSearchCorpus(record, options = {}) {
       const trimmed = val.trim()
       // Omitir UUIDs técnicos puros de 36 caracteres con 4 guiones
       if (trimmed.length === 36 && (trimmed.match(/-/g) || []).length === 4) continue
-      // Omitir fechas ISO completas técnicas si no aportan
-      if (trimmed) parts.push(trimmed)
+      if (trimmed) {
+        parts.push(trimmed)
+        // Si contiene números con coma o punto, indexar ambas variantes
+        if (/[0-9]+[.,][0-9]+/.test(trimmed)) {
+          parts.push(trimmed.replace(',', '.'))
+          parts.push(trimmed.replace('.', ','))
+        }
+      }
     } else if (typeof val === 'number') {
-      parts.push(String(val))
+      const numStr = String(val)
+      parts.push(numStr)
+      if (numStr.includes('.')) {
+        parts.push(numStr.replace('.', ','))
+      }
+    } else if (typeof val === 'boolean') {
+      parts.push(val ? 'si activo true' : 'no inactivo false')
     }
   }
 
@@ -68,11 +81,26 @@ export function buildUniversalSearchCorpus(record, options = {}) {
 }
 
 /**
- * Predicado rápido para evaluar coincidencia omnicanal
+ * Predicado rápido para evaluar coincidencia omnicanal.
+ * Admite búsqueda multi-término (todas las palabras deben coincidir)
+ * y variantes de coma/punto para números y monedas.
  */
 export function matchesUniversalSearch(record, query, options = {}) {
   if (!query || !query.trim()) return true
   const q = normalizeSearchText(query)
+  const tokens = q.split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return true
+
   const corpus = buildUniversalSearchCorpus(record, options)
-  return corpus.includes(q)
+
+  return tokens.every((token) => {
+    if (corpus.includes(token)) return true
+    if (token.includes(',')) {
+      if (corpus.includes(token.replace(/,/g, '.'))) return true
+    }
+    if (token.includes('.')) {
+      if (corpus.includes(token.replace(/\./g, ','))) return true
+    }
+    return false
+  })
 }

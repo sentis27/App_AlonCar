@@ -43,6 +43,10 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+import CrawlerSearchBar from '../components/CrawlerSearchBar'
+import GridRibbon from '../components/GridRibbon'
+import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import { matchesUniversalSearch } from '../lib/searchEngine'
 
 // ==============================================================================
 // COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
@@ -710,16 +714,11 @@ export default function Personal() {
     }
   }
 
-  // Filtrado de tarifas para la tabla histórica
+  // Filtrado de tarifas para la tabla histórica (Crawler Omnicanal)
   const filteredRateCards = useMemo(() => {
     return rateCards.filter(rc => {
       if (filterTableCenter !== 'todos' && rc.admin_center !== filterTableCenter) return false
-      if (rateTableSearch) {
-        const term = rateTableSearch.toLowerCase()
-        const match = (rc.entity_name || '').toLowerCase().includes(term) ||
-                      (rc.period || '').toLowerCase().includes(term)
-        if (!match) return false
-      }
+      if (rateTableSearch && !matchesUniversalSearch(rc, rateTableSearch)) return false
       return true
     })
   }, [rateCards, filterTableCenter, rateTableSearch])
@@ -1172,14 +1171,7 @@ export default function Personal() {
 
   const filteredWorkers = useMemo(() => {
     return workers.filter(w => {
-      const term = searchTerm.toLowerCase()
-      const matchSearch = !term ||
-        (w.name || '').toLowerCase().includes(term) ||
-        (w.work_group || '').toLowerCase().includes(term) ||
-        (w.trade || '').toLowerCase().includes(term) ||
-        (w.category || '').toLowerCase().includes(term)
-
-      if (!matchSearch) return false
+      if (searchTerm && !matchesUniversalSearch(w, searchTerm)) return false
       if (filterCenter !== 'todos' && w.admin_center !== filterCenter) return false
       if (filterStatus !== 'todos' && w.status !== filterStatus) return false
       if (filterGroup !== 'todos' && w.work_group !== filterGroup) return false
@@ -3085,26 +3077,15 @@ export default function Personal() {
                   </button>
                 </div>
 
-                {/* Buscador */}
-                <div className="relative min-w-[200px]">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
-                  <input
-                    ref={rateSearchInputRef}
-                    type="text"
-                    placeholder="Filtrar categoría o contratista (Ctrl+F)..."
+                {/* Buscador Canónico */}
+                <div className="w-full sm:w-auto flex-1 min-w-[260px]">
+                  <CrawlerSearchBar
                     value={rateTableSearch}
-                    onChange={(e) => setRateTableSearch(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    onChange={setRateTableSearch}
+                    onClear={() => setRateTableSearch('')}
+                    inputRef={rateSearchInputRef}
+                    placeholder="Filtrar por categoría, contratista, quincena, valor hora... (Ctrl+F | Esc)"
                   />
-                  {rateTableSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setRateTableSearch('')}
-                      className="absolute right-2 top-2 text-slate-500 hover:text-white"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -3117,19 +3098,17 @@ export default function Personal() {
             onKeyDown={ratesGrid.handleKeyDown}
             className="alon-zone-grid rounded-2xl shadow-xl overflow-hidden focus:outline-none"
           >
-            <div className="alon-grid-ribbon px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
-                  {ratesGrid.activeCellBadge || 'PLANILLA TARIFAS'}
-                </span>
-                <span className="text-slate-400">
-                  Doble clic o Enter en montos AR$ para editar · Arrastrá ■ o Ctrl+D para clonar · Ctrl+Z/Y Deshacer/Rehacer
-                </span>
-              </div>
-              <span className="text-[10px] font-mono text-emerald-400">
-                {ratesGrid.undoStack.length > 0 ? `${ratesGrid.undoStack.length} cambio(s) en memoria` : 'Sin cambios pendientes'}
-              </span>
-            </div>
+            {/* Ribbon Canónico (Estándar 04) con Exportación integrada */}
+            <GridRibbon
+              activeCellBadge={ratesGrid.activeCellBadge || 'PLANILLA TARIFAS'}
+              onInsertRow={() => {}}
+              insertRowLabel="+ Nueva Tarifa"
+              undoCount={ratesGrid.undoStack?.length || 0}
+              totalRows={filteredRateCards.length}
+              entityName="tarifas"
+              exportRows={filteredRateCards}
+              exportFilename={`personal_tarifas_${new Date().toISOString().split('T')[0]}`}
+            />
 
             <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
               <table className="w-full text-left text-xs text-slate-300">
@@ -3338,6 +3317,21 @@ export default function Personal() {
               </table>
             </div>
           </div>
+
+          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+          <GridStatusBarBottom
+            filteredCount={filteredRateCards.length}
+            totalCount={rateCards.length}
+            entityName="tarifas"
+            hasActiveFilter={Boolean(rateTableSearch || filterTableCenter !== 'todos')}
+            onClearFilters={() => { setRateTableSearch(''); setFilterTableCenter('todos'); }}
+            selectionStats={ratesGrid.selectionStats}
+            onClearSelection={() => ratesGrid.setSelectionRange(null)}
+            globalAggregates={[
+              { label: 'Tarifas Históricas', value: filteredRateCards.length, highlight: true },
+              { label: 'Centro', value: filterTableCenter === 'todos' ? 'Todos' : filterTableCenter },
+            ]}
+          />
         </div>
       )}
 
@@ -3532,194 +3526,143 @@ export default function Personal() {
           )}
 
           {/* ZONA 3 (BÚSQUEDA Y FILTROS): BARRA DE CONTROL DEL PADRÓN */}
-          <div className="alon-zone-toolbar rounded-2xl p-4 md:p-5 shadow-lg space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-              <div>
-                <h2 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
-                  <HardHat className="w-4 h-4 text-cyan-400" />
-                  Padrón Operativo de Personas y Talleres
-                </h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Doble clic en cualquier celda (Nombre, Categoría, Rubro, AR$/Hora, Grupo o Centro) para editar estilo Google Sheets.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-lg p-1">
-                  <button
-                    type="button"
-                    disabled={!nominaGrid.canUndo}
-                    onClick={nominaGrid.undo}
-                    className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                    title="Deshacer cambio en Padrón (Ctrl + Z)"
-                  >
-                    <Undo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!nominaGrid.canRedo}
-                    onClick={nominaGrid.redo}
-                    className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                    title="Rehacer cambio en Padrón (Ctrl + Y)"
-                  >
-                    <Redo2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* Buscador Estándar Compras */}
-                <div className="relative flex-1 min-w-[260px]">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
-                  <input
-                    ref={nominaSearchInputRef}
-                    type="text"
-                    placeholder="Buscar operario, grupo, rubro, DNI... (Ctrl+F | Esc limpia todo)"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault()
-                        clearAllFilters()
-                        e.target.blur()
-                      }
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-16 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
-                  />
-                  <span className="absolute right-8 top-1.5 text-[10px] text-slate-500 border border-slate-800 rounded px-1 hidden sm:inline-block pointer-events-none">
-                    Ctrl+F
-                  </span>
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchTerm('')}
-                      className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
-                      title="Limpiar búsqueda"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
-                  Mostrando {filteredWorkers.length} de {workers.length} operarios
-                </span>
-
-                {hasActiveFilters && (
-                  <button
-                    type="button"
-                    onClick={clearAllFilters}
-                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
-                    title="Limpiar todos los filtros (Esc)"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    <span>Limpiar filtros</span>
-                  </button>
-                )}
-              </div>
-            </div>
+          <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-3">
+            {/* Buscador Canónico Omnicanal */}
+            <CrawlerSearchBar
+              value={searchTerm}
+              onChange={setSearchTerm}
+              onClear={clearAllFilters}
+              inputRef={nominaSearchInputRef}
+              placeholder="Buscar por operario, grupo, rubro, DNI, valor hora US$/AR$... (Ctrl+F | Esc limpia todo)"
+            />
 
             {/* PESTAÑAS Y FILTROS RÁPIDOS */}
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => { setFilterCenter('todos'); setFilterGroup('todos') }}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  filterCenter === 'todos' && filterGroup === 'todos'
-                    ? 'bg-primary text-slate-950 font-bold'
-                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-              >
-                Todos ({totalCount})
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setFilterCenter('todos'); setFilterGroup('todos') }}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterCenter === 'todos' && filterGroup === 'todos'
+                      ? 'bg-primary text-slate-950 font-bold'
+                      : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  Todos ({totalCount})
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setFilterCenter('ASTILLERO')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  filterCenter === 'ASTILLERO'
-                    ? 'bg-cyan-500 text-slate-950 font-bold'
-                    : 'bg-slate-950 text-cyan-400 hover:text-cyan-300 border border-slate-800'
-                }`}
-              >
-                Astillero Propio ({astilleroCount})
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCenter('ASTILLERO')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterCenter === 'ASTILLERO'
+                      ? 'bg-cyan-500 text-slate-950 font-bold'
+                      : 'bg-slate-950 text-cyan-400 hover:text-cyan-300 border border-slate-800'
+                  }`}
+                >
+                  Astillero Propio ({astilleroCount})
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setFilterCenter('CONTRATISTA')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  filterCenter === 'CONTRATISTA'
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-slate-800'
-                }`}
-              >
-                Contratistas ({contratistasCount})
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCenter('CONTRATISTA')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterCenter === 'CONTRATISTA'
+                      ? 'bg-amber-500 text-slate-950 font-bold'
+                      : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-slate-800'
+                  }`}
+                >
+                  Contratistas ({contratistasCount})
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setFilterCenter('TALLER')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  filterCenter === 'TALLER'
-                    ? 'bg-purple-500 text-slate-950 font-bold'
-                    : 'bg-slate-950 text-purple-400 hover:text-purple-300 border border-slate-800'
-                }`}
-              >
-                Talleres ({talleresCount})
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCenter('TALLER')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterCenter === 'TALLER'
+                      ? 'bg-purple-500 text-slate-950 font-bold'
+                      : 'bg-slate-950 text-purple-400 hover:text-purple-300 border border-slate-800'
+                  }`}
+                >
+                  Talleres ({talleresCount})
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setFilterForemanOnly(!filterForemanOnly)}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  filterForemanOnly
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'bg-slate-950 text-amber-300 hover:text-amber-200 border border-amber-900/50'
-                }`}
-                title="Filtrar solo Jefes de Obra habilitados para Órdenes de Trabajo"
-              >
-                👷 Jefes de Obra ({foremenCount})
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterForemanOnly(!filterForemanOnly)}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterForemanOnly
+                      ? 'bg-amber-500 text-slate-950 font-bold'
+                      : 'bg-slate-950 text-amber-300 hover:text-amber-200 border border-amber-900/50'
+                  }`}
+                  title="Filtrar solo Jefes de Obra habilitados para Órdenes de Trabajo"
+                >
+                  👷 Jefes de Obra ({foremenCount})
+                </button>
 
-              <div className="h-4 w-px bg-slate-800 hidden sm:block"></div>
+                <div className="h-4 w-px bg-slate-800 hidden sm:block"></div>
 
-              {/* Filtro Estado */}
-              <button
-                type="button"
-                onClick={() => setFilterStatus(filterStatus === 'ACTIVO' ? 'todos' : 'ACTIVO')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  filterStatus === 'ACTIVO'
-                    ? 'bg-emerald-600 text-white font-bold'
-                    : 'bg-slate-950 text-emerald-400 border border-emerald-900/40'
-                }`}
-              >
-                Solo Activos 🟢 ({activeCount})
-              </button>
+                {/* Filtro Estado */}
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus(filterStatus === 'ACTIVO' ? 'todos' : 'ACTIVO')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterStatus === 'ACTIVO'
+                      ? 'bg-emerald-600 text-white font-bold'
+                      : 'bg-slate-950 text-emerald-400 border border-emerald-900/40'
+                  }`}
+                >
+                  Solo Activos 🟢 ({activeCount})
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setFilterStatus(filterStatus === 'INACTIVO' ? 'todos' : 'INACTIVO')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  filterStatus === 'INACTIVO'
-                    ? 'bg-rose-600 text-white font-bold'
-                    : 'bg-slate-950 text-rose-400 border border-rose-900/40'
-                }`}
-              >
-                Inactivos 🔴 ({inactiveCount})
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus(filterStatus === 'INACTIVO' ? 'todos' : 'INACTIVO')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterStatus === 'INACTIVO'
+                      ? 'bg-rose-600 text-white font-bold'
+                      : 'bg-slate-950 text-rose-400 border border-rose-900/40'
+                  }`}
+                >
+                  Inactivos 🔴 ({inactiveCount})
+                </button>
 
-              {/* Filtro por Grupo específico */}
-              {filterGroup !== 'todos' && (
-                <div className="flex items-center gap-1.5 bg-cyan-950 text-cyan-300 border border-cyan-800 px-2.5 py-1 rounded-lg">
-                  <span>Grupo: <strong>{filterGroup}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => setFilterGroup('todos')}
-                    className="text-cyan-400 hover:text-white"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+                {/* Filtro por Grupo específico */}
+                {filterGroup !== 'todos' && (
+                  <div className="flex items-center gap-1.5 bg-cyan-950 text-cyan-300 border border-cyan-800 px-2.5 py-1 rounded-lg">
+                    <span>Grupo: <strong>{filterGroup}</strong></span>
+                    <button
+                      type="button"
+                      onClick={() => setFilterGroup('todos')}
+                      className="text-cyan-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Controles Undo/Redo */}
+              <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-lg p-1">
+                <button
+                  type="button"
+                  disabled={!nominaGrid.canUndo}
+                  onClick={nominaGrid.undo}
+                  className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                  title="Deshacer cambio en Padrón (Ctrl + Z)"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!nominaGrid.canRedo}
+                  onClick={nominaGrid.redo}
+                  className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                  title="Rehacer cambio en Padrón (Ctrl + Y)"
+                >
+                  <Redo2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3748,19 +3691,17 @@ export default function Personal() {
             onKeyDown={nominaGrid.handleKeyDown}
             className="alon-zone-grid rounded-2xl shadow-xl overflow-hidden focus:outline-none"
           >
-            <div className="alon-grid-ribbon px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
-                  {nominaGrid.activeCellBadge || 'PADRÓN OPERATIVO'}
-                </span>
-                <span className="text-slate-400">
-                  Doble clic o Enter para editar celda · Arrastrá ■ o Ctrl+D para clonar hacia abajo · Ctrl+C/V · Ctrl+Z/Y
-                </span>
-              </div>
-              <span className="text-[10px] font-mono text-emerald-400">
-                {nominaGrid.undoStack.length > 0 ? `${nominaGrid.undoStack.length} cambio(s) en memoria` : `${filteredWorkers.length} registros visibles`}
-              </span>
-            </div>
+            {/* Ribbon Canónico (Estándar 04) con Exportación integrada */}
+            <GridRibbon
+              activeCellBadge={nominaGrid.activeCellBadge || 'PADRÓN OPERATIVO'}
+              onInsertRow={handleOpenNew}
+              insertRowLabel="+ Insertar Persona"
+              undoCount={nominaGrid.undoStack?.length || 0}
+              totalRows={filteredWorkers.length}
+              entityName="operarios"
+              exportRows={filteredWorkers}
+              exportFilename={`personal_padron_${new Date().toISOString().split('T')[0]}`}
+            />
 
             <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
               <table className="w-full text-left text-xs text-slate-300">
@@ -4260,6 +4201,23 @@ export default function Personal() {
               </table>
             </div>
           </div>
+
+          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+          <GridStatusBarBottom
+            filteredCount={filteredWorkers.length}
+            totalCount={workers.length}
+            entityName="operarios"
+            hasActiveFilter={hasActiveFilters}
+            onClearFilters={clearAllFilters}
+            selectionStats={nominaGrid.selectionStats}
+            onClearSelection={() => nominaGrid.setSelectionRange(null)}
+            globalAggregates={[
+              { label: 'Activos', value: activeCount, highlight: true },
+              { label: 'Astillero', value: astilleroCount },
+              { label: 'Contratistas', value: contratistasCount },
+              { label: 'Jefes Obra', value: foremenCount },
+            ]}
+          />
         </div>
       )}
 
