@@ -39,7 +39,8 @@ import {
   ChevronRight,
   Undo2,
   Redo2,
-  Phone
+  Phone,
+  PhoneOff
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
