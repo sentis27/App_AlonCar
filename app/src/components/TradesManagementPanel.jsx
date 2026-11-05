@@ -9,18 +9,21 @@ import {
   CheckCircle2,
   AlertTriangle,
   X,
-  Building2,
   HardHat,
-  ArrowRight,
   RefreshCw,
-  Check,
-  Briefcase
+  Check
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import {
+  fetchTradesCatalog,
+  createMasterTrade,
+  renameMasterTrade,
+  deleteMasterTrade
+} from '../lib/tradesCatalog'
 
 export default function TradesManagementPanel() {
   const [workers, setWorkers] = useState([])
   const [masterTrades, setMasterTrades] = useState([])
+  const [tradeStats, setTradeStats] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -37,7 +40,7 @@ export default function TradesManagementPanel() {
   const [reassignTrade, setReassignTrade] = useState('')
 
   useEffect(() => {
-    fetchData()
+    loadCatalog()
   }, [])
 
   function showFeedback(type, text) {
@@ -45,115 +48,28 @@ export default function TradesManagementPanel() {
     setTimeout(() => setFeedback(null), 4000)
   }
 
-  async function fetchData() {
+  async function loadCatalog() {
     setLoading(true)
     try {
-      // 1. Cargar workers para conteo de operarios por rubro
-      const { data: workersData, error: workersErr } = await supabase
-        .from('workers')
-        .select('id, first_name, last_name, trade, admin_center, status')
-      if (workersErr) throw workersErr
-      setWorkers(workersData || [])
-
-      // 2. Cargar catálogo de rubros maestros desde system_settings
-      const { data: settingsData, error: settingsErr } = await supabase
-        .from('system_settings')
-        .select('value')
-        .eq('key', 'master_trades')
-        .maybeSingle()
-
-      if (settingsErr) throw settingsErr
-
-      // Extraer los rubros de los trabajadores existentes
-      const tradesFromWorkers = new Set()
-      ;(workersData || []).forEach(w => {
-        if (w.trade) {
-          String(w.trade).split(/[,;/|]+/).forEach(t => {
-            const clean = t.trim().toUpperCase()
-            if (clean) tradesFromTrades(tradesFromWorkers, clean)
-          })
-        }
-      })
-
-      // Rubros base canónicos indispensables del astillero
-      const baseTrades = [
-        'CALDERERIA', 'CARPINTERIA', 'PINTURA', 'FLETE', 'MECANICA', 
-        'MATERIALES', 'TORNERIA', 'CORTE/PLEGADO', 'SERVICIOS', 'RASCHINAJE',
-        'MISCELANEOS', 'ELECTRICIDAD', 'HIDRAULICA', 'FIBRA VIDRIO', 'FRIGORISTA',
-        'GASISTA', 'PAÑOLERO', 'SERENO', 'SOLDADURA', 'TECNICOS'
-      ]
-      baseTrades.forEach(t => tradesFromWorkers.add(t))
-
-      // Combinar con los guardados en base de datos
-      const savedList = Array.isArray(settingsData?.value) ? settingsData.value : []
-      savedList.forEach(t => {
-        if (typeof t === 'string' && t.trim()) tradesFromWorkers.add(t.trim().toUpperCase())
-      })
-
-      const combined = Array.from(tradesFromWorkers).sort()
-      setMasterTrades(combined)
-
-      // Si no existía el registro en system_settings, persistirlo para inicializarlo
-      if (!settingsData?.value) {
-        await supabase
-          .from('system_settings')
-          .upsert({
-            key: 'master_trades',
-            value: combined,
-            updated_at: new Date().toISOString(),
-            updated_by: 'Administrador (Init)'
-          }, { onConflict: 'key' })
-      }
+      const { masterTrades: loadedTrades, tradeStats: loadedStats, workers: loadedWorkers } = await fetchTradesCatalog()
+      setMasterTrades(loadedTrades)
+      setTradeStats(loadedStats)
+      setWorkers(loadedWorkers)
     } catch (err) {
-      console.error('Error cargando rubros:', err)
+      console.error('Error cargando catálogo de rubros:', err)
       showFeedback('error', 'Error al cargar catálogo de rubros: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  function tradesFromTrades(set, clean) {
-    if (clean) set.add(clean)
-  }
-
-  // Métricas agregadas por rubro
-  const tradeStats = useMemo(() => {
-    const stats = new Map()
-
-    masterTrades.forEach(trade => {
-      stats.set(trade, {
-        trade,
-        total: 0,
-        astillero: 0,
-        contratista: 0,
-        taller: 0,
-        activos: 0
-      })
-    })
-
-    workers.forEach(w => {
-      const wTrade = (w.trade || '').trim().toUpperCase()
-      if (stats.has(wTrade)) {
-        const item = stats.get(wTrade)
-        item.total += 1
-        if (w.status === 'ACTIVO') item.activos += 1
-        if (w.admin_center === 'ASTILLERO') item.astillero += 1
-        else if (w.admin_center === 'CONTRATISTA') item.contratista += 1
-        else if (w.admin_center === 'TALLER') item.taller += 1
-      }
-    })
-
-    return Array.from(stats.values())
-  }, [masterTrades, workers])
-
-  // Filtrado para búsqueda rápida
+  // Filtrado para búsqueda rápida en grilla
   const filteredTradeStats = useMemo(() => {
     if (!searchTerm.trim()) return tradeStats
     const term = searchTerm.trim().toUpperCase()
     return tradeStats.filter(s => s.trade.includes(term))
   }, [tradeStats, searchTerm])
 
-  // Resumen general
   const totalAssignedWorkers = useMemo(() => {
     return workers.filter(w => w.trade && w.trade.trim()).length
   }, [workers])
@@ -163,45 +79,21 @@ export default function TradesManagementPanel() {
   }, [tradeStats])
 
   // ============================================================================
-  // ACCIONES: CREAR, EDITAR (PROPAGACIÓN MASIVA) Y ELIMINAR (CON REASIGNACIÓN)
+  // ACCIONES
   // ============================================================================
 
   async function handleCreateTrade(e) {
     e?.preventDefault()
-    const clean = newTradeName.trim().toUpperCase()
-
-    if (!clean) {
-      showFeedback('error', 'El nombre del rubro no puede estar vacío.')
-      return
-    }
-
-    if (masterTrades.includes(clean)) {
-      showFeedback('error', `El rubro "${clean}" ya existe en el catálogo.`)
-      return
-    }
-
     setSaving(true)
     try {
-      const updatedList = Array.from(new Set([...masterTrades, clean])).sort()
-
-      const { error } = await supabase
-        .from('system_settings')
-        .upsert({
-          key: 'master_trades',
-          value: updatedList,
-          updated_at: new Date().toISOString(),
-          updated_by: 'Administrador'
-        }, { onConflict: 'key' })
-
-      if (error) throw error
-
-      setMasterTrades(updatedList)
+      const updatedList = await createMasterTrade(newTradeName, masterTrades)
+      showFeedback('success', `Rubro "${newTradeName.trim().toUpperCase()}" creado exitosamente en el catálogo maestro.`)
       setNewTradeName('')
       setShowCreateModal(false)
-      showFeedback('success', `Rubro "${clean}" creado exitosamente en el catálogo maestro.`)
+      await loadCatalog()
     } catch (err) {
       console.error('Error creando rubro:', err)
-      showFeedback('error', 'Error al guardar el nuevo rubro: ' + err.message)
+      showFeedback('error', err.message)
     } finally {
       setSaving(false)
     }
@@ -211,72 +103,18 @@ export default function TradesManagementPanel() {
     e?.preventDefault()
     if (!editingTrade) return
 
-    const oldName = editingTrade.trade
-    const newName = editedName.trim().toUpperCase()
-
-    if (!newName) {
-      showFeedback('error', 'El nombre del rubro no puede quedar vacío.')
-      return
-    }
-
-    if (oldName === newName) {
-      setEditingTrade(null)
-      return
-    }
-
-    if (masterTrades.includes(newName) && newName !== oldName) {
-      showFeedback('error', `El rubro "${newName}" ya existe. Para fusionarlos, usa la opción de reasignación.`)
-      return
-    }
-
     setSaving(true)
     try {
-      // 1. Propagación masiva a todos los trabajadores con ese rubro
-      const countAffected = editingTrade.total
-      if (countAffected > 0) {
-        const { error: updateWorkersErr } = await supabase
-          .from('workers')
-          .update({ trade: newName })
-          .eq('trade', oldName)
-
-        if (updateWorkersErr) throw updateWorkersErr
-      }
-
-      // 2. Actualizar lista maestra en system_settings
-      const updatedList = masterTrades.map(t => t === oldName ? newName : t).sort()
-      const { error: settingsErr } = await supabase
-        .from('system_settings')
-        .upsert({
-          key: 'master_trades',
-          value: updatedList,
-          updated_at: new Date().toISOString(),
-          updated_by: 'Administrador'
-        }, { onConflict: 'key' })
-
-      if (settingsErr) throw settingsErr
-
-      // 3. Registrar auditoría
-      try {
-        await supabase.from('audit_logs').insert({
-          action: 'RENAME_TRADE',
-          entity: 'trades',
-          entity_id: newName,
-          details: { oldName, newName, affectedWorkers: countAffected },
-          created_at: new Date().toISOString()
-        })
-      } catch (logErr) {
-        console.warn('No se pudo registrar log de auditoría:', logErr)
-      }
-
-      // 4. Actualizar estado local
-      setWorkers(prev => prev.map(w => w.trade === oldName ? { ...w, trade: newName } : w))
-      setMasterTrades(updatedList)
+      const oldName = editingTrade.trade
+      const newName = editedName.trim().toUpperCase()
+      await renameMasterTrade(oldName, newName, masterTrades, editingTrade.total)
+      showFeedback('success', `Rubro renombrado a "${newName}". Se actualizaron ${editingTrade.total} operarios automáticamente.`)
       setEditingTrade(null)
       setEditedName('')
-      showFeedback('success', `Rubro renombrado a "${newName}". Se actualizaron ${countAffected} operarios automáticamente.`)
+      await loadCatalog()
     } catch (err) {
       console.error('Error al renombrar rubro:', err)
-      showFeedback('error', 'Error al renombrar rubro: ' + err.message)
+      showFeedback('error', err.message)
     } finally {
       setSaving(false)
     }
@@ -285,67 +123,21 @@ export default function TradesManagementPanel() {
   async function handleDeleteTrade() {
     if (!deletingTrade) return
 
-    const tradeToDelete = deletingTrade.trade
-    const workersCount = deletingTrade.total
-
-    // Si tiene operarios, se exige un rubro de reasignación válido
-    if (workersCount > 0 && (!reassignTrade || reassignTrade === tradeToDelete)) {
-      showFeedback('error', 'Debes seleccionar un rubro de destino para reasignar a los operarios asignados.')
-      return
-    }
-
     setSaving(true)
     try {
-      // 1. Reasignar operarios si correspondía
-      if (workersCount > 0) {
-        const { error: reassignErr } = await supabase
-          .from('workers')
-          .update({ trade: reassignTrade })
-          .eq('trade', tradeToDelete)
-
-        if (reassignErr) throw reassignErr
-      }
-
-      // 2. Remover del catálogo maestro en system_settings
-      const updatedList = masterTrades.filter(t => t !== tradeToDelete)
-      const { error: settingsErr } = await supabase
-        .from('system_settings')
-        .upsert({
-          key: 'master_trades',
-          value: updatedList,
-          updated_at: new Date().toISOString(),
-          updated_by: 'Administrador'
-        }, { onConflict: 'key' })
-
-      if (settingsErr) throw settingsErr
-
-      // 3. Auditoría
-      try {
-        await supabase.from('audit_logs').insert({
-          action: 'DELETE_TRADE',
-          entity: 'trades',
-          entity_id: tradeToDelete,
-          details: { tradeToDelete, reassignTo: reassignTrade || null, affectedWorkers: workersCount },
-          created_at: new Date().toISOString()
-        })
-      } catch (logErr) {
-        console.warn('No se pudo registrar log:', logErr)
-      }
-
-      // 4. Actualizar estado local
-      if (workersCount > 0) {
-        setWorkers(prev => prev.map(w => w.trade === tradeToDelete ? { ...w, trade: reassignTrade } : w))
-      }
-      setMasterTrades(updatedList)
-      setDeletingTrade(null)
-      setReassignTrade('')
-      showFeedback('success', workersCount > 0 
-        ? `Rubro "${tradeToDelete}" eliminado. ${workersCount} operarios fueron reasignados a "${reassignTrade}".`
+      const tradeToDelete = deletingTrade.trade
+      const count = deletingTrade.total
+      await deleteMasterTrade(tradeToDelete, reassignTrade, masterTrades, count)
+      showFeedback('success', count > 0 
+        ? `Rubro "${tradeToDelete}" eliminado. ${count} operarios fueron reasignados a "${reassignTrade}".`
         : `Rubro "${tradeToDelete}" eliminado del catálogo maestro.`
       )
+      setDeletingTrade(null)
+      setReassignTrade('')
+      await loadCatalog()
     } catch (err) {
       console.error('Error al eliminar rubro:', err)
-      showFeedback('error', 'Error al eliminar rubro: ' + err.message)
+      showFeedback('error', err.message)
     } finally {
       setSaving(false)
     }
@@ -401,7 +193,7 @@ export default function TradesManagementPanel() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={fetchData}
+              onClick={loadCatalog}
               disabled={loading}
               className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
               title="Refrescar catálogo"
@@ -594,7 +386,6 @@ export default function TradesManagementPanel() {
                             type="button"
                             onClick={() => {
                               setDeletingTrade(stat)
-                              // Sugerir primer rubro alternativo distinto
                               const other = masterTrades.find(t => t !== stat.trade) || 'MISCELANEOS'
                               setReassignTrade(other)
                             }}
@@ -614,9 +405,7 @@ export default function TradesManagementPanel() {
         </div>
       </div>
 
-      {/* ========================================================================= */}
       {/* MODAL 1: CREAR NUEVO RUBRO */}
-      {/* ========================================================================= */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-in fade-in duration-150">
@@ -628,7 +417,7 @@ export default function TradesManagementPanel() {
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -675,9 +464,7 @@ export default function TradesManagementPanel() {
         </div>
       )}
 
-      {/* ========================================================================= */}
       {/* MODAL 2: RENOMBRAR CON PROPAGACIÓN MASIVA A WORKERS.TRADE */}
-      {/* ========================================================================= */}
       {editingTrade && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-in fade-in duration-150">
@@ -689,7 +476,7 @@ export default function TradesManagementPanel() {
               <button
                 type="button"
                 onClick={() => setEditingTrade(null)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -744,9 +531,7 @@ export default function TradesManagementPanel() {
         </div>
       )}
 
-      {/* ========================================================================= */}
       {/* MODAL 3: ELIMINAR CON REASIGNACIÓN SEGURA (SKL-007 P9) */}
-      {/* ========================================================================= */}
       {deletingTrade && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-in fade-in duration-150">
@@ -758,7 +543,7 @@ export default function TradesManagementPanel() {
               <button
                 type="button"
                 onClick={() => setDeletingTrade(null)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
