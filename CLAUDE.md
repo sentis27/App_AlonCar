@@ -80,6 +80,7 @@ Instrucciones para agentes de IA (Claude Code, Antigravity) trabajando en App_Al
 
 - `.agents/skills/caveman/` — compresión de output, leer antes de iniciar sesión larga
 - `.agents/skills/rtk/` — compresión de comandos Bash, leer si hay outputs largos de terminal
+- `.agents/skills/transversal/control-calidad-entrega/` — **OBLIGATORIA (SKL-007)**: ejecutar antes de declarar terminada cualquier tarea con cambios y antes de todo commit/push; cerrar con su reporte de calidad.
 
 ## Estándares Mandatorios de Módulos (UI/UX) — PROTOCOLO OBLIGATORIO
 

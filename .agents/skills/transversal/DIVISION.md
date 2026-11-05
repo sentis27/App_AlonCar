@@ -7,6 +7,7 @@ Skills de gobierno general, estándares técnicos, y patrones que aplican a TODO
 - project-architecture-and-audit-practices (gobernanza general)
 - clean-code-standards (calidad técnica)
 - n8n-and-data-engineering (integración y datos)
+- control-calidad-entrega (SKL-007 · compuerta obligatoria de calidad pre-entrega)
 
 ## Módulos Impactados
 Todos (M1-M6)

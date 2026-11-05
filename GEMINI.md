@@ -59,6 +59,9 @@ En tu primera línea de análisis antes de proponer soluciones o modificar códi
 > **[Gobernanza AlonCar]** Arquetipo detectado: `CARGA_EDICION` | `METRICAS_ANALISIS`  
 > **Estándares aplicados:** `[Lista de documentos de estandares/ consultados]`
 
+### 2.1 Compuerta Obligatoria de Calidad (SKL-007)
+Antes de declarar terminada **cualquier** tarea que modifique código, datos, configuración o documentación, y antes de todo commit/push, es **OBLIGATORIO** leer y ejecutar la skill `.agents/skills/transversal/control-calidad-entrega/SKILL.md` y cerrar la respuesta con su reporte (Estado general, matriz de requisitos con evidencia, Barrido de clase, Impacto en otros módulos, Pendientes y su motivo).
+
 ---
 
 ## 3. Protocolo de Modularidad para Nuevas Utilidades

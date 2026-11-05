@@ -3,7 +3,7 @@
 > **Propósito**: Catálogo máquina-legible de todas las Skills, sus divisiones, 
 > estados y dependencias. Análogo a `divisions.json` de agency-agents.
 > 
-> **Última actualización**: 2026-07-23
+> **Última actualización**: 2026-11-05
 > 
 > **Versión schema**: 1.0
 
@@ -42,6 +42,7 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | SKL-004 | product-collector | integration | transversal | active | SKL-003 | [Leer SKILL.md para descripción] | transversal/product-collector/SKILL.md |
 | SKL-005 | rtk | architecture | transversal | active | ninguno | [Leer SKILL.md para descripción] | transversal/rtk/SKILL.md |
 | SKL-006 | session-audit | governance | transversal | active | SKL-001 | Audita estado del repo al cierre de sesión, asegura consistencia y trazabilidad | transversal/session-audit/SKILL.md |
+| SKL-007 | control-calidad-entrega | governance | transversal | active | ninguno | Compuerta obligatoria de control de calidad antes de declarar terminada una tarea: intención, trazabilidad de requisitos, estándares, integridad de datos, rendimiento y reporte con evidencia | transversal/control-calidad-entrega/SKILL.md |
 
 ---
 
@@ -57,6 +58,7 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | SKL-004 | product-collector | active | [Leer SKILL.md] |
 | SKL-005 | rtk | active | [Leer SKILL.md] |
 | SKL-006 | session-audit | active | Audita repo al cierre de sesión |
+| SKL-007 | control-calidad-entrega | active | Control de calidad obligatorio pre-entrega |
 
 ### M1-activos
 
