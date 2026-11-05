@@ -149,7 +149,17 @@ export default function Personal() {
   // Valor US$ Quincenal: Se muestra CONGELADO (solo lectura / referencia fijada por Administrador)
   const [dollarRate, setDollarRate] = useState(1500)
   const [rateAyudante, setRateAyudante] = useState(14595.84)
+  const [rateMedioOficial, setRateMedioOficial] = useState(15069.14)
   const [rateOficial, setRateOficial] = useState(16365.76)
+
+  // Filtro activo por tarjeta KPI de auditoría operativa
+  const [kpiFilter, setKpiFilter] = useState(null)
+
+  // Estado para creación de nuevos rubros estandarizados
+  const [customTrades, setCustomTrades] = useState([])
+  const [isAddTradeModalOpen, setIsAddTradeModalOpen] = useState(false)
+  const [newTradeInput, setNewTradeInput] = useState('')
+  const [targetWorkerForNewTrade, setTargetWorkerForNewTrade] = useState(null)
 
   // Roles organizacionales dinámicos (desvinculados de nombres hardcodeados)
   const [orgRoles, setOrgRoles] = useState({
@@ -432,6 +442,8 @@ export default function Personal() {
           })
           const ofRow = astilleroRows.find(r => r.entity_name === 'OFICIAL')
           if (ofRow) setRateOficial(parseFloat(ofRow.rate_oficial_ars) || rateOficial)
+          const moRow = astilleroRows.find(r => r.entity_name === '1/2 OFICIAL')
+          if (moRow) setRateMedioOficial(parseFloat(moRow.rate_oficial_ars) || 15069.14)
           const ayRow = astilleroRows.find(r => r.entity_name === 'AYUDANTE')
           if (ayRow) setRateAyudante(parseFloat(ayRow.rate_oficial_ars) || rateAyudante)
         }
@@ -1146,19 +1158,64 @@ export default function Personal() {
   }, [workers])
 
   const uniqueTrades = useMemo(() => {
-    const set = new Set()
+    const set = new Set([
+      'CALDERERIA',
+      'CARPINTERIA',
+      'COBRERIA',
+      'ELECTRICIDAD',
+      'FIBRA VIDRIO',
+      'FRIGORISTA',
+      'GASISTA',
+      'HIDRAULICA',
+      'MANIOBRA',
+      'MECANICA',
+      'MISCELANEOS',
+      'PAÑOLERO',
+      'PINTURA',
+      'RASCHINAJE',
+      'SERENO',
+      'SERVICIOS',
+      'SOLDADURA',
+      'TECNICOS',
+      'TORNERIA'
+    ])
+    customTrades.forEach(t => set.add(t))
     workers.forEach(w => {
-      if (w.trade) set.add(w.trade)
+      if (w.trade) {
+        String(w.trade).split(/[,;/|]+/).forEach(t => {
+          const clean = t.trim().toUpperCase()
+          if (clean) set.add(clean)
+        })
+      }
     })
     return Array.from(set).sort()
+  }, [workers, customTrades])
+
+  // Métricas y contadores de los 5 KPIs de Auditoría Operativa
+  const kpiStats = useMemo(() => {
+    const activos = workers.filter(w => w.status === 'ACTIVO')
+    const sinTelefonoAstillero = activos.filter(w => w.admin_center === 'ASTILLERO' && (!w.phone || !w.phone.trim()))
+    const sinCostoAstillero = activos.filter(w => w.admin_center === 'ASTILLERO' && (!w.hourly_rate_ars || Number(w.hourly_rate_ars) <= 0))
+    const sinCostoContratistas = activos.filter(w => w.admin_center === 'CONTRATISTA' && (!w.hourly_rate_ars || Number(w.hourly_rate_ars) <= 0))
+    const sinConsumiblesContratistas = activos.filter(w => w.admin_center === 'CONTRATISTA' && (w.consumables_discount_pct === null || w.consumables_discount_pct === undefined || w.consumables_discount_pct === '') && (!w.consumables || !w.consumables.trim()))
+    const sinPermisos = activos.filter(w => !w.can_withdraw_materials && !w.can_impute_hours && !w.can_charge_third_party && !w.is_foreman)
+
+    return {
+      sinTelefonoAstillero: sinTelefonoAstillero.length,
+      sinCostoAstillero: sinCostoAstillero.length,
+      sinCostoContratistas: sinCostoContratistas.length,
+      sinConsumiblesContratistas: sinConsumiblesContratistas.length,
+      sinPermisos: sinPermisos.length
+    }
   }, [workers])
 
-    const clearAllFilters = useCallback(() => {
+  const clearAllFilters = useCallback(() => {
     setSearchTerm('')
     setFilterCenter('todos')
     setFilterStatus('todos')
     setFilterGroup('todos')
     setFilterForemanOnly(false)
+    setKpiFilter(null)
   }, [])
 
   const hasActiveFilters = Boolean(
@@ -1166,7 +1223,8 @@ export default function Personal() {
     filterCenter !== 'todos' ||
     filterStatus !== 'todos' ||
     filterGroup !== 'todos' ||
-    filterForemanOnly
+    filterForemanOnly ||
+    kpiFilter
   )
 
   const filteredWorkers = useMemo(() => {
@@ -1176,9 +1234,22 @@ export default function Personal() {
       if (filterStatus !== 'todos' && w.status !== filterStatus) return false
       if (filterGroup !== 'todos' && w.work_group !== filterGroup) return false
       if (filterForemanOnly && !w.is_foreman) return false
+
+      if (kpiFilter === 'sin_telefono_astillero') {
+        if (w.status !== 'ACTIVO' || w.admin_center !== 'ASTILLERO' || (w.phone && w.phone.trim())) return false
+      } else if (kpiFilter === 'sin_costo_astillero') {
+        if (w.status !== 'ACTIVO' || w.admin_center !== 'ASTILLERO' || (w.hourly_rate_ars && Number(w.hourly_rate_ars) > 0)) return false
+      } else if (kpiFilter === 'sin_costo_contratistas') {
+        if (w.status !== 'ACTIVO' || w.admin_center !== 'CONTRATISTA' || (w.hourly_rate_ars && Number(w.hourly_rate_ars) > 0)) return false
+      } else if (kpiFilter === 'sin_consumibles_contratistas') {
+        if (w.status !== 'ACTIVO' || w.admin_center !== 'CONTRATISTA' || (w.consumables_discount_pct !== null && w.consumables_discount_pct !== undefined && w.consumables_discount_pct !== '') || (w.consumables && w.consumables.trim())) return false
+      } else if (kpiFilter === 'sin_permisos') {
+        if (w.status !== 'ACTIVO' || w.can_withdraw_materials || w.can_impute_hours || w.can_charge_third_party || w.is_foreman) return false
+      }
+
       return true
     })
-  }, [workers, searchTerm, filterCenter, filterStatus, filterGroup, filterForemanOnly])
+  }, [workers, searchTerm, filterCenter, filterStatus, filterGroup, filterForemanOnly, kpiFilter])
 
   const groupedSummary = useMemo(() => {
     const map = new Map()
@@ -1611,18 +1682,19 @@ export default function Personal() {
     showFeedback: showGridFeedback
   })
 
-  const commitInlineWorkerEdit = async () => {
+  const commitInlineWorkerEdit = async (overrideValue = undefined) => {
     if (!inlineCellEdit) return
-    const { rowId, colKey, value } = inlineCellEdit
+    const { rowId, colKey } = inlineCellEdit
+    const nextVal = overrideValue !== undefined ? overrideValue : inlineCellEdit.value
     const worker = workers.find(w => w.id === rowId)
     setInlineCellEdit(null)
     if (!worker) return
 
     const oldVal = worker[colKey]
-    if (String(oldVal ?? '') === String(value ?? '')) return
+    if (String(oldVal ?? '') === String(nextVal ?? '')) return
 
     try {
-      const savedVal = await applyWorkerSinglePatch(rowId, colKey, value)
+      const savedVal = await applyWorkerSinglePatch(rowId, colKey, nextVal)
       if (savedVal !== null) {
         const colDef = nominaColumns.find(c => c.key === colKey)
         nominaGrid.pushUndoAction({
@@ -1822,33 +1894,33 @@ export default function Personal() {
           </p>
         </div>
 
-        {/* SELECTOR DE PESTAÑAS PRINCIPALES */}
-        <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+        {/* SELECTOR DE PESTAÑAS PRINCIPALES (BOTONES ESTANDARIZADOS CON LÍMITES DEFINIDOS) */}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-950/90 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
           <button
             type="button"
             onClick={() => setActiveTab('nomina')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
               activeTab === 'nomina'
-                ? 'bg-gradient-to-r from-primary to-blue-600 text-slate-950 shadow-md font-extrabold'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-gradient-to-r from-primary to-blue-600 text-slate-950 border-primary shadow-lg shadow-cyan-500/25 font-black'
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
             }`}
           >
-            <Users className="w-4 h-4" />
+            <Users className="w-4 h-4 text-cyan-400" />
             <span>Padrón de Personal ({totalCount})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('tarifario')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
               activeTab === 'tarifario'
-                ? 'bg-gradient-to-r from-emerald-400 to-teal-500 text-slate-950 shadow-md font-extrabold'
-                : 'text-emerald-400 hover:text-emerald-300'
+                ? 'bg-gradient-to-r from-emerald-400 to-teal-500 text-slate-950 border-emerald-400 shadow-lg shadow-emerald-500/25 font-black'
+                : 'bg-slate-900/80 hover:bg-slate-800 text-emerald-400/90 border-slate-800 hover:border-emerald-800/60 hover:text-emerald-300'
             }`}
           >
             <Calculator className="w-4 h-4" />
             <span>Tarifario Quincenal</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
               {currentPeriodKey}
             </span>
           </button>
@@ -1856,27 +1928,14 @@ export default function Personal() {
           <button
             type="button"
             onClick={() => setActiveTab('analisis')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer ${
               activeTab === 'analisis'
-                ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md font-extrabold'
-                : 'text-purple-400 hover:text-purple-300'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white border-purple-400 shadow-lg shadow-purple-500/25 font-black'
+                : 'bg-slate-900/80 hover:bg-slate-800 text-purple-400/90 border-slate-800 hover:border-purple-800/60 hover:text-purple-300'
             }`}
           >
             <TrendingUp className="w-4 h-4" />
             <span>Análisis de Variación & FX</span>
-          </button>
-
-          {/* Botón para abrir gestor de roles técnicos */}
-          <button
-            type="button"
-            onClick={() => {
-              setRolesFormData(JSON.parse(JSON.stringify(orgRoles)))
-              setIsRolesModalOpen(true)
-            }}
-            title="Administrar Puestos y Titulares Organizacionales"
-            className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-900 transition-colors border border-transparent hover:border-slate-800 cursor-pointer"
-          >
-            <Settings className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -3340,9 +3399,9 @@ export default function Personal() {
       {/* ========================================================================= */}
       {activeTab === 'nomina' && (
         <div className="space-y-6 animate-in fade-in duration-150">
-          {/* ZONA 2 (RADAR / INDICADORES QUINCENALES): VALOR DÓLAR & TARIFAS SINDICATO */}
+          {/* ZONA 2.A: ESCALA SINDICAL DE REFERENCIA (DE MAYOR A MENOR RANGO) */}
           <div className="alon-zone-kpis rounded-2xl p-5 shadow-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
-            {/* Cotización Dólar Quincenal (CONGELADO / SOLO LECTURA) */}
+            {/* 1. Cotización Dólar Quincenal (Fijado) */}
             <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1.5">
@@ -3367,22 +3426,7 @@ export default function Personal() {
               </div>
             </div>
 
-            {/* Tarifa Ayudante Base (Con color oficial Cyan) */}
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-cyan-900/40 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-cyan-400 block tracking-wider">
-                  AYUDANTE (Sindicato)
-                </span>
-                <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
-                  <span>${rateAyudante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
-                </div>
-              </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('AYUDANTE')}`}>
-                {(rateAyudante / dollarRate).toFixed(2)} USD
-              </span>
-            </div>
-
-            {/* Tarifa Oficial Base (Con color oficial Verde) */}
+            {/* 2. Tarifa Oficial Base (Mayor rango) */}
             <div className="bg-slate-950 p-3.5 rounded-xl border border-emerald-900/40 flex items-center justify-between">
               <div>
                 <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">
@@ -3397,24 +3441,163 @@ export default function Personal() {
               </span>
             </div>
 
-            {/* Acceso Rápido hacia Tarifario */}
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+            {/* 3. Tarifa 1/2 Oficial (Rango medio) */}
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-pink-900/40 flex items-center justify-between">
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                  TARIFAS QUINCENALES
+                <span className="text-[10px] uppercase font-bold text-pink-400 block tracking-wider">
+                  1/2 OFICIAL (Sindicato)
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('tarifario')}
-                  className="mt-1 text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Cargar Nuevos Valores &rarr;</span>
-                </button>
+                <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
+                  <span>${rateMedioOficial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                </div>
               </div>
-              <div className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300">
-                <Calculator className="w-5 h-5 text-emerald-400" />
-              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('1/2 OFICIAL')}`}>
+                {(rateMedioOficial / dollarRate).toFixed(2)} USD
+              </span>
             </div>
+
+            {/* 4. Tarifa Ayudante Base (Menor rango) */}
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-cyan-900/40 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-cyan-400 block tracking-wider">
+                  AYUDANTE (Sindicato)
+                </span>
+                <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
+                  <span>${rateAyudante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('AYUDANTE')}`}>
+                {(rateAyudante / dollarRate).toFixed(2)} USD
+              </span>
+            </div>
+          </div>
+
+          {/* ZONA 2.B: RADAR DE AUDITORÍA OPERATIVA (5 KPIS CLICKEABLES PARA FILTRAR) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {/* KPI 1: Astillero sin Teléfono */}
+            <button
+              type="button"
+              onClick={() => setKpiFilter(prev => prev === 'sin_telefono_astillero' ? null : 'sin_telefono_astillero')}
+              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                kpiFilter === 'sin_telefono_astillero'
+                  ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-400 shadow-lg'
+                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Astillero sin Teléfono
+                </span>
+                <PhoneOff className={`w-4 h-4 ${kpiStats.sinTelefonoAstillero > 0 ? 'text-rose-400' : 'text-emerald-400'}`} />
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className={`text-2xl font-black font-mono ${kpiStats.sinTelefonoAstillero > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                  {kpiStats.sinTelefonoAstillero}
+                </span>
+                <span className="text-[10px] text-slate-500">personal propio</span>
+              </div>
+              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin número móvil cargado</p>
+            </button>
+
+            {/* KPI 2: Astillero sin Costo */}
+            <button
+              type="button"
+              onClick={() => setKpiFilter(prev => prev === 'sin_costo_astillero' ? null : 'sin_costo_astillero')}
+              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                kpiFilter === 'sin_costo_astillero'
+                  ? 'bg-amber-950/40 border-amber-500 ring-2 ring-amber-400 shadow-lg'
+                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Astillero sin Costo
+                </span>
+                <DollarSign className={`w-4 h-4 ${kpiStats.sinCostoAstillero > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className={`text-2xl font-black font-mono ${kpiStats.sinCostoAstillero > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                  {kpiStats.sinCostoAstillero}
+                </span>
+                <span className="text-[10px] text-slate-500">personal propio</span>
+              </div>
+              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin tarifa AR$/h asignada</p>
+            </button>
+
+            {/* KPI 3: Contratistas sin Costo */}
+            <button
+              type="button"
+              onClick={() => setKpiFilter(prev => prev === 'sin_costo_contratistas' ? null : 'sin_costo_contratistas')}
+              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                kpiFilter === 'sin_costo_contratistas'
+                  ? 'bg-cyan-950/40 border-cyan-500 ring-2 ring-cyan-400 shadow-lg'
+                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Contratistas sin Costo
+                </span>
+                <Building2 className={`w-4 h-4 ${kpiStats.sinCostoContratistas > 0 ? 'text-cyan-400' : 'text-emerald-400'}`} />
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className={`text-2xl font-black font-mono ${kpiStats.sinCostoContratistas > 0 ? 'text-cyan-400' : 'text-slate-400'}`}>
+                  {kpiStats.sinCostoContratistas}
+                </span>
+                <span className="text-[10px] text-slate-500">cuadrillas</span>
+              </div>
+              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin valor AR$/h pactado</p>
+            </button>
+
+            {/* KPI 4: Contratistas sin Consumibles */}
+            <button
+              type="button"
+              onClick={() => setKpiFilter(prev => prev === 'sin_consumibles_contratistas' ? null : 'sin_consumibles_contratistas')}
+              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                kpiFilter === 'sin_consumibles_contratistas'
+                  ? 'bg-purple-950/40 border-purple-500 ring-2 ring-purple-400 shadow-lg'
+                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Sin Consumibles
+                </span>
+                <ShieldAlert className={`w-4 h-4 ${kpiStats.sinConsumiblesContratistas > 0 ? 'text-purple-400' : 'text-emerald-400'}`} />
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className={`text-2xl font-black font-mono ${kpiStats.sinConsumiblesContratistas > 0 ? 'text-purple-400' : 'text-slate-400'}`}>
+                  {kpiStats.sinConsumiblesContratistas}
+                </span>
+                <span className="text-[10px] text-slate-500">contratistas</span>
+              </div>
+              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin % ni imputación</p>
+            </button>
+
+            {/* KPI 5: Personal sin Permisos */}
+            <button
+              type="button"
+              onClick={() => setKpiFilter(prev => prev === 'sin_permisos' ? null : 'sin_permisos')}
+              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                kpiFilter === 'sin_permisos'
+                  ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-400 shadow-lg'
+                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Sin Permisos
+                </span>
+                <Lock className={`w-4 h-4 ${kpiStats.sinPermisos > 0 ? 'text-rose-400' : 'text-emerald-400'}`} />
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className={`text-2xl font-black font-mono ${kpiStats.sinPermisos > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                  {kpiStats.sinPermisos}
+                </span>
+                <span className="text-[10px] text-slate-500">personal activo</span>
+              </div>
+              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin Pañol, Horas ni 3ros</p>
+            </button>
           </div>
 
           {/* ACCIONES Y BOTONES SUPERIORES */}
@@ -3440,7 +3623,7 @@ export default function Personal() {
               className="px-4 py-2 bg-gradient-to-r from-primary to-blue-600 hover:brightness-110 text-slate-950 font-extrabold rounded-xl text-xs shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>+ Cargar Nuevo Contratista / Operario</span>
+              <span>+ Cargar Operario / Contratista</span>
             </button>
           </div>
 
@@ -3874,7 +4057,7 @@ export default function Personal() {
                             )}
                           </td>
 
-                          {/* Col 2: Rubro (Soporta Multi-Rubro para Contratistas y Talleres) */}
+                          {/* Col 2: Rubro (Desplegable estandarizado con opción de agregar nuevo) */}
                           <td
                             onClick={(e) => nominaGrid.handleCellClick(rowIndex, 2, e)}
                             onMouseDown={(e) => nominaGrid.handleCellMouseDown(rowIndex, 2, e)}
@@ -3883,25 +4066,41 @@ export default function Personal() {
                               e.stopPropagation()
                               setInlineCellEdit({ rowId: w.id, colKey: 'trade', value: w.trade || '' })
                             }}
-                            title="Doble clic para editar rubro(s)"
+                            title="Doble clic para seleccionar o agregar rubro"
                             className={getCellClass(2, 'py-2 px-3')}
                           >
                             {isEditingCell('trade') ? (
-                              <input
-                                type="text"
-                                list="nomina-trades-list"
+                              <select
                                 autoFocus
                                 value={inlineCellEdit.value}
-                                onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
-                                onBlur={commitInlineWorkerEdit}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  if (val === '__ADD_NEW_TRADE__') {
+                                    setTargetWorkerForNewTrade(w)
+                                    setNewTradeInput('')
+                                    setIsAddTradeModalOpen(true)
+                                    return
+                                  }
+                                  setInlineCellEdit(prev => ({ ...prev, value: val }))
+                                  commitInlineWorkerEdit(val)
+                                }}
+                                onBlur={() => commitInlineWorkerEdit()}
                                 onKeyDown={(e) => {
                                   e.stopPropagation()
-                                  if (e.key === 'Enter') commitInlineWorkerEdit()
                                   if (e.key === 'Escape') setInlineCellEdit(null)
                                 }}
-                                placeholder="Ej: CALDERERIA, MECANICA"
-                                className="w-full min-w-[130px] bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-[11px] text-white font-bold focus:outline-none"
-                              />
+                                className="bg-slate-950 border border-emerald-400 rounded px-2 py-1 text-xs text-white font-bold focus:outline-none w-full min-w-[140px]"
+                              >
+                                <option value="" className="bg-slate-950 text-slate-400">-- Seleccionar Rubro --</option>
+                                {uniqueTrades.map(tr => (
+                                  <option key={tr} value={tr} className="bg-slate-950 text-white font-bold">
+                                    {tr}
+                                  </option>
+                                ))}
+                                <option value="__ADD_NEW_TRADE__" className="bg-slate-900 text-cyan-400 font-bold">
+                                  ➕ Agregar nuevo rubro...
+                                </option>
+                              </select>
                             ) : (
                               <div className="flex flex-wrap items-center gap-1">
                                 {String(w.trade || 'General')
@@ -4218,6 +4417,88 @@ export default function Personal() {
               { label: 'Jefes Obra', value: foremenCount },
             ]}
           />
+        </div>
+      )}
+
+      {/* MODAL ÁGIL: AGREGAR NUEVO RUBRO OPERATIVO EN MAYÚSCULAS */}
+      {isAddTradeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-6 relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-lg bg-cyan-950 text-cyan-400 border border-cyan-800">
+                  <Briefcase className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Agregar Nuevo Rubro Operativo</h3>
+                  <p className="text-[11px] text-slate-400">Se estandarizará automáticamente en mayúsculas</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddTradeModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault()
+                const cleaned = newTradeInput.trim().toUpperCase()
+                if (!cleaned) {
+                  alert('Por favor ingresá el nombre del rubro.')
+                  return
+                }
+                setCustomTrades(prev => Array.from(new Set([...prev, cleaned])))
+                if (targetWorkerForNewTrade) {
+                  await applyWorkerSinglePatch(targetWorkerForNewTrade.id, 'trade', cleaned)
+                  showGridFeedback('success', `Rubro "${cleaned}" asignado a ${targetWorkerForNewTrade.name}`)
+                }
+                setIsAddTradeModalOpen(false)
+                setNewTradeInput('')
+                setTargetWorkerForNewTrade(null)
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Nombre del Rubro
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Ej: HIDRAULICA NAVAL, CALDERERIA PESADA"
+                  value={newTradeInput}
+                  onChange={(e) => setNewTradeInput(e.target.value.toUpperCase())}
+                  className="w-full bg-slate-950 border border-cyan-500 rounded-xl px-3 py-2 text-sm font-bold text-white uppercase focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
+                />
+              </div>
+
+              {newTradeInput.trim() && (
+                <div className="p-2.5 rounded-lg bg-cyan-950/40 border border-cyan-800/60 text-[11px] text-cyan-300">
+                  Vista previa estandarizada: <strong>{newTradeInput.trim().toUpperCase()}</strong>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddTradeModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 shadow-md cursor-pointer"
+                >
+                  Guardar Rubro
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
