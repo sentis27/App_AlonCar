@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Anchor, Lock, Mail, AlertCircle, ArrowRight, Loader2 } from 'lucide-react'
+import { Anchor, Lock, Mail, AlertCircle, ArrowRight, Loader2, Sparkles } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState('app.aloncar2712@gmail.com')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -25,6 +25,19 @@ export default function Login() {
       }
     } catch (err) {
       setError('Ocurrió un error inesperado al conectar con el servidor.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleQuickLogin = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      await signIn('app.aloncar2712@gmail.com', 'admin')
+      navigate('/')
+    } catch (err) {
+      setError('Error en acceso rápido.')
     } finally {
       setLoading(false)
     }
@@ -83,7 +96,6 @@ export default function Login() {
               <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
               <input
                 type="password"
-                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -111,10 +123,23 @@ export default function Login() {
           </button>
         </form>
 
+        {/* Botón de Acceso Rápido / Modo Desarrollo */}
+        <div className="mt-4 pt-4 border-t border-slate-800/80">
+          <button
+            type="button"
+            onClick={handleQuickLogin}
+            disabled={loading}
+            className="w-full py-2.5 px-3 bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 text-xs font-semibold rounded-lg border border-cyan-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,254,0.1)] hover:shadow-[0_0_20px_rgba(0,242,254,0.25)]"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Ingreso Directo como Andrés Vanoli (Supervisor)</span>
+          </button>
+        </div>
+
         {/* Pie de autenticación */}
-        <div className="mt-8 pt-4 border-t border-slate-800/80 text-center">
+        <div className="mt-4 text-center">
           <p className="text-[11px] text-slate-400">
-            Acceso restringido para personal autorizado del astillero.
+            Acceso restringido para personal autorizado de Alon Car S.A.
           </p>
         </div>
       </div>

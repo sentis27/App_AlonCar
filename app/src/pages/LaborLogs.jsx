@@ -64,6 +64,8 @@ function HighlightText({ text, query, className = '' }) {
 }
 
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
+import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
 import {
   OFFICIAL_RUBROS_CATALOG,
   canonicalizeRubroLabel,
@@ -1216,6 +1218,43 @@ export default function LaborLogs() {
     })
   }
 
+  // Inserción canónica de nueva fila en la planilla (Arquetipo Carga de Datos)
+  const handleInsertRow = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const defaultShipId = ships[0]?.id || null
+      const { data, error } = await supabase
+        .from('labor_logs')
+        .insert([{
+          date_logged: today,
+          ship_id: defaultShipId,
+          work_order_id: null,
+          worker_name: 'OPERARIO A DEFINIR',
+          worker_type: 'Astillero',
+          rubro: 'Raschinear',
+          hours_worked: 9,
+          hours_normal: 9,
+          hours_extra_50: 0,
+          hours_extra_100: 0,
+          approval_status: 'R',
+          review_reason: 'Falta Cargar OT (Pendiente de apertura)'
+        }])
+        .select(`
+          *,
+          ships:ship_id(id, name),
+          work_orders:work_order_id(id, ot_number, title, ship_id, ships:ship_id(name))
+        `)
+      if (error) throw error
+      if (data && data[0]) {
+        setRecentLogs(prev => [data[0], ...prev])
+        setStatusMessage({ type: 'success', text: 'Nueva fila insertada en #1 de la planilla. Edita las celdas directamente.' })
+      }
+    } catch (err) {
+      console.error('Error insertando fila:', err)
+      setStatusMessage({ type: 'error', text: 'Error al insertar fila: ' + err.message })
+    }
+  }
+
   // Carga rápida in-situ desde Control Diario o Sábana
   const handleQuickLogSubmit = async (e) => {
     e.preventDefault()
@@ -1516,12 +1555,14 @@ export default function LaborLogs() {
   const filteredLogs = useMemo(() => {
     return recentLogs.filter(log => {
       const shipName = log.ships?.name || log.work_orders?.ships?.name || ''
-      const matchWorker = !filterWorker ||
-        log.worker_name?.toLowerCase().includes(filterWorker.toLowerCase()) ||
-        log.rubro?.toLowerCase().includes(filterWorker.toLowerCase()) ||
-        shipName.toLowerCase().includes(filterWorker.toLowerCase()) ||
-        log.work_orders?.ot_number?.toLowerCase().includes(filterWorker.toLowerCase()) ||
-        log.work_orders?.title?.toLowerCase().includes(filterWorker.toLowerCase())
+      const matchWorker = !filterWorker || matchesUniversalSearch(
+        buildUniversalSearchCorpus(log, {
+          ship_name: shipName,
+          ot_number: log.work_orders?.ot_number,
+          ot_title: log.work_orders?.title
+        }),
+        filterWorker
+      )
       const matchDate = !filterDate || log.date_logged === filterDate
       const matchShip = !filterShip || shipName === filterShip
 
@@ -3272,16 +3313,27 @@ export default function LaborLogs() {
                 <div className="alon-grid-ribbon">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px]">
-                      {horasGrid.activeCellBadge ? `CELDA ${horasGrid.activeCellBadge}` : 'MODO PLANILLA'}
+                      {horasGrid.activeCellBadge ? `CELDA ${horasGrid.activeCellBadge}` : '⚡ MODO PLANILLA'}
                     </span>
                     <span className="text-slate-400">
                       Doble clic o <strong className="text-slate-200">Enter</strong> en cualquier casilla (Fecha, Barco/OT, Operario, Rubro, Horas) para editar • <strong className="text-slate-200">Ctrl+C/V/D • Ctrl+Z/Y</strong>
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
-                    <span>Undo: {horasGrid.undoStack?.length || 0}/50</span>
-                    <span>•</span>
-                    <span>{filteredLogs.length} filas</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleInsertRow}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/40 cursor-pointer transition-all"
+                      title="Insertar una nueva imputación en blanco en la primera posición"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Insertar Fila en #1</span>
+                    </button>
+                    <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
+                      <span>Undo: {horasGrid.undoStack?.length || 0}/50</span>
+                      <span>•</span>
+                      <span>{filteredLogs.length} filas</span>
+                    </div>
                   </div>
                 </div>
 
@@ -3303,15 +3355,15 @@ export default function LaborLogs() {
                             title="Seleccionar todas las imputaciones visibles"
                           />
                         </th>
-                        <th className="py-2.5 px-3">Fecha</th>
-                        <th className="py-2.5 px-3">Barco / OT</th>
-                        <th className="py-2.5 px-3">Operario / Tipo</th>
-                        <th className="py-2.5 px-3">Rubro</th>
-                        <th className="py-2.5 px-2 text-center">Norm</th>
-                        <th className="py-2.5 px-2 text-center text-cyan-400">50%</th>
-                        <th className="py-2.5 px-2 text-center text-amber-400">100%</th>
+                        <th className="py-2.5 px-3">Fecha ✎</th>
+                        <th className="py-2.5 px-3">Barco / OT ✎</th>
+                        <th className="py-2.5 px-3">Operario / Tipo ✎</th>
+                        <th className="py-2.5 px-3">Rubro ✎</th>
+                        <th className="py-2.5 px-2 text-center">Norm ✎</th>
+                        <th className="py-2.5 px-2 text-center text-cyan-400">50% ✎</th>
+                        <th className="py-2.5 px-2 text-center text-amber-400">100% ✎</th>
                         <th className="py-2.5 px-3 text-center text-primary font-bold">Total</th>
-                        <th className="py-2.5 px-2 text-center">Estado</th>
+                        <th className="py-2.5 px-2 text-center">Estado ✎</th>
                         <th className="py-2.5 px-3 text-right">Acciones</th>
                       </tr>
                     </thead>
@@ -3716,6 +3768,36 @@ export default function LaborLogs() {
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+                <div className="mt-3">
+                  <GridStatusBarBottom
+                    filteredCount={filteredLogs.length}
+                    totalCount={recentLogs.length}
+                    entityName="imputaciones"
+                    hasActiveFilter={Boolean(filterWorker || filterDate || filterShip || activeKpiFilter)}
+                    onClearFilters={() => {
+                      setFilterWorker('')
+                      setFilterDate('')
+                      setFilterShip('')
+                      setActiveKpiFilter(null)
+                    }}
+                    selectionStats={horasGrid.selectionStats}
+                    onClearSelection={() => horasGrid.setSelectionRange(null)}
+                    customSelection={selectedLogIds.size > 0 ? {
+                      count: selectedLogIds.size,
+                      label: 'filas tildadas',
+                      onClear: () => setSelectedLogIds(new Set())
+                    } : null}
+                    globalAggregates={[
+                      { label: 'Σ Horas', value: stats.sumTotalHours.toFixed(1), highlight: true },
+                      { label: 'Norm', value: stats.sumNorm.toFixed(1) },
+                      { label: '50%', value: stats.sum50.toFixed(1) },
+                      { label: '100%', value: stats.sum100.toFixed(1) },
+                      { label: 'Ø Horas', value: stats.avgHours.toFixed(1) }
+                    ]}
+                  />
                 </div>
               </div>
             )}

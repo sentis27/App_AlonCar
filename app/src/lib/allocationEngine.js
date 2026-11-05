@@ -180,7 +180,7 @@ export function getShipEnabledContractors(shipId, workOrders = [], workItems = [
     return norm === 'ASTILLERO' || norm.startsWith('ASTILLERO.') || norm === 'ALON CAR'
   })
 
-  const enabledAstillero = hasAstillero || rawContractors.length === 0 ? baseAstillero : []
+  let enabledAstillero = hasAstillero || rawContractors.length === 0 ? baseAstillero : []
 
   // Contratistas externos presentes en los ítems
   const enabledContractorSet = new Set(
@@ -192,7 +192,13 @@ export function getShipEnabledContractors(shipId, workOrders = [], workItems = [
       .map((c) => c.trim().toUpperCase())
   )
 
-  const enabledContractors = baseContractors.filter((grp) => enabledContractorSet.has(grp.toUpperCase()))
+  let enabledContractors = baseContractors.filter((grp) => enabledContractorSet.has(grp.toUpperCase()))
+
+  // Fallback Canónico de Seguridad: Si el filtrado deja ambos conjuntos vacíos, nunca bloquear la pantalla; devolver la base completa
+  if (enabledAstillero.length === 0 && enabledContractors.length === 0) {
+    enabledAstillero = baseAstillero
+    enabledContractors = baseContractors
+  }
 
   return {
     astilleroWorkers: enabledAstillero,
@@ -298,5 +304,61 @@ export function evaluateAllocationState({
     needsOtRequest: false,
     otRequestCount: 0,
     isOtRequestPending: false
+  }
+}
+
+/**
+ * Obtiene operarios de astillero y contratistas habilitados según shipId y workOrderId.
+ * Si workOrderId está vacío (!workOrderId), devuelve la nómina completa según la regla canónica de Pañol y Terceros.
+ */
+export function getEnabledWorkersAndContractors(shipId, workOrderId, workItems = [], eligiblePersonnel = null) {
+  const baseAstillero = eligiblePersonnel?.astilleroWorkers || NOMINA_ASTILLERO_BASE.map(w => ({ id: w.name, name: w.name, trade: w.defaultRubro, admin_center: 'ASTILLERO' }))
+  const baseContractors = eligiblePersonnel?.contractorGroups || CONTRATISTAS_FRECUENTES
+
+  if (!workOrderId) {
+    return {
+      astilleroWorkers: baseAstillero,
+      contractorGroups: baseContractors
+    }
+  }
+
+  const items = (workItems || []).filter((wi) => wi.work_order_id === workOrderId && wi.status !== 'Desestimado')
+  if (items.length === 0) {
+    return { astilleroWorkers: baseAstillero, contractorGroups: baseContractors }
+  }
+
+  const rawContractors = items.flatMap((wi) =>
+    Array.isArray(wi.contractors)
+      ? wi.contractors
+      : wi.contractor_name
+      ? [wi.contractor_name]
+      : []
+  )
+
+  const hasAstillero = rawContractors.some((c) => {
+    const norm = normalizeText(c)
+    return norm === 'ASTILLERO' || norm.startsWith('ASTILLERO.') || norm === 'ALON CAR'
+  })
+
+  const enabledAst = hasAstillero || rawContractors.length === 0 ? baseAstillero : []
+
+  const enabledContractorSet = new Set(
+    rawContractors
+      .filter((c) => {
+        const norm = normalizeText(c)
+        return norm && !norm.startsWith('ASTILLERO') && norm !== 'ALON CAR'
+      })
+      .map((c) => c.trim().toUpperCase())
+  )
+
+  const enabledCnt = baseContractors.filter((grp) => enabledContractorSet.has(grp.toUpperCase()))
+
+  if (enabledAst.length === 0 && enabledCnt.length === 0) {
+    return { astilleroWorkers: baseAstillero, contractorGroups: baseContractors }
+  }
+
+  return {
+    astilleroWorkers: enabledAst,
+    contractorGroups: enabledCnt
   }
 }

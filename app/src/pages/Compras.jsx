@@ -66,6 +66,9 @@ import { extractTextFromPdf } from '../lib/pdfTextExtractor'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
+import ContractorPickerModal from '../components/ContractorPickerModal'
+import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import { buildUniversalSearchCorpus, normalizeSearchText } from '../lib/searchEngine'
 
 // Regla de Negocio: Para que una compra se cargue directamente a costo: destino=DIRECTO y estado=RECIB.COMP.DIRECT.
 // Alerta Incoherencias si buque ≠ Astillero y:
@@ -384,6 +387,14 @@ export default function Compras() {
     chargeType: 'DIRECT',
     contractorName: ''
   })
+  const [contractorPickerModal, setContractorPickerModal] = useState({
+    isOpen: false,
+    orderId: null,
+    currentValue: '',
+    shipName: '',
+    workOrderTitle: '',
+    isOtBlank: true
+  })
 
     // Modales
   const [showOrderModal, setShowOrderModal] = useState(false)
@@ -549,6 +560,30 @@ export default function Compras() {
       setLoading(false)
     }
   }
+
+  // Padrón de contratistas y personal de astillero para Compras
+  const contractorGroups = useMemo(() => {
+    const set = new Set()
+    workItems.forEach((wi) => {
+      const arr = Array.isArray(wi.contractors) ? wi.contractors : wi.contractor_name ? [wi.contractor_name] : []
+      arr.forEach((c) => {
+        const trimmed = String(c || '').trim()
+        if (trimmed && !trimmed.toUpperCase().startsWith('ASTILLERO') && trimmed.toUpperCase() !== 'ALON CAR') {
+          set.add(trimmed)
+        }
+      })
+    })
+    suppliers.forEach((s) => {
+      if (s.is_contractor || s.category === 'CONTRATISTA' || (s.trade || '').toUpperCase().includes('CONTRATISTA')) {
+        set.add(s.name.trim())
+      }
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))
+  }, [workItems, suppliers])
+
+  const astilleroWorkers = useMemo(() => {
+    return workers.filter((w) => w.can_withdraw_materials)
+  }, [workers])
 
   // Cotización del dólar quincenal oficial
   function getDollarRateForDate(dateStr) {
@@ -770,30 +805,30 @@ export default function Compras() {
   // Filtrado reactivo de pedidos
   const filteredOrders = useMemo(() => {
     return purchaseOrders.filter((po) => {
-      // Texto de búsqueda
+      // Texto de búsqueda omnicanal profundo
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
-        const mat = (po.material_name_raw || '').toLowerCase()
-        const obs = (po.observations || '').toLowerCase()
-        const req = (po.requested_by_name || '').toLowerCase()
-        const inv = (po.invoice_number || '').toLowerCase()
-        const rem = (po.remito_number || '').toLowerCase()
-        const trn = (po.freight_transport_name || '').toLowerCase()
-        const sup = suppliers.find((s) => s.id === po.supplier_id)?.name.toLowerCase() || ''
-        const shp = ships.find((s) => s.id === po.ship_id)?.name.toLowerCase() || ''
-
-        // Búsqueda en adjuntos (Nivel 1: metadatos + Nivel 2: texto digital PDF extraído sin IA)
+        const q = normalizeSearchText(searchQuery)
+        const shp = ships.find((s) => s.id === po.ship_id)
+        const wo = workOrders.find((w) => w.id === po.work_order_id)
+        const sup = suppliers.find((s) => s.id === po.supplier_id)
         const orderDocs = documents.filter((d) => d.purchase_order_id === po.id || (d.work_order_id && d.work_order_id === po.work_order_id))
-        const docMatches = orderDocs.some((d) => {
-          const fn = (d.original_filename || '').toLowerCase()
-          const ds = (d.description || '').toLowerCase()
-          const dt = (d.doc_type || '').toLowerCase()
-          const txt = (d.extracted_text || '').toLowerCase()
-          return fn.includes(q) || ds.includes(q) || dt.includes(q) || txt.includes(q)
-        })
 
-        const matches = mat.includes(q) || obs.includes(q) || req.includes(q) || inv.includes(q) || rem.includes(q) || trn.includes(q) || sup.includes(q) || shp.includes(q) || docMatches
-        if (!matches) return false
+        const corpus = buildUniversalSearchCorpus(
+          {
+            ...po,
+            ship_name: shp?.name || '',
+            vessel_type: shp?.vessel_type || '',
+            work_order_title: wo?.title || '',
+            work_order_description: wo?.description || '',
+            ot_number: wo?.ot_number || '',
+            supplier_name: sup?.name || '',
+            supplier_trade: sup?.trade || '',
+            requested_by_name: po.requested_by_name || 'PAÑOL'
+          },
+          { documents: orderDocs }
+        )
+
+        if (!corpus.includes(q)) return false
       }
 
       // Filtro KPI interactivo de Grupo
@@ -1057,7 +1092,16 @@ export default function Compras() {
       return
     }
     if (colKey === 'requested_by_name') {
-      setInlineEdit({ orderId: po.id, field: 'requested_by_name', value: po.requested_by_name || 'PAÑOL' })
+      const shp = ships.find((s) => s.id === po.ship_id)
+      const wo = workOrders.find((w) => w.id === po.work_order_id)
+      setContractorPickerModal({
+        isOpen: true,
+        orderId: po.id,
+        currentValue: po.requested_by_name || 'PAÑOL',
+        shipName: shp?.name || 'ASTILLERO',
+        workOrderTitle: wo ? (wo.ot_number ? `#${wo.ot_number} ${wo.title}` : wo.title) : '',
+        isOtBlank: !po.work_order_id
+      })
       return
     }
     if (colKey === 'material_name_raw') {
@@ -2930,25 +2974,9 @@ export default function Compras() {
                                 className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer ${matchMap.requested_by ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cp.className}`}
                                 title={`Solicita: ${po.requested_by_name || 'PAÑOL'} (Doble clic para editar)`}
                               >
-                                {inlineEdit.orderId === po.id && inlineEdit.field === 'requested_by_name' ? (
-                                  <input
-                                    type="text"
-                                    list="compras-requesters-datalist"
-                                    autoFocus
-                                    value={inlineEdit.value}
-                                    onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)
-                                      if (e.key === 'Escape') setInlineEdit({ orderId: null, field: null, value: '' })
-                                    }}
-                                    onBlur={() => saveInlineEdit(po.id, 'requested_by_name', inlineEdit.value)}
-                                    className="w-24 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none"
-                                  />
-                                ) : (
-                                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-300 transition-all truncate max-w-[85px]">
-                                    <HighlightText text={po.requested_by_name || 'PAÑOL'} query={searchQuery} />
-                                  </div>
-                                )}
+                                <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-200 font-semibold transition-all truncate max-w-[85px]">
+                                  <HighlightText text={po.requested_by_name || 'PAÑOL'} query={searchQuery} />
+                                </div>
                                 {cp.renderHandle && (
                                   <div
                                     onMouseDown={grid.handleFillHandleMouseDown}
@@ -3680,125 +3708,30 @@ export default function Compras() {
           </div>
 
           {/* ========================================================= */}
-          {/* BARRA DE TOTALES FLOTANTE DE ALTO CONTRASTE (Zona 5: Resumen y Stats Sheets/Excel) */}
+          {/* BARRA DE TOTALES FLOTANTE CANÓNICA (GridStatusBarBottom)  */}
           {/* ========================================================= */}
-          <div className="fixed bottom-4 left-4 right-4 md:left-64 z-40 bg-slate-900/98 border-2 border-cyan-400 shadow-2xl shadow-cyan-500/30 rounded-2xl px-4 py-2.5 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-200">
-            {/* Indicador de selección y Alerta de Filtro Activo */}
-            <div className="flex flex-wrap items-center gap-2">
-              {grid.selectionStats ? (
-                /* MODO VIVO SHEETS/EXCEL: Rango de Celdas Seleccionado */
-                <div className="flex flex-wrap items-center gap-2 font-mono">
-                  <div className="flex items-center gap-1.5 bg-emerald-950/90 border border-emerald-500/90 px-2.5 py-1 rounded-lg text-emerald-300 font-black text-xs shadow-md">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>SELECCIÓN ({grid.selectionStats.count} celdas)</span>
-                  </div>
-
-                  {grid.selectionStats.numericCount > 0 ? (
-                    <>
-                      <div className="flex items-baseline gap-1 bg-slate-950 px-2.5 py-1 rounded-lg border border-cyan-500/60 shadow">
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Σ SUMA:</span>
-                        <span className="text-sm font-extrabold text-cyan-300">
-                          ${grid.selectionStats.sum.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      <div className="flex items-baseline gap-1 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-700">
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Ø PROM:</span>
-                        <span className="text-xs font-bold text-white">
-                          ${grid.selectionStats.avg.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      <div className="flex items-baseline gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-[11px] text-slate-300">
-                        <span>MÍN: <strong className="text-slate-100">${grid.selectionStats.min.toLocaleString('es-AR')}</strong></span>
-                        <span className="mx-1 text-slate-600">·</span>
-                        <span>MÁX: <strong className="text-slate-100">${grid.selectionStats.max.toLocaleString('es-AR')}</strong></span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-xs text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                      Texto ({grid.selectionStats.count} celdas)
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => grid.setSelectionRange(null)}
-                    className="ml-1 text-slate-400 hover:text-white transition-colors cursor-pointer text-xs underline"
-                    title="Quitar selección de rango"
-                  >
-                    ✕ Salir
-                  </button>
-                </div>
-              ) : stats.isCustomSelection ? (
-                /* MODO VIVO FILAS TILDADAS */
-                <div className="flex items-center gap-2 bg-cyan-950 border border-cyan-400 px-2.5 py-1 rounded-lg text-cyan-300 font-extrabold shadow-sm">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-                  <span>📌 Selección: {stats.count} pedidos tildados</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedOrderIds(new Set())}
-                    className="ml-1 text-cyan-400 hover:text-white transition-colors cursor-pointer text-xs underline"
-                    title="Limpiar selección"
-                  >
-                    ✕ Limpiar
-                  </button>
-                </div>
-              ) : (
-                /* MODO RESUMEN GENERAL FILTRADO */
-                <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span>🌐 Todo el filtro: {stats.count} pedidos</span>
-                </div>
-              )}
-
-              {/* ALERTA VISUAL DE FILTRO ACTIVO */}
-              {hasActiveFilters && (
-                <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-400/80 px-2.5 py-1 rounded-lg text-amber-300 font-bold text-xs shadow-md">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Filtro Activo ({filteredOrders.length} de {purchaseOrders.length})</span>
-                  <button
-                    type="button"
-                    onClick={clearAllFilters}
-                    className="ml-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[10px] shadow transition-all cursor-pointer"
-                  >
-                    ✕ Limpiar Todo
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Métricas calculadas en vivo */}
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4 font-mono">
-              <div className="flex items-baseline gap-1">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Σ Cant:</span>
-                <span className="text-xs font-bold text-white">{stats.sumQty}</span>
-              </div>
-
-              {viewMode === 'completa' && (
-                <>
-                  <div className="flex items-baseline gap-1 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Σ AR$:</span>
-                    <span className="text-sm font-extrabold text-cyan-300">${stats.sumCostArs.toLocaleString('es-AR')}</span>
-                  </div>
-
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Σ US$:</span>
-                    <span className="text-xs font-bold text-white">
-                      ${stats.sumCostUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-
-                  <div className="flex items-baseline gap-1 hidden lg:flex">
-                    <span className="text-[10px] uppercase font-bold text-slate-500">Ø:</span>
-                    <span className="text-xs font-semibold text-slate-300">${Math.round(stats.avgPriceArs).toLocaleString('es-AR')}</span>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Botones de acción masiva */}
-            {selectedOrderIds.size > 0 && (
+          <GridStatusBarBottom
+            filteredCount={filteredOrders.length}
+            totalCount={purchaseOrders.length}
+            entityName="pedidos"
+            hasActiveFilter={hasActiveFilters}
+            onClearFilters={clearAllFilters}
+            selectionStats={grid.selectionStats}
+            onClearSelection={() => grid.setSelectionRange(null)}
+            customSelection={selectedOrderIds.size > 0 ? {
+              count: selectedOrderIds.size,
+              label: 'pedidos tildados',
+              onClear: () => setSelectedOrderIds(new Set())
+            } : null}
+            globalAggregates={[
+              { label: 'Σ Cant', value: stats.sumQty },
+              ...(viewMode === 'completa' ? [
+                { label: 'Σ AR$', value: `$${stats.sumCostArs.toLocaleString('es-AR')}`, highlight: true },
+                { label: 'Σ US$', value: `$${stats.sumCostUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+                { label: 'Ø', value: `$${Math.round(stats.avgPriceArs).toLocaleString('es-AR')}` }
+              ] : [])
+            ]}
+            extraActions={selectedOrderIds.size > 0 ? (
               <div className="flex flex-wrap items-center gap-2">
                 {viewMode === 'completa' && (
                   <>
@@ -3906,8 +3839,8 @@ export default function Compras() {
                   </button>
                 </div>
               </div>
-            )}
-          </div>
+            ) : null}
+          />
         </>
       )}
 
@@ -4763,6 +4696,7 @@ export default function Compras() {
           suppliers={suppliers}
           materials={materials}
           workers={workers}
+          contractorGroups={contractorGroups}
           currentFortnight={currentFortnight}
           viewMode={viewMode}
           isSupervisorOrAdmin={isSupervisorOrAdmin}
@@ -5185,6 +5119,31 @@ export default function Compras() {
         }}
       />
 
+      {/* MODAL CANÓNICO: ASIGNACIÓN DE SOLICITANTE / CONTRATISTA (COMPRAS) */}
+      <ContractorPickerModal
+        isOpen={contractorPickerModal.isOpen}
+        onClose={() => setContractorPickerModal({ isOpen: false, orderId: null, currentValue: '', shipName: '', workOrderTitle: '', isOtBlank: true })}
+        currentValue={contractorPickerModal.currentValue}
+        shipName={contractorPickerModal.shipName}
+        workOrderTitle={contractorPickerModal.workOrderTitle}
+        isOtBlank={contractorPickerModal.isOtBlank}
+        astilleroWorkers={astilleroWorkers}
+        contractorGroups={contractorGroups}
+        extraOptions={[
+          { name: 'PAÑOL', label: 'PAÑOL (Central / Reposición de Stock)' },
+          { name: 'ADMINISTRACION', label: 'ADMINISTRACION' },
+          { name: 'OFICINA TECNICA', label: 'OFICINA TECNICA' },
+          { name: 'MANTENIMIENTO', label: 'MANTENIMIENTO' },
+          { name: 'CALIDAD / SEGURIDAD', label: 'CALIDAD / SEGURIDAD' }
+        ]}
+        title="Asignar Solicitante (Compras)"
+        onSelect={(selectedName) => {
+          if (contractorPickerModal.orderId) {
+            saveInlineEdit(contractorPickerModal.orderId, 'requested_by_name', selectedName)
+          }
+        }}
+      />
+
       {/* MODAL 12: ASISTENTE INTELIGENTE DE PROVEEDOR */}
       {showSupplierHelperModal && supplierHelperTarget && (
         <SupplierHelperModal
@@ -5238,6 +5197,7 @@ function OrderFormModal({
   suppliers,
   materials,
   workers,
+  contractorGroups = [],
   currentFortnight,
   viewMode,
   isSupervisorOrAdmin,
@@ -5556,6 +5516,15 @@ function OrderFormModal({
                     {otherWorkers.map((w) => (
                       <option key={w.id} value={w.name}>
                         {w.name} {w.trade ? `(${w.trade})` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {contractorGroups.length > 0 && (
+                  <optgroup label="🏗️ Contratistas Externos">
+                    {contractorGroups.map((grp) => (
+                      <option key={`m_cnt_${grp}`} value={grp}>
+                        {grp}
                       </option>
                     ))}
                   </optgroup>

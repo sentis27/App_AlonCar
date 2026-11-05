@@ -28,6 +28,10 @@ function HighlightText({ text, query, className = '' }) {
 }
 
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
+import ContractorPickerModal from '../components/ContractorPickerModal'
+import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
+import { getEnabledWorkersAndContractors } from '../lib/allocationEngine'
 import {
   Wrench,
   Building2,
@@ -310,6 +314,16 @@ export default function Terceros() {
     shipId: '',
     workOrderId: '',
     contractorName: ''
+  })
+  const [contractorPickerModal, setContractorPickerModal] = useState({
+    isOpen: false,
+    serviceId: null,
+    currentValue: '',
+    shipId: '',
+    shipName: '',
+    workOrderId: '',
+    workOrderTitle: '',
+    isOtBlank: true
   })
 
   // 3. Filtros y Vistas
@@ -893,37 +907,18 @@ export default function Terceros() {
       // 5. Filtro Comprobante
       if (selectedVoucherFilter !== 'todos' && srv.voucher_type !== selectedVoucherFilter) return false
 
-      // 6. Búsqueda de texto libre (cubre barco, OT, contratista, rubro, observaciones y todos los números de comprobantes)
+      // 6. Búsqueda profunda omnicanal estándar (deep crawler en todas las columnas y relaciones)
       if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase().trim()
-        const ship = shipMap.get(srv.ship_id)?.name?.toLowerCase() || ''
+        const shipObj = shipMap.get(srv.ship_id)
         const otObj = otMap.get(srv.work_order_id)
-        const ot = otObj?.ot_number?.toLowerCase() || ''
-        const otTitle = otObj?.title?.toLowerCase() || ''
-        const contractor = (srv.contractor_name || '').toLowerCase()
-        const trade = effectiveTrade.toLowerCase()
-        const vnum = (srv.voucher_number || '').toLowerCase()
-        const bnum = (srv.budget_number || '').toLowerCase()
-        const inum = (srv.invoice_number || '').toLowerCase()
-        const snum = (srv.supplier_remito_number || '').toLowerCase()
-        const remito = (srv.internal_remito_number || '').toLowerCase()
-        const dirObs = (srv.direct_observations || '').toLowerCase()
-        const specObs = (srv.specific_observations || '').toLowerCase()
-
-        if (
-          !ship.includes(q) &&
-          !ot.includes(q) &&
-          !otTitle.includes(q) &&
-          !contractor.includes(q) &&
-          !trade.includes(q) &&
-          !vnum.includes(q) &&
-          !bnum.includes(q) &&
-          !inum.includes(q) &&
-          !snum.includes(q) &&
-          !remito.includes(q) &&
-          !dirObs.includes(q) &&
-          !specObs.includes(q)
-        ) {
+        const corpus = buildUniversalSearchCorpus(srv, {
+          ship_name: shipObj?.name,
+          ot_number: otObj?.ot_number,
+          ot_title: otObj?.title,
+          effective_trade: effectiveTrade,
+          contractor_trade: contractorObj?.trade
+        })
+        if (!matchesUniversalSearch(corpus, searchTerm)) {
           return false
         }
       }
@@ -1862,16 +1857,29 @@ export default function Terceros() {
           <div className="alon-grid-ribbon">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px]">
-                {grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : 'MODO PLANILLA'}
+                {grid.activeCellBadge ? `CELDA ${grid.activeCellBadge}` : '⚡ MODO PLANILLA'}
               </span>
               <span className="text-slate-400">
                 Doble clic o <strong className="text-slate-200">Enter</strong> para editar celda • <strong className="text-slate-200">Ctrl+D</strong> o esquina celeste para rellenar hacia abajo
               </span>
             </div>
-            <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
-              <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
-              <span>•</span>
-              <span>{filteredServices.length} comprobantes</span>
+            <div className="flex items-center gap-3">
+              {activeRolePerspective !== 'direccion' && (
+                <button
+                  type="button"
+                  onClick={handleOpenNewModal}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/40 cursor-pointer transition-all"
+                  title="Insertar un nuevo comprobante de contratista"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Insertar Fila en #1</span>
+                </button>
+              )}
+              <div className="flex items-center gap-2 text-slate-500 font-mono text-[10px]">
+                <span>Memoria Undo: {grid.undoStack?.length || 0}/50</span>
+                <span>•</span>
+                <span>{filteredServices.length} comprobantes</span>
+              </div>
             </div>
           </div>
 
@@ -1909,21 +1917,21 @@ export default function Terceros() {
                     />
                   </th>
                   {/* 1. Fecha */}
-                  <th className="py-2.5 px-2 w-[8%]">Fecha</th>
+                  <th className="py-2.5 px-2 w-[8%]">Fecha ✎</th>
                   {/* 2. Barco / OT */}
-                  <th className="py-2.5 px-2 w-[14%]">Barco / OT</th>
+                  <th className="py-2.5 px-2 w-[14%]">Barco / OT ✎</th>
                   {/* 3. Contratista / Rubro */}
-                  <th className="py-2.5 px-2 w-[15%]">Contratista / Rubro</th>
+                  <th className="py-2.5 px-2 w-[15%]">Contratista / Rubro ✎</th>
                   {/* 4. Importe AR$ */}
-                  <th className="py-2.5 px-2 w-[11%] text-right">Importe AR$</th>
+                  <th className="py-2.5 px-2 w-[11%] text-right">Importe AR$ ✎</th>
                   {/* 5. Dólar / US$ */}
-                  <th className="py-2.5 px-2 w-[10%] text-right">Dólar / US$</th>
+                  <th className="py-2.5 px-2 w-[10%] text-right">Dólar / US$ ✎</th>
                   {/* 6. Comprobante */}
-                  <th className="py-2.5 px-2 w-[7%] text-center">Comprobante</th>
+                  <th className="py-2.5 px-2 w-[7%] text-center">Comprobante ✎</th>
                   {/* 7. Nº Comprobante */}
-                  <th className="py-2.5 px-2 w-[12%]">Nº Comprobante</th>
+                  <th className="py-2.5 px-2 w-[12%]">Nº Comprobante ✎</th>
                   {/* 8. Comentarios */}
-                  <th className="py-2.5 px-2 w-[13%]">Comentarios</th>
+                  <th className="py-2.5 px-2 w-[13%]">Comentarios ✎</th>
                   {/* 9. Acciones */}
                   <th className="py-2.5 px-2 w-[10%] text-right">Acciones</th>
                 </tr>
@@ -2067,9 +2075,22 @@ export default function Terceros() {
                         return (
                           <td
                             {...cp.domProps}
-                            onDoubleClick={() => activateTercerosCell(srv, 'contractor_name')}
+                            onDoubleClick={() => {
+                              const effShip = shipMap.get(srv.ship_id)
+                              const effWo = otMap.get(srv.work_order_id)
+                              setContractorPickerModal({
+                                isOpen: true,
+                                serviceId: srv.id,
+                                currentValue: srv.contractor_name || '',
+                                shipId: srv.ship_id || '',
+                                shipName: effShip?.name || 'Astillero General',
+                                workOrderId: srv.work_order_id || '',
+                                workOrderTitle: effWo ? `${effWo.ot_number} - ${effWo.title}` : '',
+                                isOtBlank: !srv.work_order_id
+                              })
+                            }}
                             className={`py-2.5 px-2 font-sans truncate cursor-pointer ${cp.className}`}
-                            title="Doble clic para editar Contratista (o doble clic en el rubro para cambiar Rubro)"
+                            title="Doble clic para abrir menú de Contratistas (o doble clic en el rubro para cambiar Rubro)"
                           >
                             {inlineEdit.id === srv.id && inlineEdit.field === 'contractor_name' ? (
                               <input
@@ -2427,101 +2448,53 @@ export default function Terceros() {
             </table>
           </div>
 
-          {/* BARRA DE TOTALES Y ESTADÍSTICAS REACTIVA (TIPO EXCEL / GOOGLE SHEETS) */}
-          <div className="bg-slate-950 border-t border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-inner shrink-0 z-20">
-            {/* Botones Deshacer / Rehacer estilo Hoja de Cálculo */}
-            <div className="flex items-center gap-1.5">
-              {grid?.canUndo && (
-                <button
-                  type="button"
-                  onClick={grid.undo}
-                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
-                  title="Deshacer el último cambio (Ctrl + Z)"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Deshacer (Ctrl+Z)</span>
-                </button>
-              )}
-              {grid?.canRedo && (
-                <button
-                  type="button"
-                  onClick={grid.redo}
-                  className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
-                  title="Rehacer el cambio deshecho (Ctrl + Y)"
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                  <span>Rehacer (Ctrl+Y)</span>
-                </button>
-              )}
-            </div>
-
-            {/* Indicador de modo (Selección manual vs Todo lo filtrado) */}
-            <div className="flex items-center gap-3">
-              {stats.isCustomSelection ? (
-                <div className="flex items-center gap-2 bg-cyan-950/80 border border-cyan-500/60 px-2.5 py-1 rounded-lg text-cyan-300 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-                  <span>📌 Selección Manual: {stats.count} de {stats.totalVisible} filas</span>
+          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+          <GridStatusBarBottom
+            filteredCount={filteredServices.length}
+            totalCount={services.length}
+            entityName="comprobantes"
+            hasActiveFilter={hasActiveFilters}
+            onClearFilters={handleClearAllFilters}
+            selectionStats={grid.selectionStats}
+            onClearSelection={() => grid.setSelectionRange(null)}
+            customSelection={selectedIds.size > 0 ? {
+              count: selectedIds.size,
+              label: 'comprobantes tildados',
+              onClear: handleClearSelection
+            } : null}
+            globalAggregates={[
+              { label: 'Σ AR$', value: `$${stats.sumArs.toLocaleString('es-AR')}`, highlight: true },
+              { label: 'Σ US$', value: `$${stats.sumUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+              { label: 'Ø AR$', value: `$${stats.avgArs.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` },
+              { label: 'Cotiz. Ø', value: `$${stats.avgRate.toLocaleString('es-AR', { maximumFractionDigits: 1 })}` }
+            ]}
+            extraActions={(grid?.canUndo || grid?.canRedo) ? (
+              <div className="flex items-center gap-1.5">
+                {grid?.canUndo && (
                   <button
                     type="button"
-                    onClick={handleClearSelection}
-                    className="ml-1 text-cyan-400 hover:text-white transition-colors cursor-pointer text-xs underline"
-                    title="Deseleccionar todas las filas"
+                    onClick={grid.undo}
+                    className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                    title="Deshacer el último cambio (Ctrl + Z)"
                   >
-                    ✕ Limpiar
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Deshacer (Ctrl+Z)</span>
                   </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 bg-slate-900 border border-slate-700/80 px-2.5 py-1 rounded-lg text-slate-300 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span>🌐 Todo el filtro: {stats.count} filas</span>
-                  <span className="text-[10px] text-slate-500 italic hidden sm:inline">(Clic o Ctrl+Clic en filas para seleccionar y sumar a tu antojo)</span>
-                </div>
-              )}
-            </div>
-
-            {/* Métricas calculadas en vivo */}
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6 font-mono">
-              {/* Suma AR$ */}
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Σ AR$:</span>
-                <span className="text-sm font-extrabold text-white">
-                  ${stats.sumArs.toLocaleString('es-AR')}
-                </span>
+                )}
+                {grid?.canRedo && (
+                  <button
+                    type="button"
+                    onClick={grid.redo}
+                    className="px-2 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                    title="Rehacer el cambio deshecho (Ctrl + Y)"
+                  >
+                    <RotateCw className="w-3 h-3" />
+                    <span>Rehacer (Ctrl+Y)</span>
+                  </button>
+                )}
               </div>
-
-              {/* Suma US$ */}
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-[10px] uppercase font-bold text-cyan-400">Σ US$:</span>
-                <span className="text-sm font-extrabold text-cyan-300">
-                  ${stats.sumUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-
-              {/* Promedio AR$ */}
-              <div className="flex items-baseline gap-1.5 hidden md:flex">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Ø AR$:</span>
-                <span className="text-xs font-semibold text-slate-300">
-                  ${stats.avgArs.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                </span>
-              </div>
-
-              {/* Promedio US$ */}
-              <div className="flex items-baseline gap-1.5 hidden md:flex">
-                <span className="text-[10px] uppercase font-bold text-cyan-400">Ø US$:</span>
-                <span className="text-xs font-semibold text-cyan-200">
-                  ${stats.avgUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-
-              {/* Cotización Promedio */}
-              <div className="flex items-baseline gap-1.5 hidden lg:flex">
-                <span className="text-[10px] uppercase font-bold text-slate-500">Cotiz. Ø:</span>
-                <span className="text-xs font-semibold text-slate-400">
-                  ${stats.avgRate.toLocaleString('es-AR', { maximumFractionDigits: 1 })}
-                </span>
-              </div>
-            </div>
-          </div>
+            ) : null}
+          />
         </div>
       ) : (
         /* VISTA FICHAS (TARJETAS MODERNAS CON SOPORTE DE SELECCIÓN Y STATUS BAR) */
@@ -3545,6 +3518,34 @@ export default function Terceros() {
             console.error('Error guardando Buque y OT:', err)
             showFeedback('error', 'Error al guardar Buque y OT: ' + err.message)
             fetchData()
+          }
+        }}
+      />
+
+      {/* MODAL CANÓNICO: ASIGNACIÓN DE CONTRATISTA (STANDARDIZADO) */}
+      <ContractorPickerModal
+        isOpen={contractorPickerModal.isOpen}
+        onClose={() =>
+          setContractorPickerModal({
+            isOpen: false,
+            serviceId: null,
+            currentValue: '',
+            shipId: '',
+            shipName: '',
+            workOrderId: '',
+            workOrderTitle: '',
+            isOtBlank: true
+          })
+        }
+        currentValue={contractorPickerModal.currentValue}
+        shipName={contractorPickerModal.shipName}
+        workOrderTitle={contractorPickerModal.workOrderTitle}
+        isOtBlank={contractorPickerModal.isOtBlank}
+        astilleroWorkers={getEnabledWorkersAndContractors(contractorPickerModal.shipId, contractorPickerModal.workOrderId, workItems).astilleroWorkers}
+        contractorGroups={getEnabledWorkersAndContractors(contractorPickerModal.shipId, contractorPickerModal.workOrderId, workItems).contractorGroups}
+        onSelect={(selectedName) => {
+          if (contractorPickerModal.serviceId) {
+            saveInlineEdit(contractorPickerModal.serviceId, 'contractor_name', selectedName)
           }
         }}
       />

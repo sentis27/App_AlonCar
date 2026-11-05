@@ -280,3 +280,30 @@ Todo módulo con grilla de datos debe instanciar el hook `useSpreadsheetGrid`:
   - **Foco Automático:** El cursor se posiciona inmediatamente en el campo de material con modo de edición activo.
   - **Garantía de Posición Relativa:** Interpola la marca de tiempo de creación entre la fila de referencia y su contigua para que permanezca en su posición exacta tras recargas.
   - **Soporte de Ctrl+Z:** Permite eliminar la fila creada al presionar `Ctrl+Z`.
+
+---
+
+## 21. Regla Canónica de Comportamiento en Celdas de Buque, Contratista y Botón Lápiz
+
+Para garantizar una experiencia predecible, ergonómica y sin bloqueos de interfaz en todas las planillas operativas (Pañol, Compras, Horas y Terceros):
+
+### A. Doble Clic en Barco / Buque (`ship_id`)
+- **Objetivo:** Modificar el destino o buque de la fila y seleccionar la Orden de Trabajo correspondiente.
+- **Comportamiento Estándar:**
+  - Abre el modal enfocado `ShipWorkOrderPickerModal`.
+  - Filtra y prioriza en la parte superior las OTs habilitadas en ese barco para el contratista u operario asignado en la fila.
+  - **Permisión de OT en Blanco:** Si no hay ninguna OT vinculada o aún no fue abierta, mantiene marcada la opción *"⚠️ Dejar OT en blanco"* y permite guardar el buque inmediatamente, imputando `work_order_id = null` y sumando `+1` al KPI de alerta *"⚠️ Falta Cargar OT"*.
+
+### B. Doble Clic en Operario o Contratista (`contractor_name` / `requested_by_name`)
+- **Objetivo:** Asignar o sustituir la persona o contratista receptor del material o servicio.
+- **Comportamiento Estándar (ContractorPickerModal):**
+  - **Regla Mandatoria con OT en Blanco (`!work_order_id`):** Debe desplegar el **PADRÓN COMPLETO** de operarios propios autorizados (Astillero) y contratistas externos habilitados para el módulo. **Prohibido bloquear o vaciar la lista.**
+  - **Regla Mandatoria con OT Asignada (`work_order_id`):** Presenta prioritariamente los operarios y contratistas vinculados a los ítems de esa OT/buque.
+  - **Fallback de Seguridad Universal:** Si el filtrado por OT o buque arrojara 0 coincidencias, el motor aplica fallback automático al padrón completo para que el usuario **NUNCA** quede atrapado en una celda bloqueada o vacía.
+  - **Preservación del Valor Actual:** Si el contratista cargado en la fila no figura en la lista filtrada, se incorpora automáticamente con el badge *(Actual en fila)* para evitar pérdida de datos o borrado accidental.
+
+### C. Clic en el Botón Lápiz (✏️ - Edición de Fila Completa)
+- **Objetivo:** Abrir la visión integral y auditoría profunda de toda la información cargada en la fila.
+- **Comportamiento Estándar:**
+  - Despliega el modal completo de la entidad (`MultiWithdrawalModal` en Pañol, `OrderFormModal` en Compras, `WorkItemModal` en Obras).
+  - Permite revisar y modificar en un solo panel todos los datos: buque, OT, contratista, fecha, renglones de materiales, cantidades, centro de costo, observaciones técnicas y documentos de respaldo.
