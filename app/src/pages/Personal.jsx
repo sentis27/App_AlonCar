@@ -299,10 +299,24 @@ export default function Personal() {
 
       if (error) throw error
 
-      if (data && data.length > 0) {
+            if (data && data.length > 0) {
         setWorkers(data)
       } else {
         setWorkers(INITIAL_WORKERS_LOCAL)
+      }
+
+      // Cargar catálogo de rubros maestros desde system_settings
+      try {
+        const { data: tradesSetting } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'master_trades')
+          .maybeSingle()
+        if (tradesSetting?.value && Array.isArray(tradesSetting.value)) {
+          setCustomTrades(tradesSetting.value)
+        }
+      } catch (tradeErr) {
+        console.warn('No se pudieron cargar rubros maestros:', tradeErr)
       }
     } catch (err) {
       console.warn('Cargando nómina desde datos iniciales locales:', err)
