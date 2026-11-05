@@ -40,7 +40,8 @@ import {
   Undo2,
   Redo2,
   Phone,
-  PhoneOff
+  PhoneOff,
+  Shield
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
@@ -1244,8 +1245,17 @@ export default function Personal() {
         if (w.status !== 'ACTIVO' || w.admin_center !== 'CONTRATISTA' || (w.hourly_rate_ars && Number(w.hourly_rate_ars) > 0)) return false
       } else if (kpiFilter === 'sin_consumibles_contratistas') {
         if (w.status !== 'ACTIVO' || w.admin_center !== 'CONTRATISTA' || (w.consumables_discount_pct !== null && w.consumables_discount_pct !== undefined && w.consumables_discount_pct !== '') || (w.consumables && w.consumables.trim())) return false
-      } else if (kpiFilter === 'sin_permisos') {
+            } else if (kpiFilter === 'sin_permisos') {
         if (w.status !== 'ACTIVO' || w.can_withdraw_materials || w.can_impute_hours || w.can_charge_third_party || w.is_foreman) return false
+      } else if (kpiFilter === 'categoria_OFICIAL') {
+        const cat = (w.category || '').toUpperCase().trim()
+        if (cat !== 'OFICIAL') return false
+      } else if (kpiFilter === 'categoria_1/2 OFICIAL') {
+        const cat = (w.category || '').toUpperCase().trim()
+        if (cat !== '1/2 OFICIAL' && cat !== 'MEDIO OFICIAL') return false
+      } else if (kpiFilter === 'categoria_AYUDANTE') {
+        const cat = (w.category || '').toUpperCase().trim()
+        if (cat !== 'AYUDANTE') return false
       }
 
       return true
@@ -3400,205 +3410,265 @@ export default function Personal() {
       {/* ========================================================================= */}
       {activeTab === 'nomina' && (
         <div className="space-y-6 animate-in fade-in duration-150">
-          {/* ZONA 2.A: ESCALA SINDICAL DE REFERENCIA (DE MAYOR A MENOR RANGO) */}
-          <div className="alon-zone-kpis rounded-2xl p-5 shadow-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
-            {/* 1. Cotización Dólar Quincenal (Fijado) */}
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                    VALOR US$ QUINCENAL
-                  </span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800 flex items-center gap-1" title="Dato congelado fijado por Administración Central">
-                    <Lock className="w-2.5 h-2.5 text-amber-400" />
-                    <span>Fijado</span>
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <span className="text-sm font-bold text-emerald-400 font-mono">$</span>
-                  <span className="font-mono text-base font-extrabold text-white">
-                    {parseFloat(dollarRate).toLocaleString('es-AR')}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-sans ml-1">ARS / USD</span>
-                </div>
-              </div>
-              <div className="w-9 h-9 rounded-lg bg-emerald-950/80 border border-emerald-800/60 flex items-center justify-center text-emerald-400">
-                <DollarSign className="w-5 h-5" />
-              </div>
+          {/* ZONA 2: RADAR DE KPIS Y ALERTAS OPERATIVAS (5 TARJETAS CROMÁTICAS CON FILTRO AL CLIC) */}
+          <div className="alon-zone-kpis rounded-2xl p-5 shadow-xl space-y-3">
+            <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+              <span className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-amber-400" />
+                <span>Radar de Alertas Operativas del Padrón • Clic en cualquier tarjeta para filtrar</span>
+              </span>
+              {kpiFilter && !kpiFilter.startsWith('categoria_') && (
+                <button
+                  type="button"
+                  onClick={() => setKpiFilter(null)}
+                  className="text-[11px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                >
+                  ✕ Quitar filtro activo
+                </button>
+              )}
             </div>
 
-            {/* 2. Tarifa Oficial Base (Mayor rango) */}
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-emerald-900/40 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">
-                  OFICIAL (Sindicato)
-                </span>
-                <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
-                  <span>${rateOficial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {/* KPI 1: Astillero sin Teléfono (Alerta Crítica / Rojo Carmín) */}
+              <button
+                type="button"
+                onClick={() => setKpiFilter(prev => prev === 'sin_telefono_astillero' ? null : 'sin_telefono_astillero')}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  kpiFilter === 'sin_telefono_astillero'
+                    ? 'bg-rose-950/60 border-rose-500 ring-2 ring-rose-400 shadow-lg shadow-rose-950/50'
+                    : 'bg-rose-950/25 border-rose-500/50 hover:bg-rose-950/40 hover:border-rose-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-300">
+                    Astillero sin Teléfono
+                  </span>
+                  <PhoneOff className="w-4 h-4 text-rose-400" />
                 </div>
-              </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('OFICIAL')}`}>
-                {(rateOficial / dollarRate).toFixed(2)} USD
-              </span>
-            </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black font-mono text-rose-400">
+                    {kpiStats.sinTelefonoAstillero}
+                  </span>
+                  <span className="text-[10px] text-rose-300/70">personal propio</span>
+                </div>
+                <p className="text-[9px] text-rose-300/60 mt-1 truncate">Sin número móvil cargado</p>
+              </button>
 
-            {/* 3. Tarifa 1/2 Oficial (Rango medio) */}
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-pink-900/40 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-pink-400 block tracking-wider">
-                  1/2 OFICIAL (Sindicato)
-                </span>
-                <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
-                  <span>${rateMedioOficial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              {/* KPI 2: Astillero sin Costo (Amarillo Ámbar) */}
+              <button
+                type="button"
+                onClick={() => setKpiFilter(prev => prev === 'sin_costo_astillero' ? null : 'sin_costo_astillero')}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  kpiFilter === 'sin_costo_astillero'
+                    ? 'bg-amber-950/60 border-amber-500 ring-2 ring-amber-400 shadow-lg shadow-amber-950/50'
+                    : 'bg-amber-950/25 border-amber-500/50 hover:bg-amber-950/40 hover:border-amber-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                    Astillero sin Costo
+                  </span>
+                  <DollarSign className="w-4 h-4 text-amber-400" />
                 </div>
-              </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('1/2 OFICIAL')}`}>
-                {(rateMedioOficial / dollarRate).toFixed(2)} USD
-              </span>
-            </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black font-mono text-amber-400">
+                    {kpiStats.sinCostoAstillero}
+                  </span>
+                  <span className="text-[10px] text-amber-300/70">personal propio</span>
+                </div>
+                <p className="text-[9px] text-amber-300/60 mt-1 truncate">Sin tarifa AR$/h asignada</p>
+              </button>
 
-            {/* 4. Tarifa Ayudante Base (Menor rango) */}
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-cyan-900/40 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-cyan-400 block tracking-wider">
-                  AYUDANTE (Sindicato)
-                </span>
-                <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
-                  <span>${rateAyudante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              {/* KPI 3: Contratistas sin Costo (Cian Eléctrico) */}
+              <button
+                type="button"
+                onClick={() => setKpiFilter(prev => prev === 'sin_costo_contratistas' ? null : 'sin_costo_contratistas')}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  kpiFilter === 'sin_costo_contratistas'
+                    ? 'bg-cyan-950/60 border-cyan-500 ring-2 ring-cyan-400 shadow-lg shadow-cyan-950/50'
+                    : 'bg-cyan-950/25 border-cyan-500/50 hover:bg-cyan-950/40 hover:border-cyan-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+                    Contratistas sin Costo
+                  </span>
+                  <Building2 className="w-4 h-4 text-cyan-400" />
                 </div>
-              </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('AYUDANTE')}`}>
-                {(rateAyudante / dollarRate).toFixed(2)} USD
-              </span>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black font-mono text-cyan-400">
+                    {kpiStats.sinCostoContratistas}
+                  </span>
+                  <span className="text-[10px] text-cyan-300/70">cuadrillas</span>
+                </div>
+                <p className="text-[9px] text-cyan-300/60 mt-1 truncate">Sin valor AR$/h pactado</p>
+              </button>
+
+              {/* KPI 4: Contratistas sin Consumibles (Magenta / Fucsia) */}
+              <button
+                type="button"
+                onClick={() => setKpiFilter(prev => prev === 'sin_consumibles_contratistas' ? null : 'sin_consumibles_contratistas')}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  kpiFilter === 'sin_consumibles_contratistas'
+                    ? 'bg-fuchsia-950/60 border-fuchsia-500 ring-2 ring-fuchsia-400 shadow-lg shadow-fuchsia-950/50'
+                    : 'bg-fuchsia-950/25 border-fuchsia-500/50 hover:bg-fuchsia-950/40 hover:border-fuchsia-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-300">
+                    Sin Consumibles
+                  </span>
+                  <ShieldAlert className="w-4 h-4 text-fuchsia-400" />
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black font-mono text-fuchsia-400">
+                    {kpiStats.sinConsumiblesContratistas}
+                  </span>
+                  <span className="text-[10px] text-fuchsia-300/70">contratistas</span>
+                </div>
+                <p className="text-[9px] text-fuchsia-300/60 mt-1 truncate">Sin % ni imputación</p>
+              </button>
+
+              {/* KPI 5: Personal sin Permisos (Rojo Carmín / Bordo) */}
+              <button
+                type="button"
+                onClick={() => setKpiFilter(prev => prev === 'sin_permisos' ? null : 'sin_permisos')}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  kpiFilter === 'sin_permisos'
+                    ? 'bg-red-950/60 border-red-600 ring-2 ring-red-400 shadow-lg shadow-red-950/50'
+                    : 'bg-red-950/25 border-red-600/50 hover:bg-red-950/40 hover:border-red-500'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-red-300">
+                    Sin Permisos
+                  </span>
+                  <Lock className="w-4 h-4 text-red-400" />
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black font-mono text-red-400">
+                    {kpiStats.sinPermisos}
+                  </span>
+                  <span className="text-[10px] text-red-300/70">personal activo</span>
+                </div>
+                <p className="text-[9px] text-red-300/60 mt-1 truncate">Sin Pañol, Horas ni 3ros</p>
+              </button>
             </div>
           </div>
 
-          {/* ZONA 2.B: RADAR DE AUDITORÍA OPERATIVA (5 KPIS CLICKEABLES PARA FILTRAR) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {/* KPI 1: Astillero sin Teléfono */}
-            <button
-              type="button"
-              onClick={() => setKpiFilter(prev => prev === 'sin_telefono_astillero' ? null : 'sin_telefono_astillero')}
-              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                kpiFilter === 'sin_telefono_astillero'
-                  ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-400 shadow-lg'
-                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Astillero sin Teléfono
-                </span>
-                <PhoneOff className={`w-4 h-4 ${kpiStats.sinTelefonoAstillero > 0 ? 'text-rose-400' : 'text-emerald-400'}`} />
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className={`text-2xl font-black font-mono ${kpiStats.sinTelefonoAstillero > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
-                  {kpiStats.sinTelefonoAstillero}
-                </span>
-                <span className="text-[10px] text-slate-500">personal propio</span>
-              </div>
-              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin número móvil cargado</p>
-            </button>
+          {/* SUBZONA 2: ESCALA SINDICAL DE REFERENCIA (DE MAYOR A MENOR RANGO CON FILTRO INTERACTIVO) */}
+          <div className="rounded-2xl p-4 bg-slate-900/60 border border-slate-800/80 shadow-md space-y-2.5">
+            <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+              <span className="flex items-center gap-1.5 text-slate-300">
+                <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Tarifario Sindical de Referencia • Clic en una categoría para filtrar</span>
+              </span>
+              {kpiFilter?.startsWith('categoria_') && (
+                <button
+                  type="button"
+                  onClick={() => setKpiFilter(null)}
+                  className="text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                >
+                  ✕ Mostrar todas las categorías
+                </button>
+              )}
+            </div>
 
-            {/* KPI 2: Astillero sin Costo */}
-            <button
-              type="button"
-              onClick={() => setKpiFilter(prev => prev === 'sin_costo_astillero' ? null : 'sin_costo_astillero')}
-              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                kpiFilter === 'sin_costo_astillero'
-                  ? 'bg-amber-950/40 border-amber-500 ring-2 ring-amber-400 shadow-lg'
-                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Astillero sin Costo
-                </span>
-                <DollarSign className={`w-4 h-4 ${kpiStats.sinCostoAstillero > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-center">
+              {/* 1. Cotización Dólar Quincenal (Fijado) */}
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between shadow-sm">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                      VALOR US$ QUINCENAL
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800 flex items-center gap-1" title="Dato congelado fijado por Administración Central">
+                      <Lock className="w-2.5 h-2.5 text-amber-400" />
+                      <span>Fijado</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-sm font-bold text-emerald-400 font-mono">$</span>
+                    <span className="font-mono text-base font-extrabold text-white">
+                      {parseFloat(dollarRate).toLocaleString('es-AR')}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-sans ml-1">ARS / USD</span>
+                  </div>
+                </div>
+                <div className="w-9 h-9 rounded-lg bg-emerald-950/80 border border-emerald-800/60 flex items-center justify-center text-emerald-400">
+                  <DollarSign className="w-5 h-5" />
+                </div>
               </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className={`text-2xl font-black font-mono ${kpiStats.sinCostoAstillero > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-                  {kpiStats.sinCostoAstillero}
-                </span>
-                <span className="text-[10px] text-slate-500">personal propio</span>
-              </div>
-              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin tarifa AR$/h asignada</p>
-            </button>
 
-            {/* KPI 3: Contratistas sin Costo */}
-            <button
-              type="button"
-              onClick={() => setKpiFilter(prev => prev === 'sin_costo_contratistas' ? null : 'sin_costo_contratistas')}
-              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                kpiFilter === 'sin_costo_contratistas'
-                  ? 'bg-cyan-950/40 border-cyan-500 ring-2 ring-cyan-400 shadow-lg'
-                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Contratistas sin Costo
+              {/* 2. Tarifa Oficial Base (Mayor rango) */}
+              <button
+                type="button"
+                onClick={() => setKpiFilter(prev => prev === 'categoria_OFICIAL' ? null : 'categoria_OFICIAL')}
+                className={`p-3.5 rounded-xl border flex items-center justify-between text-left transition-all cursor-pointer ${
+                  kpiFilter === 'categoria_OFICIAL'
+                    ? 'bg-emerald-950/60 border-emerald-500 ring-2 ring-emerald-400 shadow-lg'
+                    : 'bg-slate-950 border-emerald-900/40 hover:border-emerald-700/70 hover:bg-emerald-950/20'
+                }`}
+              >
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">
+                    OFICIAL (Sindicato)
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
+                    <span>${rateOficial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('OFICIAL')}`}>
+                  {(rateOficial / dollarRate).toFixed(2)} USD
                 </span>
-                <Building2 className={`w-4 h-4 ${kpiStats.sinCostoContratistas > 0 ? 'text-cyan-400' : 'text-emerald-400'}`} />
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className={`text-2xl font-black font-mono ${kpiStats.sinCostoContratistas > 0 ? 'text-cyan-400' : 'text-slate-400'}`}>
-                  {kpiStats.sinCostoContratistas}
-                </span>
-                <span className="text-[10px] text-slate-500">cuadrillas</span>
-              </div>
-              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin valor AR$/h pactado</p>
-            </button>
+              </button>
 
-            {/* KPI 4: Contratistas sin Consumibles */}
-            <button
-              type="button"
-              onClick={() => setKpiFilter(prev => prev === 'sin_consumibles_contratistas' ? null : 'sin_consumibles_contratistas')}
-              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                kpiFilter === 'sin_consumibles_contratistas'
-                  ? 'bg-purple-950/40 border-purple-500 ring-2 ring-purple-400 shadow-lg'
-                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Sin Consumibles
+              {/* 3. Tarifa 1/2 Oficial (Rango medio) */}
+              <button
+                type="button"
+                onClick={() => setKpiFilter(prev => prev === 'categoria_1/2 OFICIAL' ? null : 'categoria_1/2 OFICIAL')}
+                className={`p-3.5 rounded-xl border flex items-center justify-between text-left transition-all cursor-pointer ${
+                  kpiFilter === 'categoria_1/2 OFICIAL'
+                    ? 'bg-pink-950/60 border-pink-500 ring-2 ring-pink-400 shadow-lg'
+                    : 'bg-slate-950 border-pink-900/40 hover:border-pink-700/70 hover:bg-pink-950/20'
+                }`}
+              >
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-pink-400 block tracking-wider">
+                    1/2 OFICIAL (Sindicato)
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
+                    <span>${rateMedioOficial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('1/2 OFICIAL')}`}>
+                  {(rateMedioOficial / dollarRate).toFixed(2)} USD
                 </span>
-                <ShieldAlert className={`w-4 h-4 ${kpiStats.sinConsumiblesContratistas > 0 ? 'text-purple-400' : 'text-emerald-400'}`} />
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className={`text-2xl font-black font-mono ${kpiStats.sinConsumiblesContratistas > 0 ? 'text-purple-400' : 'text-slate-400'}`}>
-                  {kpiStats.sinConsumiblesContratistas}
-                </span>
-                <span className="text-[10px] text-slate-500">contratistas</span>
-              </div>
-              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin % ni imputación</p>
-            </button>
+              </button>
 
-            {/* KPI 5: Personal sin Permisos */}
-            <button
-              type="button"
-              onClick={() => setKpiFilter(prev => prev === 'sin_permisos' ? null : 'sin_permisos')}
-              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                kpiFilter === 'sin_permisos'
-                  ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-400 shadow-lg'
-                  : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Sin Permisos
+              {/* 4. Tarifa Ayudante Base (Menor rango) */}
+              <button
+                type="button"
+                onClick={() => setKpiFilter(prev => prev === 'categoria_AYUDANTE' ? null : 'categoria_AYUDANTE')}
+                className={`p-3.5 rounded-xl border flex items-center justify-between text-left transition-all cursor-pointer ${
+                  kpiFilter === 'categoria_AYUDANTE'
+                    ? 'bg-cyan-950/60 border-cyan-500 ring-2 ring-cyan-400 shadow-lg'
+                    : 'bg-slate-950 border-cyan-900/40 hover:border-cyan-700/70 hover:bg-cyan-950/20'
+                }`}
+              >
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-cyan-400 block tracking-wider">
+                    AYUDANTE (Sindicato)
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-1 font-mono font-extrabold text-white text-base">
+                    <span>${rateAyudante.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded border ${getCategoryBadgeStyle('AYUDANTE')}`}>
+                  {(rateAyudante / dollarRate).toFixed(2)} USD
                 </span>
-                <Lock className={`w-4 h-4 ${kpiStats.sinPermisos > 0 ? 'text-rose-400' : 'text-emerald-400'}`} />
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className={`text-2xl font-black font-mono ${kpiStats.sinPermisos > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
-                  {kpiStats.sinPermisos}
-                </span>
-                <span className="text-[10px] text-slate-500">personal activo</span>
-              </div>
-              <p className="text-[9px] text-slate-500 mt-1 truncate">Sin Pañol, Horas ni 3ros</p>
-            </button>
+              </button>
+            </div>
           </div>
 
           {/* ACCIONES Y BOTONES SUPERIORES */}
@@ -3624,7 +3694,7 @@ export default function Personal() {
               className="px-4 py-2 bg-gradient-to-r from-primary to-blue-600 hover:brightness-110 text-slate-950 font-extrabold rounded-xl text-xs shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>+ Cargar Operario / Contratista</span>
+              <span>Cargar Operario / Contratista</span>
             </button>
           </div>
 
@@ -3879,7 +3949,7 @@ export default function Personal() {
             <GridRibbon
               activeCellBadge={nominaGrid.activeCellBadge || 'PADRÓN OPERATIVO'}
               onInsertRow={handleOpenNew}
-              insertRowLabel="+ Insertar Persona"
+              insertRowLabel="Cargar Operario / Contratista"
               undoCount={nominaGrid.undoStack?.length || 0}
               totalRows={filteredWorkers.length}
               entityName="operarios"
