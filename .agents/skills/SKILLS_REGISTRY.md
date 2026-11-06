@@ -3,9 +3,9 @@
 > **Propósito**: Catálogo máquina-legible de todas las Skills, sus divisiones, 
 > estados y dependencias. Análogo a `divisions.json` de agency-agents.
 > 
-> **Última actualización**: 2026-11-05
+> **Última actualización**: 2026-11-06
 > 
-> **Versión schema**: 1.0
+> **Versión schema**: 1.1
 
 ## Vocabularios Controlados
 
@@ -47,6 +47,11 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | SKL-009 | ingenieria-codigo-senior | architecture | transversal | active | SKL-007 | 10 principios de ingeniería senior (foco P1 separación en 4 capas y P6 diseño defensivo) y matriz de auditoría técnica | transversal/ingenieria-codigo-senior/SKILL.md |
 | SKL-010 | chasis-docker-multiapp | architecture | transversal | active | SKL-009 | Chasis Docker autohospedable (Vite/Nginx + Node/Express + Postgres) con aislamiento multi-app por APP_SLUG, proxy /api y env fail-fast | transversal/chasis-docker-multiapp/SKILL.md |
 | SKL-011 | motor-backend-capas | architecture | transversal | active | SKL-009\|SKL-010 | Motor lógico Backend en 4 capas (Routes, Controllers, Services, Repositories/Models), serializador toDTO y errorHandler centralizado | transversal/motor-backend-capas/SKILL.md |
+| SKL-012 | ergonomia-flujo-visual-senior | architecture | transversal | active | SKL-007 | Marco universal de ergonomía cognitiva y física para interfaces. Cascada Top-Down, compresión de clics, accesos rápidos y Ley de Fitts | transversal/ergonomia-flujo-visual-senior/SKILL.md |
+| SKL-013 | data-grid-poweruser | architecture | transversal | active | SKL-012 | Gobernanza para interfaces de alta densidad tabular y carga intensiva. Navegación espacial por teclado, mutación in-situ y operaciones matriciales | transversal/data-grid-poweruser/SKILL.md |
+| SKL-014 | schema-gatekeeper | governance | transversal | active | ninguno | Candado cognitivo contra asunción de memoria. Inspección empírica previa obligatoria de contratos, tablas, columnas y módulos | transversal/schema-gatekeeper/SKILL.md |
+| SKL-015 | defensive-erp-contracts | architecture | transversal | active | SKL-009\|SKL-014 | Diseño defensivo en mutaciones y persistencia. Cero errores silenciosos, atomicidad, sanitización escalar y contrato indivisible con auditoría | transversal/defensive-erp-contracts/SKILL.md |
+| SKL-016 | context-aware-skill-router | governance | transversal | active | ninguno | Meta-protocolo de enrutamiento contextual. Activación selectiva de skills según globs y naturaleza de la tarea para economizar atención | transversal/context-aware-skill-router/SKILL.md |
 
 ---
 
@@ -67,6 +72,11 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | SKL-009 | ingenieria-codigo-senior | active | Arquitectura en 4 capas, diseño defensivo y auditoría senior |
 | SKL-010 | chasis-docker-multiapp | active | Infraestructura Docker multi-app aislada por APP_SLUG |
 | SKL-011 | motor-backend-capas | active | Motor lógico Backend REST en 4 capas con manejo central de errores |
+| SKL-012 | ergonomia-flujo-visual-senior | active | Ergonomía cognitiva, flujo mental Top-Down y compresión dimensional |
+| SKL-013 | data-grid-poweruser | active | Grilla industrial editable, navegación 100% teclado y operaciones 2D |
+| SKL-014 | schema-gatekeeper | active | Freno de inspección empírica y cero asunciones de memoria |
+| SKL-015 | defensive-erp-contracts | active | Tolerancia cero a errores silenciosos, atomicidad y sanitización |
+| SKL-016 | context-aware-skill-router | active | Enrutador contextual por globs y economía de atención |
 
 ### M1-activos
 

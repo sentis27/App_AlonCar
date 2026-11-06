@@ -1,5 +1,5 @@
 ---
-version: 1.2
+version: 1.3
 last_updated_by: antigravity
 last_updated: 2026-11-06
 source_of_truth: GEMINI.md
@@ -32,12 +32,15 @@ Como IA asistente del proyecto AlonCar ERP, este documento es tu **CENTRO DE DEC
 
 ## 2. CENTRO DE DECISIONES: ENRUTADOR DE ENTRADA Y CANDADO MECÁNICO
 
-Antes de ejecutar cualquier herramienta en un turno, ubica el pedido en esta matriz y sigue su flujo obligatorio:
+Antes de ejecutar cualquier herramienta en un turno, el meta-protocolo **`SKL-016` (`context-aware-skill-router`)** clasifica el pedido en esta matriz y activa las skills correspondientes:
 
 | Tipo de pedido del usuario | Skill obligatoria que gobierna | Primer Tool Call permitido | Condición para dar por terminado |
 | :--- | :--- | :--- | :--- |
+| **Cualquier cambio a datos, tablas, columnas o entidades** | **`SKL-014`** (`schema-gatekeeper`) | `read_file` / `run_command` (Fase 1) | Cero asunciones de memoria; citar esquema verificado en la respuesta. |
 | **2+ tareas o cambio que toca varias capas** | `SKL-008` (`planificacion-por-etapas`) | `read_file` / `run_command` (Inspección) | Presentar tabla de etapas (*Fast-Track* si es misma pantalla/capa; *Freno por Riesgo* si cruza capas). |
-| **Crear, editar o conectar código / datos** | `SKL-009` (`ingenieria-codigo-senior`) + `SKL-007` (`control-calidad-entrega`) | `run_command` / `read_file` (Ver Fase 1 abajo; **PROHIBIDO** empezar con `write_file`/`edit_file`) | Test de runtime real con datos `> 0` + `npm run build` + Reporte de Calidad y Trazabilidad. |
+| **Diseño o refactorización de UI, formularios y flujos** | **`SKL-012`** (`ergonomia-flujo-visual-senior`) | `read_file` (Inspección visual) | Cumplimiento del Test del Vector Único, Top-Down estricto y compresión dimensional. |
+| **Planillas editables, grillas y tablas operativas** | **`SKL-013`** (`data-grid-poweruser`) | `read_file` (Inspección de grid) | Navegación direccional por teclado, mutación in-situ y uso del motor canónico. |
+| **Crear, editar o conectar código / datos / persistencia** | `SKL-009` (`ingenieria-codigo-senior`) + **`SKL-015`** (`defensive-erp-contracts`) + `SKL-007` | `run_command` / `read_file` (**PROHIBIDO** empezar con `write_file`/`edit_file`) | Test de runtime real con datos `> 0` + `npm run build` + Reporte de Calidad y Trazabilidad. |
 | **Auditar, revisar u ordenar un módulo** | `SKL-009` (Modo Auditoría) | `read_file` / medición real del código | Entregar matriz de Diagnóstico Técnico Senior ordenada por severidad (sin tocar código hasta autorización). |
 | **Nuevo módulo o pantalla desde cero** | Sección 4 de este documento + `SKL-009` | **NINGUNO** si no tiene clasificación | Detenerse y preguntar si es `CARGA_EDICION` (Gallo) o `METRICAS_ANALISIS` (Gallina). |
 | **Infraestructura Docker / Backend Node+PG** | `SKL-010` (`chasis-docker-multiapp`) + `SKL-011` (`motor-backend-capas`) | `read_file` de las skills `SKL-010` y `SKL-011` | Aislamiento por `${APP_SLUG}`, 4 capas estrictas (`Route → Controller → Service → Repo`) y `env.js` fail-fast. |
@@ -172,6 +175,11 @@ Al finalizar cada sesión o cuando el usuario pida actualizar repositorios:
 - `.agents/skills/transversal/ingenieria-codigo-senior/` — **SKL-009**: 10 principios senior (foco P1 a P6) y modo auditoría.
 - `.agents/skills/transversal/chasis-docker-multiapp/` — **SKL-010**: aislamiento Docker multi-app por `APP_SLUG`, proxy `/api` y env fail-fast.
 - `.agents/skills/transversal/motor-backend-capas/` — **SKL-011**: backend Node/Express + PostgreSQL en 4 capas.
+- `.agents/skills/transversal/ergonomia-flujo-visual-senior/` — **SKL-012**: marco universal de ergonomía cognitiva, flujo mental Top-Down, compresión dimensional y accesos rápidos.
+- `.agents/skills/transversal/data-grid-poweruser/` — **SKL-013**: grilla industrial editable, navegación 100% teclado, mutación in-situ y operaciones matriciales 2D.
+- `.agents/skills/transversal/schema-gatekeeper/` — **SKL-014**: freno de inspección empírica y cero asunciones de memoria de contratos y tablas.
+- `.agents/skills/transversal/defensive-erp-contracts/` — **SKL-015**: diseño defensivo, tolerancia cero a errores silenciosos, atomicidad y sanitización escalar.
+- `.agents/skills/transversal/context-aware-skill-router/` — **SKL-016**: meta-protocolo de enrutamiento contextual por globs y economía de atención.
 
 ### 7.2 Agentes especializados
 - `automation-governance-architect` — Activa automáticamente ante modificaciones a workflows en producción o a pedido expreso.
@@ -195,12 +203,12 @@ Al finalizar cada sesión o cuando el usuario pida actualizar repositorios:
 
 ### Al inicio de la respuesta:
 > **[Gobernanza AlonCar]** Arquetipo: `CARGA_EDICION` | `METRICAS_ANALISIS`  
-> **Skills y Estándares activos:** `[SKL-00X, Estándar 0X...]`
+> **Skills y Estándares activos:** `[SKL-016 Router ➔ SKL-00X, Estándar 0X...]`
 
 ### Al cierre de toda entrega con cambios (`SKL-007`):
 ```markdown
 ### 🔍 Trazabilidad de Cumplimiento Mecánico
-1. **Inspección previa (Fase 1):** Columnas / archivos reales verificados: `[...]`
+1. **Inspección previa (Fase 1 / SKL-014):** Columnas / archivos reales verificados: `[...]`
 2. **Fuente de verdad compartida (Fase 2):** Módulo en `lib/` o componente reutilizado: `[...]`
 3. **Verificación en caliente (Fase 3):** Resultado de ejecución real: `[N registros / Error: null / Build OK]`
 
@@ -208,7 +216,7 @@ Al finalizar cada sesión o cuando el usuario pida actualizar repositorios:
 **Estado general:** CUMPLIDO | PARCIAL | BLOQUEADO
 
 | ID | Requisito (intención) | Estado | Evidencia comprobable |
-| :--- | :--- | :---: | :--- |
+| :--- | :--- | :--- | :--- |
 | R1 | ... | CUMPLIDO | `archivo:línea` + salida de prueba real |
 
 **Barrido de clase:** ...
