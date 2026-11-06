@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase } from './supabase.js'
 
 /**
  * Diccionario Canónico de Módulos y Submódulos Auditables (Padrón 2.A)
@@ -217,6 +217,47 @@ export async function logRowAction({
 }
 
 /**
+ * Registra un evento de auditoría genérico o transaccional (SKL-015)
+ */
+export async function logEvent({
+  module = 'rate_cards',
+  action = 'UPDATE_RATE_CARD',
+  user = null,
+  target = '',
+  details = {}
+}) {
+  try {
+    const catalogEntry = AUDIT_ENTITY_CATALOG[module] || {}
+    const resolvedSheet = catalogEntry.label || module
+    const resolvedRoute = catalogEntry.route || ''
+    const performedBy = await resolveCurrentUserLabel(user)
+
+    const payload = {
+      action: String(action),
+      entity_type: String(module),
+      entity_id: String(target || 'SYSTEM'),
+      entity_name: String(target || module),
+      details: {
+        sheet_name: resolvedSheet,
+        module_route: resolvedRoute,
+        ...(details || {})
+      },
+      performed_by: performedBy
+    }
+
+    const { data, error } = await supabase.from('audit_logs').insert(payload).select().single()
+    if (error) {
+      console.error('[auditService.logEvent] Error:', error.message)
+      return null
+    }
+    return data
+  } catch (err) {
+    console.error('[auditService.logEvent] Excepción:', err)
+    return null
+  }
+}
+
+/**
  * Registra un pegado matricial 2D o actualización en lote
  */
 export async function logBatchPaste({
@@ -397,6 +438,7 @@ export const auditService = {
   logCellChange,
   logRowAction,
   logBatchPaste,
+  logEvent,
   getHistoryForEntity,
   getGlobalAuditLedger,
   computeAuditMetrics
