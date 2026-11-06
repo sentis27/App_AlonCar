@@ -52,6 +52,7 @@ import GridRibbon from '../components/GridRibbon'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import GridContextMenu from '../components/GridContextMenu'
 import { matchesUniversalSearch } from '../lib/searchEngine'
+import { auditService } from '../lib/auditService'
 
 // ==============================================================================
 // COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
@@ -1517,6 +1518,15 @@ export default function Personal() {
           }
           return w
         }))
+        await auditService.logRowAction({
+          action: 'MODAL_SAVE',
+          entityType: 'workers',
+          entityId: editingWorker.id,
+          entityName: payload.name,
+          changes: payload,
+          sheetName: 'Personal · Nómina de Operarios',
+          moduleRoute: '/personal'
+        })
         setStatusMessage({ type: 'success', text: `Registro de ${payload.name} (${finalGroup}) actualizado con éxito.` })
         setEditingWorker(null)
       } else {
@@ -1529,6 +1539,15 @@ export default function Personal() {
 
         const newRecord = data && data[0] ? data[0] : { ...payload, id: Date.now().toString() }
         setWorkers(prev => [newRecord, ...prev])
+        await auditService.logRowAction({
+          action: 'ROW_INSERT',
+          entityType: 'workers',
+          entityId: newRecord.id,
+          entityName: payload.name,
+          rowData: payload,
+          sheetName: 'Personal · Nómina de Operarios',
+          moduleRoute: '/personal'
+        })
         setStatusMessage({ type: 'success', text: `Operario ${payload.name} agregado al Grupo ${finalGroup}.` })
         setIsNewModalOpen(false)
       }
@@ -1554,6 +1573,17 @@ export default function Personal() {
           .eq('id', worker.id)
 
         if (error) throw error
+        await auditService.logCellChange({
+          entityType: 'workers',
+          entityId: worker.id,
+          entityName: worker.name,
+          field: 'status',
+          fieldLabel: 'Estado Operativo',
+          oldValue: worker.status,
+          newValue: newStatus,
+          sheetName: 'Personal · Nómina de Operarios',
+          moduleRoute: '/personal'
+        })
       }
     } catch (err) {
       console.error(err)
@@ -1596,6 +1626,17 @@ export default function Personal() {
             .eq('id', worker.id)
           if (error) throw error
         }
+        await auditService.logCellChange({
+          entityType: 'workers',
+          entityId: worker.id,
+          entityName: worker.name,
+          field,
+          fieldLabel: `Permiso (${permType})`,
+          oldValue: currentVal ? 'HABILITADO' : 'BLOQUEADO',
+          newValue: newVal ? 'HABILITADO' : 'BLOQUEADO',
+          sheetName: 'Personal · Nómina de Operarios',
+          moduleRoute: '/personal'
+        })
       }
     } catch (err) {
       console.error(err)
@@ -1609,6 +1650,15 @@ export default function Personal() {
       setWorkers(prev => prev.filter(w => w.id !== worker.id))
       const { error } = await supabase.from('workers').delete().eq('id', worker.id)
       if (error) throw error
+      await auditService.logRowAction({
+        action: 'ROW_DELETE',
+        entityType: 'workers',
+        entityId: worker.id,
+        entityName: worker.name,
+        rowData: worker,
+        sheetName: 'Personal · Nómina de Operarios',
+        moduleRoute: '/personal'
+      })
       setStatusMessage({ type: 'info', text: `Se eliminó a ${worker.name}.` })
       setTimeout(() => setStatusMessage(null), 3000)
     } catch (err) {
@@ -1683,8 +1733,14 @@ export default function Personal() {
   ], [])
 
   const applyWorkerSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
+    if (auditService.isInvalidEventOrObjectScalar(rawValue)) {
+      console.warn('[Personal] Bloqueado intento de guardar objeto inválido en operario:', rawValue)
+      return null
+    }
     const targetWorker = workers.find(w => w.id === rowId)
     if (!targetWorker) return null
+
+    const oldVal = targetWorker[colKey]
 
     let dbPatch = {}
     if (colKey === 'hourly_rate_ars') {
@@ -1699,7 +1755,7 @@ export default function Personal() {
       dbPatch = { [colKey]: String(rawValue || '').trim().toUpperCase() }
     } else if (colKey === 'name') {
       const trimmed = String(rawValue || '').trim()
-      if (!trimmed) return null
+      if (!trimmed || trimmed.toUpperCase() === '[OBJECT OBJECT]') return null
       dbPatch = { name: trimmed }
     } else {
       dbPatch = { [colKey]: rawValue }
@@ -1713,9 +1769,22 @@ export default function Personal() {
         .update(dbPatch)
         .eq('id', rowId)
       if (error) throw error
+
+      const colDef = nominaColumns.find(c => c.key === colKey)
+      await auditService.logCellChange({
+        entityType: 'workers',
+        entityId: rowId,
+        entityName: dbPatch.name || targetWorker.name || rowId,
+        field: colKey,
+        fieldLabel: colDef?.label || colKey,
+        oldValue: oldVal,
+        newValue: dbPatch[colKey],
+        sheetName: 'Personal · Nómina de Operarios',
+        moduleRoute: '/personal'
+      })
     }
     return dbPatch[colKey]
-  }, [workers, dollarRate])
+  }, [workers, dollarRate, nominaColumns])
 
   const handleNominaBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, revertMap, isRevert }) => {
     try {
@@ -1756,7 +1825,8 @@ export default function Personal() {
   const commitInlineWorkerEdit = async (overrideValue = undefined) => {
     if (!inlineCellEdit) return
     const { rowId, colKey } = inlineCellEdit
-    const nextVal = overrideValue !== undefined ? overrideValue : inlineCellEdit.value
+    const hasValidOverride = overrideValue !== undefined && !auditService.isInvalidEventOrObjectScalar(overrideValue)
+    const nextVal = hasValidOverride ? overrideValue : inlineCellEdit.value
     const worker = workers.find(w => w.id === rowId)
     setInlineCellEdit(null)
     if (!worker) return
@@ -1801,6 +1871,7 @@ export default function Personal() {
   }, [])
 
   const applyRateCardSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
+    if (auditService.isInvalidEventOrObjectScalar(rawValue)) return null
     const targetRc = rateCards.find(r => r.id === rowId)
     if (!targetRc) return null
     if (targetRc.is_locked) {
@@ -1811,6 +1882,7 @@ export default function Personal() {
       return null
     }
 
+    const oldVal = targetRc[colKey]
     const ars = Math.max(0, parseFloat(rawValue) || 0)
     const dRate = parseFloat(targetRc.dollar_rate) || dollarRate || 1500
     const usd = dRate > 0 ? Number((ars / dRate).toFixed(2)) : 0
@@ -1826,6 +1898,18 @@ export default function Personal() {
       .update(dbPatch)
       .eq('id', rowId)
     if (error) throw error
+
+    await auditService.logCellChange({
+      entityType: 'rate_cards',
+      entityId: rowId,
+      entityName: `${targetRc.entity_name} (${targetRc.period})`,
+      field: colKey,
+      fieldLabel: colKey === 'rate_oficial_ars' ? 'Oficial AR$' : 'Ayudante AR$',
+      oldValue: oldVal,
+      newValue: ars,
+      sheetName: 'Personal · Tarifario Quincenal',
+      moduleRoute: '/personal'
+    })
 
     // Si pertenece a la quincena activa, sincronizar automáticamente con el padrón de operarios
     if (targetRc.period === currentPeriodKey && ars > 0) {
@@ -3413,7 +3497,7 @@ export default function Personal() {
                                 autoFocus
                                 value={inlineRateEdit.value}
                                 onChange={(e) => setInlineRateEdit(prev => ({ ...prev, value: e.target.value }))}
-                                onBlur={commitInlineRateEdit}
+                                onBlur={() => commitInlineRateEdit()}
                                 onKeyDown={(e) => {
                                   e.stopPropagation()
                                   if (e.key === 'Enter') commitInlineRateEdit()
@@ -3471,7 +3555,7 @@ export default function Personal() {
                                 autoFocus
                                 value={inlineRateEdit.value}
                                 onChange={(e) => setInlineRateEdit(prev => ({ ...prev, value: e.target.value }))}
-                                onBlur={commitInlineRateEdit}
+                                onBlur={() => commitInlineRateEdit()}
                                 onKeyDown={(e) => {
                                   e.stopPropagation()
                                   if (e.key === 'Enter') commitInlineRateEdit()
@@ -4256,7 +4340,7 @@ export default function Personal() {
                                 autoFocus
                                 value={inlineCellEdit.value}
                                 onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
-                                onBlur={commitInlineWorkerEdit}
+                                onBlur={() => commitInlineWorkerEdit()}
                                 onKeyDown={(e) => {
                                   e.stopPropagation()
                                   if (e.key === 'Enter') commitInlineWorkerEdit()
@@ -4310,7 +4394,7 @@ export default function Personal() {
                                     const nextVal = e.target.value
                                     setInlineCellEdit(prev => ({ ...prev, value: nextVal }))
                                   }}
-                                  onBlur={commitInlineWorkerEdit}
+                                  onBlur={() => commitInlineWorkerEdit()}
                                   onKeyDown={(e) => {
                                     e.stopPropagation()
                                     if (e.key === 'Enter') commitInlineWorkerEdit()
@@ -4329,7 +4413,7 @@ export default function Personal() {
                                   autoFocus
                                   value={inlineCellEdit.value}
                                   onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
-                                  onBlur={commitInlineWorkerEdit}
+                                  onBlur={() => commitInlineWorkerEdit()}
                                   onKeyDown={(e) => {
                                     e.stopPropagation()
                                     if (e.key === 'Enter') commitInlineWorkerEdit()
@@ -4444,7 +4528,7 @@ export default function Personal() {
                                 autoFocus
                                 value={inlineCellEdit.value}
                                 onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
-                                onBlur={commitInlineWorkerEdit}
+                                onBlur={() => commitInlineWorkerEdit()}
                                 onKeyDown={(e) => {
                                   e.stopPropagation()
                                   if (e.key === 'Enter') commitInlineWorkerEdit()
@@ -4490,7 +4574,7 @@ export default function Personal() {
                                 autoFocus
                                 value={inlineCellEdit.value}
                                 onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
-                                onBlur={commitInlineWorkerEdit}
+                                onBlur={() => commitInlineWorkerEdit()}
                                 onKeyDown={(e) => {
                                   e.stopPropagation()
                                   if (e.key === 'Enter') commitInlineWorkerEdit()
@@ -4529,7 +4613,7 @@ export default function Personal() {
                                 autoFocus
                                 value={inlineCellEdit.value}
                                 onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
-                                onBlur={commitInlineWorkerEdit}
+                                onBlur={() => commitInlineWorkerEdit()}
                                 onKeyDown={(e) => {
                                   e.stopPropagation()
                                   if (e.key === 'Enter') commitInlineWorkerEdit()

@@ -46,13 +46,15 @@ import {
   Brain,
   ShoppingCart,
   MessageSquare,
-  Wrench
+  Wrench,
+  History
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import AiGovernancePanel from '../components/AiGovernancePanel'
 import ComprasSettingsPanel from '../components/ComprasSettingsPanel'
 import TradesManagementPanel from '../components/TradesManagementPanel'
+import AdminAuditLedger from '../components/AdminAuditLedger'
 
 // ==============================================================================
 // COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
@@ -1295,11 +1297,25 @@ export default function AdminDashboard() {
           <Wrench className="w-4 h-4 text-amber-400" />
           <span>Gestión de Rubros & Oficios</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('auditoria')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'auditoria'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+          }`}
+        >
+          <History className="w-4 h-4 text-cyan-400" />
+          <span>📜 Libro de Auditoría & Trazabilidad</span>
+        </button>
       </div>
 
       {activeTab === 'ia' && <AiGovernancePanel />}
       {activeTab === 'compras' && <ComprasSettingsPanel />}
       {activeTab === 'rubros' && <TradesManagementPanel />}
+      {activeTab === 'auditoria' && <AdminAuditLedger />}
 
 
       {/* ========================================================================= */}

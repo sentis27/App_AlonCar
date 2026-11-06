@@ -72,49 +72,50 @@ Antes de escribir cualquier `.from('<tabla>')`, respeta sus claves primarias y n
 | **`rate_cards`** | `id` | `period`, `year`, `month`, `quincena`, `admin_center`, `entity_name`, `rate_oficial_ars`, `rate_oficial_usd`, `has_ayudante`, `rate_ayudante_ars`, `rate_ayudante_usd`, `dollar_rate` | — |
 | **`ships`** | `id` | Datos maestros de buques y estadías | — |
 | **`work_orders`** | `id` | `ship_id`, `ot_number`, `description`, `contractors`, `foreman_name`, `work_type`, `status` | — |
-| **`audit_logs`** | `id` | `action`, `entity`, `entity_id`, `details` (jsonb), `created_at` | — |
+| **`audit_logs`** | `id` (uuid) | `action`, `entity_type`, `entity_id`, `entity_name`, `details` (jsonb), `performed_by`, `created_at` | ❌ No existe `entity` ni `table_name` (usar `entity_type`). |
 
-> **Regla:** Para cualquier tabla o columna que no figure en esta tabla, es **obligatorio** correr `select('*').limit(1)` en la Fase 1 antes de escribir código.
+> **Regla Pre-Flight Anti-Memoria (Inviolable):** Queda terminantemente prohibido enumerar módulos, pestañas o tablas de memoria. Antes de responder o diseñar cambios transversales, es obligatorio leer `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` (Secciones 2.A Gallo y 2.B Gallina) e `INDICE_PLANILLAS.md`. Para cualquier tabla o columna que no figure arriba, es **obligatorio** correr `select('*').limit(1)` en la Fase 1 antes de escribir código.
 
 ---
 
 ## 4. ESTÁNDARES DE MÓDULOS ERP: CLASIFICACIÓN "GALLO O GALLINA" Y KIT CANÓNICO
 
-### 4.1 Regla de Bloqueo Absoluto para Nuevos Módulos
+### 4.1 Regla de Bloqueo Absoluto e Indexación para Nuevos Módulos, Submódulos o Herramientas
 1. **PROHIBICIÓN TOTAL DE PROGRAMAR SIN CLASIFICACIÓN:**  
-   Si el usuario solicita crear un nuevo módulo o vista sin indicar explícitamente su clasificación, la IA tiene **TERMINANTEMENTE PROHIBIDO** escribir código JSX o crear archivos.
+   Si el usuario solicita crear un nuevo módulo, submódulo o herramienta de análisis sin indicar explícitamente su clasificación, la IA tiene **TERMINANTEMENTE PROHIBIDO** escribir código JSX o crear archivos.
 2. **PREGUNTA OBLIGATORIA INMEDIATA:**  
    La IA debe detenerse de inmediato y formular la siguiente pregunta:  
-   > *"¿A qué clasificación pertenece el nuevo módulo: `CARGA_EDICION` (Gallo) o `METRICAS_ANALISIS` (Gallina)?"*
-3. **REGISTRO EN EL ÍNDICE:**  
-   Una vez declarada la clasificación por el usuario, el módulo debe registrarse en `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` y heredar **automáticamente** el kit canónico.
+   > *"¿A qué clasificación pertenece el nuevo componente: `CARGA_EDICION` (Gallo - con vínculo obligatorio a `audit_logs`) o `METRICAS_ANALISIS` (Gallina - indexado con sus tablas de origen)?"*
+3. **REGISTRO E INDEXACIÓN EN EL PADRÓN OFICIAL:**  
+   Una vez declarada la clasificación por el usuario, el módulo, submódulo o herramienta de visualización debe registrarse en `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` (Sección 2.A para Gallo o Sección 2.B para Gallina, especificando sus tablas de Supabase) para servir de referencia al usuario, al agente IA y al futuro Asistente de IA integrado en la App.
 
 ### 4.2 Arquetipo A: `CARGA_EDICION` (Transaccional / "Gallo")
-* **Definición:** Cualquier pantalla donde el usuario agregue, modifique celdas, duplique, borre o cargue registros (*Compras, Pañol, Terceros, Horas, Personal, Barcos, OTs*, etc.).
-* **Documentos obligatorios:** Consultar `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` al `06_COMPONENTES_CANONICOS_MODALES.md` y la referencia indiscutible en `app/src/pages/Compras.jsx`.
+* **Definición:** Cualquier pantalla o pestaña donde el usuario agregue, modifique celdas, duplique, borre o cargue registros (*Órdenes de Trabajo, Catálogo de Trabajos, Personal, Tarifario Quincenal, Carga de Horas, Compras, Proveedores, Pañol, Catálogo de Materiales, Gases, EPP, Barcos, Estadías, Armadores, Terceros, Talleres, Rubros Admin*).
+* **Documentos obligatorios:** Consultar `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` al `07_ESTANDAR_TRAZABILIDAD_Y_AUDITORIA.md` y la referencia indiscutible en `app/src/pages/Compras.jsx`.
 * **Prohibición de Tablas Estándar:** Queda terminantemente prohibido crear pantallas con `<table>` estándar o estilos aislados. Toda planilla debe usar obligatoriamente el hook `useSpreadsheetGrid` (`app/src/hooks/useSpreadsheetGrid.js`).
 * **Kit canónico heredado (prohibido duplicar en páginas):**
   1. `useSpreadsheetGrid.js` ➔ Motor global de hoja de cálculo: navegación direccional (`Enter`, `Shift+Enter`, `Tab`, `Shift+Tab`, flechas), selección espacial de celdas/rangos, selección canónica de filas (`selectedRowIds`, `toggleSelectRow`, `toggleSelectAll`), algoritmo "Paste Matrix" 2D con sanitización de tipos, Fill-handle (`■`), borrado (`Supr`/`Backspace`) y Deshacer/Rehacer multinivel de 50 pasos (`Ctrl+Z`/`Ctrl+Y`).
   2. `Columna 0 Canónica (#)` ➔ Ancho fijo `w-8`/`w-10`: en `thead` checkbox maestro apilado sobre `#`; en `tbody` checkbox individual + botón `#` interactivo con resaltado corporativo `bg-cyan-950/30` al seleccionarse.
   3. `GridContextMenu.jsx` ➔ Menú contextual canónico al clic derecho (`onContextMenu`) en toda celda o fila: Copiar celda/fila, Pegar (Ctrl+V), Insertar arriba/abajo, Duplicar, Limpiar (Supr) y visor modal de historial de cambios en vivo desde `audit_logs`.
-  4. `KpiRadar.jsx` ➔ **Zona 2:** Radar de tarjetas con bordes y fondos cromáticos únicos por tarjeta (nunca bordes grises inactivos) y filtro por clic. Prohibido usar la palabra "Filtrar".
-  5. `CrawlerSearchBar.jsx` + `searchEngine.js` ➔ **Zona 3:** Buscador omnicanal con atajos `Ctrl+F` y `Esc`.
-  6. `GridRibbon.jsx` ➔ **Zona 4:** Cinta con coordenadas GPS (`Navigation`), cálculos en vivo (Suma, Promedio, Recuento), botón de inserción de fila `[+ Insertar Fila en #N]` y exportación vía `exportEngine.js`.
-  7. `GridStatusBarBottom.jsx` ➔ **Zona 5:** Barra flotante con Badge de filtro activo + agregaciones dinámicas (`Σ`, `Ø`, `RECUENTO`) y acciones masivas al seleccionar filas (`selectedRowIds.size > 0`).
-  8. `ShipWorkOrderPickerModal.jsx` ➔ Modal en celda Buque/Destino/OT.
-  9. `ContractorPickerModal.jsx` ➔ Modal en celda Contratista/Persona.
+  4. `auditService.js` (`app/src/lib/auditService.js`) ➔ **Vínculo Obligatorio de Trazabilidad:** Toda edición in-situ (`logCellChange`), pegado masivo (`logBatchPaste`), alta o baja de fila (`logRowAction`) en cualquier submódulo `CARGA_EDICION` debe registrar su evento en `audit_logs` con blindaje anti-objeto (`typeof val === 'object'`).
+  5. `KpiRadar.jsx` ➔ **Zona 2:** Radar de tarjetas con bordes y fondos cromáticos únicos por tarjeta (nunca bordes grises inactivos) y filtro por clic. Prohibido usar la palabra "Filtrar".
+  6. `CrawlerSearchBar.jsx` + `searchEngine.js` ➔ **Zona 3:** Buscador omnicanal con atajos `Ctrl+F` y `Esc`.
+  7. `GridRibbon.jsx` ➔ **Zona 4:** Cinta con coordenadas GPS (`Navigation`), cálculos en vivo (Suma, Promedio, Recuento), botón de inserción de fila `[+ Insertar Fila en #N]` y exportación vía `exportEngine.js`.
+  8. `GridStatusBarBottom.jsx` ➔ **Zona 5:** Barra flotante con Badge de filtro activo + agregaciones dinámicas (`Σ`, `Ø`, `RECUENTO`) y acciones masivas al seleccionar filas (`selectedRowIds.size > 0`).
+  9. `ShipWorkOrderPickerModal.jsx` ➔ Modal en celda Buque/Destino/OT.
+  10. `ContractorPickerModal.jsx` ➔ Modal en celda Contratista/Persona.
 * **Arquitectura de 5 Zonas Cromáticas Centralizada (`index.css`):**
   - **Zona 1 (`.alon-zone-context`):** Borde cielo (`sky-400`), badge de versión, pestañas compactas a la derecha y botón de acción principal.
   - **Zona 2 (`.alon-zone-kpis`):** Borde ámbar (`amber-400`), encabezado destacado `📊 RADAR DE KPIS Y ALERTAS OPERATIVAS • Clic en cualquier tarjeta para filtrar`.
   - **Zona 3 (`.alon-zone-toolbar`):** Borde cian (`cyan-400`), buscador omnicanal y botón `[↩ Deshacer (Ctrl+Z)]`.
   - **Zona 4 (`.alon-zone-grid`):** Borde superior esmeralda (`emerald-400`), ribbon y cabecera `.alon-grid-thead` con columna 1 apilada `[ ]/#` y columnas editables marcadas con `✎`.
   - **Zona 5:** Barra flotante inferior de estado y acciones masivas.
-* **Regla de edición total:** Cada celda visible debe ser editable con doble clic (`Enter`/`F2`), con `showPicker()` en fechas/selects y tirador celeste (*Fill Handle* `■`).
+* **Regla de edición total y blindaje `onBlur`:** Cada celda visible debe ser editable con doble clic (`Enter`/`F2`), con `showPicker()` en fechas/selects y tirador celeste (*Fill Handle* `■`). Todo `onBlur` debe declararse como `onBlur={() => commitFn()}` para impedir que `FocusEvent` se guarde como `[object Object]`.
 * **Checklist de entrega:** Asegurar `Fit-to-Viewport` (cero scroll horizontal de ventana) y compilación limpia con `npm run build` y `npm run lint`.
 
-### 4.3 Arquetipo B: `METRICAS_ANALISIS` (Analítico / "Gallina")
-* **Definición:** Pantallas de visualización agregada, auditoría, comparación de obras, configuración maestra o tableros ejecutivos (*Dashboard, AdminDashboard, Comparador de Obras, Auditoría de Stock, Reconciliación*).
-* **Reglas:** Solo lectura (sin celdas editables `✎`). Cuando una pestaña administrativa gestione catálogos consumidos por planillas, debe leer y escribir sobre el módulo exportable único en `app/src/lib/`.
+### 4.3 Arquetipo B: `METRICAS_ANALISIS` (Visualización y Análisis / "Gallina")
+* **Definición:** Pantallas, pestañas o herramientas de visualización agregada, auditoría, comparación de obras o tableros ejecutivos (*Libro de Auditoría Global `AdminAuditLedger.jsx` sobre `audit_logs`, Modal Historial de Cambios `GridContextMenu.jsx`, Tablero Central `Dashboard.jsx`, Análisis de Personal vs Inflación, Sábana Quincenal de Horas, Ficha 360° de OT, Monitor de Alertas & Cumplimiento, Gobernanza IA*).
+* **Reglas:** Indexar obligatoriamente en la Sección 2.B de `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` todas las tablas de base de datos que alimentan cada visualización para mantener trazabilidad documental completa hacia el usuario y el futuro Asistente IA de la aplicación. Cuando una pestaña administrativa gestione catálogos consumidos por planillas, debe leer y escribir sobre el módulo exportable único en `app/src/lib/`.
 
 ### 4.4 Modularidad y mejoras globales
 - Para agregar una condición general a todas las planillas, modificar **exclusivamente el motor o componente canónico** (`useSpreadsheetGrid.js`, `GridRibbon.jsx`, `GridStatusBarBottom.jsx`, etc.), propagando el cambio a todas las pantallas.

@@ -36,6 +36,7 @@ import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import { matchesUniversalSearch } from '../lib/searchEngine'
+import { auditService } from '../lib/auditService'
 
 // ==============================================================================
 // COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
@@ -2124,6 +2125,17 @@ export default function WorkOrders() {
       )
     }
 
+    await auditService.logCellChange({
+      entityType: 'work_orders',
+      entityId: rowId,
+      entityName: `${targetRow.wo?.ot_number || 'OT'} · ${targetRow.description || ''}`,
+      field: colKey,
+      fieldLabel: colKey,
+      oldValue: targetRow[colKey],
+      newValue: cleanVal,
+      sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
+      moduleRoute: '/ots'
+    })
     return cleanVal
   }, [unifiedRows, isRowLockedDec011, showWoGridFeedback, foremenList])
 

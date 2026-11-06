@@ -1,4 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { auditService } from '../lib/auditService'
+
+const STORAGE_KEY_AUDIT_MAP = {
+  aloncar_grid_compras: 'purchase_orders',
+  aloncar_grid_horas: 'daily_labor_logs',
+  aloncar_panol_grid: 'inventory',
+  aloncar_grid_ships: 'ships',
+  aloncar_grid_ship_stays: 'ship_stays',
+  aloncar_grid_owners: 'owners',
+  aloncar_grid_terceros: 'third_party_services'
+}
 
 /**
  * useSpreadsheetGrid
@@ -161,7 +172,47 @@ export function useSpreadsheetGrid({
       }
       return next
     })
-  }, [maxUndoSteps, undoStorageKey, redoStorageKey])
+
+    // Registro automático en el Libro de Auditoría Global (audit_logs)
+    const mappedEntityType = STORAGE_KEY_AUDIT_MAP[storageKey]
+    if (mappedEntityType && normalizedAction) {
+      try {
+        const resolveRowName = (rId) => {
+          const r = rows.find((item) => String(getRowId(item)) === String(rId))
+          if (!r) return String(rId)
+          return (
+            r.name ||
+            r.material_name_raw ||
+            r.entity_name ||
+            r.contractor_name ||
+            r.worker_name ||
+            r.ot_number ||
+            r.description ||
+            String(rId)
+          )
+        }
+        if (normalizedAction.previousValues && normalizedAction.colKey) {
+          const entries = Object.entries(normalizedAction.previousValues)
+          const cDef = columns.find((c) => c.key === normalizedAction.colKey)
+          const fLabel = normalizedAction.colLabel || cDef?.label || normalizedAction.colKey
+          entries.forEach(([rId, oldVal]) => {
+            auditService.logCellChange({
+              entityType: mappedEntityType,
+              entityId: rId,
+              entityName: resolveRowName(rId),
+              field: normalizedAction.colKey,
+              fieldLabel: fLabel,
+              oldValue: oldVal,
+              newValue: normalizedAction.newValue,
+              changeOrigin: entries.length > 1 ? 'BATCH_PASTE' : 'INLINE_CELL'
+            })
+          })
+        }
+      } catch (auditErr) {
+        console.warn('[useSpreadsheetGrid] Error enviando log de auditoría:', auditErr)
+      }
+    }
+  }, [maxUndoSteps, undoStorageKey, redoStorageKey, storageKey, rows, getRowId, columns])
 
   // Deshacer el último cambio (Ctrl + Z)
   const undo = useCallback(async () => {

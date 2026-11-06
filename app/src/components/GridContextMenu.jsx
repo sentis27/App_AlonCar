@@ -13,9 +13,11 @@ import {
   User,
   Activity,
   AlertCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ArrowRight
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { AUDIT_ACTION_LABELS, AUDIT_ENTITY_CATALOG } from '../lib/auditService'
 
 /**
  * GridContextMenu
@@ -367,30 +369,68 @@ export default function GridContextMenu({
                         })
                       : '—'
 
+                    const actionMeta = AUDIT_ACTION_LABELS[log.action] || {
+                      label: log.action,
+                      badge: 'bg-slate-800 text-cyan-300 border-slate-700'
+                    }
+                    const detailsObj = typeof log.details === 'object' && log.details !== null ? log.details : null
+                    const hasFieldDiff = detailsObj && (detailsObj.field || detailsObj.old_value !== undefined || detailsObj.new_value !== undefined)
+                    const sheetLabel = detailsObj?.sheet_name || AUDIT_ENTITY_CATALOG[log.entity_type]?.label || log.entity_type
+
                     return (
                       <div
                         key={log.id}
-                        className="p-3 bg-slate-950/50 border border-slate-800 rounded-xl hover:border-slate-700 transition-colors space-y-1.5"
+                        className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl hover:border-slate-700 transition-colors space-y-2"
                       >
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-cyan-300 flex items-center gap-1.5 font-mono">
-                            <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                            {log.action}
-                          </span>
-                          <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
+                        <div className="flex items-center justify-between text-xs gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border font-mono ${actionMeta.badge}`}>
+                              {actionMeta.label}
+                            </span>
+                            {sheetLabel && (
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {sheetLabel}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1 shrink-0">
+                            <Clock className="w-3 h-3 text-cyan-400" />
                             {dateFormatted}
                           </span>
                         </div>
 
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                          <User className="w-3 h-3 text-slate-500" />
-                          <span>Operador:</span>
-                          <span className="text-slate-300 font-mono">{log.performed_by || 'Sistema'}</span>
+                        <div className="text-[11px] text-slate-400 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <User className="w-3 h-3 text-slate-500" />
+                            <span>Usuario:</span>
+                            <span className="text-slate-200 font-semibold font-mono">{log.performed_by || 'Sistema'}</span>
+                          </div>
+                          {log.entity_name && (
+                            <span className="text-[10px] text-slate-400 font-mono truncate max-w-[240px]">
+                              Reg: <strong className="text-slate-200">{log.entity_name}</strong>
+                            </span>
+                          )}
                         </div>
 
-                        {log.details && (
-                          <div className="mt-2 p-2 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 overflow-x-auto">
+                        {hasFieldDiff ? (
+                          <div className="mt-1.5 p-2.5 bg-slate-900/90 rounded-lg border border-slate-800 flex flex-wrap items-center gap-2 text-xs font-mono">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] font-bold">
+                              {detailsObj.field_label || detailsObj.field || 'Campo'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/50 line-through">
+                              {detailsObj.old_value !== null && detailsObj.old_value !== undefined && String(detailsObj.old_value) !== ''
+                                ? String(detailsObj.old_value)
+                                : '(vacío)'}
+                            </span>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span className="px-2 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold">
+                              {detailsObj.new_value !== null && detailsObj.new_value !== undefined && String(detailsObj.new_value) !== ''
+                                ? String(detailsObj.new_value)
+                                : '(vacío)'}
+                            </span>
+                          </div>
+                        ) : log.details ? (
+                          <div className="mt-1.5 p-2 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 overflow-x-auto">
                             {typeof log.details === 'object' ? (
                               <pre className="whitespace-pre-wrap text-[10px] text-slate-400">
                                 {JSON.stringify(log.details, null, 2)}
@@ -399,7 +439,7 @@ export default function GridContextMenu({
                               String(log.details)
                             )}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )
                   })}
