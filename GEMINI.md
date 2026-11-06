@@ -94,13 +94,15 @@ Antes de escribir cualquier `.from('<tabla>')`, respeta sus claves primarias y n
 * **Documentos obligatorios:** Consultar `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` al `06_COMPONENTES_CANONICOS_MODALES.md` y la referencia indiscutible en `app/src/pages/Compras.jsx`.
 * **Prohibición de Tablas Estándar:** Queda terminantemente prohibido crear pantallas con `<table>` estándar o estilos aislados. Toda planilla debe usar obligatoriamente el hook `useSpreadsheetGrid` (`app/src/hooks/useSpreadsheetGrid.js`).
 * **Kit canónico heredado (prohibido duplicar en páginas):**
-  1. `useSpreadsheetGrid.js` ➔ Motor global: navegación por flechas, edición `Enter`/`F2`, borrado `Supr`/`Backspace`, `Ctrl+D` (fill-handle) y Deshacer/Rehacer (`Ctrl+Z`/`Ctrl+Y`).
-  2. `KpiRadar.jsx` ➔ **Zona 2:** Radar de tarjetas con bordes y fondos cromáticos únicos por tarjeta (nunca bordes grises inactivos) y filtro por clic. Prohibido usar la palabra "Filtrar".
-  3. `CrawlerSearchBar.jsx` + `searchEngine.js` ➔ **Zona 3:** Buscador omnicanal con atajos `Ctrl+F` y `Esc`.
-  4. `GridRibbon.jsx` ➔ **Zona 4:** Cinta con coordenadas GPS (`Navigation`), cálculos en vivo (Suma, Promedio, Recuento), botón de inserción de fila `[+ Insertar Fila en #N]` y exportación vía `exportEngine.js`.
-  5. `GridStatusBarBottom.jsx` ➔ **Zona 5:** Barra flotante con Badge de filtro activo + agregaciones dinámicas (`Σ`, `Ø`, `RECUENTO`) y acciones masivas al seleccionar filas.
-  6. `ShipWorkOrderPickerModal.jsx` ➔ Modal en celda Buque/Destino/OT.
-  7. `ContractorPickerModal.jsx` ➔ Modal en celda Contratista/Persona.
+  1. `useSpreadsheetGrid.js` ➔ Motor global de hoja de cálculo: navegación direccional (`Enter`, `Shift+Enter`, `Tab`, `Shift+Tab`, flechas), selección espacial de celdas/rangos, selección canónica de filas (`selectedRowIds`, `toggleSelectRow`, `toggleSelectAll`), algoritmo "Paste Matrix" 2D con sanitización de tipos, Fill-handle (`■`), borrado (`Supr`/`Backspace`) y Deshacer/Rehacer multinivel de 50 pasos (`Ctrl+Z`/`Ctrl+Y`).
+  2. `Columna 0 Canónica (#)` ➔ Ancho fijo `w-8`/`w-10`: en `thead` checkbox maestro apilado sobre `#`; en `tbody` checkbox individual + botón `#` interactivo con resaltado corporativo `bg-cyan-950/30` al seleccionarse.
+  3. `GridContextMenu.jsx` ➔ Menú contextual canónico al clic derecho (`onContextMenu`) en toda celda o fila: Copiar celda/fila, Pegar (Ctrl+V), Insertar arriba/abajo, Duplicar, Limpiar (Supr) y visor modal de historial de cambios en vivo desde `audit_logs`.
+  4. `KpiRadar.jsx` ➔ **Zona 2:** Radar de tarjetas con bordes y fondos cromáticos únicos por tarjeta (nunca bordes grises inactivos) y filtro por clic. Prohibido usar la palabra "Filtrar".
+  5. `CrawlerSearchBar.jsx` + `searchEngine.js` ➔ **Zona 3:** Buscador omnicanal con atajos `Ctrl+F` y `Esc`.
+  6. `GridRibbon.jsx` ➔ **Zona 4:** Cinta con coordenadas GPS (`Navigation`), cálculos en vivo (Suma, Promedio, Recuento), botón de inserción de fila `[+ Insertar Fila en #N]` y exportación vía `exportEngine.js`.
+  7. `GridStatusBarBottom.jsx` ➔ **Zona 5:** Barra flotante con Badge de filtro activo + agregaciones dinámicas (`Σ`, `Ø`, `RECUENTO`) y acciones masivas al seleccionar filas (`selectedRowIds.size > 0`).
+  8. `ShipWorkOrderPickerModal.jsx` ➔ Modal en celda Buque/Destino/OT.
+  9. `ContractorPickerModal.jsx` ➔ Modal en celda Contratista/Persona.
 * **Arquitectura de 5 Zonas Cromáticas Centralizada (`index.css`):**
   - **Zona 1 (`.alon-zone-context`):** Borde cielo (`sky-400`), badge de versión, pestañas compactas a la derecha y botón de acción principal.
   - **Zona 2 (`.alon-zone-kpis`):** Borde ámbar (`amber-400`), encabezado destacado `📊 RADAR DE KPIS Y ALERTAS OPERATIVAS • Clic en cualquier tarjeta para filtrar`.

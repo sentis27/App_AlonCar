@@ -41,13 +41,16 @@ import {
   Redo2,
   Phone,
   PhoneOff,
-  Shield
+  Shield,
+  Square,
+  CheckSquare
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import GridContextMenu from '../components/GridContextMenu'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 
 // ==============================================================================
@@ -223,6 +226,7 @@ export default function Personal() {
   const [filterTableCenter, setFilterTableCenter] = useState('todos')
   const [rateTableSearch, setRateTableSearch] = useState('')
   const [rateTableScope, setRateTableScope] = useState('current') // 'current' | 'all'
+  const [contextMenuTarget, setContextMenuTarget] = useState(null)
 
   // Selector unificado de Centro Administrativo para carga
   const [rateAdminCenter, setRateAdminCenter] = useState('ASTILLERO') // 'ASTILLERO' | 'CONTRATISTA'
@@ -1617,6 +1621,48 @@ export default function Personal() {
   // -------------------------------------------------------------
   // MODO HOJA DE CÁLCULO (GOOGLE SHEETS / EXCEL): PADRÓN & TARIFARIO
   // -------------------------------------------------------------
+  const handleBatchToggleStatus = async () => {
+    const selectedIds = Array.from(nominaGrid.selectedRowIds)
+    if (selectedIds.length === 0) return
+
+    const selectedWorkers = workers.filter(w => selectedIds.includes(w.id))
+    const allActive = selectedWorkers.every(w => w.status === 'ACTIVO')
+    const targetStatus = allActive ? 'INACTIVO' : 'ACTIVO'
+
+    if (!window.confirm(`¿Cambiar estado a "${targetStatus}" para ${selectedIds.length} operario(s) seleccionado(s)?`)) return
+
+    try {
+      setWorkers(prev => prev.map(w => selectedIds.includes(w.id) ? { ...w, status: targetStatus } : w))
+      const { error } = await supabase.from('workers').update({ status: targetStatus }).in('id', selectedIds)
+      if (error) throw error
+      showGridFeedback('success', `Se actualizaron ${selectedIds.length} operario(s) a ${targetStatus}.`)
+      nominaGrid.clearSelectedRows()
+    } catch (err) {
+      console.error('Error en actualización en lote:', err)
+      showGridFeedback('error', `Error al actualizar en lote: ${err.message}`)
+      loadWorkers()
+    }
+  }
+
+  const handleBatchDeleteWorkers = async () => {
+    const selectedIds = Array.from(nominaGrid.selectedRowIds)
+    if (selectedIds.length === 0) return
+
+    if (!window.confirm(`⚠️ ¡ATENCIÓN! ¿Eliminar permanentemente ${selectedIds.length} operario(s) seleccionado(s)?`)) return
+
+    try {
+      setWorkers(prev => prev.filter(w => !selectedIds.includes(w.id)))
+      const { error } = await supabase.from('workers').delete().in('id', selectedIds)
+      if (error) throw error
+      showGridFeedback('info', `Se eliminaron ${selectedIds.length} operario(s).`)
+      nominaGrid.clearSelectedRows()
+    } catch (err) {
+      console.error('Error eliminando en lote:', err)
+      showGridFeedback('error', `Error al eliminar en lote: ${err.message}`)
+      loadWorkers()
+    }
+  }
+
   const nominaSearchInputRef = useRef(null)
   const rateSearchInputRef = useRef(null)
   const [inlineCellEdit, setInlineCellEdit] = useState(null) // { rowId, colKey, value }
@@ -3198,6 +3244,23 @@ export default function Personal() {
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                   <tr>
+                    <th className="py-2 px-1 text-center w-8 select-none">
+                      <div className="flex flex-col items-center justify-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => ratesGrid.toggleSelectAll(filteredRateCards.map(rc => rc.id))}
+                          className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                          title="Seleccionar todas las tarifas"
+                        >
+                          {ratesGrid.selectedRowIds.size > 0 && ratesGrid.selectedRowIds.size === filteredRateCards.length ? (
+                            <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
+                      </div>
+                    </th>
                     <th className="py-2.5 px-3">Quincena</th>
                     <th className="py-2.5 px-3">Categoría / Contratista</th>
                     <th className="py-2.5 px-3 text-right">Oficial AR$ ✎</th>
@@ -3212,7 +3275,7 @@ export default function Personal() {
                 <tbody className="divide-y divide-slate-800/60 font-medium">
                   {filteredRateCards.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-500">
+                      <td colSpan={10} className="py-8 text-center text-slate-500">
                         {loadingRateCards ? 'Cargando tarifas...' : 'No se encontraron tarifas registradas para el filtro seleccionado.'}
                       </td>
                     </tr>
@@ -3231,11 +3294,75 @@ export default function Personal() {
                       const ayudanteSelected = ratesGrid.isCellSelected(rowIndex, 1)
                       const ayudanteFill = ratesGrid.isCellInFillPreview(rowIndex, 1)
 
+                      const isRowSelected = ratesGrid.isRowSelected(rc.id)
+
                       return (
                         <tr
                           key={rc.id}
-                          className="hover:bg-slate-800/30 transition-colors select-none"
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setContextMenuTarget({
+                              row: rc,
+                              rowIndex,
+                              x: e.clientX,
+                              y: e.clientY,
+                              isRowHeader: false,
+                              entityType: 'rate_cards',
+                              recordId: rc.id,
+                              recordLabel: `${rc.period} · ${rc.contractor_name || rc.category}`
+                            })
+                          }}
+                          className={`group transition-colors select-none ${
+                            isRowSelected
+                              ? 'bg-cyan-950/35 hover:bg-cyan-950/45 text-cyan-200'
+                              : isLocked
+                              ? 'bg-slate-900/40 hover:bg-slate-800/40'
+                              : 'hover:bg-slate-800/40'
+                          }`}
                         >
+                          {/* Col 0: Checkbox + Número Ordinal (#) Canónico */}
+                          <td className="py-1 px-1 text-center w-8 select-none relative">
+                            <div className="flex flex-col items-center justify-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => ratesGrid.toggleSelectRow(rc.id)}
+                                className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                              >
+                                {isRowSelected ? (
+                                  <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                                ) : (
+                                  <Square className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setContextMenuTarget(
+                                    contextMenuTarget?.recordId === rc.id
+                                      ? null
+                                      : {
+                                          row: rc,
+                                          rowIndex,
+                                          x: e.clientX,
+                                          y: e.clientY,
+                                          isRowHeader: true,
+                                          entityType: 'rate_cards',
+                                          recordId: rc.id,
+                                          recordLabel: `${rc.period} · ${rc.contractor_name || rc.category}`
+                                        }
+                                  )
+                                }}
+                                className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
+                                  isRowSelected ? 'text-cyan-300' : 'text-slate-500 group-hover:text-cyan-400'
+                                }`}
+                                title={`Fila #${rowIndex + 1} • Clic para menú contextual (o clic derecho)`}
+                              >
+                                {rowIndex + 1}
+                              </button>
+                            </div>
+                          </td>
                           <td className="py-2 px-3">
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono text-xs font-bold text-slate-400">{rc.period}</span>
@@ -3411,6 +3538,15 @@ export default function Personal() {
             onClearFilters={() => { setRateTableSearch(''); setFilterTableCenter('todos'); }}
             selectionStats={ratesGrid.selectionStats}
             onClearSelection={() => ratesGrid.setSelectionRange(null)}
+            customSelection={
+              ratesGrid.selectedRowIds.size > 0
+                ? {
+                    count: ratesGrid.selectedRowIds.size,
+                    label: `${ratesGrid.selectedRowIds.size} tarifa(s) seleccionada(s)`,
+                    onClear: ratesGrid.clearSelectedRows
+                  }
+                : null
+            }
             globalAggregates={[
               { label: 'Tarifas Históricas', value: filteredRateCards.length, highlight: true },
               { label: 'Centro', value: filterTableCenter === 'todos' ? 'Todos' : filterTableCenter },
@@ -3975,7 +4111,23 @@ export default function Personal() {
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                   <tr>
-                    <th className="py-2.5 px-2 text-center w-10">#</th>
+                    <th className="py-2 px-1 text-center w-8 select-none">
+                      <div className="flex flex-col items-center justify-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => nominaGrid.toggleSelectAll(filteredWorkers.map(w => w.id))}
+                          className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                          title="Seleccionar todas las filas visibles"
+                        >
+                          {nominaGrid.selectedRowIds.size > 0 && nominaGrid.selectedRowIds.size === filteredWorkers.length ? (
+                            <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
+                      </div>
+                    </th>
                     <th className="py-2.5 px-3">Nombre y Apellido ✎</th>
                     <th className="py-2.5 px-3 text-center">Categoría ✎</th>
                     <th className="py-2.5 px-3">Rubro ✎</th>
@@ -4016,14 +4168,74 @@ export default function Personal() {
                       const isEditingCell = (colKey) =>
                         Boolean(inlineCellEdit && inlineCellEdit.rowId === w.id && inlineCellEdit.colKey === colKey)
 
+                      const isRowSelected = nominaGrid.isRowSelected(w.id)
+
                       return (
                         <tr
                           key={w.id}
-                          className={`hover:bg-slate-800/30 transition-colors select-none ${!isActivo ? 'opacity-60 bg-rose-950/5' : ''}`}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setContextMenuTarget({
+                              row: w,
+                              rowIndex,
+                              x: e.clientX,
+                              y: e.clientY,
+                              isRowHeader: false,
+                              entityType: 'workers',
+                              recordId: w.id,
+                              recordLabel: w.name
+                            })
+                          }}
+                          className={`group transition-colors select-none ${
+                            isRowSelected
+                              ? 'bg-cyan-950/35 hover:bg-cyan-950/45 text-cyan-200'
+                              : !isActivo
+                              ? 'opacity-60 bg-rose-950/5 hover:bg-slate-800/40'
+                              : 'hover:bg-slate-800/40'
+                          }`}
                         >
-                          {/* Col 0: Número Ordinal (#) */}
-                          <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-500 font-bold whitespace-nowrap">
-                            {rowIndex + 1}
+                          {/* Col 0: Checkbox + Número Ordinal (#) Canónico */}
+                          <td className="py-1 px-1 text-center w-8 select-none relative">
+                            <div className="flex flex-col items-center justify-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => nominaGrid.toggleSelectRow(w.id)}
+                                className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                              >
+                                {isRowSelected ? (
+                                  <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                                ) : (
+                                  <Square className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setContextMenuTarget(
+                                    contextMenuTarget?.recordId === w.id
+                                      ? null
+                                      : {
+                                          row: w,
+                                          rowIndex,
+                                          x: e.clientX,
+                                          y: e.clientY,
+                                          isRowHeader: true,
+                                          entityType: 'workers',
+                                          recordId: w.id,
+                                          recordLabel: w.name
+                                        }
+                                  )
+                                }}
+                                className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
+                                  isRowSelected ? 'text-cyan-300' : 'text-slate-500 group-hover:text-cyan-400'
+                                }`}
+                                title={`Fila #${rowIndex + 1} • Clic para menú contextual (o clic derecho)`}
+                              >
+                                {rowIndex + 1}
+                              </button>
+                            </div>
                           </td>
 
                           {/* Col 1: Nombre y Apellido */}
@@ -4495,6 +4707,36 @@ export default function Personal() {
             onClearFilters={clearAllFilters}
             selectionStats={nominaGrid.selectionStats}
             onClearSelection={() => nominaGrid.setSelectionRange(null)}
+            customSelection={
+              nominaGrid.selectedRowIds.size > 0
+                ? {
+                    count: nominaGrid.selectedRowIds.size,
+                    label: `${nominaGrid.selectedRowIds.size} operario(s) seleccionado(s)`,
+                    onClear: nominaGrid.clearSelectedRows
+                  }
+                : null
+            }
+            extraActions={
+              nominaGrid.selectedRowIds.size > 0 ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleBatchToggleStatus}
+                    className="px-2.5 py-1 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>Cambiar Estado (Activo/Inactivo)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBatchDeleteWorkers}
+                    className="px-2.5 py-1 rounded-lg bg-rose-950 hover:bg-rose-900 border border-rose-500/60 text-rose-300 font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Eliminar Selección</span>
+                  </button>
+                </div>
+              ) : null
+            }
             globalAggregates={[
               { label: 'Activos', value: activeCount, highlight: true },
               { label: 'Astillero', value: astilleroCount },
@@ -5222,6 +5464,47 @@ export default function Personal() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* MENÚ CONTEXTUAL CANÓNICO (CLIC DERECHO EN FILA O CELDA) */}
+      {contextMenuTarget && (
+        <GridContextMenu
+          target={contextMenuTarget}
+          onClose={() => setContextMenuTarget(null)}
+          onCopyCell={activeTab === 'nomina' ? nominaGrid.copyActiveCell : ratesGrid.copyActiveCell}
+          onCopyRow={activeTab === 'nomina' ? nominaGrid.copyRow : ratesGrid.copyRow}
+          onPaste={activeTab === 'nomina' ? nominaGrid.pasteToActiveOrRange : ratesGrid.pasteToActiveOrRange}
+          onDeleteCell={activeTab === 'nomina' ? nominaGrid.deleteActiveCellOrRange : ratesGrid.deleteActiveCellOrRange}
+          onDeleteRow={
+            activeTab === 'nomina'
+              ? (row) => handleDelete(row)
+              : null
+          }
+          onDuplicateRow={
+            activeTab === 'nomina'
+              ? (row) => {
+                  setFormData({
+                    name: `${row.name || ''} (Copia)`,
+                    category: row.category || 'OFICIAL',
+                    trade: row.trade || '',
+                    work_group: row.work_group || '',
+                    admin_center: row.admin_center || 'ASTILLERO',
+                    hourly_rate_ars: row.hourly_rate_ars || '',
+                    phone: row.phone || '',
+                    can_withdraw_materials: row.can_withdraw_materials ?? true,
+                    can_impute_hours: row.can_impute_hours ?? true,
+                    can_charge_third_party: row.can_charge_third_party ?? false,
+                    is_foreman: false
+                  })
+                  setEditingWorker(null)
+                  setIsNewModalOpen(true)
+                }
+              : null
+          }
+          entityType={contextMenuTarget.entityType || 'workers'}
+          recordId={contextMenuTarget.recordId}
+          recordLabel={contextMenuTarget.recordLabel}
+        />
       )}
     </div>
   )
