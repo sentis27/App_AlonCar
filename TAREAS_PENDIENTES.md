@@ -530,3 +530,29 @@ Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales
 - **Puntero de compatibilidad en CLAUDE.md:**
   - `CLAUDE.md` actualizado para apuntar directamente a `@GEMINI.md` garantizando retrocompatibilidad sin duplicación ni divergencia de reglas.
 - **Fecha de corte:** 2026-11-06.
+
+### ✓ HECHO — 3.9 Gobernanza y Nuevas Skills Transversales (SKL-012 a SKL-016)
+- **Arquitectura de Inyección en 3 Capas:**
+  - Definidas e indexadas en `.agents/skills/transversal/`, `.agents/skills/SKILLS_REGISTRY.md` (v1.1) y `GEMINI.md` (v1.3).
+  - Inyección global de configuración en `%USERPROFILE%\.gemini\config\skills.json`.
+- **Nuevas Skills Incorporadas:**
+  - **`SKL-012` (`ergonomia-flujo-visual-senior`):** Cascada Top-Down, compresión dimensional, Fitts, accesos rápidos y regla universal de Iconografía Auto-explicativa con Tooltips semánticos.
+  - **`SKL-013` (`data-grid-poweruser`):** Navegación direccional por teclado, mutación in-situ, selección matricial y reversibilidad con Ctrl+Z.
+  - **`SKL-014` (`schema-gatekeeper`):** Freno cognitivo pre-flight anti-memoria; verificación empírica obligatoria de tablas y columnas Supabase.
+  - **`SKL-015` (`defensive-erp-contracts`):** Tolerancia cero a fallas silenciosas, transaccionalidad atómica y auditoría obligatoria.
+  - **`SKL-016` (`context-aware-skill-router`):** Enrutador automático de skills por globs y criticidad de la tarea.
+- **Reparación y Verificación de Auditoría:**
+  - Exportado y verificado `auditService.logEvent` contra tabla `audit_logs` en Supabase con comprobación live de registro real.
+
+### ✓ HECHO — 3.10 Tarifario Quincenal — Ergonomía, Alineación y Foco Visual (Personal.jsx)
+- **Selector de Centro Independiente (Imagen 3):**
+  - Separado el contenedor común `inline-flex` en dos botones autónomos con `gap-3`: `Personal del Astillero (5 Categorías)` (borde cian) y `Contratistas` (borde ámbar).
+- **Alineación de Cotas Horizontales Nivel 2 (Imagen 1):**
+  - Searchable select de quincenas, botón `Nueva Quincena` (eliminado duplicado "+ +") y tarjeta de valor Dólar Quincenal nivelados a cota vertical exacta (`h-[42px]` y etiqueta espaciadora superior).
+- **Grilla de 5 Categorías en Fila Continua:**
+  - Actualizado layout a `grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3` permitiendo que las 5 categorías oficiales de Astillero (`Ayudante`, `Oficial`, `1/2 Oficial`, `Aprendiz`, `Oficial Black`) se desplieguen alineadas en una sola fila sin saltos.
+- **Iconografía Auto-explicativa (Imagen 2):**
+  - Incorporados tooltips claros en todos los símbolos de candado `🔒` (`title="Período cerrado: Tarifa histórica inmutable para resguardar costos pasados. No implica bloqueo al personal"`), descartando falsas interpretaciones disciplinarias sobre el personal.
+- **Enfoque de Cámara en Edición:**
+  - Botón `[ ✎ Editar ]` de la grilla histórica actualizado con desplazamiento suave (`tarifarioFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })`) y halo animado cian (`ring-2 ring-cyan-400`) para orientar de inmediato la mirada del usuario.
+- **Fecha de corte:** 2026-11-06.

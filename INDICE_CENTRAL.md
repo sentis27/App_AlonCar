@@ -68,6 +68,36 @@ Estas 6 Skills son fundacionales — se usan en cualquier contexto del proyecto:
   - Audita estado del repo al cierre de sesión
   - Asegura consistencia y trazabilidad
 
+- **control-calidad-entrega (SKL-007)** (`.agents/skills/transversal/control-calidad-entrega/SKILL.md`)
+  - Control de calidad severo antes de dar por terminada cualquier tarea; verificación empírica y tabla formal.
+
+- **planificacion-por-etapas (SKL-008)** (`.agents/skills/transversal/planificacion-por-etapas/SKILL.md`)
+  - Análisis por capas, modo Fast-Track y freno por riesgo en tareas multiturno.
+
+- **ingenieria-codigo-senior (SKL-009)** (`.agents/skills/transversal/ingenieria-codigo-senior/SKILL.md`)
+  - Principios senior de código, diseño defensivo y no proliferación de monolitos.
+
+- **chasis-docker-multiapp (SKL-010)** (`.agents/skills/transversal/chasis-docker-multiapp/SKILL.md`)
+  - Aislamiento multi-app en Docker por APP_SLUG y proxy reverso.
+
+- **motor-backend-capas (SKL-011)** (`.agents/skills/transversal/motor-backend-capas/SKILL.md`)
+  - Arquitectura backend en 4 capas estrictas (Route -> Controller -> Service -> Repo).
+
+- **ergonomia-flujo-visual-senior (SKL-012)** (`.agents/skills/transversal/ergonomia-flujo-visual-senior/SKILL.md`)
+  - Ergonomía cognitiva, flujo Top-Down, compresión dimensional e iconografía auto-explicativa con tooltips.
+
+- **data-grid-poweruser (SKL-013)** (`.agents/skills/transversal/data-grid-poweruser/SKILL.md`)
+  - Grillas interactivas estilo Excel, navegación direccional 100% teclado, mutación in-situ y matriz 2D.
+
+- **schema-gatekeeper (SKL-014)** (`.agents/skills/transversal/schema-gatekeeper/SKILL.md`)
+  - Candado cognitivo anti-memoria; freno de inspección empírica de esquema de base de datos antes de codificar.
+
+- **defensive-erp-contracts (SKL-015)** (`.agents/skills/transversal/defensive-erp-contracts/SKILL.md`)
+  - Tolerancia cero a errores silenciosos, transaccionalidad atómica y auditoría obligatoria.
+
+- **context-aware-skill-router (SKL-016)** (`.agents/skills/transversal/context-aware-skill-router/SKILL.md`)
+  - Meta-protocolo de enrutamiento selectivo de skills por globs de archivos y criticidad funcional.
+
 ### Skills por Módulo ERP
 
 La estructura modular permite crear Skills especializadas para cada pilar del ERP:

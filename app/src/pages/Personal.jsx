@@ -262,6 +262,8 @@ export default function Personal() {
   const [newPeriodCopyLast, setNewPeriodCopyLast] = useState(true)
   const [creatingNewPeriod, setCreatingNewPeriod] = useState(false)
   const periodDropdownRef = useRef(null)
+  const tarifarioFormRef = useRef(null)
+  const [isTargetFocusGlow, setIsTargetFocusGlow] = useState(false)
 
   // Manejo de clic exterior para cerrar el dropdown con filtro de quincenas
   useEffect(() => {
@@ -446,7 +448,11 @@ export default function Personal() {
       type: 'info',
       text: `Editando valores de ${rc.entity_name} para la quincena ${rc.period}.`
     })
-    window.scrollTo({ top: 120, behavior: 'smooth' })
+    if (tarifarioFormRef.current) {
+      tarifarioFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setIsTargetFocusGlow(true)
+      setTimeout(() => setIsTargetFocusGlow(false), 2200)
+    }
   }
 
   // Cargar tarifario de la quincena seleccionada o historial completo
@@ -3030,7 +3036,14 @@ export default function Personal() {
           {/* ========================================================================= */}
           {/* PANEL UNIFICADO CASCADA: SUJETO DE COSTO ──► PERÍODO & ACCESO RÁPIDO ──► TARIFAS */}
           {/* ========================================================================= */}
-          <div className="alon-zone-entry rounded-2xl p-5 md:p-6 shadow-xl space-y-5">
+          <div 
+            ref={tarifarioFormRef}
+            className={`alon-zone-entry rounded-2xl p-5 md:p-6 shadow-xl space-y-5 transition-all duration-500 ${
+              isTargetFocusGlow 
+                ? 'ring-2 ring-cyan-400 shadow-2xl shadow-cyan-500/25 bg-slate-900/90' 
+                : ''
+            }`}
+          >
             {/* ------------------------------------------------------------- */}
             {/* NIVEL 1: SUJETO DE COSTO & CENTRO ADMINISTRATIVO (CASCADA)   */}
             {/* ------------------------------------------------------------- */}

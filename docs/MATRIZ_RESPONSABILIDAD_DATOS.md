@@ -1,6 +1,6 @@
 ---
-version: 1.2
-last_updated: 2026-10-28
+version: 1.3
+last_updated: 2026-11-06
 status: DOCUMENTO_VIVO_ACTIVO
 evolution_api_status: CONECTADO_LISTO
 ---
@@ -319,3 +319,35 @@ Al seleccionar cualquier material del rubro `GASES` en el formulario de retiro d
 ### 6.3. Dashboard del Pañolero (DETALLE DE TUBOS DIGITAL)
 - **Panel Superior de Reposición:** Tarjetas en tiempo real por proveedor activo (`Air Liquide: X vacíos`, `Praxair Linde: Y vacíos`, `Ferremat: Z vacíos`) con botón `[ Pedir Reposición (N) ]` para solicitar canje sin tener que salir al patio a inspeccionar.
 - **Matriz de Saldos por Contratista:** Visualización tipo Sheets con Sticky Headers (`sticky top-0 z-20 bg-slate-950`), selector de filas a tu antojo y barra inferior reactiva de totales, con apertura de bitácora histórica por contratista en 1 clic.
+
+---
+
+## 7. Módulo de Personal y Tarifario Quincenal (`rate_cards` y `workers`)
+
+### 7.1. Regla P-01: Escala Salarial Sindical Quincenal del Astillero
+* **Código:** `REQ_TARIFARIO_ESCALA_ASTILLERO`
+* **Módulo:** `personal`
+* **Campo Clave:** `rate_cards.rate_oficial_ars` (5 categorías: `AYUDANTE`, `OFICIAL`, `1/2 OFICIAL`, `APRENDIZ`, `OFICIAL BLACK`)
+* **Trigger:** Inicio de nueva quincena operativa (`1Q` o `2Q` del mes en curso) sin tarifas sindicales de Astillero aprobadas.
+* **Rol Responsable:** `LIQUIDACION_SUELDOS`
+* **Persona Responsable:** María José (holder de Liquidación de Sueldos y RRHH en `organization_roles`).
+* **Parámetros de Alerta:**
+  * Horario: `09:00 hs` | Frecuencia: `CADA_48HS` | Límite: `3 intentos` antes de escalar a Dirección.
+
+### 7.2. Regla P-02: Negociación y Carga de Tarifas de Contratistas
+* **Código:** `REQ_TARIFARIO_CONTRATISTAS`
+* **Módulo:** `personal`
+* **Campo Clave:** `rate_cards.rate_oficial_ars`, `rate_cards.rate_ayudante_ars`
+* **Trigger:** Alta de un nuevo contratista en el padrón o renovación quincenal de tarifario de contratistas sin valor por hora acordado.
+* **Rol Responsable:** `DIRECCION_OPERACIONES` (Negociación: Hugo Obregozo) / `LIQUIDACION_SUELDOS` (Carga operativa: María José).
+* **Parámetros de Alerta:**
+  * Horario: `10:00 hs` | Frecuencia: `SEMANAL` | Límite: `2 intentos`.
+
+### 7.3. Regla P-03: Cotización Oficial del Dólar Quincenal
+* **Código:** `REQ_COTIZACION_DOLAR_QUINCENAL`
+* **Módulo:** `personal`
+* **Campo Clave:** `rate_cards.dollar_rate`
+* **Trigger:** Creación de nueva quincena sin valor de cotización ARS/USD fijado por Administración.
+* **Rol Responsable:** `ADMINISTRACION` / `FINANZAS`
+* **Parámetros de Alerta:**
+  * Horario: `08:30 hs` | Frecuencia: `DIARIO` | Límite: `2 intentos`.
