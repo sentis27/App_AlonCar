@@ -37,6 +37,7 @@ import {
   BarChart3,
   SlidersHorizontal,
   ChevronRight,
+  ChevronDown,
   Undo2,
   Redo2,
   Phone,
@@ -249,6 +250,30 @@ export default function Personal() {
   const [contractorAyudanteArs, setContractorAyudanteArs] = useState(13500)
   const [contractorAyudanteUsd, setContractorAyudanteUsd] = useState(9.00)
 
+  // Estados del selector unificado y buscador de quincenas en cascada
+  const [allRateCardRecords, setAllRateCardRecords] = useState([])
+  const [periodSearchInput, setPeriodSearchInput] = useState('')
+  const [isPeriodSelectOpen, setIsPeriodSelectOpen] = useState(false)
+  const [isNewPeriodModalOpen, setIsNewPeriodModalOpen] = useState(false)
+  const [newPeriodYear, setNewPeriodYear] = useState(2026)
+  const [newPeriodMonth, setNewPeriodMonth] = useState(11)
+  const [newPeriodQuincena, setNewPeriodQuincena] = useState(2)
+  const [newPeriodDollarRate, setNewPeriodDollarRate] = useState(1500)
+  const [newPeriodCopyLast, setNewPeriodCopyLast] = useState(true)
+  const [creatingNewPeriod, setCreatingNewPeriod] = useState(false)
+  const periodDropdownRef = useRef(null)
+
+  // Manejo de clic exterior para cerrar el dropdown con filtro de quincenas
+  useEffect(() => {
+    function handleClickOutsidePeriodSelect(event) {
+      if (periodDropdownRef.current && !periodDropdownRef.current.contains(event.target)) {
+        setIsPeriodSelectOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutsidePeriodSelect)
+    return () => document.removeEventListener('mousedown', handleClickOutsidePeriodSelect)
+  }, [])
+
   // -------------------------------------------------------------
   // ESTADOS DEL DASHBOARD DE ANÁLISIS DE VARIACIÓN & EVOLUCIÓN
   // -------------------------------------------------------------
@@ -353,14 +378,21 @@ export default function Personal() {
     try {
       const { data, error } = await supabase
         .from('rate_cards')
-        .select('period, year, month, quincena, dollar_rate')
+        .select('*')
 
       if (error) throw error
       if (data) {
+        setAllRateCardRecords(data)
         const map = new Map()
         data.forEach(d => {
           if (!map.has(d.period)) {
-            map.set(d.period, d)
+            map.set(d.period, {
+              period: d.period,
+              year: d.year,
+              month: d.month,
+              quincena: d.quincena,
+              dollar_rate: d.dollar_rate
+            })
           }
         })
         const unique = Array.from(map.values())
@@ -507,6 +539,207 @@ export default function Personal() {
     })
   }, [allRecordedPeriods])
 
+  // Mapeo detallado de tarifas por período para acceso instantáneo y tooltips de hover
+  const rateCardsByPeriod = useMemo(() => {
+    const lookup = {}
+    allRateCardRecords.forEach(r => {
+      if (!lookup[r.period]) {
+        lookup[r.period] = {
+          dollar_rate: r.dollar_rate,
+          astillero: {},
+          contractors: {}
+        }
+      }
+      if (r.admin_center === 'ASTILLERO') {
+        lookup[r.period].astillero[r.entity_name] = {
+          ars: parseFloat(r.rate_oficial_ars) || 0,
+          usd: parseFloat(r.rate_oficial_usd) || 0
+        }
+      } else if (r.admin_center === 'CONTRATISTA') {
+        lookup[r.period].contractors[r.entity_name] = {
+          oficialArs: parseFloat(r.rate_oficial_ars) || 0,
+          oficialUsd: parseFloat(r.rate_oficial_usd) || 0,
+          ayudanteArs: r.rate_ayudante_ars ? parseFloat(r.rate_ayudante_ars) : null,
+          ayudanteUsd: r.rate_ayudante_usd ? parseFloat(r.rate_ayudante_usd) : null,
+          hasAyudante: Boolean(r.has_ayudante)
+        }
+      }
+    })
+    return lookup
+  }, [allRateCardRecords])
+
+  // Últimas 10 quincenas estrictas en orden cronológico
+  const last10RecordedPeriods = useMemo(() => {
+    return sortedRecordedPeriods.slice(-10)
+  }, [sortedRecordedPeriods])
+
+  // Cálculo de la próxima quincena correlativa sugerida
+  const nextCorrelativePeriod = useMemo(() => {
+    if (sortedRecordedPeriods.length === 0) {
+      return { year: 2026, month: 11, quincena: 2, period: '2026-11-2Q' }
+    }
+    const last = sortedRecordedPeriods[sortedRecordedPeriods.length - 1]
+    let nextYear = last.year
+    let nextMonth = last.month
+    let nextQuincena = last.quincena === 1 ? 2 : 1
+    if (last.quincena === 2) {
+      if (last.month === 12) {
+        nextYear = last.year + 1
+        nextMonth = 1
+      } else {
+        nextMonth = last.month + 1
+      }
+    }
+    const nextKey = `${nextYear}-${String(nextMonth).padStart(2, '0')}-${nextQuincena}Q`
+    return { year: nextYear, month: nextMonth, quincena: nextQuincena, period: nextKey }
+  }, [sortedRecordedPeriods])
+
+  // Filtro de búsqueda en tiempo real para el desplegable de quincenas
+  const filteredSelectablePeriods = useMemo(() => {
+    if (!periodSearchInput || !periodSearchInput.trim()) {
+      return sortedRecordedPeriods
+    }
+    const query = periodSearchInput.trim().toLowerCase()
+    return sortedRecordedPeriods.filter(p => {
+      const pKey = (p.period || '').toLowerCase()
+      const mName = MONTH_NAMES[p.month - 1] ? MONTH_NAMES[p.month - 1].toLowerCase() : ''
+      const qDesc = p.quincena === 1 ? '1ra quincena primera 1q' : '2da quincena segunda 2q'
+      return pKey.includes(query) || mName.includes(query) || qDesc.includes(query)
+    })
+  }, [sortedRecordedPeriods, periodSearchInput])
+
+  // Seleccionar período desde desplegable o chip de acceso rápido
+  const handleSelectPeriod = (p) => {
+    setRateYear(p.year)
+    setRateMonth(p.month)
+    setRateQuincena(p.quincena)
+    if (p.dollar_rate) {
+      setDollarRate(parseFloat(p.dollar_rate))
+    }
+    setIsPeriodSelectOpen(false)
+    setPeriodSearchInput('')
+  }
+
+  // Abrir modal de nueva quincena inicializando con el correlativo sugerido
+  const handleOpenNewPeriodModal = () => {
+    setNewPeriodYear(nextCorrelativePeriod.year)
+    setNewPeriodMonth(nextCorrelativePeriod.month)
+    setNewPeriodQuincena(nextCorrelativePeriod.quincena)
+    setNewPeriodDollarRate(dollarRate || 1500)
+    setNewPeriodCopyLast(true)
+    setIsNewPeriodModalOpen(true)
+  }
+
+  // Confirmar creación de nueva quincena
+  const handleConfirmNewPeriod = async () => {
+    const targetKey = `${newPeriodYear}-${String(newPeriodMonth).padStart(2, '0')}-${newPeriodQuincena}Q`
+    
+    // Validar si el período ya existe
+    const exists = sortedRecordedPeriods.some(p => p.period === targetKey)
+    if (exists) {
+      setRateYear(newPeriodYear)
+      setRateMonth(newPeriodMonth)
+      setRateQuincena(newPeriodQuincena)
+      setIsNewPeriodModalOpen(false)
+      setStatusMessage({
+        type: 'info',
+        text: `La quincena ${targetKey} ya existía y fue seleccionada.`
+      })
+      setTimeout(() => setStatusMessage(null), 3000)
+      return
+    }
+
+    setCreatingNewPeriod(true)
+    try {
+      const userHolder = orgRoles['LIQUIDACION_SUELDOS']?.holder || 'María José'
+      const newDollar = parseFloat(newPeriodDollarRate) || 1500
+
+      if (newPeriodCopyLast && sortedRecordedPeriods.length > 0) {
+        const lastPeriodKey = sortedRecordedPeriods[sortedRecordedPeriods.length - 1].period
+        const lastRecords = allRateCardRecords.filter(r => r.period === lastPeriodKey)
+        
+        if (lastRecords.length > 0) {
+          const rowsToInsert = lastRecords.map(r => ({
+            period: targetKey,
+            year: newPeriodYear,
+            month: newPeriodMonth,
+            quincena: newPeriodQuincena,
+            admin_center: r.admin_center,
+            entity_name: r.entity_name,
+            rate_oficial_ars: r.rate_oficial_ars,
+            rate_oficial_usd: newDollar > 0 ? Number((r.rate_oficial_ars / newDollar).toFixed(2)) : 0,
+            rate_ayudante_ars: r.rate_ayudante_ars,
+            rate_ayudante_usd: (newDollar > 0 && r.rate_ayudante_ars) ? Number((r.rate_ayudante_ars / newDollar).toFixed(2)) : null,
+            has_ayudante: r.has_ayudante,
+            dollar_rate: newDollar,
+            updated_by: userHolder,
+            updated_at: new Date().toISOString()
+          }))
+
+          const { error } = await supabase.from('rate_cards').upsert(rowsToInsert, { onConflict: 'period,admin_center,entity_name' })
+          if (error) throw error
+        }
+      } else {
+        const baseAstilleroRows = ASTILLERO_BASE_CATEGORIES.map(cat => ({
+          period: targetKey,
+          year: newPeriodYear,
+          month: newPeriodMonth,
+          quincena: newPeriodQuincena,
+          admin_center: 'ASTILLERO',
+          entity_name: cat,
+          rate_oficial_ars: astilleroForm[cat]?.ars || 0,
+          rate_oficial_usd: newDollar > 0 ? Number(((astilleroForm[cat]?.ars || 0) / newDollar).toFixed(2)) : 0,
+          has_ayudante: false,
+          dollar_rate: newDollar,
+          updated_by: userHolder,
+          updated_at: new Date().toISOString()
+        }))
+
+        const { error } = await supabase.from('rate_cards').upsert(baseAstilleroRows, { onConflict: 'period,admin_center,entity_name' })
+        if (error) throw error
+      }
+
+      // Log en auditoría
+      auditService.logEvent({
+        module: 'TARIFARIO_QUINCENAL',
+        action: 'CREATE_PERIOD',
+        user: userHolder,
+        target: targetKey,
+        details: {
+          period: targetKey,
+          year: newPeriodYear,
+          month: newPeriodMonth,
+          quincena: newPeriodQuincena,
+          dollar_rate: newDollar,
+          copied_from_last: newPeriodCopyLast
+        }
+      })
+
+      setRateYear(newPeriodYear)
+      setRateMonth(newPeriodMonth)
+      setRateQuincena(newPeriodQuincena)
+      setDollarRate(newDollar)
+      setIsNewPeriodModalOpen(false)
+
+      await loadRecordedPeriods()
+      await loadRateCards(targetKey)
+
+      setStatusMessage({
+        type: 'success',
+        text: `Nueva quincena ${targetKey} creada con éxito.`
+      })
+      setTimeout(() => setStatusMessage(null), 3500)
+    } catch (err) {
+      console.error(err)
+      setStatusMessage({
+        type: 'error',
+        text: `Error al crear nueva quincena: ${err.message}`
+      })
+    } finally {
+      setCreatingNewPeriod(false)
+    }
+  }
+
   // Análisis inteligente de contratistas registrados
   const rootContractorsMap = useMemo(() => {
     const map = {}
@@ -626,6 +859,16 @@ export default function Personal() {
 
       await loadRateCards(currentPeriodKey)
       await loadRecordedPeriods()
+
+      // Registrar evento de auditoría trazable
+      auditService.logEvent({
+        module: 'TARIFARIO_QUINCENAL',
+        action: 'UPDATE_RATE_CARD',
+        user: orgRoles['LIQUIDACION_SUELDOS']?.holder || 'María José',
+        target: currentPeriodKey,
+        details: { admin_center: 'ASTILLERO', period: currentPeriodKey, rates: astilleroForm, dollarRate }
+      })
+
       setStatusMessage({ 
         type: 'success', 
         text: `Escala sindical guardada para la quincena ${currentPeriodKey}. Valores sincronizados automáticamente en el padrón de Astillero.` 
@@ -711,6 +954,16 @@ export default function Personal() {
 
       await loadRateCards(currentPeriodKey)
       await loadRecordedPeriods()
+
+      // Registrar evento de auditoría trazable
+      auditService.logEvent({
+        module: 'TARIFARIO_QUINCENAL',
+        action: 'UPDATE_RATE_CARD',
+        user: orgRoles['LIQUIDACION_SUELDOS']?.holder || 'María José',
+        target: `${currentPeriodKey} - ${selectedContractor}`,
+        details: { admin_center: 'CONTRATISTA', contractor: selectedContractor, period: currentPeriodKey, ofArs, ayArs, dollarRate }
+      })
+
       setStatusMessage({ 
         type: 'success', 
         text: `Tarifa para contratista ${selectedContractor} guardada (${currentPeriodKey}) y sincronizada en el padrón.` 
@@ -2774,14 +3027,19 @@ export default function Personal() {
       {/* ========================================================================= */}
       {activeTab === 'tarifario' && (
         <div className="space-y-6 animate-in fade-in duration-150">
-          {/* ZONA 2 (RADAR / INDICADORES QUINCENALES): PERÍODO & VALOR DÓLAR CONGELADO */}
-          <div className="alon-zone-kpis rounded-2xl p-5 shadow-xl space-y-4">
+          {/* ========================================================================= */}
+          {/* PANEL UNIFICADO CASCADA: SUJETO DE COSTO ──► PERÍODO & ACCESO RÁPIDO ──► TARIFAS */}
+          {/* ========================================================================= */}
+          <div className="alon-zone-entry rounded-2xl p-5 md:p-6 shadow-xl space-y-5">
+            {/* ------------------------------------------------------------- */}
+            {/* NIVEL 1: SUJETO DE COSTO & CENTRO ADMINISTRATIVO (CASCADA)   */}
+            {/* ------------------------------------------------------------- */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-emerald-400" />
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
                   <h2 className="text-base font-bold text-white">
-                    Período Quincenal de Costos & Cotización
+                    Tarifario Quincenal de Mano de Obra
                   </h2>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
@@ -2808,58 +3066,188 @@ export default function Personal() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-              {/* Selector de Año */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Año
-                </label>
-                <select
-                  value={rateYear}
-                  onChange={(e) => setRateYear(parseInt(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
-                >
-                  <option value={2025}>2025</option>
-                  <option value={2026}>2026</option>
-                  <option value={2027}>2027</option>
-                </select>
+            {/* BARRA SUPERIOR DE CENTRO: ASTILLERO (5 CATEGORÍAS) / CONTRATISTAS + SELECTOR DE CONTRATISTA */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 p-3.5 bg-slate-950/90 border border-slate-800 rounded-xl">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400">
+                  Centro:
+                </span>
+                <div className="inline-flex bg-slate-900 p-1 rounded-xl border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setRateAdminCenter('ASTILLERO')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+                      rateAdminCenter === 'ASTILLERO'
+                        ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>PERSONAL DEL ASTILLERO (5 Categorías)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRateAdminCenter('CONTRATISTA')
+                      if (uniqueContractorList.length > 0 && !selectedContractor) {
+                        handleSelectContractor(uniqueContractorList[0])
+                      }
+                    }}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+                      rateAdminCenter === 'CONTRATISTA'
+                        ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <HardHat className="w-3.5 h-3.5" />
+                    <span>CONTRATISTAS</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Selector de Mes */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Mes
+              {/* SI ESTÁ EN CONTRATISTAS: SELECTOR INLINE DE CONTRATISTA */}
+              {rateAdminCenter === 'CONTRATISTA' && (
+                <div className="flex flex-wrap items-center gap-2.5 animate-in fade-in duration-150">
+                  <span className="text-xs text-amber-400 font-bold flex items-center gap-1">
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Contratista:</span>
+                  </span>
+                  <select
+                    value={selectedContractor}
+                    onChange={(e) => handleSelectContractor(e.target.value)}
+                    className="bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-1.5 text-xs font-extrabold text-amber-300 focus:outline-none focus:border-amber-400 font-mono cursor-pointer"
+                  >
+                    {uniqueContractorList.map(c => (
+                      <option key={c} value={c}>
+                        {c} {rootContractorsMap[c]?.hasAyudanteOption ? '(Dual: Ofic. + Ayud.)' : '(Oficial Único)'}
+                      </option>
+                    ))}
+                  </select>
+
+                  <span className="text-[11px] px-2.5 py-1 rounded-lg bg-amber-950/60 border border-amber-800/60 text-amber-300 font-medium">
+                    👥 <strong>{rootContractorsMap[selectedContractor]?.workersCount || 0}</strong> en nómina
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* ------------------------------------------------------------- */}
+            {/* NIVEL 2: PERÍODO QUINCENAL & DÓLAR & ACCESO RÁPIDO (10 CHIPS) */}
+            {/* ------------------------------------------------------------- */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              {/* DESPLEGABLE CON FILTRO DE ESCRITURA (SEARCHABLE SELECT) */}
+              <div className="md:col-span-6 relative" ref={periodDropdownRef}>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Período Quincenal Activo</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Filtro en tiempo real
+                  </span>
                 </label>
-                <select
-                  value={rateMonth}
-                  onChange={(e) => setRateMonth(parseInt(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
-                >
-                  {MONTH_NAMES.map((name, idx) => (
-                    <option key={name} value={idx + 1}>
-                      {name} ({idx + 1})
-                    </option>
-                  ))}
-                </select>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsPeriodSelectOpen(prev => !prev)}
+                    className="w-full bg-slate-950 border border-slate-700 hover:border-emerald-500/80 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white flex items-center justify-between transition-colors cursor-pointer text-left focus:outline-none focus:border-emerald-500 shadow-inner"
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono font-black text-xs">
+                        {currentPeriodKey}
+                      </span>
+                      <span className="text-slate-300 truncate">
+                        {rateQuincena === 1 ? '1ra' : '2da'} Quincena de {MONTH_NAMES[rateMonth - 1]} {rateYear}
+                      </span>
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isPeriodSelectOpen ? 'rotate-180 text-emerald-400' : ''}`} />
+                  </button>
+
+                  {/* DROPDOWN MENU CON BÚSQUEDA */}
+                  {isPeriodSelectOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                      {/* Input de filtro de texto */}
+                      <div className="p-2 border-b border-slate-800 bg-slate-950">
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                          <input
+                            type="text"
+                            autoFocus
+                            value={periodSearchInput}
+                            onChange={(e) => setPeriodSearchInput(e.target.value)}
+                            placeholder="Escribí ej: 2026, nov, 1Q..."
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                          />
+                          {periodSearchInput && (
+                            <button
+                              type="button"
+                              onClick={() => setPeriodSearchInput('')}
+                              className="absolute right-2 top-2 text-slate-400 hover:text-white"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Lista de quincenas con scroll */}
+                      <div className="max-h-60 overflow-y-auto divide-y divide-slate-800/60">
+                        {filteredSelectablePeriods.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-slate-500">
+                            No se encontraron quincenas que coincidan con "{periodSearchInput}"
+                          </div>
+                        ) : (
+                          filteredSelectablePeriods.map(p => {
+                            const isSelected = p.period === currentPeriodKey
+                            return (
+                              <button
+                                key={p.period}
+                                type="button"
+                                onClick={() => handleSelectPeriod(p)}
+                                className={`w-full px-3.5 py-2 text-xs flex items-center justify-between text-left transition-colors cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-emerald-500/15 text-emerald-300 font-bold'
+                                    : 'hover:bg-slate-800 text-slate-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-emerald-400 text-[11px]">
+                                    {p.period}
+                                  </span>
+                                  <span className="text-slate-300">
+                                    {p.quincena === 1 ? '1ra' : '2da'} Quincena de {MONTH_NAMES[p.month - 1]} {p.year}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
+                                  <span>US$ {parseFloat(p.dollar_rate || 1500).toLocaleString('es-AR')}</span>
+                                  {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />}
+                                </div>
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Selector de Quincena */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Quincena
-                </label>
-                <select
-                  value={rateQuincena}
-                  onChange={(e) => setRateQuincena(parseInt(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
+              {/* BOTÓN + NUEVA QUINCENA */}
+              <div className="md:col-span-3 flex items-end">
+                <button
+                  type="button"
+                  onClick={handleOpenNewPeriodModal}
+                  className="w-full h-[42px] bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <option value={1}>1ra Quincena (1Q: días 1 al 15)</option>
-                  <option value={2}>2da Quincena (2Q: días 16 al cierre)</option>
-                </select>
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>+ Nueva Quincena</span>
+                </button>
               </div>
 
-              {/* Cotización Dólar Quincenal (CONGELADO / SOLO LECTURA) */}
-              <div>
+              {/* VALOR US$ QUINCENAL (TARJETA INDICADOR) */}
+              <div className="md:col-span-3">
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-emerald-400 mb-1 flex items-center justify-between">
                   <span>Valor US$ Quincenal</span>
                   <span className="text-[9px] text-slate-500 flex items-center gap-1 font-mono">
@@ -2867,8 +3255,8 @@ export default function Personal() {
                     <span>Fijado por Adm.</span>
                   </span>
                 </label>
-                <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono font-extrabold text-emerald-400 flex items-center justify-between shadow-inner">
-                  <span className="flex items-center gap-1">
+                <div className="h-[42px] bg-slate-950 border border-slate-800 rounded-xl px-3.5 flex items-center justify-between shadow-inner">
+                  <span className="flex items-center gap-1 font-mono">
                     <span className="text-slate-500 font-normal">$</span>
                     <span className="text-white text-sm font-bold">{parseFloat(dollarRate).toLocaleString('es-AR')}</span>
                   </span>
@@ -2877,87 +3265,127 @@ export default function Personal() {
               </div>
             </div>
 
-            {/* QUINCENAS CON TARIFAS GUARDADAS (ORDEN ESTRICTAMENTE CALENDARIO: 1Q y luego 2Q) */}
-            {sortedRecordedPeriods.length > 0 && (
-              <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
-                <History className="w-3.5 h-3.5 text-slate-500 mr-1" />
-                <span className="text-[11px]">Quincenas con tarifas guardadas (orden cronológico):</span>
-                {sortedRecordedPeriods.map(p => (
-                  <button
-                    key={p.period}
-                    type="button"
-                    onClick={() => {
-                      setRateYear(p.year)
-                      setRateMonth(p.month)
-                      setRateQuincena(p.quincena)
-                      if (p.dollar_rate) setDollarRate(parseFloat(p.dollar_rate))
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
-                      p.period === currentPeriodKey
-                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-md'
-                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    {p.period}
-                  </button>
-                ))}
+            {/* BARRA DE ACCESO RÁPIDO: ÚLTIMAS 10 QUINCENAS GUARDADAS (ORDEN CRONOLÓGICO CON TOOLTIP DE HOVER) */}
+            {last10RecordedPeriods.length > 0 && (
+              <div className="pt-3 border-t border-slate-800/60 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <div className="flex items-center gap-1 text-[11px] text-slate-400 font-semibold mr-1">
+                  <History className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Últimas 10 Quincenas Guardadas:</span>
+                </div>
+
+                {last10RecordedPeriods.map(p => {
+                  const isCurrent = p.period === currentPeriodKey
+                  const periodData = rateCardsByPeriod[p.period]
+
+                  return (
+                    <div key={p.period} className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPeriod(p)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
+                          isCurrent
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-md scale-105'
+                            : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-white'
+                        }`}
+                      >
+                        {p.period}
+                      </button>
+
+                      {/* TOOLTIP FLOTANTE AL ACERCAR EL PUNTERO */}
+                      <div className="opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-72 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl text-left text-xs invisible group-hover:visible">
+                        {/* Flecha indicadora */}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-700"></div>
+
+                        {/* CASO A: PERSONAL DEL ASTILLERO */}
+                        {rateAdminCenter === 'ASTILLERO' && (
+                          <div>
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
+                              <span className="font-bold text-cyan-400 flex items-center gap-1.5 text-[11px]">
+                                <Building2 className="w-3.5 h-3.5" />
+                                <span>Astillero · {p.period}</span>
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                US$ {periodData?.dollar_rate || 1500}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              {ASTILLERO_BASE_CATEGORIES.map(cat => {
+                                const item = periodData?.astillero?.[cat]
+                                return (
+                                  <div key={cat} className="flex items-center justify-between text-[11px]">
+                                    <span className="text-slate-400">{cat}:</span>
+                                    <span className="font-mono text-white font-bold">
+                                      {item ? `$ ${item.ars.toLocaleString('es-AR')} | U$S ${item.usd}` : <span className="text-slate-500 font-normal italic">Sin tarifa</span>}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* CASO B: CONTRATISTAS */}
+                        {rateAdminCenter === 'CONTRATISTA' && (
+                          <div>
+                            {!selectedContractor ? (
+                              <div className="p-2 text-center text-amber-300 bg-amber-950/40 rounded-lg border border-amber-800/40 text-[11px] flex flex-col items-center gap-1">
+                                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span>Seleccioná un contratista en el menú superior para previsualizar sus tarifas de esta quincena.</span>
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
+                                  <span className="font-bold text-amber-400 flex items-center gap-1.5 text-[11px] truncate max-w-[160px]">
+                                    <HardHat className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{selectedContractor}</span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {p.period}
+                                  </span>
+                                </div>
+
+                                {periodData?.contractors?.[selectedContractor] ? (
+                                  <div className="space-y-1 text-[11px]">
+                                    <div className="flex items-center justify-between py-0.5">
+                                      <span className="text-slate-400">OFICIAL:</span>
+                                      <span className="font-mono text-emerald-400 font-bold">
+                                        $ {periodData.contractors[selectedContractor].oficialArs.toLocaleString('es-AR')} | U$S {periodData.contractors[selectedContractor].oficialUsd}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between py-0.5">
+                                      <span className="text-slate-400">AYUDANTE:</span>
+                                      {periodData.contractors[selectedContractor].hasAyudante && periodData.contractors[selectedContractor].ayudanteArs ? (
+                                        <span className="font-mono text-amber-400 font-bold">
+                                          $ {periodData.contractors[selectedContractor].ayudanteArs.toLocaleString('es-AR')} | U$S {periodData.contractors[selectedContractor].ayudanteUsd}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500 font-mono italic">🔒 Tarifa plana</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-[11px] text-slate-500 italic py-1">
+                                    ℹ️ Sin tarifas cargadas para {selectedContractor} en {p.period}.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
-          </div>
 
-          {/* ZONA CARGA: FORMULARIO UNIFICADO GOBERNADO POR EL CENTRO DE COSTO */}
-          <div className="alon-zone-entry rounded-2xl p-5 md:p-6 shadow-xl space-y-5">
-            <div className="border-b border-slate-800 pb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                    <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-                    Carga Unificada de Nuevos Valores
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Seleccioná el Centro Administrativo para configurar los valores sindicales o de contratistas.
-                  </p>
-                </div>
-
-                {/* DESPLEGABLE MAESTRO: CENTRO DE COSTO / ADMINISTRATIVO */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-300">Centro:</span>
-                  <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => setRateAdminCenter('ASTILLERO')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                        rateAdminCenter === 'ASTILLERO'
-                          ? 'bg-cyan-500 text-slate-950 shadow-md'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      ASTILLERO (5 Categorías)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRateAdminCenter('CONTRATISTA')
-                        if (uniqueContractorList.length > 0 && !selectedContractor) {
-                          handleSelectContractor(uniqueContractorList[0])
-                        }
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                        rateAdminCenter === 'CONTRATISTA'
-                          ? 'bg-amber-500 text-slate-950 shadow-md'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      CONTRATISTAS
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+            {/* ------------------------------------------------------------- */}
+            {/* NIVEL 3: VALORES DE MANO DE OBRA & FORMULARIO DE GUARDADO    */}
+            {/* ------------------------------------------------------------- */}
             {/* CASO A: CENTRO ADMINISTRATIVO = ASTILLERO (5 CATEGORÍAS SINDICALES OFICIALES) */}
             {rateAdminCenter === 'ASTILLERO' && (
-              <div className="space-y-4 animate-in fade-in duration-150">
+              <div className="space-y-4 pt-2 border-t border-slate-800 animate-in fade-in duration-150">
                 <div className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-800/40 text-xs text-cyan-300 flex items-start gap-2.5">
                   <Building2 className="w-4 h-4 shrink-0 mt-0.5 text-cyan-400" />
                   <div>
@@ -3035,147 +3463,122 @@ export default function Personal() {
 
             {/* CASO B: CENTRO ADMINISTRATIVO = CONTRATISTAS */}
             {rateAdminCenter === 'CONTRATISTA' && (
-              <div className="space-y-4 animate-in fade-in duration-150">
-                <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-300 flex items-start gap-2.5">
-                  <HardHat className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
-                  <div>
-                    <strong>Tarifas de Contratistas:</strong> El titular de {orgRoles['DIRECCION_OPERACIONES']?.title} ({orgRoles['DIRECCION_OPERACIONES']?.holder}) determina y negocia los valores por hora con cada prestador. {orgRoles['LIQUIDACION_SUELDOS']?.title} ({orgRoles['LIQUIDACION_SUELDOS']?.holder}) realiza la carga operativa en el ERP. Si el contratista ofrece ayudante se habilita la carga dual; de lo contrario, el ayudante queda estrictamente bloqueado.
+              <div className="space-y-4 pt-2 border-t border-slate-800 animate-in fade-in duration-150">
+                <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <HardHat className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                    <div>
+                      <strong>Tarifas de {selectedContractor || 'Contratista'}:</strong> El titular de {orgRoles['DIRECCION_OPERACIONES']?.title} ({orgRoles['DIRECCION_OPERACIONES']?.holder}) determina y negocia los valores por hora con cada prestador. {orgRoles['LIQUIDACION_SUELDOS']?.title} ({orgRoles['LIQUIDACION_SUELDOS']?.holder}) realiza la carga operativa en el ERP.
+                    </div>
                   </div>
+
+                  {/* Switch manual de excepción Ayudante */}
+                  <label className="shrink-0 flex items-center gap-2 text-xs text-amber-300 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-amber-800/60 hover:border-amber-500 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={contractorHasAyudante}
+                      onChange={(e) => setContractorHasAyudante(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-amber-500 cursor-pointer accent-amber-500"
+                    />
+                    <span className="text-[11px] font-semibold">
+                      {contractorHasAyudante ? 'Ayudante habilitado' : 'Habilitar Ayudante (excepción)'}
+                    </span>
+                  </label>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                  {/* Selector de Contratista */}
-                  <div className="md:col-span-1 space-y-2">
-                    <label className="block text-xs font-bold text-slate-300">
-                      Seleccionar Contratista
+                {/* Tarjetas de Mano de Obra: Oficial y Ayudante */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Tarifa Oficial */}
+                  <div className="p-4 rounded-xl bg-slate-950 border border-emerald-900/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Unlock className="w-3.5 h-3.5" />
+                        OFICIAL ({selectedContractor})
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
+                        U$ {contractorOficialUsd}
+                      </span>
+                    </div>
+
+                    <label className="block text-[10px] uppercase font-bold text-slate-400">
+                      Valor AR$ / Hora
                     </label>
-                    <select
-                      value={selectedContractor}
-                      onChange={(e) => handleSelectContractor(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-amber-500 font-mono"
-                    >
-                      {uniqueContractorList.map(c => (
-                        <option key={c} value={c}>
-                          {c} {rootContractorsMap[c]?.hasAyudanteOption ? '(Dual: Ofic. + Ayud.)' : '(Oficial Único)'}
-                        </option>
-                      ))}
-                    </select>
-
-                    <div className="text-[11px] text-slate-400 p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                      <span>Integrantes en nómina: </span>
-                      <strong className="text-white">{rootContractorsMap[selectedContractor]?.workersCount || 0} personas</strong>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-slate-500 font-mono font-bold">$</span>
+                      <input
+                        type="number"
+                        step="100"
+                        min="0"
+                        value={contractorOficialArs}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0
+                          const uVal = dollarRate > 0 ? Number((val / dollarRate).toFixed(2)) : 0
+                          setContractorOficialArs(val)
+                          setContractorOficialUsd(uVal)
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-7 pr-3 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-emerald-400"
+                      />
                     </div>
-
-                    {/* Switch manual para destrabar Ayudante si el titular de Dirección acordó una excepción */}
-                    <div className="pt-2">
-                      <label className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={contractorHasAyudante}
-                          onChange={(e) => setContractorHasAyudante(e.target.checked)}
-                          className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-amber-500 cursor-pointer accent-amber-500"
-                        />
-                        <span className="text-[11px]">
-                          {contractorHasAyudante ? 'Categoría Ayudante habilitada' : 'Habilitar categoría Ayudante (excepción)'}
-                        </span>
-                      </label>
-                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      Tarifa base de mano de obra negociada para el grupo {selectedContractor}.
+                    </p>
                   </div>
 
-                  {/* Carga de Oficial y Ayudante */}
-                  <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    {/* Tarifa Oficial */}
-                    <div className="p-4 rounded-xl bg-slate-950 border border-emerald-900/40 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <Unlock className="w-3.5 h-3.5" />
-                          OFICIAL (Contratista)
-                        </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
-                          U$ {contractorOficialUsd}
-                        </span>
-                      </div>
-
-                      <label className="block text-[10px] uppercase font-bold text-slate-400">
-                        Valor AR$ / Hora
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2 text-slate-500 font-mono font-bold">$</span>
-                        <input
-                          type="number"
-                          step="100"
-                          min="0"
-                          value={contractorOficialArs}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0
-                            const uVal = dollarRate > 0 ? Number((val / dollarRate).toFixed(2)) : 0
-                            setContractorOficialArs(val)
-                            setContractorOficialUsd(uVal)
-                          }}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-7 pr-3 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-emerald-400"
-                        />
-                      </div>
-                      <p className="text-[10px] text-slate-500">
-                        Tarifa base de mano de obra negociada para el grupo {selectedContractor}.
-                      </p>
-                    </div>
-
-                    {/* Tarifa Ayudante (Bloqueada si no ofrece la opción) */}
-                    <div className={`p-4 rounded-xl border transition-all space-y-2 ${
-                      contractorHasAyudante 
-                        ? 'bg-slate-950 border-amber-900/40' 
-                        : 'bg-slate-950/40 border-slate-800/80 opacity-70'
-                    }`}>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
-                          contractorHasAyudante ? 'text-amber-400' : 'text-slate-500'
-                        }`}>
-                          {contractorHasAyudante ? (
-                            <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                          ) : (
-                            <Lock className="w-3.5 h-3.5 text-slate-500" />
-                          )}
-                          AYUDANTE
-                        </span>
-                        {contractorHasAyudante && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-mono font-bold">
-                            U$ {contractorAyudanteUsd}
-                          </span>
+                  {/* Tarifa Ayudante (Bloqueada si no ofrece la opción) */}
+                  <div className={`p-4 rounded-xl border transition-all space-y-2 ${
+                    contractorHasAyudante 
+                      ? 'bg-slate-950 border-amber-900/40' 
+                      : 'bg-slate-950/40 border-slate-800/80 opacity-70'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
+                        contractorHasAyudante ? 'text-amber-400' : 'text-slate-500'
+                      }`}>
+                        {contractorHasAyudante ? (
+                          <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                        ) : (
+                          <Lock className="w-3.5 h-3.5 text-slate-500" />
                         )}
-                      </div>
-
-                      <label className="block text-[10px] uppercase font-bold text-slate-400">
-                        Valor AR$ / Hora
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2 text-slate-500 font-mono font-bold">$</span>
-                        <input
-                          type="number"
-                          step="100"
-                          min="0"
-                          disabled={!contractorHasAyudante}
-                          value={contractorHasAyudante ? contractorAyudanteArs : ''}
-                          placeholder={!contractorHasAyudante ? 'Bloqueado (No aplica)' : '0'}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0
-                            const uVal = dollarRate > 0 ? Number((val / dollarRate).toFixed(2)) : 0
-                            setContractorAyudanteArs(val)
-                            setContractorAyudanteUsd(uVal)
-                          }}
-                          className={`w-full rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono font-bold focus:outline-none ${
-                            contractorHasAyudante
-                              ? 'bg-slate-900 border border-slate-700 text-white focus:border-amber-400'
-                              : 'bg-slate-950/80 border border-slate-800 text-slate-600 cursor-not-allowed'
-                          }`}
-                        />
-                      </div>
-
-                      <p className={`text-[10px] ${contractorHasAyudante ? 'text-slate-400' : 'text-rose-400 font-medium'}`}>
-                        {contractorHasAyudante
-                          ? 'Tarifa asignada a los operarios catalogados como ayudante.'
-                          : '🔒 Ayudante bloqueado: este contratista no ofrece ayudantes y factura con tarifa única plana establecida por Dirección.'}
-                      </p>
+                        AYUDANTE
+                      </span>
+                      {contractorHasAyudante && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-mono font-bold">
+                          U$ {contractorAyudanteUsd}
+                        </span>
+                      )}
                     </div>
+
+                    <label className="block text-[10px] uppercase font-bold text-slate-400">
+                      Valor AR$ / Hora
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-slate-500 font-mono font-bold">$</span>
+                      <input
+                        type="number"
+                        step="100"
+                        min="0"
+                        disabled={!contractorHasAyudante}
+                        value={contractorHasAyudante ? contractorAyudanteArs : ''}
+                        placeholder={!contractorHasAyudante ? 'Bloqueado (No aplica)' : '0'}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0
+                          const uVal = dollarRate > 0 ? Number((val / dollarRate).toFixed(2)) : 0
+                          setContractorAyudanteArs(val)
+                          setContractorAyudanteUsd(uVal)
+                        }}
+                        className={`w-full rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono font-bold focus:outline-none ${
+                          contractorHasAyudante
+                            ? 'bg-slate-900 border border-slate-700 text-white focus:border-amber-400'
+                            : 'bg-slate-950/80 border border-slate-800 text-slate-600 cursor-not-allowed'
+                        }`}
+                      />
+                    </div>
+
+                    <p className={`text-[10px] ${contractorHasAyudante ? 'text-slate-400' : 'text-rose-400 font-medium'}`}>
+                      {contractorHasAyudante
+                        ? 'Tarifa asignada a los operarios catalogados como ayudante.'
+                        : '🔒 Ayudante bloqueado: este contratista no ofrece ayudantes y factura con tarifa única plana establecida por Dirección.'}
+                    </p>
                   </div>
                 </div>
 
@@ -3209,6 +3612,132 @@ export default function Personal() {
               </div>
             </div>
           </div>
+
+          {/* MODAL: HABILITAR NUEVA QUINCENA */}
+          {isNewPeriodModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+              <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-emerald-400" />
+                    <h3 className="text-base font-bold text-white">Habilitar Nueva Quincena</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsNewPeriodModalOpen(false)}
+                    className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="p-3 bg-emerald-950/30 border border-emerald-800/40 rounded-xl text-xs text-emerald-300 flex items-start gap-2">
+                    <Calendar className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Sugerencia correlativa automática:</strong> Se calculó la próxima quincena calendario ({nextCorrelativePeriod.period}). Podés modificar los valores si necesitás adelantar o registrar otro período.
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Año</label>
+                      <input
+                        type="number"
+                        value={newPeriodYear}
+                        onChange={(e) => setNewPeriodYear(parseInt(e.target.value) || newPeriodYear)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Mes</label>
+                      <select
+                        value={newPeriodMonth}
+                        onChange={(e) => setNewPeriodMonth(parseInt(e.target.value))}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                      >
+                        {MONTH_NAMES.map((name, idx) => (
+                          <option key={name} value={idx + 1}>
+                            {idx + 1} - {name.slice(0, 3)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Quincena</label>
+                      <select
+                        value={newPeriodQuincena}
+                        onChange={(e) => setNewPeriodQuincena(parseInt(e.target.value))}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                      >
+                        <option value={1}>1Q (1-15)</option>
+                        <option value={2}>2Q (16-fin)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-emerald-400 mb-1 flex items-center justify-between">
+                      <span>Cotización Dólar US$ Inicial</span>
+                      <span className="text-[10px] text-slate-500">ARS / USD</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-slate-500 font-mono font-bold">$</span>
+                      <input
+                        type="number"
+                        value={newPeriodDollarRate}
+                        onChange={(e) => setNewPeriodDollarRate(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-7 pr-3 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newPeriodCopyLast}
+                        onChange={(e) => setNewPeriodCopyLast(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 cursor-pointer accent-emerald-500 mt-0.5"
+                      />
+                      <span className="text-xs text-slate-300">
+                        <strong>Copiar tarifas de la última quincena guardada</strong> ({sortedRecordedPeriods[sortedRecordedPeriods.length - 1]?.period || 'anterior'}) como base de trabajo editable.
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="text-[11px] text-center font-mono text-slate-400">
+                    Período a crear: <strong className="text-emerald-400 text-sm">{newPeriodYear}-{String(newPeriodMonth).padStart(2, '0')}-{newPeriodQuincena}Q</strong>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewPeriodModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={creatingNewPeriod}
+                    onClick={handleConfirmNewPeriod}
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-slate-950 text-xs font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {creatingNewPeriod ? (
+                      <span>Creando período...</span>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        <span>Crear y Abrir Quincena</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ZONA 3 (BÚSQUEDA Y COMANDOS): FILTROS DE TARIFAS GUARDADAS */}
           <div className="alon-zone-toolbar rounded-2xl p-4 md:p-5 shadow-lg">
