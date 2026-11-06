@@ -3398,7 +3398,7 @@ export default function Personal() {
                 </div>
 
                 {/* Grilla de las 5 Categorías Oficiales con Colores Exactos de la Planilla */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                   {ASTILLERO_BASE_CATEGORIES.map(category => {
                     const currentItem = astilleroForm[category] || { ars: 0, usd: 0 }
                     const calcUsd = dollarRate > 0 ? (currentItem.ars / dollarRate).toFixed(2) : 0
@@ -3406,7 +3406,7 @@ export default function Personal() {
                     return (
                       <div 
                         key={category} 
-                        className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-cyan-800/60 transition-all space-y-2.5"
+                        className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-cyan-800/60 transition-all space-y-2"
                       >
                         <div className="flex items-center justify-between">
                           <span className={`px-2.5 py-0.5 rounded text-[11px] border tracking-wider ${getCategoryBadgeStyle(category)}`}>
