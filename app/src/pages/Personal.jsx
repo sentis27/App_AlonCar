@@ -3072,18 +3072,18 @@ export default function Personal() {
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400">
                   Centro:
                 </span>
-                <div className="inline-flex bg-slate-900 p-1 rounded-xl border border-slate-700">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={() => setRateAdminCenter('ASTILLERO')}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+                    className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 border ${
                       rateAdminCenter === 'ASTILLERO'
-                        ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-md shadow-cyan-500/20 font-black ring-1 ring-cyan-400/50'
+                        : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white hover:border-slate-600'
                     }`}
                   >
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>PERSONAL DEL ASTILLERO (5 Categorías)</span>
+                    <Building2 className={`w-3.5 h-3.5 ${rateAdminCenter === 'ASTILLERO' ? 'text-cyan-400' : 'text-slate-500'}`} />
+                    <span>Personal del Astillero (5 Categorías)</span>
                   </button>
                   <button
                     type="button"
@@ -3093,14 +3093,14 @@ export default function Personal() {
                         handleSelectContractor(uniqueContractorList[0])
                       }
                     }}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+                    className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 border ${
                       rateAdminCenter === 'CONTRATISTA'
-                        ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md shadow-amber-500/20 font-black ring-1 ring-amber-400/50'
+                        : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white hover:border-slate-600'
                     }`}
                   >
-                    <HardHat className="w-3.5 h-3.5" />
-                    <span>CONTRATISTAS</span>
+                    <HardHat className={`w-3.5 h-3.5 ${rateAdminCenter === 'CONTRATISTA' ? 'text-amber-400' : 'text-slate-500'}`} />
+                    <span>Contratistas</span>
                   </button>
                 </div>
               </div>
@@ -3151,7 +3151,7 @@ export default function Personal() {
                   <button
                     type="button"
                     onClick={() => setIsPeriodSelectOpen(prev => !prev)}
-                    className="w-full bg-slate-950 border border-slate-700 hover:border-emerald-500/80 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white flex items-center justify-between transition-colors cursor-pointer text-left focus:outline-none focus:border-emerald-500 shadow-inner"
+                    className="w-full h-[42px] bg-slate-950 border border-slate-700 hover:border-emerald-500/80 rounded-xl px-3.5 text-xs font-bold text-white flex items-center justify-between transition-colors cursor-pointer text-left focus:outline-none focus:border-emerald-500 shadow-inner"
                   >
                     <span className="flex items-center gap-2 truncate">
                       <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono font-black text-xs">
@@ -3235,14 +3235,15 @@ export default function Personal() {
               </div>
 
               {/* BOTÓN + NUEVA QUINCENA */}
-              <div className="md:col-span-3 flex items-end">
+              <div className="md:col-span-3">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-transparent mb-1 select-none pointer-events-none">&nbsp;</label>
                 <button
                   type="button"
                   onClick={handleOpenNewPeriodModal}
                   className="w-full h-[42px] bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Plus className="w-4 h-4 stroke-[3]" />
-                  <span>+ Nueva Quincena</span>
+                  <span>Nueva Quincena</span>
                 </button>
               </div>
 
@@ -3250,7 +3251,10 @@ export default function Personal() {
               <div className="md:col-span-3">
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-emerald-400 mb-1 flex items-center justify-between">
                   <span>Valor US$ Quincenal</span>
-                  <span className="text-[9px] text-slate-500 flex items-center gap-1 font-mono">
+                  <span
+                    className="text-[9px] text-slate-400 flex items-center gap-1 font-mono cursor-help"
+                    title="Cotización oficial fijada por Administración para esta quincena. Solo lectura para el operador."
+                  >
                     <Lock className="w-2.5 h-2.5 text-amber-400" />
                     <span>Fijado por Adm.</span>
                   </span>
@@ -3537,7 +3541,10 @@ export default function Personal() {
                         {contractorHasAyudante ? (
                           <Unlock className="w-3.5 h-3.5 text-amber-400" />
                         ) : (
-                          <Lock className="w-3.5 h-3.5 text-slate-500" />
+                          <Lock
+                            className="w-3.5 h-3.5 text-slate-500 cursor-help"
+                            title="Este contratista opera bajo modalidad de Oficial Único; no factura categoría Ayudante."
+                          />
                         )}
                         AYUDANTE
                       </span>
@@ -3980,7 +3987,10 @@ export default function Personal() {
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono text-xs font-bold text-slate-400">{rc.period}</span>
                               {isLocked && (
-                                <Lock className="w-3 h-3 text-amber-400" title="Período bloqueado" />
+                                <Lock
+                                  className="w-3 h-3 text-amber-400 cursor-help"
+                                  title="Período cerrado: Tarifa histórica inmutable para preservar la contabilidad y costos pasados de la obra. No implica un bloqueo ni sanción al personal."
+                                />
                               )}
                             </div>
                           </td>
@@ -4002,7 +4012,7 @@ export default function Personal() {
                             onDoubleClick={(e) => {
                               e.stopPropagation()
                               if (isLocked) {
-                                showGridFeedback('error', `🔒 La tarifa de ${rc.entity_name} (${rc.period}) está bloqueada.`)
+                                showGridFeedback('error', `🔒 La tarifa de ${rc.entity_name} (${rc.period}) está bloqueada por período cerrado.`)
                                 return
                               }
                               setInlineRateEdit({
@@ -4011,7 +4021,7 @@ export default function Personal() {
                                 value: rc.rate_oficial_ars ?? 0
                               })
                             }}
-                            title={isLocked ? 'Período bloqueado' : 'Doble clic para editar Oficial AR$'}
+                            title={isLocked ? 'Período cerrado: Tarifa histórica inmutable para preservar la contabilidad pasada (no implica bloqueo de personas).' : 'Doble clic para editar Oficial AR$'}
                             className={`py-2 px-3 text-right font-mono font-bold text-white relative cursor-cell ${
                               oficialActive ? 'ring-2 ring-inset ring-emerald-400 bg-emerald-950/30' :
                               oficialFill ? 'bg-emerald-500/20 ring-1 ring-inset ring-emerald-400/60' :
@@ -4059,7 +4069,7 @@ export default function Personal() {
                             onDoubleClick={(e) => {
                               e.stopPropagation()
                               if (isLocked) {
-                                showGridFeedback('error', `🔒 La tarifa de ${rc.entity_name} (${rc.period}) está bloqueada.`)
+                                showGridFeedback('error', `🔒 La tarifa de ${rc.entity_name} (${rc.period}) está bloqueada por período cerrado.`)
                                 return
                               }
                               if (!canEditAyudante) return
@@ -4069,7 +4079,7 @@ export default function Personal() {
                                 value: rc.rate_ayudante_ars ?? 0
                               })
                             }}
-                            title={!canEditAyudante ? 'No aplica Ayudante en este registro' : 'Doble clic para editar Ayudante AR$'}
+                            title={!canEditAyudante ? 'No aplica Ayudante en este registro' : isLocked ? 'Período cerrado: Tarifa histórica inmutable para preservar la contabilidad pasada (no implica bloqueo de personas).' : 'Doble clic para editar Ayudante AR$'}
                             className={`py-2 px-3 text-right font-mono font-bold relative ${canEditAyudante ? 'cursor-cell' : 'cursor-default'} ${
                               ayudanteActive ? 'ring-2 ring-inset ring-emerald-400 bg-emerald-950/30' :
                               ayudanteFill ? 'bg-emerald-500/20 ring-1 ring-inset ring-emerald-400/60' :

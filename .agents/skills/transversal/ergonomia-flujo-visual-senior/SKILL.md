@@ -22,6 +22,7 @@ Por defecto, el modelo de lenguaje comete **4 fallas estructurales** al diseñar
 - **NEVER** muestres controles, paneles o campos inactivos/bloqueados que no aplican al contexto actual; lo que no es accionable bajo el estado presente debe ocultarse o transformarse hasta ser requerido.
 - **NEVER** exijas abrir un contenedor secundario (modal, pestaña o página aparte) para una operación que puede resolverse en línea (*inline*) sobre el mismo elemento.
 - **NEVER** obligues a realizar una consulta o clic adicional para conocer el contenido resumido de un elemento frecuente si puede previsualizarse de forma instantánea en memoria al acercar el foco.
+- **NEVER** utilices iconos, glifos o símbolos de estado (candados, alertas, escudos, checks) sin un tooltip explícito (atributo 'title' o componente flotante) que comunique inequívocamente su significado funcional de negocio; previene que el usuario infiera restricciones personales o sanciones cuando se trata de protecciones contables o de integridad de datos.
 - **NEVER** implementes un diseño que multiplique pasos operativos sin antes desafiar la premisa y presentar al usuario la alternativa de menor fricción.
 
 ---
@@ -36,6 +37,7 @@ Por defecto, el modelo de lenguaje comete **4 fallas estructurales** al diseñar
 | **Saturación visual por opciones condicionales** | Exposición prematura de toda la lógica del sistema | **Divulgación Progresiva (Progressive Disclosure):** Mostrar únicamente el nivel de decisión activo; desplegar sub-controles en línea sólo cuando la selección padre lo exige. |
 | **Fatiga en carga repetitiva o masiva de datos** | Dependencia exclusiva del puntero (mouse) | **Flujo de Teclado Continuo:** Garantizar que el ciclo completo (foco → entrada → salto al siguiente campo → confirmación) sea ejecutable 100% mediante teclado sin soltar las manos. |
 | **Fricción para crear un registro correlativo nuevo** | Falta de inferencia del sistema | **Autocompletado Predictivo:** Al iniciar una creación, el sistema debe deducir y pre-cargar el siguiente estado lógico probable y heredar los valores base del estado inmediato anterior. |
+| **Ambigüedad o malinterpretación de símbolos e íconos** | Sobrecarga semántica en iconografía genérica (ej. candado = ¿sanción al operario o período histórico cerrado?) | **Iconografía Auto-explicativa con Tooltips Semánticos:** Todo icono o glifo de estado debe contar obligatoriamente con un tooltip contextual claro (`title` o componente emergente) que aclare el motivo técnico y descarte interpretaciones erróneas sobre el personal o la entidad. |
 
 ---
 
