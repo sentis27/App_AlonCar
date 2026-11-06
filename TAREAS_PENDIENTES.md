@@ -522,3 +522,11 @@ Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales
   - **Personal y Tarifas (`Personal.jsx`):** Edición rápida por doble clic en Padrón y Tarifario histórico.
   - **Barcos y Obras (`Ships.jsx`):** Indicador visual en vivo de imputaciones huérfanas sin OT (`⚠️ X sin OT`).
   - **Órdenes de Trabajo (`WorkOrders.jsx`):** Edición rápida por doble clic de trabajos en Planilla Unificada.
+
+### ✓ HECHO — 3.8 Unificación de Instrucciones Maestras (GEMINI.md v1.2 y CLAUDE.md)
+- **Centralización en GEMINI.md (v1.2):**
+  - Fusionado el protocolo de gobernanza operativa, candado mecánico de 4 fases y diccionario de contratos de Supabase con las reglas de sesión, seguridad, commits, skills transversales (`SKL-007` a `SKL-011`) y estándares de n8n.
+  - Consolidada la regla rectora de clasificación "Gallo o Gallina" y el kit canónico (`useSpreadsheetGrid`, `KpiRadar`, `CrawlerSearchBar`, etc.).
+- **Puntero de compatibilidad en CLAUDE.md:**
+  - `CLAUDE.md` actualizado para apuntar directamente a `@GEMINI.md` garantizando retrocompatibilidad sin duplicación ni divergencia de reglas.
+- **Fecha de corte:** 2026-11-06.

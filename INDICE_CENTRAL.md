@@ -1,4 +1,4 @@
-﻿🗺️ Índice Central - App_AlonCar
+🗺️ Índice Central - App_AlonCar
 
 Este es tu mapa. Úsalo antes de cualquier tarea para localizar la información exacta.
 Para Agentes IA (Antigravity): Consultá este índice para navegación general. Para auditorías de cierre de sesión, usá `INDICE_METADATOS.md` (tabla máquina con tipos, comportamientos y dependencias).
@@ -26,6 +26,8 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | `docs/02_producto/README.md` | Catálogo central de bitácora (Decisiones, Errores, Conceptos, Procesos) | Todos |
 | `docs/02_producto/registro_paso_a_paso.md` | Guía educativa: por qué proteger credenciales, cómo funciona el sistema | Usuarios finales / Clientes |
 | docs/02_producto/ESTANDARES_MODULOS_UI_UX.md | Guía Maestra de Estándares de Arquitectura, UI y UX (4 Zonas, KPIs compactos multicolores, Calendario y Excel Grid) | Devs / Agentes IA |
+| `GEMINI.md` | Protocolo de Gobernanza Arquitectónica y Operativa Unificado (v1.2) — Fuente Única de Verdad | Devs / Agentes IA (Antigravity) |
+| `CLAUDE.md` | Puntero de compatibilidad hacia `GEMINI.md` | Devs / Agentes IA (Claude Code) |
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)
 Diseño de los 6 módulos del ERP.
