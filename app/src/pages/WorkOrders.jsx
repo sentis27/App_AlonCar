@@ -26,7 +26,8 @@ import {
   ExternalLink,
   AlertTriangle,
   Undo2,
-  Redo2
+  Redo2,
+  CopyPlus
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -35,6 +36,9 @@ import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import GridContextMenu from '../components/GridContextMenu'
+import { useGridContextMenu } from '../hooks/useGridContextMenu'
+import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 import { auditService } from '../lib/auditService'
 
@@ -1980,6 +1984,8 @@ export default function WorkOrders() {
   // MODO HOJA DE CÁLCULO (GOOGLE SHEETS / EXCEL) EN PLANILLA UNIFICADA DE OTs
   // ============================================================================
   const woSearchInputRef = useRef(null)
+  const woPasteRef = useRef(null)
+  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const [inlineWoEdit, setInlineWoEdit] = useState(null) // { rowId, colKey, value }
 
   const showWoGridFeedback = useCallback((type, text) => {
@@ -2142,6 +2148,7 @@ export default function WorkOrders() {
     storageKey: 'aloncar_grid_workorders',
     canEditCell: (row) => !isRowLockedDec011(row),
     onBatchUpdate: handleWoBatchUpdate,
+    onPasteRow: (args) => woPasteRef.current?.(args),
     onFocusSearch: () => woSearchInputRef.current?.focus(),
     onCellActivate: (row, colDef) => {
       if (!row || !colDef) return
@@ -2161,6 +2168,65 @@ export default function WorkOrders() {
     },
     showFeedback: showWoGridFeedback
   })
+
+  // ==========================================================================
+  // DUPLICAR / PEGAR FILA COMPLETA (menú clic derecho canónico) - OTs / Trabajos
+  // La fila de la planilla es un `work_items`. Respeta bloqueo DEC-011.
+  // ==========================================================================
+  const WORK_ITEM_CLONE_FIELDS = ['work_order_id', 'description', 'status', 'foreman_name', 'work_type', 'assignment_type', 'contractors']
+  const WORK_ITEM_PASTE_FIELDS = ['description', 'status', 'foreman_name', 'work_type', 'assignment_type', 'contractors']
+
+  useEffect(() => {
+    const basePaste = buildPasteRowHandler({
+      table: 'work_items',
+      entityType: 'work_orders',
+      fields: WORK_ITEM_PASTE_FIELDS,
+      grid: woGrid,
+      setList: setWorkItems,
+      nameOf: (r) => r.description || r.id,
+      showFeedback: showWoGridFeedback,
+      user: user?.email
+    })
+    woPasteRef.current = async (args) => {
+      const target = args?.targetRow
+      if (!target || target.isPlaceholder) {
+        showWoGridFeedback('error', 'La OT destino aún no tiene trabajos cargados: no se puede pegar sobre ella.')
+        return
+      }
+      if (isRowLockedDec011(target)) {
+        showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${target.wo?.ot_number} está Facturada y Cerrada.`)
+        return
+      }
+      await basePaste(args)
+    }
+  })
+
+  const handleDuplicateWorkItem = async (row) => {
+    if (!row || row.isPlaceholder) {
+      showWoGridFeedback('error', 'Esta OT aún no tiene trabajos cargados para duplicar.')
+      return
+    }
+    if (isRowLockedDec011(row)) {
+      showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+      return
+    }
+    try {
+      await duplicateRecord({
+        table: 'work_items',
+        entityType: 'work_orders',
+        source: row,
+        fields: WORK_ITEM_CLONE_FIELDS,
+        overrides: { updated_at: new Date().toISOString() },
+        nameOf: (r) => `${row.wo?.ot_number || 'OT'} · ${r.description || ''}`,
+        user: user?.email
+      })
+      showWoGridFeedback('success', `Trabajo duplicado en ${row.wo?.ot_number || 'la OT'}.`)
+      await loadData()
+    } catch (err) {
+      console.error(err)
+      showWoGridFeedback('error', `Error al duplicar trabajo: ${err.message}`)
+    }
+  }
 
   const commitInlineWoEdit = async (overrideValue = undefined) => {
     if (!inlineWoEdit) return
@@ -2626,6 +2692,7 @@ export default function WorkOrders() {
                     return (
                       <tr
                         key={row.id}
+                        onContextMenu={(e) => openMenu(e, row, rowIndex, { entityType: 'work_orders', recordId: row.isPlaceholder ? row.work_order_id : row.id, recordLabel: row.wo?.ot_number || '' }, woGrid)}
                         className="hover:bg-slate-800/30 transition-colors align-top select-none"
                       >
                         {/* 0. Número Ordinal de Fila (#) */}
@@ -3112,6 +3179,16 @@ export default function WorkOrders() {
                             {!row.isPlaceholder && (
                               <button
                                 type="button"
+                                onClick={() => handleDuplicateWorkItem(row)}
+                                className="p-1.5 text-amber-400 hover:text-amber-300 rounded-lg hover:bg-amber-500/10 transition-colors cursor-pointer"
+                                title="Duplicar fila"
+                              >
+                                <CopyPlus className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {!row.isPlaceholder && (
+                              <button
+                                type="button"
                                 onClick={() => handleOpenSeparateModal(row)}
                                 className="p-1.5 text-amber-400/80 hover:text-amber-300 rounded-lg hover:bg-amber-500/10 transition-colors cursor-pointer"
                                 title="Separar / Independizar este trabajo en su propia OT o moverlo a otra OT"
@@ -3146,6 +3223,23 @@ export default function WorkOrders() {
               </tbody>
             </table>
           </div>
+
+          {/* MENÚ CONTEXTUAL CANÓNICO (clic derecho) */}
+          {menuTarget && (
+            <GridContextMenu
+              target={menuTarget}
+              onClose={closeMenu}
+              onCopyCell={woGrid.copyActiveCell}
+              onCopyRow={woGrid.copyRow}
+              onPaste={woGrid.pasteToActiveOrRange}
+              onDeleteCell={woGrid.deleteActiveCellOrRange}
+              onDuplicateRow={(row) => handleDuplicateWorkItem(row)}
+              onDeleteRow={(row) => (row.isPlaceholder ? showWoGridFeedback('error', 'Esta OT no tiene trabajos para eliminar.') : handleDeleteWorkItem(row))}
+              entityType={menuTarget.entityType}
+              recordId={menuTarget.recordId}
+              recordLabel={menuTarget.recordLabel}
+            />
+          )}
 
           {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
           <GridStatusBarBottom

@@ -33,7 +33,8 @@ import {
   Link2,
   Layers,
   Zap,
-  RefreshCw
+  RefreshCw,
+  CopyPlus
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -43,6 +44,9 @@ import HighlightText from '../components/HighlightText'
 
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import GridContextMenu from '../components/GridContextMenu'
+import { useGridContextMenu } from '../hooks/useGridContextMenu'
+import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
@@ -192,6 +196,8 @@ export default function LaborLogs() {
   const [workOrders, setWorkOrders] = useState([])
   const [workItems, setWorkItems] = useState([])
   const [recentLogs, setRecentLogs] = useState([])
+  const horasPasteRef = useRef(null)
+  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [statusMessage, setStatusMessage] = useState(null)
@@ -1797,6 +1803,7 @@ export default function LaborLogs() {
     getRowId: (row) => row.id,
     storageKey: 'aloncar_grid_horas',
     onBatchUpdate: handleHorasBatchUpdate,
+    onPasteRow: (args) => horasPasteRef.current?.(args),
     onCellActivate: (row, colDef) => activateHorasCell(row, colDef.key),
     onFocusSearch: () => {
       logSearchInputRef.current?.focus()
@@ -1804,6 +1811,51 @@ export default function LaborLogs() {
     },
     showFeedback: showGridFeedback
   })
+
+  // ==========================================================================
+  // DUPLICAR / PEGAR FILA COMPLETA (menú clic derecho canónico) - Carga de Horas
+  // Pegar copia imputación (OT, rubro, horas, tipo); NO pisa operario ni fecha.
+  // ==========================================================================
+  const LOG_CLONE_FIELDS = ['ship_id', 'work_order_id', 'work_item_id', 'hours_worked', 'hours_normal', 'hours_extra_50', 'hours_extra_100', 'date_logged', 'worker_name', 'worker_type', 'rubro', 'work_type', 'cost_center', 'notes', 'approval_status', 'review_reason']
+  const LOG_PASTE_FIELDS = ['ship_id', 'work_order_id', 'work_item_id', 'rubro', 'hours_worked', 'hours_normal', 'hours_extra_50', 'hours_extra_100', 'work_type', 'notes']
+
+  useEffect(() => {
+    horasPasteRef.current = buildPasteRowHandler({
+      table: 'labor_logs',
+      entityType: 'daily_labor_logs',
+      fields: LOG_PASTE_FIELDS,
+      grid: horasGrid,
+      setList: setRecentLogs,
+      mergeLocal: (row, patch) => ({
+        ...row,
+        ...patch,
+        ...('work_order_id' in patch || 'ship_id' in patch
+          ? buildLocalRelationsForLog(patch.ship_id ?? row.ship_id, patch.work_order_id ?? row.work_order_id)
+          : {})
+      }),
+      nameOf: (r) => `${r.worker_name || ''} ${r.date_logged || ''}`.trim() || r.id,
+      showFeedback: showGridFeedback,
+      user: user?.email
+    })
+  })
+
+  const handleDuplicateLog = async (log) => {
+    try {
+      await duplicateRecord({
+        table: 'labor_logs',
+        entityType: 'daily_labor_logs',
+        source: log,
+        fields: LOG_CLONE_FIELDS,
+        nameOf: (r) => `${r.worker_name || ''} ${r.date_logged || ''}`.trim() || r.id,
+        user: user?.email
+      })
+      showGridFeedback('success', `Imputación de ${log.worker_name} duplicada.`)
+      loadInitialData()
+    } catch (err) {
+      console.error(err)
+      showGridFeedback('error', `Error al duplicar imputación: ${err.message}`)
+    }
+  }
 
   function getHorasCellProps(rowIndex, colKey) {
     const colIdx = horasSpreadsheetColumns.findIndex(c => c.key === colKey)
@@ -3343,6 +3395,7 @@ export default function LaborLogs() {
                         return (
                           <tr
                             key={log.id}
+                            onContextMenu={(e) => openMenu(e, log, rowIndex, { entityType: 'daily_labor_logs', recordId: log.id, recordLabel: log.worker_name }, horasGrid)}
                             className={`transition-colors select-none ${
                               isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'
                             }`}
@@ -3725,6 +3778,14 @@ export default function LaborLogs() {
                                 </button>
                                 <button
                                   type="button"
+                                  onClick={() => handleDuplicateLog(log)}
+                                  className="p-1 text-amber-400 hover:text-amber-300 rounded hover:bg-amber-500/10"
+                                  title="Duplicar fila"
+                                >
+                                  <CopyPlus className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleDeleteLog(log.id, log.worker_name)}
                                   className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10"
                                   title="Eliminar"
@@ -3739,6 +3800,23 @@ export default function LaborLogs() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* MENÚ CONTEXTUAL CANÓNICO (clic derecho) */}
+                {menuTarget && (
+                  <GridContextMenu
+                    target={menuTarget}
+                    onClose={closeMenu}
+                    onCopyCell={horasGrid.copyActiveCell}
+                    onCopyRow={horasGrid.copyRow}
+                    onPaste={horasGrid.pasteToActiveOrRange}
+                    onDeleteCell={horasGrid.deleteActiveCellOrRange}
+                    onDuplicateRow={(row) => handleDuplicateLog(row)}
+                    onDeleteRow={(row) => handleDeleteLog(row.id, row.worker_name)}
+                    entityType={menuTarget.entityType}
+                    recordId={menuTarget.recordId}
+                    recordLabel={menuTarget.recordLabel}
+                  />
+                )}
 
                 {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
                 <GridStatusBarBottom
