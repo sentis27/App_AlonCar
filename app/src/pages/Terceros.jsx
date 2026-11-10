@@ -47,7 +47,9 @@ import {
   ChevronDown,
   RotateCcw,
   RotateCw,
-  CopyPlus
+  CopyPlus,
+  Square,
+  CheckSquare
 } from 'lucide-react'
 
 // Tipos de Comprobante y Reglas de Negocio (DEC-017)
@@ -1908,20 +1910,23 @@ export default function Terceros() {
             <table className="w-full text-left text-xs border-collapse table-fixed">
               <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
                 <tr>
-                  {/* Selector / Checkbox Maestro */}
-                  <th className="py-2.5 px-2 w-9 text-center">
-                    <input
-                      type="checkbox"
-                      checked={filteredServices.length > 0 && selectedIds.size === filteredServices.length}
-                      ref={(input) => {
-                        if (input) {
-                          input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredServices.length
-                        }
-                      }}
-                      onChange={handleSelectAll}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30 cursor-pointer"
-                      title="Seleccionar o deseleccionar todas las filas visibles"
-                    />
+                  {/* Columna 0: Checkbox Maestro apilado sobre # */}
+                  <th className="py-2 px-1 w-9 text-center select-none">
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={handleSelectAll}
+                        className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                        title="Seleccionar o deseleccionar todas las filas visibles"
+                      >
+                        {filteredServices.length > 0 && selectedIds.size === filteredServices.length ? (
+                          <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                        ) : (
+                          <Square className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
+                    </div>
                   </th>
                   {/* 1. Fecha */}
                   <th className="py-2.5 px-2 w-[8%]">Fecha ✎</th>
@@ -1970,18 +1975,34 @@ export default function Terceros() {
                           : 'hover:bg-slate-850/40 text-slate-200'
                       }`}
                     >
-                      {/* Checkbox individual con número ordinal (#) apilado */}
-                      <td className="py-1 px-1 text-center whitespace-nowrap w-9">
+                      {/* 0. Columna 0 Canónica ([ ] / #) */}
+                      <td className="py-1 px-1 text-center w-9 select-none relative">
                         <div className="flex flex-col items-center justify-center gap-0.5">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => handleCheckboxToggle(srv.id, index, e)}
-                            className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500/30 cursor-pointer"
-                          />
-                          <span className="font-mono text-[9px] text-slate-500 font-bold leading-none select-none">
+                          <button
+                            type="button"
+                            onClick={(e) => handleCheckboxToggle(srv.id, index, e)}
+                            className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                            title="Seleccionar comprobante"
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openMenu(e, srv, index, { entityType: 'third_party_services', recordId: srv.id, recordLabel: srv.contractor_name }, grid)
+                            }}
+                            className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
+                              isSelected ? 'text-cyan-300 bg-cyan-950/50 ring-1 ring-cyan-500/40' : 'text-slate-500 group-hover:text-cyan-400'
+                            }`}
+                            title={`Fila #${index + 1} • Clic para menú contextual (o clic derecho)`}
+                          >
                             {index + 1}
-                          </span>
+                          </button>
                         </div>
                       </td>
 
@@ -2492,6 +2513,35 @@ export default function Terceros() {
               onDeleteCell={canMutateRows ? grid.deleteActiveCellOrRange : undefined}
               onDuplicateRow={canMutateRows ? (row) => handleDuplicateService(row) : undefined}
               onDeleteRow={canEditAmounts ? (row) => handleDeleteService(row) : undefined}
+              customActions={[
+                ...(menuTarget.row?.voucher_type === 'RMO' || menuTarget.row?.voucher_type === 'RPF' ? [{
+                  id: 'evolve-voucher',
+                  label: '⭐ Evolucionar a Factura (FCR) o SDT',
+                  icon: Sparkles,
+                  iconClass: 'text-amber-400',
+                  hoverClass: 'hover:bg-amber-950/50 text-amber-300 hover:text-amber-200',
+                  visible: activeRolePerspective !== 'direccion',
+                  onClick: () => handleOpenEvolutionModal(menuTarget.row)
+                }] : []),
+                {
+                  id: 'voucher-evolution-history',
+                  label: '📜 Trazabilidad de comprobante',
+                  icon: History,
+                  iconClass: 'text-cyan-400',
+                  hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-cyan-300',
+                  visible: true,
+                  onClick: () => setHistoryService(menuTarget.row)
+                },
+                {
+                  id: 'edit-voucher',
+                  label: '✏️ Editar comprobante',
+                  icon: Edit3,
+                  iconClass: 'text-slate-300',
+                  hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-white',
+                  visible: activeRolePerspective !== 'direccion',
+                  onClick: () => handleOpenEditModal(menuTarget.row)
+                }
+              ]}
               entityType={menuTarget.entityType}
               recordId={menuTarget.recordId}
               recordLabel={menuTarget.recordLabel}
