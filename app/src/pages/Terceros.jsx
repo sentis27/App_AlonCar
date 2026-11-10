@@ -3,29 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 
-// ==============================================================================
-// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
-// ==============================================================================
-function HighlightText({ text, query, className = '' }) {
-  if (!text) return null
-  if (!query || !query.trim()) return <span className={className}>{text}</span>
-
-  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
-  return (
-    <span className={className}>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.trim().toLowerCase() ? (
-          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </span>
-  )
-}
+import HighlightText from '../components/HighlightText'
 
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
@@ -883,34 +861,38 @@ export default function Terceros() {
   }
 
   // Filtrado reactivo de servicios
-    const clearAllFilters = useCallback(() => {
+  const clearAllFilters = useCallback(() => {
     setSearchTerm('')
-    setSelectedShipFilter('TODOS')
-    setSelectedContractorFilter('TODOS')
-    setSelectedTradeFilter('TODOS')
-    setSelectedVoucherFilter('TODOS')
-    setKpiFilter(null)
+    setSelectedShipFilter('todos')
+    setSelectedContractorFilter('todos')
+    setSelectedTradeFilter('todos')
+    setSelectedVoucherFilter('todos')
+    setSelectedAuditFilter('todos')
+    setKpiFilter('todos')
   }, [])
 
   const hasActiveFilters = Boolean(
     searchTerm ||
-    selectedShipFilter !== 'TODOS' ||
-    selectedContractorFilter !== 'TODOS' ||
-    selectedTradeFilter !== 'TODOS' ||
-    selectedVoucherFilter !== 'TODOS' ||
-    kpiFilter !== null
+    selectedShipFilter !== 'todos' ||
+    selectedContractorFilter !== 'todos' ||
+    selectedTradeFilter !== 'todos' ||
+    selectedVoucherFilter !== 'todos' ||
+    selectedAuditFilter !== 'todos' ||
+    (kpiFilter && kpiFilter !== 'todos')
   )
 
   const filteredServices = useMemo(() => {
     return services.filter((srv) => {
       // 1. Filtro KPI
-      if (kpiFilter === 'PRC' && srv.voucher_type !== 'PRC') return false
-      if (kpiFilter === 'RMO' && srv.voucher_type !== 'RMO') return false
-      if (kpiFilter === 'RPF' && srv.voucher_type !== 'RPF') return false
-      if (kpiFilter === 'FCR' && srv.voucher_type !== 'FCR') return false
-      if (kpiFilter === 'SDT' && srv.voucher_type !== 'SDT') return false
-      if (kpiFilter === 'sin_precio' && Number(srv.amount_ars) > 0) return false
-      if (kpiFilter === 'sin_ot' && srv.work_order_id) return false
+      if (kpiFilter && kpiFilter !== 'todos') {
+        if (kpiFilter === 'PRC' && srv.voucher_type !== 'PRC') return false
+        if (kpiFilter === 'RMO' && srv.voucher_type !== 'RMO') return false
+        if (kpiFilter === 'RPF' && srv.voucher_type !== 'RPF') return false
+        if (kpiFilter === 'FCR' && srv.voucher_type !== 'FCR') return false
+        if (kpiFilter === 'SDT' && srv.voucher_type !== 'SDT') return false
+        if (kpiFilter === 'sin_precio' && Number(srv.amount_ars) > 0) return false
+        if (kpiFilter === 'sin_ot' && srv.work_order_id) return false
+      }
 
       // 2. Filtro Buque
       if (selectedShipFilter !== 'todos' && srv.ship_id !== selectedShipFilter) return false
@@ -930,14 +912,13 @@ export default function Terceros() {
       if (searchTerm.trim()) {
         const shipObj = shipMap.get(srv.ship_id)
         const otObj = otMap.get(srv.work_order_id)
-        const corpus = buildUniversalSearchCorpus(srv, {
+        if (!matchesUniversalSearch(srv, searchTerm, {
           ship_name: shipObj?.name,
           ot_number: otObj?.ot_number,
           ot_title: otObj?.title,
           effective_trade: effectiveTrade,
           contractor_trade: contractorObj?.trade
-        })
-        if (!matchesUniversalSearch(corpus, searchTerm)) {
+        })) {
           return false
         }
       }
@@ -2007,18 +1988,20 @@ export default function Terceros() {
                           >
                             <div className="font-bold text-white flex items-center gap-1.5 truncate" title={shipName}>
                               <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                              <span className="truncate">{shipName}</span>
+                              <span className="truncate">
+                                <HighlightText text={shipName} query={searchTerm} />
+                              </span>
                             </div>
                             <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 truncate">
                               {ot ? (
                                 <span className="font-mono text-cyan-300 font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50 shrink-0">
-                                  {ot.ot_number}
+                                  <HighlightText text={ot.ot_number} query={searchTerm} />
                                 </span>
                               ) : (
                                 <span className="text-amber-400 text-[10px] shrink-0 font-bold">⚠️ Sin OT</span>
                               )}
                               <span className="truncate text-[10px] text-slate-500" title={ot?.title}>
-                                {ot?.title || '(Doble clic para asignar)'}
+                                <HighlightText text={ot?.title || '(Doble clic para asignar)'} query={searchTerm} />
                               </span>
                             </div>
                             {cp.renderHandle && (
@@ -2092,7 +2075,7 @@ export default function Terceros() {
                             ) : (
                               <div>
                                 <div className="font-bold text-slate-100 uppercase tracking-wide truncate" title={srv.contractor_name}>
-                                  {srv.contractor_name}
+                                  <HighlightText text={srv.contractor_name} query={searchTerm} />
                                 </div>
                                 <div
                                   className="mt-0.5 truncate"
@@ -2104,7 +2087,7 @@ export default function Terceros() {
                                 >
                                   {effectiveTrade ? (
                                     <span className="inline-block text-[10px] px-1.5 py-0.2 rounded bg-slate-800 hover:border-cyan-500/50 text-slate-300 border border-slate-700 font-medium font-mono truncate max-w-full">
-                                      {effectiveTrade}
+                                      <HighlightText text={effectiveTrade} query={searchTerm} />
                                     </span>
                                   ) : (
                                     <span className="text-[10px] text-rose-400 font-semibold">⚠️ Sin Rubro (Doble clic)</span>
@@ -2155,7 +2138,7 @@ export default function Terceros() {
                               />
                             ) : (
                               Number(srv.amount_ars) > 0 ? (
-                                <span>${Number(srv.amount_ars).toLocaleString('es-AR')}</span>
+                                <span>$<HighlightText text={Number(srv.amount_ars).toLocaleString('es-AR')} query={searchTerm} /></span>
                               ) : (
                                 <span className="text-amber-400 text-xs font-bold">$0 (Sin Precio)</span>
                               )
@@ -2175,10 +2158,10 @@ export default function Terceros() {
                       {/* 5. Dólar / US$ (Calculado) */}
                       <td className="py-2.5 px-2 text-right whitespace-nowrap">
                         <div className="font-mono font-extrabold text-cyan-300">
-                          ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          $<HighlightText text={Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} query={searchTerm} />
                         </div>
                         <div className="text-[10px] text-slate-500 font-mono">
-                          Cotiz: ${Number(srv.usd_rate || 0).toLocaleString('es-AR')}
+                          Cotiz: $<HighlightText text={Number(srv.usd_rate || 0).toLocaleString('es-AR')} query={searchTerm} />
                         </div>
                       </td>
 
@@ -2205,7 +2188,7 @@ export default function Terceros() {
                               </select>
                             ) : (
                               <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${voucherConfig.color}`}>
-                                {srv.voucher_type}
+                                <HighlightText text={srv.voucher_type} query={searchTerm} />
                               </span>
                             )}
                             {cp.renderHandle && (
@@ -2249,7 +2232,9 @@ export default function Terceros() {
                                     <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 shrink-0 font-sans">
                                       FCR
                                     </span>
-                                    <span className="truncate">{fcrNumber}</span>
+                                    <span className="truncate">
+                                      <HighlightText text={fcrNumber} query={searchTerm} />
+                                    </span>
                                   </div>
                                 )}
                                 {prcNumber && (
@@ -2257,7 +2242,9 @@ export default function Terceros() {
                                     <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800 shrink-0 font-sans">
                                       PRC
                                     </span>
-                                    <span className="truncate">{prcNumber}</span>
+                                    <span className="truncate">
+                                      <HighlightText text={prcNumber} query={searchTerm} />
+                                    </span>
                                   </div>
                                 )}
                                 {remitoAloncar && (
@@ -2265,7 +2252,9 @@ export default function Terceros() {
                                     <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 shrink-0 font-sans">
                                       RMT
                                     </span>
-                                    <span className="truncate">#{remitoAloncar}</span>
+                                    <span className="truncate">
+                                      #<HighlightText text={remitoAloncar} query={searchTerm} />
+                                    </span>
                                   </div>
                                 )}
                                 {supplierRemito && (
@@ -2273,7 +2262,9 @@ export default function Terceros() {
                                     <span className="text-[9px] px-1 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800 shrink-0 font-sans">
                                       RMO
                                     </span>
-                                    <span className="truncate">{supplierRemito}</span>
+                                    <span className="truncate">
+                                      <HighlightText text={supplierRemito} query={searchTerm} />
+                                    </span>
                                   </div>
                                 )}
                                 {!hasAnyVoucherNumber && (
@@ -2319,14 +2310,14 @@ export default function Terceros() {
                               <div className="space-y-0.5 truncate max-w-full">
                                 {srv.direct_observations ? (
                                   <p className="text-[11px] text-slate-300 line-clamp-2" title={srv.direct_observations}>
-                                    {srv.direct_observations}
+                                    <HighlightText text={srv.direct_observations} query={searchTerm} />
                                   </p>
                                 ) : (
                                   <span className="text-slate-600 text-[11px] italic">Sin observaciones</span>
                                 )}
                                 {srv.specific_observations && (
                                   <p className="text-[10px] text-slate-400 line-clamp-1 italic truncate" title={srv.specific_observations}>
-                                    Nota: {srv.specific_observations}
+                                    Nota: <HighlightText text={srv.specific_observations} query={searchTerm} />
                                   </p>
                                 )}
                               </div>

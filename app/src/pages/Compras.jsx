@@ -71,6 +71,7 @@ import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText } from '../lib/searchEngine'
+import HighlightText from '../components/HighlightText'
 
 // Regla de Negocio: Para que una compra se cargue directamente a costo: destino=DIRECTO y estado=RECIB.COMP.DIRECT.
 // Alerta Incoherencias si buque ≠ Astillero y:
@@ -152,31 +153,8 @@ const STANDARD_TRADES = [
 ]
 
 // ==============================================================================
-// COMPONENTES Y HELPERS PARA RESALTADO AMARILLO DE BÚSQUEDA AVANZADA (ESTÁNDAR ERP)
+// HELPERS PARA BÚSQUEDA AVANZADA Y RESALTADO AMARILLO (ESTÁNDAR ERP)
 // ==============================================================================
-function HighlightText({ text, query, className = '' }) {
-  if (!text) return null
-  if (!query || !query.trim()) return <span className={className}>{text}</span>
-
-  const q = query.trim()
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const regex = new RegExp(`(${escaped})`, 'gi')
-  const parts = String(text).split(regex)
-
-  return (
-    <span className={className}>
-      {parts.map((part, i) =>
-        regex.test(part) ? (
-          <mark key={i} className="bg-yellow-400/80 text-slate-950 font-bold px-0.5 rounded shadow-sm">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </span>
-  )
-}
 
 function getSearchMatchMap(po, searchQuery, suppliers = [], ships = [], documents = []) {
   if (!searchQuery || !searchQuery.trim()) return { hasMatch: false }
