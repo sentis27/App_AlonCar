@@ -2857,15 +2857,15 @@ export default function LaborLogs() {
                                     return (
                                       <>
                                         <optgroup label={`⭐ Titulares de ${selectedContractorGroup} (${primaryWorkers.length})`}>
-                                          {primaryWorkers.map(w => (
-                                            <option key={w.name} value={w.name} className="bg-slate-900">
+                                          {primaryWorkers.map((w, idx) => (
+                                            <option key={`prim-${w.id || w.name}-${idx}`} value={w.name} className="bg-slate-900">
                                               {w.name} ({w.defaultRubro})
                                             </option>
                                           ))}
                                         </optgroup>
                                         <optgroup label={`🔄 Resto del Padrón Astillero — Préstamo Operativo (${loanedWorkers.length})`}>
-                                          {loanedWorkers.map(w => (
-                                            <option key={w.name} value={w.name} className="bg-slate-900">
+                                          {loanedWorkers.map((w, idx) => (
+                                            <option key={`loan-${w.id || w.name}-${idx}`} value={w.name} className="bg-slate-900">
                                               {w.name} (Titular: {w.defaultRubro})
                                             </option>
                                           ))}
@@ -2874,8 +2874,8 @@ export default function LaborLogs() {
                                     )
                                   }
 
-                                  return astilleroSource.map(w => (
-                                    <option key={w.name} value={w.name} className="bg-slate-900">
+                                  return astilleroSource.map((w, idx) => (
+                                    <option key={`ast-${w.id || w.name}-${idx}`} value={w.name} className="bg-slate-900">
                                       {w.name} ({w.defaultRubro})
                                     </option>
                                   ))
@@ -3743,12 +3743,12 @@ export default function LaborLogs() {
                   filteredCount={filteredLogs.length}
                   totalCount={recentLogs.length}
                   entityName="imputaciones"
-                  hasActiveFilter={Boolean(filterWorker || filterDate || filterShip || activeKpiFilter)}
+                  hasActiveFilter={Boolean(filterWorker || filterDate || filterShip || (activeKpiFilter && activeKpiFilter !== 'todos'))}
                   onClearFilters={() => {
                     setFilterWorker('')
                     setFilterDate('')
                     setFilterShip('')
-                    setActiveKpiFilter(null)
+                    setActiveKpiFilter('todos')
                   }}
                   selectionStats={horasGrid.selectionStats}
                   onClearSelection={() => horasGrid.setSelectionRange(null)}
@@ -3758,11 +3758,11 @@ export default function LaborLogs() {
                     onClear: () => setSelectedLogIds(new Set())
                   } : null}
                   globalAggregates={[
-                    { label: 'Σ Horas', value: stats.sumTotalHours.toFixed(1), highlight: true },
-                    { label: 'Norm', value: stats.sumNorm.toFixed(1) },
-                    { label: '50%', value: stats.sum50.toFixed(1) },
-                    { label: '100%', value: stats.sum100.toFixed(1) },
-                    { label: 'Ø Horas', value: stats.avgHours.toFixed(1) }
+                    { label: 'Σ Horas', value: hoursStats.sumTotalHours.toFixed(1), highlight: true },
+                    { label: 'Norm', value: hoursStats.sumNorm.toFixed(1) },
+                    { label: '50%', value: hoursStats.sum50.toFixed(1) },
+                    { label: '100%', value: hoursStats.sum100.toFixed(1) },
+                    { label: 'Ø Horas', value: hoursStats.avgHours.toFixed(1) }
                   ]}
                 />
               </div>
