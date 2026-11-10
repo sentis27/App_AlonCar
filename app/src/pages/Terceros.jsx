@@ -196,11 +196,11 @@ function SearchableContractorSelect({ contractors, value, onChange, disabled }) 
   return (
     <div className="relative" ref={containerRef}>
       <div className="relative flex items-center">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none z-10" />
+        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none z-10" />
         <input
           type="text"
           disabled={disabled}
-          placeholder="Escribí para buscar o seleccioná de la lista..."
+          placeholder="Escribí contratista y presioná Enter..."
           value={isOpen ? query : (selectedContractor ? `${selectedContractor.name} [${selectedContractor.trade || 'SIN RUBRO'}]` : '')}
           onFocus={() => {
             setIsOpen(true)
@@ -210,12 +210,27 @@ function SearchableContractorSelect({ contractors, value, onChange, disabled }) 
             setQuery(e.target.value)
             setIsOpen(true)
           }}
-          className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-16 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 placeholder-slate-500 transition-colors cursor-pointer"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && isOpen && filtered.length > 0) {
+              e.preventDefault()
+              onChange(filtered[0].name)
+              setIsOpen(false)
+              setQuery('')
+            }
+            if (e.key === 'Escape') {
+              setIsOpen(false)
+            }
+            if (e.key === 'Tab') {
+              setIsOpen(false)
+            }
+          }}
+          className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-14 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 placeholder-slate-500 transition-colors cursor-pointer"
         />
-        <div className="absolute right-2 flex items-center gap-1 z-10">
+        <div className="absolute right-1.5 flex items-center gap-0.5 z-10">
           {value && !disabled && (
             <button
               type="button"
+              tabIndex={-1}
               onClick={(e) => {
                 e.stopPropagation()
                 onChange('')
@@ -229,17 +244,18 @@ function SearchableContractorSelect({ contractors, value, onChange, disabled }) 
           )}
           <button
             type="button"
+            tabIndex={-1}
             disabled={disabled}
             onClick={() => setIsOpen((prev) => !prev)}
             className="p-1 text-slate-400 hover:text-white rounded-md cursor-pointer"
           >
-            <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
       </div>
 
       {isOpen && !disabled && (
-        <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 p-1 divide-y divide-slate-800/60">
+        <div className="absolute left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 p-1 divide-y divide-slate-800/60">
           {filtered.length === 0 ? (
             <div className="p-3 text-center text-slate-500 text-xs font-mono">
               No se encontraron contratistas que coincidan con &quot;{query}&quot;
@@ -251,12 +267,13 @@ function SearchableContractorSelect({ contractors, value, onChange, disabled }) 
                 <button
                   key={c.id || c.name}
                   type="button"
+                  tabIndex={-1}
                   onClick={() => {
                     onChange(c.name)
                     setIsOpen(false)
                     setQuery('')
                   }}
-                  className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between text-xs font-mono transition-colors cursor-pointer ${
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs font-mono transition-colors cursor-pointer ${
                     isSelected ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-700' : 'text-slate-200 hover:bg-slate-800'
                   }`}
                 >
@@ -1376,7 +1393,7 @@ export default function Terceros() {
   }, [selectedIds, filteredServices])
 
   return (
-    <div className="space-y-4 w-full pb-24">
+    <div className="space-y-4 w-full pb-10">
       {/* ALERTA DE FEEDBACK / TOAST */}
       {feedbackMessage && (
         <div
@@ -1662,147 +1679,133 @@ export default function Terceros() {
         </div>
       </div>
 
-      {/* ZONA 3: BARRA DE FILTROS, BÚSQUEDA Y COMANDOS DE PLANILLA */}
-      <div className="alon-zone-toolbar p-4 space-y-3">
-        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-          {/* Buscador Canónico (Estándar 03) */}
-          <CrawlerSearchBar
-            value={searchTerm}
-            onChange={setSearchTerm}
-            onClear={clearAllFilters}
-            inputRef={searchInputRef}
-            placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F | Esc limpia todo)"
-          />
+      {/* BLOQUE OPERATIVO UNIFICADO (ZONA 3 + ZONA 4 EN UN SOLO BLOQUE) */}
+      <div className="alon-workspace-block">
+      {/* ZONA 3: BARRA DE FILTROS, BÚSQUEDA Y COMANDOS DE PLANILLA (2 NIVELES) */}
+      <div className="alon-zone-toolbar p-3 space-y-2.5">
+        {/* NIVEL 1: Buscador Canónico (Estándar 03) siempre visible */}
+        <CrawlerSearchBar
+          value={searchTerm}
+          onChange={setSearchTerm}
+          onClear={clearAllFilters}
+          inputRef={searchInputRef}
+          placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F | Esc limpia todo)"
+        />
 
-          <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
-            Mostrando {filteredServices.length} de {services.length} servicios
-          </span>
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
-              title="Limpiar todos los filtros (Esc)"
+        {/* NIVEL 2: Filtros Dropdown Compactos + Undo/Redo + Conmutador de Vista */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Buque */}
+            <select
+              value={selectedShipFilter}
+              onChange={(e) => setSelectedShipFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary max-w-[160px]"
             >
-              <X className="w-3.5 h-3.5" />
-              <span>Limpiar filtros</span>
-            </button>
-          )}
+              <option value="todos">Buque: Todos ({ships.length})</option>
+              {ships.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+
+            {/* Contratista */}
+            <select
+              value={selectedContractorFilter}
+              onChange={(e) => setSelectedContractorFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary max-w-[180px] truncate"
+            >
+              <option value="todos">Contratista: Todos ({contractors.length})</option>
+              {contractors.map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+
+            {/* Rubro */}
+            <select
+              value={selectedTradeFilter}
+              onChange={(e) => setSelectedTradeFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary max-w-[150px]"
+            >
+              <option value="todos">Rubro: Todos</option>
+              {OFFICIAL_TRADES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+
+            {/* Comprobante */}
+            <select
+              value={selectedVoucherFilter}
+              onChange={(e) => setSelectedVoucherFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary max-w-[160px]"
+            >
+              <option value="todos">Comprobante: Todos</option>
+              {VOUCHER_TYPES.map((v) => (
+                <option key={v.code} value={v.code}>{v.label}</option>
+              ))}
+            </select>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+                title="Limpiar todos los filtros (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Limpiar</span>
+              </button>
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {grid.canUndo && (
               <button
                 type="button"
                 onClick={grid.undo}
-                className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer"
                 title="Deshacer último cambio (Ctrl+Z)"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Deshacer (Ctrl+Z)</span>
+                <span>Deshacer</span>
               </button>
             )}
             {grid.canRedo && (
               <button
                 type="button"
                 onClick={grid.redo}
-                className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer"
                 title="Rehacer cambio (Ctrl+Y)"
               >
                 <RotateCw className="w-3.5 h-3.5" />
-                <span>Rehacer (Ctrl+Y)</span>
+                <span>Rehacer</span>
               </button>
             )}
-            <div className="hidden xl:flex items-center gap-1.5 text-[10px] font-mono text-slate-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
-              <span className="text-cyan-400 font-bold">⌨️ Grid:</span>
-              <span>Doble Clic / Enter | Ctrl+C/V/D | Ctrl+Z/Y</span>
+
+            {/* Toggle de Vistas Universales (Filas / Fichas) */}
+            <div className="bg-slate-950 border border-slate-800 p-1 rounded-xl flex items-center shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('filas')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  viewMode === 'filas'
+                    ? 'bg-primary text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>☷ Filas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('fichas')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  viewMode === 'fichas'
+                    ? 'bg-primary text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <span>⊞ Fichas</span>
+              </button>
             </div>
           </div>
-
-          {/* Toggle de Vistas Universales (Filas / Fichas) */}
-          <div className="bg-slate-950 border border-slate-800 p-1 rounded-xl flex items-center shrink-0 self-end md:self-auto">
-            <button
-              type="button"
-              onClick={() => setViewMode('filas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'filas'
-                  ? 'bg-primary text-slate-950 shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>☷ Vista Filas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('fichas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'fichas'
-                  ? 'bg-primary text-slate-950 shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>⊞ Vista Fichas</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Filtros Dropdown */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-1 text-xs">
-          {/* Buque */}
-          <select
-            value={selectedShipFilter}
-            onChange={(e) => setSelectedShipFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary"
-          >
-            <option value="todos">Buque: Todos ({ships.length})</option>
-            {ships.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Contratista */}
-          <select
-            value={selectedContractorFilter}
-            onChange={(e) => setSelectedContractorFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary truncate"
-          >
-            <option value="todos">Contratista: Todos ({contractors.length})</option>
-            {contractors.map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Rubro */}
-          <select
-            value={selectedTradeFilter}
-            onChange={(e) => setSelectedTradeFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary"
-          >
-            <option value="todos">Rubro: Todos</option>
-            {OFFICIAL_TRADES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-
-          {/* Comprobante */}
-          <select
-            value={selectedVoucherFilter}
-            onChange={(e) => setSelectedVoucherFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-primary"
-          >
-            <option value="todos">Comprobante: Todos</option>
-            {VOUCHER_TYPES.map((v) => (
-              <option key={v.code} value={v.code}>
-                {v.label}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -1857,7 +1860,7 @@ export default function Terceros() {
             tabIndex={0}
             onKeyDown={grid.handleKeyDown}
             ref={grid.gridContainerRef}
-            className="overflow-y-auto max-h-[calc(100vh-270px)] overflow-x-hidden focus:outline-none"
+            className="alon-grid-scroll"
           >
             <table className="w-full text-left text-xs border-collapse table-fixed">
               <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
@@ -2727,362 +2730,402 @@ export default function Terceros() {
           </div>
         </div>
       )}
+      </div>
 
       {/* ==================================================================== */}
       {/* MODAL 1: CARGA GUIADA EN CASCADA (Barco -> Contratista 3ros -> OT)   */}
       {/* ==================================================================== */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 my-8">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 font-bold">
-                  <Wrench className="w-4 h-4" />
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="alon-modal-card max-w-5xl animate-in fade-in zoom-in-95">
+            <div className="alon-modal-header">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 font-bold shrink-0">
+                  <Wrench className="w-3.5 h-3.5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black text-white truncate">
                     {editingService ? 'Editar Comprobante de Terceros' : 'Carga Guiada de Gasto de Terceros (GS-005)'}
                   </h3>
-                  <p className="text-xs text-slate-400">
-                    Cascada estricta: 1° Barco ➔ 2° Contratista [3ros] ➔ 3° Orden de Trabajo
+                  <p className="text-[11px] text-slate-400 truncate">
+                    Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Cascada de Obra ➔ 2° Tipo Comprobante ➔ 3° Observaciones ➔ 4° N° Comprobantes ➔ 5° Importes.
                   </p>
                 </div>
               </div>
               <button
                 type="button"
+                tabIndex={-1}
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveService} className="p-6 space-y-4 text-xs">
-              {/* PASO 1: SELECCIONAR BARCO */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Ship className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>1° Buque / Embarcación de la Obra ({ships.length} disponibles) *</span>
-                </label>
-                <select
-                  required
-                  value={formData.ship_id}
-                  onChange={(e) => {
-                    const newShipId = e.target.value
-                    setFormData((prev) => ({
-                      ...prev,
-                      ship_id: newShipId,
-                      work_order_id: '' // reset OT en cascada
-                    }))
-                  }}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
-                >
-                  <option value="">-- Seleccionar Buque --</option>
-                  {ships.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} {s.current_location ? `[${s.current_location}]` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <form onSubmit={handleSaveService} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+              <div className="alon-modal-body">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
+                  {/* COLUMNA IZQUIERDA: BLOQUES 1, 2 Y 3 */}
+                  <div className="space-y-3">
+                    {/* BLOQUE 1: CASCADA DE IMPUTACIÓN DE OBRA (BORDE SKY / CIAN) */}
+                    <div className="alon-chunk-sky space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
+                        <span className="font-black text-sky-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                          <Ship className="w-3.5 h-3.5 text-sky-400" />
+                          <span>1. Cascada de Imputación de Obra</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400">Buque ➔ Contratista [3ros] ➔ OT</span>
+                      </div>
 
-              {/* PASO 2: SELECCIONAR CONTRATISTA (CON PERMISO 3ROS) */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>2° Contratista o Taller Autorizado [3ros] ({contractors.length} disponibles) *</span>
-                </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {/* PASO 1: SELECCIONAR BARCO */}
+                        <div>
+                          <label className="block font-bold text-slate-300 text-[11px] mb-1">
+                            1° Buque / Embarcación <span className="text-rose-400">*</span>
+                          </label>
+                          <select
+                            autoFocus
+                            required
+                            value={formData.ship_id}
+                            onChange={(e) => {
+                              const newShipId = e.target.value
+                              setFormData((prev) => ({
+                                ...prev,
+                                ship_id: newShipId,
+                                work_order_id: '' // reset OT en cascada
+                              }))
+                            }}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-primary text-xs"
+                          >
+                            <option value="">-- Seleccionar Buque --</option>
+                            {ships.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name} {s.current_location ? `[${s.current_location}]` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                {/* Desplegable integrado con buscador en tiempo real */}
-                <SearchableContractorSelect
-                  contractors={contractors}
-                  value={formData.contractor_name}
-                  onChange={handleContractorSelect}
-                />
+                        {/* PASO 3: SELECCIONAR ORDEN DE TRABAJO (OT - OPCIONAL) */}
+                        <div>
+                          <label className="block font-bold text-slate-300 text-[11px] mb-1">
+                            3° Orden de Trabajo (OT)
+                          </label>
+                          <select
+                            value={formData.work_order_id}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, work_order_id: e.target.value }))}
+                            disabled={!formData.ship_id}
+                            className={`w-full bg-slate-950 border rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary text-xs disabled:opacity-50 ${
+                              formData.ship_id && !formData.work_order_id ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-slate-700 text-white'
+                            }`}
+                          >
+                            <option value="">
+                              {!formData.ship_id ? '-- 1° elija buque --' : '-- ⚠️ Dejar OT en blanco --'}
+                            </option>
+                            {availableWorkOrdersForSelectedShip.map((wo) => (
+                              <option key={wo.id} value={wo.id}>
+                                {wo.ot_number}: {wo.title}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
 
-                {/* MANEJO DE RUBRO MANUAL / POLIRRUBRO */}
-                {formData.is_manual_trade ? (
-                  <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/50 space-y-1.5 mt-2">
-                    <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px]">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Proveedor Polirrubro (MANUAL): Seleccione el rubro aplicable al trabajo de la lista oficial</span>
+                      {/* PASO 2: SELECCIONAR CONTRATISTA (CON PERMISO 3ROS) */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="font-bold text-slate-300 text-[11px] flex items-center gap-1">
+                            <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>2° Contratista o Taller Autorizado [3ros] ({contractors.length}) <span className="text-rose-400">*</span></span>
+                          </label>
+                          {!formData.is_manual_trade && formData.trade && (
+                            <span className="text-[10px] font-bold text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/60">
+                              Rubro: {formData.trade}
+                            </span>
+                          )}
+                        </div>
+
+                        <SearchableContractorSelect
+                          contractors={contractors}
+                          value={formData.contractor_name}
+                          onChange={handleContractorSelect}
+                        />
+
+                        {/* MANEJO DE RUBRO MANUAL / POLIRRUBRO */}
+                        {formData.is_manual_trade && (
+                          <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/50 space-y-1 mt-1.5">
+                            <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[10px]">
+                              <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                              <span>Proveedor Polirrubro (MANUAL): Seleccione el rubro aplicable al trabajo</span>
+                            </div>
+                            <select
+                              required
+                              value={formData.trade}
+                              onChange={(e) => setFormData((prev) => ({ ...prev, trade: e.target.value }))}
+                              className="w-full bg-slate-950 border border-amber-600/70 rounded-lg px-2.5 py-1 text-amber-200 text-xs focus:outline-none"
+                            >
+                              <option value="">-- Seleccionar Rubro Oficial --</option>
+                              {OFFICIAL_TRADES.map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <select
-                      required
-                      value={formData.trade}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, trade: e.target.value }))}
-                      className="w-full bg-slate-950 border border-amber-600/70 rounded-lg px-2.5 py-1.5 text-amber-200 text-xs focus:outline-none"
-                    >
-                      <option value="">-- Seleccionar Rubro Oficial --</option>
-                      {OFFICIAL_TRADES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : formData.trade ? (
-                  <div className="flex items-center gap-2 text-slate-400 text-[11px] mt-1 pl-1">
-                    <span>Rubro asignado automáticamente:</span>
-                    <span className="font-bold text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60">
-                      {formData.trade}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
 
-              {/* PASO 3: SELECCIONAR ORDEN DE TRABAJO (OT - OPCIONAL) */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>3° Orden de Trabajo (OT - Opcional: puede dejarse en blanco)</span>
-                </label>
-                <select
-                  value={formData.work_order_id}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, work_order_id: e.target.value }))}
-                  disabled={!formData.ship_id}
-                  className={`w-full bg-slate-950 border rounded-xl px-3 py-2 focus:outline-none focus:border-primary text-xs disabled:opacity-50 ${
-                    formData.ship_id && !formData.work_order_id ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-slate-700 text-white'
-                  }`}
-                >
-                  <option value="">
-                    {!formData.ship_id ? '-- Primero seleccione un buque --' : '-- ⚠️ Dejar OT en blanco (Pendiente de apertura) --'}
-                  </option>
-                  {availableWorkOrdersForSelectedShip.map((wo) => (
-                    <option key={wo.id} value={wo.id}>
-                      {wo.ot_number}: {wo.title} ({wo.status || 'En ejecución'})
-                    </option>
-                  ))}
-                </select>
-              </div>
+                    {/* BLOQUE 2: TIPO DE COMPROBANTE PRINCIPAL (BORDE ÁMBAR) */}
+                    <div className="alon-chunk-amber space-y-1.5">
+                      <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
+                        <span className="font-black text-amber-400 uppercase tracking-wider text-[11px]">
+                          2. Tipo de Comprobante Principal (DEC-017) *
+                        </span>
+                      </div>
+                      <select
+                        value={formData.voucher_type}
+                        onChange={(e) => {
+                          const vCode = e.target.value
+                          setFormData((prev) => ({
+                            ...prev,
+                            voucher_type: vCode
+                          }))
+                        }}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-amber-400 text-xs"
+                      >
+                        {VOUCHER_TYPES.map((v) => (
+                          <option key={v.code} value={v.code}>
+                            {v.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-400 italic leading-snug">
+                        {VOUCHER_TYPES.find((v) => v.code === formData.voucher_type)?.description}
+                      </p>
+                    </div>
 
-              {/* TIPO DE COMPROBANTE PRINCIPAL */}
-              <div className="space-y-1 pt-1">
-                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-                  Tipo de Comprobante Principal (DEC-017) *
-                </label>
-                <select
-                  value={formData.voucher_type}
-                  onChange={(e) => {
-                    const vCode = e.target.value
-                    setFormData((prev) => ({
-                      ...prev,
-                      voucher_type: vCode
-                    }))
-                  }}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-400 text-xs"
-                >
-                  {VOUCHER_TYPES.map((v) => (
-                    <option key={v.code} value={v.code}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-500 italic">
-                  {VOUCHER_TYPES.find((v) => v.code === formData.voucher_type)?.description}
-                </p>
-              </div>
+                    {/* BLOQUE 3: OBSERVACIONES DIRECTAS Y ESPECÍFICAS (BORDE ÍNDIGO) */}
+                    <div className="alon-chunk-indigo space-y-2">
+                      <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
+                        <span className="font-black text-indigo-400 uppercase tracking-wider text-[11px]">
+                          3. Observaciones Técnicas y Administrativas
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        <div>
+                          <label className="block font-bold text-slate-300 text-[11px] mb-1">
+                            Observaciones Directas (Detalle técnico de la tarea ejecutada)
+                          </label>
+                          <textarea
+                            rows={2}
+                            placeholder="Describa el trabajo realizado por el contratista en la obra..."
+                            value={formData.direct_observations}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, direct_observations: e.target.value }))}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-primary text-xs"
+                          />
+                        </div>
 
-              {/* NÚMEROS DE COMPROBANTES ASOCIADOS (MÚLTIPLES COMPROBANTES POR TRABAJO) */}
-              <div className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Identificación de Comprobantes (Pueden registrarse varios)</span>
-                  </label>
-                  <span className="text-[10px] text-slate-500">Se mostrarán en la columna Nº Comprobante</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* 1. Nº Presupuesto Interno (PRC) */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-xs flex items-center justify-between">
-                      <span className={formData.voucher_type === 'PRC' ? 'text-amber-300 font-black' : 'text-slate-300'}>
-                        Nº Presupuesto Interno (PRC) {formData.voucher_type === 'PRC' && '* (Obligatorio)'}
-                      </span>
-                      <span className="text-[10px] text-amber-500 font-mono">PRC</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: 104 o PRC-2026-01"
-                      value={formData.budget_number || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, budget_number: e.target.value }))}
-                      className={`w-full bg-slate-900 border rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none ${
-                        formData.voucher_type === 'PRC' && !formData.budget_number?.trim()
-                          ? 'border-amber-500/80 focus:border-amber-400'
-                          : 'border-slate-700 focus:border-cyan-400'
-                      }`}
-                    />
+                        <div>
+                          <label className="block font-bold text-slate-300 text-[11px] mb-1">
+                            Observaciones Específicas (Administración / Reclamo de Facturas)
+                          </label>
+                          <textarea
+                            rows={2}
+                            placeholder="Notas contables, reclamos de facturas pendientes, condiciones de pago..."
+                            value={formData.specific_observations}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, specific_observations: e.target.value }))}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-primary text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* 2. Nº Factura / Comprobante Fiscal (FCR / FCA) */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-xs flex items-center justify-between">
-                      <span className={['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(formData.voucher_type) ? 'text-emerald-300 font-black' : 'text-slate-300'}>
-                        Nº Factura / Comprobante Fiscal
-                      </span>
-                      <span className="text-[10px] text-emerald-500 font-mono">FCR / FCA</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: FAC-B-0004-00012480"
-                      value={formData.invoice_number || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, invoice_number: e.target.value }))}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                    />
+                  {/* COLUMNA DERECHA: BLOQUES 4 Y 5 */}
+                  <div className="space-y-3">
+                    {/* BLOQUE 4: IDENTIFICACIÓN DE COMPROBANTES ASOCIADOS (BORDE PÚRPURA) */}
+                    <div className="alon-chunk-purple space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-purple-500/20 pb-1">
+                        <span className="font-black text-purple-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-purple-400" />
+                          <span>4. Identificación de Comprobantes Asociados</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400">Múltiples admitidos</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {/* 1. Nº Presupuesto Interno (PRC) */}
+                        <div className="space-y-1">
+                          <label className="font-bold text-[11px] flex items-center justify-between">
+                            <span className={formData.voucher_type === 'PRC' ? 'text-amber-300 font-black' : 'text-slate-300'}>
+                              Nº Presupuesto (PRC) {formData.voucher_type === 'PRC' && '*'}
+                            </span>
+                            <span className="text-[9px] text-amber-500 font-mono">PRC</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej: 104 o PRC-2026-01"
+                            value={formData.budget_number || ''}
+                            onChange={(e) => setFormData(prev => ({ ...prev, budget_number: e.target.value }))}
+                            className={`w-full bg-slate-900 border rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none ${
+                              formData.voucher_type === 'PRC' && !formData.budget_number?.trim()
+                                ? 'border-amber-500/80 focus:border-amber-400'
+                                : 'border-slate-700 focus:border-cyan-400'
+                            }`}
+                          />
+                        </div>
+
+                        {/* 2. Nº Factura / Comprobante Fiscal (FCR / FCA) */}
+                        <div className="space-y-1">
+                          <label className="font-bold text-[11px] flex items-center justify-between">
+                            <span className={['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(formData.voucher_type) ? 'text-emerald-300 font-black' : 'text-slate-300'}>
+                              Nº Factura Fiscal
+                            </span>
+                            <span className="text-[9px] text-emerald-500 font-mono">FCR / FCA</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej: FAC-B-0004-00012480"
+                            value={formData.invoice_number || ''}
+                            onChange={(e) => setFormData(prev => ({ ...prev, invoice_number: e.target.value }))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+
+                        {/* 3. Nº Remito Alon Car (Cruce Pañol) */}
+                        <div className="space-y-1">
+                          <label className="font-bold text-slate-300 text-[11px] flex items-center justify-between">
+                            <span>Nº Remito Alon Car</span>
+                            <span className="text-[9px] text-cyan-500 font-mono">PAÑOL</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej: 1042 (Cruce Pañol)"
+                            value={formData.internal_remito_number || ''}
+                            onChange={(e) => setFormData(prev => ({ ...prev, internal_remito_number: e.target.value }))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+
+                        {/* 4. Nº Remito de Proveedor / Taller (RPF / RMO) */}
+                        <div className="space-y-1">
+                          <label className="font-bold text-slate-300 text-[11px] flex items-center justify-between">
+                            <span>Nº Remito Proveedor</span>
+                            <span className="text-[9px] text-purple-400 font-mono">RPF / RMO</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej: RMO-789"
+                            value={formData.supplier_remito_number || ''}
+                            onChange={(e) => setFormData(prev => ({ ...prev, supplier_remito_number: e.target.value }))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BLOQUE 5: FECHA DE CARGA, IMPORTE AR$ Y CONVERSIÓN US$ (BORDE ESMERALDA) */}
+                    <div className="alon-chunk-emerald space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
+                        <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                          <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>5. Fecha de Carga, Importe AR$ y Conversión US$</span>
+                        </span>
+                        <span className="text-[10px] text-emerald-300 font-mono">Quincena Oficial</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="space-y-1">
+                          <label className="font-bold text-slate-300 text-[11px] block">
+                            Fecha de Carga (A mano) <span className="text-rose-400">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            value={formData.entry_date}
+                            onChange={(e) => {
+                              const newDate = e.target.value
+                              const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(newDate, formData.amount_ars)
+                              setFormData((prev) => ({
+                                ...prev,
+                                entry_date: newDate,
+                                service_date: newDate,
+                                usd_rate,
+                                amount_usd
+                              }))
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-primary font-mono text-xs"
+                          />
+                          <span className="text-[10px] text-slate-500 block">Fija cotización de quincena</span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="font-bold text-amber-300 text-[11px] block">
+                            Importe AR$ <span className="text-rose-400">*</span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder="0.00"
+                              disabled={editingService && !canEditAmounts}
+                              value={formData.amount_ars}
+                              onChange={(e) => {
+                                const newArs = e.target.value
+                                const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(formData.entry_date, newArs)
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  amount_ars: newArs,
+                                  usd_rate,
+                                  amount_usd
+                                }))
+                              }}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-2.5 pr-7 py-1.5 text-white font-mono font-bold text-xs focus:outline-none focus:border-amber-400 disabled:opacity-50"
+                            />
+                            {editingService && !canEditAmounts && (
+                              <Lock className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2" title="Edición de montos bloqueada" />
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-500 block">Monto en pesos</span>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/30 flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[10px] font-bold text-cyan-300 flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-cyan-400" />
+                            Cotiz. Dólar Intocable: ${Number(formData.usd_rate).toLocaleString('es-AR')}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono block">
+                            {formData.amount_ars && formData.usd_rate > 0
+                              ? `$${Number(formData.amount_ars).toLocaleString('es-AR')} ÷ $${formData.usd_rate}`
+                              : 'Calculado automáticamente según fecha'}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-emerald-400 uppercase font-bold block">Equivalente</span>
+                          <span className="text-sm font-black font-mono text-white">US$ {formData.amount_usd}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-
-                  {/* 3. Nº Remito Alon Car (Cruce Pañol) */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-300 text-xs flex items-center justify-between">
-                      <span>Nº Remito Alon Car (Cruce Pañol)</span>
-                      <span className="text-[10px] text-cyan-500 font-mono">ALONCAR</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: 1042 (Remito de salida de Pañol)"
-                      value={formData.internal_remito_number || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, internal_remito_number: e.target.value }))}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-
-                  {/* 4. Nº Remito de Proveedor / Taller (RPF / RMO) */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-300 text-xs flex items-center justify-between">
-                      <span>Nº Remito Proveedor / Taller</span>
-                      <span className="text-[10px] text-purple-500 font-mono">RPF / RMO</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: RMO-789"
-                      value={formData.supplier_remito_number || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, supplier_remito_number: e.target.value }))}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* FECHAS & DÓLAR INTOCABLE SEGÚN FECHA DE CARGA */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-300 text-[11px] flex items-center justify-between">
-                    <span>Fecha de Carga (A mano) *</span>
-                    <span className="text-[10px] text-cyan-400 font-normal">Quincena Oficial</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.entry_date}
-                    onChange={(e) => {
-                      const newDate = e.target.value
-                      const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(newDate, formData.amount_ars)
-                      setFormData((prev) => ({
-                        ...prev,
-                        entry_date: newDate,
-                        service_date: newDate,
-                        usd_rate,
-                        amount_usd
-                      }))
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-primary font-mono text-xs"
-                  />
-                  <span className="text-[10px] text-slate-500">Determina el tipo de cambio oficial</span>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-amber-300 text-[11px]">
-                    Importe AR$ *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      disabled={editingService && !canEditAmounts}
-                      value={formData.amount_ars}
-                      onChange={(e) => {
-                        const newArs = e.target.value
-                        const { usd_rate, amount_usd } = handleEntryDateOrAmountChange(formData.entry_date, newArs)
-                        setFormData((prev) => ({
-                          ...prev,
-                          amount_ars: newArs,
-                          usd_rate,
-                          amount_usd
-                        }))
-                      }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-3 pr-7 py-1.5 text-white font-mono font-bold text-xs focus:outline-none focus:border-amber-400 disabled:opacity-50"
-                    />
-                    {editingService && !canEditAmounts && (
-                      <Lock className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2" title="Edición de montos bloqueada" />
-                    )}
-                  </div>
-                  <span className="text-[10px] text-slate-500">Monto del trabajo o comprobante</span>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-cyan-300 text-[11px] flex items-center justify-between">
-                    <span className="flex items-center gap-1">
-                      <Lock className="w-3 h-3 text-cyan-400" />
-                      Cotiz. Dólar (Intocable)
-                    </span>
-                    <span className="text-white font-black font-mono text-xs">US$ {formData.amount_usd}</span>
-                  </label>
-                  <div className="w-full bg-slate-900/90 border border-cyan-800/60 rounded-lg px-2.5 py-1.5 font-mono text-xs text-cyan-300 font-bold flex items-center justify-between select-none">
-                    <span>${Number(formData.usd_rate).toLocaleString('es-AR')}</span>
-                    <span className="text-[10px] text-cyan-500 font-normal">Quincena Oficial</span>
-                  </div>
-                  <span className="text-[10px] text-cyan-400/90 font-mono block truncate">
-                    {formData.amount_ars && formData.usd_rate > 0
-                      ? `$${Number(formData.amount_ars).toLocaleString('es-AR')} ÷ $${formData.usd_rate} = US$ ${formData.amount_usd}`
-                      : 'Congelado según fecha de carga'}
-                  </span>
-                </div>
-              </div>
-
-              {/* OBSERVACIONES DIRECTAS (TÉCNICAS) Y ESPECÍFICAS (ADMINISTRATIVAS) */}
-              <div className="space-y-2">
-                <div>
-                  <label className="font-bold text-slate-300 text-[11px]">
-                    Observaciones Directas (Detalle técnico de la tarea ejecutada)
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Describa el trabajo realizado por el contratista en la obra..."
-                    value={formData.direct_observations}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, direct_observations: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-300 text-[11px]">
-                    Observaciones Específicas (Administración / Reclamo de Facturas)
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Notas contables, reclamos de facturas pendientes, condiciones de pago..."
-                    value={formData.specific_observations}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, specific_observations: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-primary text-xs"
-                  />
                 </div>
               </div>
 
-              {/* BOTONES DE ACCIÓN */}
-              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+              {/* BOTONES DE ACCIÓN FIJOS */}
+              <div className="alon-modal-footer">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingService}
-                  className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                  className="px-5 py-1.5 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
                 >
                   {savingService ? (
                     <>

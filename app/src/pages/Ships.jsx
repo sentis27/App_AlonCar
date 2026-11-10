@@ -1360,7 +1360,7 @@ export default function Ships() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* ========================================================================= */}
       {/* ZONA 1 (CONTEXTO): CABECERA & CONTROL DE TERMINALES DE TRABAJO            */}
       {/* ========================================================================= */}
@@ -1735,49 +1735,114 @@ export default function Ships() {
       </div>
 
       {/* ========================================================================= */}
-      {/* ZONA 3 (BARRA DE BÚSQUEDA, FILTROS Y PESTAÑAS): CONTROL DECK              */}
+      {/* BLOQUE OPERATIVO UNIFICADO (ZONA 3 + ZONA 4 EN UN SOLO BLOQUE)            */}
       {/* ========================================================================= */}
-      <div className="alon-zone-toolbar rounded-2xl p-4 shadow-lg space-y-3.5">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="alon-workspace-block">
+      <div className="alon-zone-toolbar rounded-2xl p-3 shadow-lg space-y-2.5">
+        {/* NIVEL 1: BUSCADOR CANÓNICO OMNICANAL SIEMPRE EN PRIMERA LÍNEA */}
+        <CrawlerSearchBar
+          value={searchTerm}
+          onChange={setSearchTerm}
+          onClear={() => {
+            setSearchTerm('')
+            setLocationFilter('todos')
+            setRequestFilter('todos')
+            setRoleQuickFilter('todos')
+          }}
+          inputRef={shipsSearchInputRef}
+          placeholder={
+            activeTab === 'buques'
+              ? 'Buscar por buque, eslora (m), tipo, armador, matrícula o locación... (Ctrl+F | Esc limpia todo)'
+              : activeTab === 'movimientos'
+              ? 'Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)'
+              : 'Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)'
+          }
+        />
+
+        {/* NIVEL 2: PESTAÑAS, SELECTORES DE FILTRO Y DESHACER/REHACER */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => setActiveTab('buques')}
-              className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
+              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
                 activeTab === 'buques'
                   ? 'bg-primary text-slate-950 shadow-md ring-1 ring-primary/40'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              <Ship className="w-4 h-4" />
-              <span>1. Buques & Fichas Técnicas ({ships.length})</span>
+              <Ship className="w-3.5 h-3.5" />
+              <span>1. Buques ({ships.length})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('movimientos')}
-              className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
+              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
                 activeTab === 'movimientos'
                   ? 'bg-cyan-500 text-slate-950 shadow-md ring-1 ring-cyan-400/40'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              <Calendar className="w-4 h-4" />
-              <span>2. Calendario de Movimientos ({stays.length})</span>
+              <Calendar className="w-3.5 h-3.5" />
+              <span>2. Movimientos ({stays.length})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('armadores')}
-              className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center gap-2 cursor-pointer transition-all ${
+              className={`px-3 py-1.5 rounded-lg font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
                 activeTab === 'armadores'
                   ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-400/40'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              <Users className="w-4 h-4" />
-              <span>3. Armadores & Empresas ({owners.length})</span>
+              <Users className="w-3.5 h-3.5" />
+              <span>3. Armadores ({owners.length})</span>
             </button>
+
+            {activeTab === 'buques' && (
+              <>
+                <div className="h-4 w-px bg-slate-800 hidden sm:block"></div>
+                <select
+                  value={locationFilter}
+                  onChange={(e) => setLocationFilter(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
+                >
+                  <option value="todos">Todas las Locaciones</option>
+                  <option value="VARADERO">Varadero</option>
+                  <option value="MUELLE">Muelle</option>
+                  <option value="PUERTO">Puertos Aldana</option>
+                </select>
+
+                <select
+                  value={requestFilter}
+                  onChange={(e) => setRequestFilter(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
+                >
+                  <option value="todos">Todos los Estados</option>
+                  <option value="pendientes">⚠️ Con Solicitud Activa</option>
+                  <option value="completos">✅ Datos Completos</option>
+                </select>
+              </>
+            )}
+
+            {(locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos' || searchTerm) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setLocationFilter('todos')
+                  setRequestFilter('todos')
+                  setRoleQuickFilter('todos')
+                  setSearchTerm('')
+                }}
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+                title="Limpiar todos los filtros (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Limpiar</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -1822,7 +1887,7 @@ export default function Ships() {
                   if (activeTab === 'movimientos') setViewModeStays('tabla')
                   if (activeTab === 'armadores') setViewModeOwners('tabla')
                 }}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
                   (activeTab === 'buques' && viewModeShips === 'tabla') ||
                   (activeTab === 'movimientos' && viewModeStays === 'tabla') ||
                   (activeTab === 'armadores' && viewModeOwners === 'tabla')
@@ -1832,7 +1897,7 @@ export default function Ships() {
                 title="Vista tipo planilla editable con renglones"
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Vista Filas</span>
+                <span>Filas</span>
               </button>
               <button
                 type="button"
@@ -1841,7 +1906,7 @@ export default function Ships() {
                   if (activeTab === 'movimientos') setViewModeStays('tarjetas')
                   if (activeTab === 'armadores') setViewModeOwners('tarjetas')
                 }}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
                   (activeTab === 'buques' && viewModeShips === 'tarjetas') ||
                   (activeTab === 'movimientos' && viewModeStays === 'tarjetas') ||
                   (activeTab === 'armadores' && viewModeOwners === 'tarjetas')
@@ -1851,85 +1916,9 @@ export default function Ships() {
                 title="Vista tipo fichas / tarjetas individuales"
               >
                 <ClipboardList className="w-3.5 h-3.5" />
-                <span>Vista Fichas</span>
+                <span>Fichas</span>
               </button>
             </div>
-          </div>
-        </div>
-
-        {/* BARRA DE BÚSQUEDA Y FILTROS TRANSVERSALES (ZONA 3 CANÓNICA) */}
-        <div className="flex flex-col gap-2.5">
-          <CrawlerSearchBar
-            value={searchTerm}
-            onChange={setSearchTerm}
-            onClear={() => {
-              setSearchTerm('')
-              setLocationFilter('todos')
-              setRequestFilter('todos')
-              setRoleQuickFilter('todos')
-            }}
-            inputRef={shipsSearchInputRef}
-            placeholder={
-              activeTab === 'buques'
-                ? 'Buscar por buque, eslora (m), tipo, armador, matrícula o locación... (Ctrl+F | Esc limpia todo)'
-                : activeTab === 'movimientos'
-                ? 'Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)'
-                : 'Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)'
-            }
-          />
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              {activeTab === 'buques' && (
-                <>
-                  <select
-                    value={locationFilter}
-                    onChange={(e) => setLocationFilter(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
-                  >
-                    <option value="todos">Todas las Locaciones</option>
-                    <option value="VARADERO">Varadero</option>
-                    <option value="MUELLE">Muelle</option>
-                    <option value="PUERTO">Puertos Aldana</option>
-                  </select>
-
-                  <select
-                    value={requestFilter}
-                    onChange={(e) => setRequestFilter(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium"
-                  >
-                    <option value="todos">Todos los Estados</option>
-                    <option value="pendientes">⚠️ Con Solicitud Activa</option>
-                    <option value="completos">✅ Datos Completos</option>
-                  </select>
-                </>
-              )}
-
-              {(locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos' || searchTerm) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocationFilter('todos')
-                    setRequestFilter('todos')
-                    setRoleQuickFilter('todos')
-                    setSearchTerm('')
-                  }}
-                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
-                  title="Limpiar todos los filtros (Esc)"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Limpiar filtros</span>
-                </button>
-              )}
-            </div>
-
-            <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
-              {activeTab === 'buques'
-                ? `Mostrando ${filteredShips.length} de ${ships.length} buques`
-                : activeTab === 'movimientos'
-                ? `Mostrando ${filteredStays.length} de ${stays.length} estadías`
-                : `Mostrando ${filteredOwners.length} de ${owners.length} armadores`}
-            </span>
           </div>
         </div>
       </div>
@@ -1959,7 +1948,7 @@ export default function Ships() {
                 exportFilename={`barcos_flota_${new Date().toISOString().split('T')[0]}`}
               />
 
-              <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
+              <div className="alon-grid-scroll">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                     <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
@@ -2571,26 +2560,6 @@ export default function Ships() {
       {/* ========================================================================= */}
       {activeTab === 'movimientos' && (
         <div className="space-y-4">
-          <div className="alon-zone-toolbar flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl shadow-lg">
-            <div>
-              <h2 className="text-base font-extrabold text-white flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-cyan-400" />
-                <span>Calendario de Movimientos & Estadías</span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Cálculo de días: <code>Fin - Comienzo + 1</code>. Si la fecha de fin está vacía, acumula en vivo con <code>=HOY()</code>.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleOpenNewStay()}
-              className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Registrar Movimiento</span>
-            </button>
-          </div>
-
           {/* ZONA 4 (PLANILLA EDITABLE): VISTA FILAS / TABLA DE ESTADÍAS */}
           {viewModeStays === 'tabla' && (
             <div
@@ -2599,27 +2568,18 @@ export default function Ships() {
               onKeyDown={staysGrid.handleKeyDown}
               className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
             >
-              <div className="alon-grid-ribbon">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold uppercase tracking-wider text-[10px]">
-                    Planilla Estadías
-                  </span>
-                  {staysGrid.activeCellBadge ? (
-                    <span className="text-cyan-300 font-bold">{staysGrid.activeCellBadge}</span>
-                  ) : (
-                    <span>Seleccioná Locación, Buque, Comienzo o Fin para editar rápido</span>
-                  )}
-                </div>
-                <div className="hidden md:flex items-center gap-3 text-[10px] text-slate-400">
-                  <span>Doble clic o Enter/F2: editar celda</span>
-                  <span>&bull;</span>
-                  <span>Arrastrar ■ / Ctrl+D: rellenar abajo</span>
-                  <span>&bull;</span>
-                  <span>Ctrl+Z / Ctrl+Y: deshacer/rehacer</span>
-                </div>
-              </div>
+              <GridRibbon
+                activeCellBadge={staysGrid.activeCellBadge || 'PLANILLA ESTADÍAS'}
+                onInsertRow={() => handleOpenNewStay()}
+                insertRowLabel="+ Registrar Movimiento"
+                undoCount={staysGrid.undoStack?.length || 0}
+                totalRows={filteredStays.length}
+                entityName="estadías"
+                exportRows={filteredStays}
+                exportFilename={`barcos_estadias_${new Date().toISOString().split('T')[0]}`}
+              />
 
-              <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
+              <div className="alon-grid-scroll">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                     <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
@@ -2939,26 +2899,6 @@ export default function Ships() {
       {/* ========================================================================= */}
       {activeTab === 'armadores' && (
         <div className="space-y-4">
-          <div className="alon-zone-toolbar flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl shadow-lg">
-            <div>
-              <h2 className="text-base font-extrabold text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-amber-400" />
-                <span>Empresas Armadoras & Contactos Directos</span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Razón social, armador, teléfonos directos y correos dobles para operaciones y facturación.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleOpenNewOwner}
-              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Nueva Empresa Armadora</span>
-            </button>
-          </div>
-
           {/* ZONA 4 (PLANILLA EDITABLE): VISTA FILAS / TABLA DE ARMADORES */}
           {viewModeOwners === 'tabla' && (
             <div
@@ -2967,27 +2907,18 @@ export default function Ships() {
               onKeyDown={ownersGrid.handleKeyDown}
               className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
             >
-              <div className="alon-grid-ribbon">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold uppercase tracking-wider text-[10px]">
-                    Planilla Armadores
-                  </span>
-                  {ownersGrid.activeCellBadge ? (
-                    <span className="text-cyan-300 font-bold">{ownersGrid.activeCellBadge}</span>
-                  ) : (
-                    <span>Seleccioná una celda de Empresa, Armador, Teléfono o Correo para editar</span>
-                  )}
-                </div>
-                <div className="hidden md:flex items-center gap-3 text-[10px] text-slate-400">
-                  <span>Doble clic o Enter/F2: editar celda</span>
-                  <span>&bull;</span>
-                  <span>Arrastrar ■ / Ctrl+D: rellenar abajo</span>
-                  <span>&bull;</span>
-                  <span>Ctrl+Z / Ctrl+Y: deshacer/rehacer</span>
-                </div>
-              </div>
+              <GridRibbon
+                activeCellBadge={ownersGrid.activeCellBadge || 'PLANILLA ARMADORES'}
+                onInsertRow={handleOpenNewOwner}
+                insertRowLabel="+ Nueva Empresa Armadora"
+                undoCount={ownersGrid.undoStack?.length || 0}
+                totalRows={filteredOwners.length}
+                entityName="armadores"
+                exportRows={filteredOwners}
+                exportFilename={`barcos_armadores_${new Date().toISOString().split('T')[0]}`}
+              />
 
-              <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
+              <div className="alon-grid-scroll">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                     <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
@@ -3329,6 +3260,7 @@ export default function Ships() {
           />
         </div>
       )}
+      </div>
 
       {/* ========================================================================= */}
       {selectedShip360 && (
@@ -3869,252 +3801,285 @@ export default function Ships() {
       {/* MODAL: ALTA Y EDICIÓN DE BUQUE                                            */}
       {/* ========================================================================= */}
       {modalShip.isOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-6 animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto p-5 md:p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-extrabold text-white text-base flex items-center gap-2">
-                <Ship className="w-5 h-5 text-primary" />
-                <span>{modalShip.ship.id ? 'Editar Buque' : 'Alta de Nuevo Buque (Administrador)'}</span>
-              </h3>
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="alon-modal-card max-w-5xl">
+            <div className="alon-modal-header">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Ship className="w-5 h-5 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-black text-white text-sm truncate">
+                    {modalShip.ship.id ? 'Editar Ficha Técnica de Buque' : 'Alta de Nuevo Buque (Administrador)'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Identificación Naval ➔ 2° Medidas Principales ➔ 3° Inventario Técnico a Bordo.
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
+                tabIndex={-1}
                 onClick={() => setModalShip({ isOpen: false, ship: null, isCustomVesselType: false, customVesselTypeVal: '' })}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveShip} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Nombre del buque */}
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">
-                    Nombre del Buque *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: TRITON I"
-                    value={modalShip.ship.name}
-                    onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, name: e.target.value } })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary uppercase font-bold"
-                  />
-                </div>
+            <form onSubmit={handleSaveShip} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+              <div className="alon-modal-body">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
+                  {/* COLUMNA IZQUIERDA: BLOQUES 1 Y 2 */}
+                  <div className="space-y-3">
+                    {/* BLOQUE 1: IDENTIFICACIÓN NAVAL Y ARMADOR (BORDE SKY / CIAN) */}
+                    <div className="alon-chunk-sky space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
+                        <span className="font-black text-sky-400 uppercase tracking-wider text-[11px]">
+                          1. Identificación Naval y Empresa Propietaria
+                        </span>
+                        <span className="text-[10px] text-slate-400">Datos Maestros</span>
+                      </div>
 
-                {/* Empresa Propietaria / Armador */}
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">
-                    Empresa Propietaria / Armador
-                  </label>
-                  <select
-                    value={modalShip.ship.owner_id || ''}
-                    onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, owner_id: e.target.value } })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-medium"
-                  >
-                    <option value="">-- Seleccionar Armador --</option>
-                    {owners.map(o => (
-                      <option key={o.id} value={o.id}>{o.name} {o.armador_name ? `(${o.armador_name})` : ''}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Tipo de Embarcación */}
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">
-                    Tipo de Embarcación
-                  </label>
-                  <select
-                    value={modalShip.isCustomVesselType ? '__otro__' : (modalShip.ship.vessel_type || 'Pesquero')}
-                    onChange={(e) => {
-                      if (e.target.value === '__otro__') {
-                        setModalShip({
-                          ...modalShip,
-                          isCustomVesselType: true,
-                          customVesselTypeVal: modalShip.ship.vessel_type || ''
-                        })
-                      } else {
-                        setModalShip({
-                          ...modalShip,
-                          isCustomVesselType: false,
-                          ship: { ...modalShip.ship, vessel_type: e.target.value }
-                        })
-                      }
-                    }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-medium"
-                  >
-                    {PREDEFINED_VESSEL_TYPES.map(vt => (
-                      <option key={vt} value={vt}>{vt}</option>
-                    ))}
-                    <option value="__otro__">✏️ + Otro (Personalizado)...</option>
-                  </select>
-
-                  {modalShip.isCustomVesselType && (
-                    <input
-                      type="text"
-                      required
-                      placeholder="Escribí el tipo de embarcación (ej: Desguace, Bongo, Catamarán)..."
-                      value={modalShip.customVesselTypeVal}
-                      onChange={(e) => setModalShip({ ...modalShip, customVesselTypeVal: e.target.value })}
-                      className="w-full mt-2 bg-slate-950 border border-primary/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-                      autoFocus
-                    />
-                  )}
-                </div>
-
-                {/* Matrícula */}
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Matrícula Naval</label>
-                  <input
-                    type="text"
-                    placeholder="Ej: 0124-M"
-                    value={modalShip.ship.matricula || ''}
-                    onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, matricula: e.target.value } })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-mono"
-                  />
-                </div>
-
-                {/* Locación Inicial Limpia */}
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Locación Actual</label>
-                  <select
-                    value={cleanLocation(modalShip.ship.current_location)}
-                    onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, current_location: cleanLocation(e.target.value) } })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                  >
-                    {STANDARD_LOCATIONS.map(loc => (
-                      <option key={loc} value={loc}>{loc}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* MEDIDAS NAVALES PRINCIPALES */}
-              <div className="pt-2 border-t border-slate-800 space-y-2">
-                <span className="text-xs font-extrabold text-cyan-300 block uppercase tracking-wider">
-                  Medidas Principales (Jefe de Obra)
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div>
-                    <label className="text-[11px] text-slate-400 block mb-1 font-mono">Eslora (m)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Ej: 28.5"
-                      value={modalShip.ship.eslora_mts || ''}
-                      onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, eslora_mts: e.target.value } })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400 block mb-1 font-mono">Manga (m)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Ej: 7.2"
-                      value={modalShip.ship.manga_mts || ''}
-                      onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, manga_mts: e.target.value } })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400 block mb-1 font-mono">Puntal (m)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Ej: 3.4"
-                      value={modalShip.ship.puntal_mts || ''}
-                      onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, puntal_mts: e.target.value } })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400 block mb-1 font-mono">Sup. Casco (m²)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Ej: 320"
-                      value={modalShip.ship.superficie_casco_m2 || ''}
-                      onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, superficie_casco_m2: e.target.value } })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* COMPONENTES TÉCNICOS DINÁMICOS */}
-              <div className="pt-2 border-t border-slate-800 space-y-3">
-                <span className="text-xs font-extrabold text-cyan-300 block uppercase tracking-wider">
-                  Inventario Técnico a Bordo (Válvulas, Tanques, Pocetes)
-                </span>
-                <div className="space-y-3">
-                  {DEFAULT_TECH_COMPONENTS.map(comp => {
-                    const currentComp = (modalShip.ship.technical_specs || {})[comp.key] || { quantity: 0, notes: '' }
-                    return (
-                      <div key={comp.key} className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <strong className="text-xs text-white">{comp.label}</strong>
-                            <span className="text-[10px] text-slate-500 block">{comp.hint}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[10px] text-slate-400">Cant:</span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={currentComp.quantity || 0}
-                              onChange={(e) => {
-                                const q = parseInt(e.target.value, 10) || 0
-                                const updatedSpecs = {
-                                  ...(modalShip.ship.technical_specs || {}),
-                                  [comp.key]: { ...currentComp, quantity: q }
-                                }
-                                setModalShip({
-                                  ...modalShip,
-                                  ship: { ...modalShip.ship, technical_specs: updatedSpecs }
-                                })
-                              }}
-                              className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono font-bold"
-                            />
-                          </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {/* Nombre del buque */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Nombre del Buque <span className="text-rose-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            autoFocus
+                            required
+                            placeholder="Ej: TRITON I"
+                            value={modalShip.ship.name}
+                            onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, name: e.target.value } })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary uppercase font-bold"
+                          />
                         </div>
 
-                        {currentComp.quantity > 0 && (
-                          <textarea
-                            rows={2}
-                            placeholder={`Observaciones de ${comp.label}...`}
-                            value={currentComp.notes || ''}
+                        {/* Empresa Propietaria / Armador */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Empresa Propietaria / Armador
+                          </label>
+                          <select
+                            value={modalShip.ship.owner_id || ''}
+                            onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, owner_id: e.target.value } })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
+                          >
+                            <option value="">-- Seleccionar Armador --</option>
+                            {owners.map(o => (
+                              <option key={o.id} value={o.id}>{o.name} {o.armador_name ? `(${o.armador_name})` : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Tipo de Embarcación */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Tipo de Embarcación
+                          </label>
+                          <select
+                            value={modalShip.isCustomVesselType ? '__otro__' : (modalShip.ship.vessel_type || 'Pesquero')}
                             onChange={(e) => {
-                              const updatedSpecs = {
-                                ...(modalShip.ship.technical_specs || {}),
-                                [comp.key]: { ...currentComp, notes: e.target.value }
+                              if (e.target.value === '__otro__') {
+                                setModalShip({
+                                  ...modalShip,
+                                  isCustomVesselType: true,
+                                  customVesselTypeVal: modalShip.ship.vessel_type || ''
+                                })
+                              } else {
+                                setModalShip({
+                                  ...modalShip,
+                                  isCustomVesselType: false,
+                                  ship: { ...modalShip.ship, vessel_type: e.target.value }
+                                })
                               }
-                              setModalShip({
-                                ...modalShip,
-                                ship: { ...modalShip.ship, technical_specs: updatedSpecs }
-                              })
                             }}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 placeholder-slate-500"
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
+                          >
+                            {PREDEFINED_VESSEL_TYPES.map(vt => (
+                              <option key={vt} value={vt}>{vt}</option>
+                            ))}
+                            <option value="__otro__">✏️ + Otro (Personalizado)...</option>
+                          </select>
+
+                          {modalShip.isCustomVesselType && (
+                            <input
+                              type="text"
+                              required
+                              placeholder="Escribí tipo de embarcación..."
+                              value={modalShip.customVesselTypeVal}
+                              onChange={(e) => setModalShip({ ...modalShip, customVesselTypeVal: e.target.value })}
+                              className="w-full mt-1.5 bg-slate-950 border border-primary/60 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
+                            />
+                          )}
+                        </div>
+
+                        {/* Matrícula */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">Matrícula Naval</label>
+                          <input
+                            type="text"
+                            placeholder="Ej: 0124-M"
+                            value={modalShip.ship.matricula || ''}
+                            onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, matricula: e.target.value } })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-mono"
                           />
-                        )}
+                        </div>
+
+                        {/* Locación Inicial Limpia */}
+                        <div className="sm:col-span-2">
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">Locación Actual en Astillero</label>
+                          <select
+                            value={cleanLocation(modalShip.ship.current_location)}
+                            onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, current_location: cleanLocation(e.target.value) } })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-bold"
+                          >
+                            {STANDARD_LOCATIONS.map(loc => (
+                              <option key={loc} value={loc}>{loc}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                    )
-                  })}
+                    </div>
+
+                    {/* BLOQUE 2: MEDIDAS NAVALES PRINCIPALES (BORDE ÍNDIGO) */}
+                    <div className="alon-chunk-indigo space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
+                        <span className="font-black text-indigo-400 uppercase tracking-wider text-[11px]">
+                          2. Medidas Principales (Jefe de Obra)
+                        </span>
+                        <span className="text-[10px] text-slate-400">Dimensiones de casco</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div>
+                          <label className="text-[10px] text-slate-300 font-bold block mb-1 font-mono">Eslora (m)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Ej: 28.5"
+                            value={modalShip.ship.eslora_mts || ''}
+                            onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, eslora_mts: e.target.value } })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-300 font-bold block mb-1 font-mono">Manga (m)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Ej: 7.2"
+                            value={modalShip.ship.manga_mts || ''}
+                            onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, manga_mts: e.target.value } })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-300 font-bold block mb-1 font-mono">Puntal (m)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Ej: 3.4"
+                            value={modalShip.ship.puntal_mts || ''}
+                            onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, puntal_mts: e.target.value } })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-300 font-bold block mb-1 font-mono">Sup. Casco (m²)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Ej: 320"
+                            value={modalShip.ship.superficie_casco_m2 || ''}
+                            onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, superficie_casco_m2: e.target.value } })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* COLUMNA DERECHA: BLOQUE 3 */}
+                  <div className="alon-chunk-emerald space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
+                      <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px]">
+                        3. Inventario Técnico a Bordo (Válvulas, Tanques, Pocetes)
+                      </span>
+                      <span className="text-[10px] text-slate-400">Relevamiento técnico</span>
+                    </div>
+
+                    <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
+                      {DEFAULT_TECH_COMPONENTS.map(comp => {
+                        const currentComp = (modalShip.ship.technical_specs || {})[comp.key] || { quantity: 0, notes: '' }
+                        return (
+                          <div key={comp.key} className="p-2 rounded-lg bg-slate-900 border border-slate-800 space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <strong className="text-xs text-white block truncate">{comp.label}</strong>
+                                <span className="text-[10px] text-slate-400 block truncate">{comp.hint}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[10px] text-slate-400 font-bold">Cant:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={currentComp.quantity || 0}
+                                  onChange={(e) => {
+                                    const q = parseInt(e.target.value, 10) || 0
+                                    const updatedSpecs = {
+                                      ...(modalShip.ship.technical_specs || {}),
+                                      [comp.key]: { ...currentComp, quantity: q }
+                                    }
+                                    setModalShip({
+                                      ...modalShip,
+                                      ship: { ...modalShip.ship, technical_specs: updatedSpecs }
+                                    })
+                                  }}
+                                  className="w-16 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono font-bold focus:outline-none focus:border-emerald-400"
+                                />
+                              </div>
+                            </div>
+
+                            {currentComp.quantity > 0 && (
+                              <input
+                                type="text"
+                                placeholder={`Observaciones de ${comp.label}...`}
+                                value={currentComp.notes || ''}
+                                onChange={(e) => {
+                                  const updatedSpecs = {
+                                    ...(modalShip.ship.technical_specs || {}),
+                                    [comp.key]: { ...currentComp, notes: e.target.value }
+                                  }
+                                  setModalShip({
+                                    ...modalShip,
+                                    ship: { ...modalShip.ship, technical_specs: updatedSpecs }
+                                  })
+                                }}
+                                className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-400"
+                              />
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+              <div className="alon-modal-footer">
                 <button
                   type="button"
                   onClick={() => setModalShip({ isOpen: false, ship: null, isCustomVesselType: false, customVesselTypeVal: '' })}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-1.5 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
                   <span>Guardar Buque</span>

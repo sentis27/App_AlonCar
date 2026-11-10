@@ -1967,7 +1967,7 @@ export default function LaborLogs() {
   }, [selectedLogIds, recentLogs, activeTab, auditDate, selectedYear, selectedMonth, selectedQuincena, selectedQuincenaWorker, filteredLogs])
 
   return (
-    <div className="space-y-6 w-full pb-28">
+    <div className="space-y-6 w-full pb-10">
       {/* ZONA 1: CABECERA & NAVEGACIÓN DE PESTAÑAS */}
       <div className="alon-zone-context flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
         <div>
@@ -3199,30 +3199,27 @@ export default function LaborLogs() {
             </div>
           </form>
 
-          {/* ZONA 3 & ZONA 4: PLANILLA INTERACTIVA DE HORAS REGISTRADAS (MODO HOJA DE CÁLCULO) */}
-          <div className="space-y-3">
-            {/* ZONA 3: BARRA DE BÚSQUEDA Y FILTROS ESTANDARIZADOS (ESTÁNDAR COMPRAS) */}
-            <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2.5">
-                {/* Buscador Canónico (Estándar 03) */}
-                <CrawlerSearchBar
-                  value={filterWorker}
-                  onChange={setFilterWorker}
-                  onClear={() => {
-                    setFilterWorker('')
-                    setFilterDate('')
-                    setFilterShip('')
-                    setActiveKpiFilter('todos')
-                  }}
-                  inputRef={logSearchInputRef}
-                  placeholder="Buscar operario, buque, OT, rubro... (Ctrl+F | Esc limpia todo)"
-                />
+          {/* ZONA 3 & ZONA 4: PLANILLA INTERACTIVA DE HORAS REGISTRADAS (BLOQUE OPERATIVO UNIFICADO) */}
+          <div className="alon-workspace-block">
+            {/* ZONA 3: BARRA DE BÚSQUEDA Y FILTROS ESTANDARIZADOS (2 NIVELES: NIVEL 1 BUSCADOR / NIVEL 2 FILTROS) */}
+            <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-2.5">
+              {/* NIVEL 1: Buscador Canónico (Estándar 03) siempre visible */}
+              <CrawlerSearchBar
+                value={filterWorker}
+                onChange={setFilterWorker}
+                onClear={() => {
+                  setFilterWorker('')
+                  setFilterDate('')
+                  setFilterShip('')
+                  setActiveKpiFilter('todos')
+                }}
+                inputRef={logSearchInputRef}
+                placeholder="Buscar operario, buque, OT, rubro... (Ctrl+F | Esc limpia todo)"
+              />
 
+              {/* NIVEL 2: Filtros Rápidos, Fecha y Deshacer/Rehacer */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
-                    Mostrando {filteredLogs.length} de {recentLogs.length} registros
-                  </span>
-
                   <input
                     type="date"
                     value={filterDate}
@@ -3247,6 +3244,12 @@ export default function LaborLogs() {
                     </button>
                   )}
 
+                  <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
+                    Mostrando {filteredLogs.length} de {recentLogs.length} registros
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                   {horasGrid.canUndo && (
                     <button
                       type="button"
@@ -3306,7 +3309,7 @@ export default function LaborLogs() {
                   tabIndex={0}
                   onKeyDown={horasGrid.handleKeyDown}
                   ref={horasGrid.gridContainerRef}
-                  className="overflow-y-auto max-h-[calc(100vh-300px)] focus:outline-none"
+                  className="alon-grid-scroll"
                 >
                   <table className="w-full text-left text-xs text-slate-300 border-collapse">
                     <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
@@ -3736,34 +3739,32 @@ export default function LaborLogs() {
                 </div>
 
                 {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
-                <div className="mt-3">
-                  <GridStatusBarBottom
-                    filteredCount={filteredLogs.length}
-                    totalCount={recentLogs.length}
-                    entityName="imputaciones"
-                    hasActiveFilter={Boolean(filterWorker || filterDate || filterShip || activeKpiFilter)}
-                    onClearFilters={() => {
-                      setFilterWorker('')
-                      setFilterDate('')
-                      setFilterShip('')
-                      setActiveKpiFilter(null)
-                    }}
-                    selectionStats={horasGrid.selectionStats}
-                    onClearSelection={() => horasGrid.setSelectionRange(null)}
-                    customSelection={selectedLogIds.size > 0 ? {
-                      count: selectedLogIds.size,
-                      label: 'filas tildadas',
-                      onClear: () => setSelectedLogIds(new Set())
-                    } : null}
-                    globalAggregates={[
-                      { label: 'Σ Horas', value: stats.sumTotalHours.toFixed(1), highlight: true },
-                      { label: 'Norm', value: stats.sumNorm.toFixed(1) },
-                      { label: '50%', value: stats.sum50.toFixed(1) },
-                      { label: '100%', value: stats.sum100.toFixed(1) },
-                      { label: 'Ø Horas', value: stats.avgHours.toFixed(1) }
-                    ]}
-                  />
-                </div>
+                <GridStatusBarBottom
+                  filteredCount={filteredLogs.length}
+                  totalCount={recentLogs.length}
+                  entityName="imputaciones"
+                  hasActiveFilter={Boolean(filterWorker || filterDate || filterShip || activeKpiFilter)}
+                  onClearFilters={() => {
+                    setFilterWorker('')
+                    setFilterDate('')
+                    setFilterShip('')
+                    setActiveKpiFilter(null)
+                  }}
+                  selectionStats={horasGrid.selectionStats}
+                  onClearSelection={() => horasGrid.setSelectionRange(null)}
+                  customSelection={selectedLogIds.size > 0 ? {
+                    count: selectedLogIds.size,
+                    label: 'filas tildadas',
+                    onClear: () => setSelectedLogIds(new Set())
+                  } : null}
+                  globalAggregates={[
+                    { label: 'Σ Horas', value: stats.sumTotalHours.toFixed(1), highlight: true },
+                    { label: 'Norm', value: stats.sumNorm.toFixed(1) },
+                    { label: '50%', value: stats.sum50.toFixed(1) },
+                    { label: '100%', value: stats.sum100.toFixed(1) },
+                    { label: 'Ø Horas', value: stats.avgHours.toFixed(1) }
+                  ]}
+                />
               </div>
             )}
           </div>
@@ -3774,7 +3775,7 @@ export default function LaborLogs() {
       {/* PESTAÑA 2: CONTROL DIARIO DE JORNADA (MODO LISTA)         */}
       {/* ========================================================= */}
       {activeTab === 'control_diario' && (
-        <div className="space-y-4">
+        <div className="alon-workspace-block">
           {/* ZONA 3: BARRA DE FECHA Y BÚSQUEDA DE CONTROL DIARIO */}
           <div className="alon-zone-toolbar p-4 md:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-4">
@@ -3944,7 +3945,7 @@ export default function LaborLogs() {
             </div>
 
             {/* TABLA DE AUDITORÍA */}
-            <div className="overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
+            <div className="alon-grid-scroll border border-slate-800 rounded-xl">
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
                   <tr>

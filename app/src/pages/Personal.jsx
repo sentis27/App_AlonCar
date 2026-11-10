@@ -2290,7 +2290,7 @@ export default function Personal() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* ZONA 1 (CONTEXTO): CABECERA & NAVEGACIÓN PRINCIPAL */}
       <div className="alon-zone-context rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
@@ -3759,41 +3759,52 @@ export default function Personal() {
             </div>
           )}
 
+          {/* BLOQUE OPERATIVO UNIFICADO: ZONA 3 + ZONA 4 (TARIFARIO) */}
+          <div className="alon-workspace-block">
           {/* ZONA 3 (BÚSQUEDA Y COMANDOS): FILTROS DE TARIFAS GUARDADAS */}
-          <div className="alon-zone-toolbar rounded-2xl p-4 md:p-5 shadow-lg">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-emerald-400" />
-                  Tarifas Guardadas en el Sistema ({filteredRateCards.length})
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Doble clic en Oficial AR$ o Ayudante AR$ para editar en línea (si el período no está bloqueado).
-                </p>
-              </div>
+          <div className="alon-zone-toolbar rounded-2xl p-3 shadow-lg space-y-2.5">
+            {/* NIVEL 1: Buscador Canónico Omnicanal siempre a la vista */}
+            <CrawlerSearchBar
+              value={rateTableSearch}
+              onChange={setRateTableSearch}
+              onClear={() => setRateTableSearch('')}
+              inputRef={rateSearchInputRef}
+              placeholder="Buscar por categoría, contratista, quincena, valor hora... (Ctrl+F | Esc limpia)"
+            />
 
-              {/* Filtros: Alcance de Quincena, Centro, Búsqueda y Deshacer/Rehacer */}
+            {/* NIVEL 2: Píldoras de Centro, Alcance de Quincena y Deshacer/Rehacer */}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-0.5">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-lg p-1">
-                  <button
-                    type="button"
-                    disabled={!ratesGrid.canUndo}
-                    onClick={ratesGrid.undo}
-                    className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                    title="Deshacer cambio en Tarifario (Ctrl + Z)"
-                  >
-                    <Undo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!ratesGrid.canRedo}
-                    onClick={ratesGrid.redo}
-                    className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                    title="Rehacer cambio en Tarifario (Ctrl + Y)"
-                  >
-                    <Redo2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {/* Filtro por centro */}
+                <button
+                  type="button"
+                  onClick={() => setFilterTableCenter('todos')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterTableCenter === 'todos' ? 'bg-primary text-slate-950 font-bold' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  Todos ({filteredRateCards.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTableCenter('ASTILLERO')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterTableCenter === 'ASTILLERO' ? 'bg-cyan-500 text-slate-950 font-bold' : 'bg-slate-950 text-cyan-400 hover:text-cyan-300 border border-slate-800'
+                  }`}
+                >
+                  Astillero Propio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTableCenter('CONTRATISTA')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filterTableCenter === 'CONTRATISTA' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-slate-800'
+                  }`}
+                >
+                  Contratistas
+                </button>
+
+                <div className="h-4 w-px bg-slate-800 hidden sm:block"></div>
 
                 {/* Selector de Alcance */}
                 <select
@@ -3808,48 +3819,28 @@ export default function Personal() {
                   <option value="current">Solo Quincena Activa ({currentPeriodKey})</option>
                   <option value="all">Todas las Quincenas (Historial Completo)</option>
                 </select>
+              </div>
 
-                {/* Filtro por centro */}
-                <div className="flex items-center gap-1 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setFilterTableCenter('todos')}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
-                      filterTableCenter === 'todos' ? 'bg-primary text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800'
-                    }`}
-                  >
-                    Todos
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterTableCenter('ASTILLERO')}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
-                      filterTableCenter === 'ASTILLERO' ? 'bg-cyan-500 text-slate-950' : 'bg-slate-950 text-cyan-400 border border-slate-800'
-                    }`}
-                  >
-                    Astillero
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterTableCenter('CONTRATISTA')}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
-                      filterTableCenter === 'CONTRATISTA' ? 'bg-amber-500 text-slate-950' : 'bg-slate-950 text-amber-400 border border-slate-800'
-                    }`}
-                  >
-                    Contratistas
-                  </button>
-                </div>
-
-                {/* Buscador Canónico */}
-                <div className="w-full sm:w-auto flex-1 min-w-[260px]">
-                  <CrawlerSearchBar
-                    value={rateTableSearch}
-                    onChange={setRateTableSearch}
-                    onClear={() => setRateTableSearch('')}
-                    inputRef={rateSearchInputRef}
-                    placeholder="Filtrar por categoría, contratista, quincena, valor hora... (Ctrl+F | Esc)"
-                  />
-                </div>
+              {/* Controles Undo/Redo */}
+              <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-lg p-1">
+                <button
+                  type="button"
+                  disabled={!ratesGrid.canUndo}
+                  onClick={ratesGrid.undo}
+                  className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                  title="Deshacer cambio en Tarifario (Ctrl + Z)"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!ratesGrid.canRedo}
+                  onClick={ratesGrid.redo}
+                  className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                  title="Rehacer cambio en Tarifario (Ctrl + Y)"
+                >
+                  <Redo2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           </div>
@@ -3873,7 +3864,7 @@ export default function Personal() {
               exportFilename={`personal_tarifas_${new Date().toISOString().split('T')[0]}`}
             />
 
-            <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
+            <div className="alon-grid-scroll">
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                   <tr>
@@ -4163,6 +4154,7 @@ export default function Personal() {
                 </tbody>
               </table>
             </div>
+          </div>
           </div>
 
           {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
@@ -4565,6 +4557,8 @@ export default function Personal() {
             </div>
           )}
 
+          {/* BLOQUE OPERATIVO UNIFICADO: ZONA 3 + ZONA 4 (PADRÓN NÓMINA) */}
+          <div className="alon-workspace-block">
           {/* ZONA 3 (BÚSQUEDA Y FILTROS): BARRA DE CONTROL DEL PADRÓN */}
           <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-3">
             {/* Buscador Canónico Omnicanal */}
@@ -4743,7 +4737,7 @@ export default function Personal() {
               exportFilename={`personal_padron_${new Date().toISOString().split('T')[0]}`}
             />
 
-            <div className="overflow-y-auto max-h-[calc(100vh-280px)]">
+            <div className="alon-grid-scroll">
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                   <tr>
@@ -5333,6 +5327,7 @@ export default function Personal() {
               </table>
             </div>
           </div>
+          </div>
 
           {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
           <GridStatusBarBottom
@@ -5555,22 +5550,24 @@ export default function Personal() {
         </div>
       )}
 
-      {/* MODAL DE ALTA / EDICIÓN DE OPERARIO */}
+      {/* MODAL DE ALTA / EDICIÓN DE OPERARIO (ARQUITECTURA BICOLUMNA CHROMA-CHUNKING) */}
       {(isNewModalOpen || editingWorker) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative max-h-[95vh] overflow-y-auto">
-            <div className="flex items-start justify-between border-b border-slate-800 pb-3 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="alon-modal-card">
+            {/* CABECERA MODAL */}
+            <div className="alon-modal-header">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
                   <Users className="w-4 h-4 text-primary" />
                   {editingWorker ? `Editar Operario: ${editingWorker.name}` : 'Cargar Nuevo Contratista / Operario'}
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Los operarios y contratistas se imputan por <strong>Grupo de Trabajo</strong> para unificar la carga en Horas y Pañol.
+                <p className="text-[11px] text-slate-400">
+                  Los operarios y contratistas se imputan por <strong>Grupo de Trabajo</strong> para unificar la carga en Horas y Pañol. (Navegación rápida con tecla <strong>Tab</strong>)
                 </p>
               </div>
               <button
                 type="button"
+                tabIndex={-1}
                 onClick={() => { setIsNewModalOpen(false); setEditingWorker(null) }}
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
               >
@@ -5578,187 +5575,149 @@ export default function Personal() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveSubmit} className="space-y-4">
-              {/* 1. CENTRO ADMINISTRATIVO (DESTACADO ARRIBA COMO SELECTOR PRINCIPAL) */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  1. Centro Administrativo (Origen del Personal)
-                </label>
-                <div className="grid grid-cols-3 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => handleAdminCenterChange('ASTILLERO')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      formData.admin_center === 'ASTILLERO'
-                        ? 'bg-cyan-950/80 border-cyan-400 text-white shadow-lg shadow-cyan-950/50 ring-1 ring-cyan-400'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <Building2 className={`w-4 h-4 ${formData.admin_center === 'ASTILLERO' ? 'text-cyan-400' : 'text-slate-500'}`} />
-                      {formData.admin_center === 'ASTILLERO' && <span className="text-[10px] text-cyan-400 font-bold">✓ Activo</span>}
-                    </div>
-                    <div>
-                      <div className="font-extrabold text-xs">ASTILLERO</div>
-                      <div className="text-[10px] text-slate-400 leading-tight mt-0.5">Personal propio</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleAdminCenterChange('CONTRATISTA')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      formData.admin_center === 'CONTRATISTA'
-                        ? 'bg-amber-950/80 border-amber-400 text-white shadow-lg shadow-amber-950/50 ring-1 ring-amber-400'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <HardHat className={`w-4 h-4 ${formData.admin_center === 'CONTRATISTA' ? 'text-amber-400' : 'text-slate-500'}`} />
-                      {formData.admin_center === 'CONTRATISTA' && <span className="text-[10px] text-amber-400 font-bold">✓ Activo</span>}
-                    </div>
-                    <div>
-                      <div className="font-extrabold text-xs">CONTRATISTA</div>
-                      <div className="text-[10px] text-slate-400 leading-tight mt-0.5">Cuadrilla en planta</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleAdminCenterChange('TALLER')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      formData.admin_center === 'TALLER'
-                        ? 'bg-purple-950/80 border-purple-400 text-white shadow-lg shadow-purple-950/50 ring-1 ring-purple-400'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <Settings className={`w-4 h-4 ${formData.admin_center === 'TALLER' ? 'text-purple-400' : 'text-slate-500'}`} />
-                      {formData.admin_center === 'TALLER' && <span className="text-[10px] text-purple-400 font-bold">✓ Activo</span>}
-                    </div>
-                    <div>
-                      <div className="font-extrabold text-xs">TALLER</div>
-                      <div className="text-[10px] text-slate-400 leading-tight mt-0.5">Servicio externo / RMO</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* 2. GRUPO DE TRABAJO (TALLER / CUADRILLA) */}
-              {formData.admin_center === 'ASTILLERO' ? (
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-cyan-400">
-                      <Building2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white">Grupo de Trabajo: ASTILLERO</div>
-                      <div className="text-[11px] text-slate-400">Personal propio registrado bajo el centro operativo de Astillero.</div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5 text-cyan-400" />
-                    Fijado
-                  </span>
-                </div>
-              ) : (
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <span>Grupo de Trabajo ({formData.admin_center === 'CONTRATISTA' ? 'Contratista' : 'Taller'})</span>
-                      <span className="text-[10px] font-normal text-amber-400 font-sans">(Identificador en Horas y Pañol)</span>
-                    </label>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCustomGroup(!isCustomGroup)
-                        if (!isCustomGroup && !customGroupName) {
-                          setCustomGroupName('')
-                        }
-                      }}
-                      className="text-[11px] font-bold text-primary hover:text-cyan-300 underline flex items-center gap-1 cursor-pointer"
-                    >
-                      {isCustomGroup ? '↩ Elegir de grupos precargados' : '+ Crear nuevo grupo / taller'}
-                    </button>
-                  </div>
-
-                  {isCustomGroup ? (
-                    <div className="space-y-1">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Escribir nombre del nuevo grupo o taller (ej: METALURGICA DEL PUERTO)"
-                        value={customGroupName}
-                        onChange={(e) => setCustomGroupName(e.target.value.toUpperCase())}
-                        className="w-full bg-slate-900 border border-primary/60 rounded-lg px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-primary shadow-inner"
-                        autoFocus
-                      />
-                      <p className="text-[10px] text-cyan-400">
-                        ✨ Se creará este nuevo grupo y se asociará automáticamente al operario.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <select
-                        value={formData.work_group}
-                        onChange={(e) => setFormData({ ...formData, work_group: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-primary cursor-pointer"
-                      >
-                        {(formData.admin_center === 'CONTRATISTA' ? availableContractorGroups : availableTallerGroups).map(g => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-slate-400">
-                        Seleccioná un taller/contratista existente o tocá <strong>"+ Crear nuevo grupo / taller"</strong> para registrar uno nuevo.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 3. DATOS DE LA PERSONA: NOMBRE, TELÉFONO & RUBRO (SOPORTE MULTI-RUBRO EN CONTRATISTAS) */}
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Nombre y Apellido
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej: Rodriguez, Lucas"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Celular / WhatsApp (Mandados / Avisos)</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: +5492235001122"
-                      value={formData.phone || ''}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-                </div>
-
-                {formData.admin_center === 'ASTILLERO' ? (
-                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
+            <form onSubmit={handleSaveSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="alon-modal-body grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
+                {/* ================================================================= */}
+                {/* COLUMNA IZQUIERDA: 1. CENTRO ADMIN • 2. RUBRO • 3. DATOS PERSONA  */}
+                {/* ================================================================= */}
+                <div className="space-y-3">
+                  {/* BLOQUE 1 (NARANJA / ÁMBAR): CENTRO ADMINISTRATIVO & GRUPO */}
+                  <div className="alon-chunk-amber space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-slate-200">
-                        Rubro Titular en Padrón (Astillero)
+                      <label className="text-[11px] font-black text-amber-300 uppercase tracking-wider">
+                        1. Centro Administrativo (Origen del Personal)
+                      </label>
+                      <span className="text-[10px] font-mono text-amber-400/80">Paso 1/5</span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAdminCenterChange('ASTILLERO')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          formData.admin_center === 'ASTILLERO'
+                            ? 'bg-cyan-950/80 border-cyan-400 text-white shadow-md ring-1 ring-cyan-400'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-1">
+                          <Building2 className={`w-3.5 h-3.5 ${formData.admin_center === 'ASTILLERO' ? 'text-cyan-400' : 'text-slate-500'}`} />
+                          {formData.admin_center === 'ASTILLERO' && <span className="text-[9px] text-cyan-400 font-bold">✓ Activo</span>}
+                        </div>
+                        <div>
+                          <div className="font-extrabold text-xs">ASTILLERO</div>
+                          <div className="text-[10px] text-slate-400 leading-tight">Personal propio</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAdminCenterChange('CONTRATISTA')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          formData.admin_center === 'CONTRATISTA'
+                            ? 'bg-amber-950/80 border-amber-400 text-white shadow-md ring-1 ring-amber-400'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-1">
+                          <HardHat className={`w-3.5 h-3.5 ${formData.admin_center === 'CONTRATISTA' ? 'text-amber-400' : 'text-slate-500'}`} />
+                          {formData.admin_center === 'CONTRATISTA' && <span className="text-[9px] text-amber-400 font-bold">✓ Activo</span>}
+                        </div>
+                        <div>
+                          <div className="font-extrabold text-xs">CONTRATISTA</div>
+                          <div className="text-[10px] text-slate-400 leading-tight">Cuadrilla en planta</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAdminCenterChange('TALLER')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          formData.admin_center === 'TALLER'
+                            ? 'bg-purple-950/80 border-purple-400 text-white shadow-md ring-1 ring-purple-400'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-1">
+                          <Settings className={`w-3.5 h-3.5 ${formData.admin_center === 'TALLER' ? 'text-purple-400' : 'text-slate-500'}`} />
+                          {formData.admin_center === 'TALLER' && <span className="text-[9px] text-purple-400 font-bold">✓ Activo</span>}
+                        </div>
+                        <div>
+                          <div className="font-extrabold text-xs">TALLER</div>
+                          <div className="text-[10px] text-slate-400 leading-tight">Servicio externo</div>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Grupo de Trabajo integrado en el Bloque 1 */}
+                    {formData.admin_center === 'ASTILLERO' ? (
+                      <div className="px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                          <div>
+                            <div className="text-xs font-bold text-white">Grupo de Trabajo: ASTILLERO</div>
+                            <div className="text-[10px] text-slate-400">Personal propio registrado bajo centro Astillero.</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5 text-cyan-400" />
+                          Fijado
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-200">
+                            Grupo de Trabajo ({formData.admin_center === 'CONTRATISTA' ? 'Contratista' : 'Taller'})
+                          </label>
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() => {
+                              setIsCustomGroup(!isCustomGroup)
+                              if (!isCustomGroup && !customGroupName) setCustomGroupName('')
+                            }}
+                            className="text-[10px] font-bold text-primary hover:text-cyan-300 underline cursor-pointer"
+                          >
+                            {isCustomGroup ? '↩ Elegir precargado' : '+ Crear nuevo grupo'}
+                          </button>
+                        </div>
+
+                        {isCustomGroup ? (
+                          <input
+                            type="text"
+                            required
+                            placeholder="Nombre del nuevo grupo (ej: METALURGICA DEL PUERTO)"
+                            value={customGroupName}
+                            onChange={(e) => setCustomGroupName(e.target.value.toUpperCase())}
+                            className="w-full bg-slate-950 border border-primary/60 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-primary"
+                          />
+                        ) : (
+                          <select
+                            value={formData.work_group}
+                            onChange={(e) => setFormData({ ...formData, work_group: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-primary cursor-pointer"
+                          >
+                            {(formData.admin_center === 'CONTRATISTA' ? availableContractorGroups : availableTallerGroups).map(g => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* BLOQUE 2 (ROJO / ROSE): RUBRO TITULAR EN PADRÓN */}
+                  <div className="alon-chunk-rose space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-black text-rose-300 uppercase tracking-wider">
+                        2. {formData.admin_center === 'ASTILLERO' ? 'Rubro Titular en Padrón' : 'Rubro(s) Habilitados (Multi-Rubro)'}
                       </label>
                       <span className="text-[10px] text-cyan-400">
-                        🔄 En Carga de Horas permite préstamo a otros rubros
+                        {formData.admin_center === 'ASTILLERO' ? '🔄 Permite préstamo en Horas' : `${String(formData.trade || '').split(',').map(s => s.trim()).filter(Boolean).length} activo(s)`}
                       </span>
                     </div>
+
                     <input
                       type="text"
                       required
@@ -5766,334 +5725,339 @@ export default function Personal() {
                       placeholder="CALDERERIA, RASCHINAJE, PINTURA, MECANICA..."
                       value={formData.trade}
                       onChange={(e) => setFormData({ ...formData, trade: e.target.value.toUpperCase() })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-rose-400"
                     />
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {['CALDERERIA', 'RASCHINAJE', 'PINTURA', 'MECANICA', 'CARPINTERIA', 'ELECTRICIDAD', 'SOLDADURA', 'MAQUINARIA', 'PANOLERO', 'MANDADOS', 'SUPERVISION', 'TECNICOS'].map(stdTrade => {
-                        const isSelected = (formData.trade || '').trim().toUpperCase() === stdTrade
-                        return (
-                          <button
-                            key={stdTrade}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, trade: stdTrade })}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-cyan-500 text-slate-950 border-cyan-300 shadow-sm'
-                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
-                            }`}
-                          >
-                            {stdTrade}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-3.5 bg-slate-950 rounded-xl border border-amber-500/30 space-y-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <label className="text-xs font-bold text-amber-300 block">
-                          Rubro(s) Habilitados del Contratista / Taller (Multi-Rubro)
-                        </label>
-                        <p className="text-[10px] text-slate-400">
-                          Podés seleccionar <strong>varios rubros</strong>. El primero queda como <strong>⭐ Principal</strong> por defecto en Carga de Horas y los demás quedan habilitados para elegir en 1 clic.
-                        </p>
+
+                    {formData.admin_center === 'ASTILLERO' ? (
+                      <div className="flex flex-wrap gap-1">
+                        {['CALDERERIA', 'RASCHINAJE', 'PINTURA', 'MECANICA', 'CARPINTERIA', 'ELECTRICIDAD', 'SOLDADURA', 'MAQUINARIA', 'PANOLERO', 'MANDADOS', 'SUPERVISION', 'TECNICOS'].map(stdTrade => {
+                          const isSelected = (formData.trade || '').trim().toUpperCase() === stdTrade
+                          return (
+                            <button
+                              key={stdTrade}
+                              type="button"
+                              tabIndex={-1}
+                              onClick={() => setFormData({ ...formData, trade: stdTrade })}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-cyan-500 text-slate-950 border-cyan-300 shadow-sm'
+                                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                              }`}
+                            >
+                              {stdTrade}
+                            </button>
+                          )
+                        })}
                       </div>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-700">
-                        {String(formData.trade || '').split(',').map(s => s.trim()).filter(Boolean).length} rubro(s)
-                      </span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {['CALDERERIA', 'SOLDADURA', 'RASCHINAJE', 'PINTURA', 'MECANICA', 'CARPINTERIA', 'ELECTRICIDAD', 'TORNERIA', 'PRFV', 'MANIOBRAS', 'SERVICIOS INDUSTRIALES'].map(stdTrade => {
+                          const currentList = String(formData.trade || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
+                          const idxInList = currentList.indexOf(stdTrade)
+                          const isSelected = idxInList !== -1
+                          const isPrimary = idxInList === 0
+                          return (
+                            <button
+                              key={stdTrade}
+                              type="button"
+                              tabIndex={-1}
+                              onClick={() => {
+                                let nextList = [...currentList]
+                                if (isSelected) {
+                                  if (nextList.length > 1) nextList = nextList.filter(t => t !== stdTrade)
+                                } else {
+                                  nextList.push(stdTrade)
+                                }
+                                setFormData({ ...formData, trade: nextList.join(', ') })
+                              }}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                                isPrimary
+                                  ? 'bg-amber-500 text-slate-950 border-amber-300 font-black'
+                                  : isSelected
+                                  ? 'bg-amber-950 text-amber-200 border-amber-500'
+                                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                              }`}
+                            >
+                              {isPrimary ? '⭐ ' : isSelected ? '✓ ' : '+ '}{stdTrade}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    <datalist id="trades-datalist">
+                      {uniqueTrades.map(t => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* BLOQUE 3 (AZUL ÍNDIGO): DATOS PERSONALES */}
+                  <div className="alon-chunk-indigo space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-black text-indigo-300 uppercase tracking-wider">
+                        3. Datos Personales & Contacto
+                      </label>
+                      <span className="text-[10px] font-mono text-indigo-400/80">Paso 3/5</span>
                     </div>
 
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        'CALDERERIA',
-                        'SOLDADURA',
-                        'RASCHINAJE',
-                        'PINTURA',
-                        'MECANICA',
-                        'CARPINTERIA',
-                        'ELECTRICIDAD',
-                        'TORNERIA',
-                        'PRFV',
-                        'MANIOBRAS',
-                        'SERVICIOS INDUSTRIALES'
-                      ].map(stdTrade => {
-                        const currentList = String(formData.trade || '')
-                          .split(',')
-                          .map(s => s.trim().toUpperCase())
-                          .filter(Boolean)
-                        const idxInList = currentList.indexOf(stdTrade)
-                        const isSelected = idxInList !== -1
-                        const isPrimary = idxInList === 0
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          Nombre y Apellido *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          autoFocus
+                          placeholder="Ej: Rodriguez, Lucas"
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-400 font-bold"
+                        />
+                      </div>
 
-                        return (
-                          <button
-                            key={stdTrade}
-                            type="button"
-                            onClick={() => {
-                              let nextList = [...currentList]
-                              if (isSelected) {
-                                if (nextList.length > 1) {
-                                  nextList = nextList.filter(t => t !== stdTrade)
-                                }
-                              } else {
-                                nextList.push(stdTrade)
-                              }
-                              setFormData({ ...formData, trade: nextList.join(', ') })
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-cyan-400" />
+                          <span>Celular / WhatsApp</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ej: +5492235001122"
+                          value={formData.phone || ''}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ================================================================= */}
+                {/* COLUMNA DERECHA: 4. TARIFA & CONSUMIBLES • 5. ESTADO & PERMISOS   */}
+                {/* ================================================================= */}
+                <div className="space-y-3">
+                  {/* BLOQUE 4 (VERDE ESMERALDA): TARIFA & CONSUMIBLES DE PAÑOL */}
+                  <div className="alon-chunk-emerald space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-black text-emerald-300 uppercase tracking-wider">
+                        4. Tarifa Horaria & Consumibles de Pañol
+                      </label>
+                      <span className="text-[10px] font-mono text-emerald-400/80">Paso 4/5</span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                          Tarifa AR$/Hora
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1.5 text-slate-500 font-mono font-bold text-xs">$</span>
+                          <input
+                            type="number"
+                            step="100"
+                            min="0"
+                            value={formData.hourly_rate_ars}
+                            onChange={(e) => {
+                              const ars = parseFloat(e.target.value) || 0
+                              const usd = dollarRate > 0 ? Number((ars / dollarRate).toFixed(2)) : 0
+                              setFormData({ ...formData, hourly_rate_ars: ars, hourly_rate_usd: usd })
                             }}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
-                              isPrimary
-                                ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-md ring-1 ring-amber-300 font-black'
-                                : isSelected
-                                ? 'bg-amber-950 text-amber-200 border-amber-500'
-                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-6 pr-2 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-emerald-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900/90 border border-emerald-900/50 rounded-lg px-2.5 py-1 flex flex-col justify-center">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] uppercase font-bold text-emerald-400 flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5 text-amber-400" />
+                            U$/H (${dollarRate})
+                          </span>
+                        </div>
+                        <div className="text-sm font-extrabold text-emerald-300 font-mono">
+                          ${dollarRate > 0 && formData.hourly_rate_ars ? (parseFloat(formData.hourly_rate_ars) / dollarRate).toFixed(2) : '0.00'}{' '}
+                          <span className="text-[9px] font-sans font-normal text-slate-400">USD</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                          Categoría
+                        </label>
+                        <select
+                          value={formData.category}
+                          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-400 font-bold"
+                        >
+                          <option value="AYUDANTE">AYUDANTE</option>
+                          <option value="OFICIAL">OFICIAL</option>
+                          <option value="1/2 OFICIAL">1/2 OFICIAL</option>
+                          <option value="APRENDIZ">APRENDIZ</option>
+                          <option value="OFICIAL BLACK">OFICIAL BLACK</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Sub-bloque Consumibles de Pañol */}
+                    <div className="pt-2.5 border-t border-emerald-500/20 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200">
+                          Consumibles de Pañol (% Descuento)
+                        </span>
+                        <span className="text-[11px] font-mono font-extrabold text-amber-400 px-2 py-0.5 rounded bg-slate-900 border border-slate-800">
+                          {formData.consumables_discount_pct}% Descuento
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { pct: 100, label: '100% Contr.', desc: 'Desc. total' },
+                          { pct: 60, label: '60% Contr.', desc: '40% Obra' },
+                          { pct: 50, label: '50% Comp.', desc: '50% Obra' },
+                          { pct: 0, label: '0% Obra', desc: '100% Obra' }
+                        ].map(btn => (
+                          <button
+                            key={btn.pct}
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() => setFormData({ ...formData, consumables_discount_pct: btn.pct })}
+                            className={`py-1 px-1.5 rounded-lg text-[11px] font-bold transition-all border text-center cursor-pointer ${
+                              Number(formData.consumables_discount_pct) === btn.pct
+                                ? 'bg-amber-950 text-amber-300 border-amber-500 shadow ring-1 ring-amber-500'
+                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
                             }`}
                           >
-                            <span>{isPrimary ? '⭐ ' : isSelected ? '✓ ' : '+ '}{stdTrade}</span>
+                            <div>{btn.label}</div>
+                            <div className="text-[9px] opacity-70 font-normal">{btn.desc}</div>
                           </button>
-                        )
-                      })}
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="range"
+                          tabIndex={-1}
+                          min="0"
+                          max="100"
+                          step="5"
+                          value={formData.consumables_discount_pct}
+                          onChange={(e) => setFormData({ ...formData, consumables_discount_pct: Number(e.target.value) })}
+                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                        />
+                        <div className="flex items-center gap-1 shrink-0">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={formData.consumables_discount_pct}
+                            onChange={(e) => {
+                              const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0))
+                              setFormData({ ...formData, consumables_discount_pct: val })
+                            }}
+                            className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-white font-mono font-bold text-center focus:outline-none focus:border-amber-500"
+                          />
+                          <span className="text-xs text-slate-400 font-bold">%</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden flex border border-slate-800">
+                          <div className="bg-amber-500 transition-all duration-200" style={{ width: `${formData.consumables_discount_pct}%` }} />
+                          <div className="bg-purple-500 transition-all duration-200" style={{ width: `${100 - formData.consumables_discount_pct}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-amber-400 font-semibold">Descuento Contratista: {formData.consumables_discount_pct}%</span>
+                          <span className="text-purple-400 font-semibold">Imputación Obra: {100 - formData.consumables_discount_pct}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BLOQUE 5 (PÚRPURA): ESTADO EN NÓMINA & PERMISOS */}
+                  <div className="alon-chunk-purple space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-black text-purple-300 uppercase tracking-wider">
+                        5. Estado en Nómina & Permisos Operativos
+                      </label>
+                      <span className="text-[10px] font-mono text-purple-400/80">Paso 5/5</span>
                     </div>
 
-                    <input
-                      type="text"
-                      required
-                      list="trades-datalist"
-                      placeholder="Ej: CALDERERIA, SOLDADURA, MECANICA (separados por coma)"
-                      value={formData.trade}
-                      onChange={(e) => setFormData({ ...formData, trade: e.target.value.toUpperCase() })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-amber-200 font-mono font-bold focus:outline-none focus:border-amber-400"
-                    />
-                  </div>
-                )}
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-semibold text-slate-300 shrink-0">
+                        Estado en Nómina:
+                      </label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-400 font-bold cursor-pointer"
+                      >
+                        <option value="ACTIVO">ACTIVO 🟢</option>
+                        <option value="INACTIVO">INACTIVO 🔴</option>
+                      </select>
+                    </div>
 
-                <datalist id="trades-datalist">
-                  {uniqueTrades.map(t => (
-                    <option key={t} value={t} />
-                  ))}
-                </datalist>
-              </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-200 cursor-pointer hover:border-cyan-500/40">
+                        <input
+                          type="checkbox"
+                          checked={formData.can_withdraw_materials}
+                          onChange={(e) => setFormData({ ...formData, can_withdraw_materials: e.target.checked })}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-primary cursor-pointer accent-primary"
+                        />
+                        <span>Retirar de Pañol (<strong>P</strong>)</span>
+                      </label>
 
-              {/* 4. TARIFA AR$, U$/HORA (CONGELADO/CALCULADO) & CATEGORÍA */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
-                    Tarifa AR$/Hora
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-2.5 top-2 text-slate-500 font-mono font-bold">$</span>
-                    <input
-                      type="number"
-                      step="100"
-                      min="0"
-                      value={formData.hourly_rate_ars}
-                      onChange={(e) => {
-                        const ars = parseFloat(e.target.value) || 0
-                        const usd = dollarRate > 0 ? Number((ars / dollarRate).toFixed(2)) : 0
-                        setFormData({ ...formData, hourly_rate_ars: ars, hourly_rate_usd: usd })
-                      }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-6 pr-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <span className="text-[9px] text-slate-500">Valor hora en pesos</span>
-                </div>
+                      <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-cyan-300 font-semibold cursor-pointer hover:border-cyan-500/40">
+                        <input
+                          type="checkbox"
+                          checked={formData.can_impute_hours}
+                          onChange={(e) => setFormData({ ...formData, can_impute_hours: e.target.checked })}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-primary cursor-pointer accent-primary"
+                        />
+                        <span>Imputar Horas (<strong>H</strong>)</span>
+                      </label>
 
-                {/* U$/Hora CONGELADO / COMPUTADO */}
-                <div className="bg-slate-900/90 border border-emerald-900/40 rounded-lg px-2.5 py-1.5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 flex items-center gap-1">
-                      <Lock className="w-2.5 h-2.5 text-amber-400" />
-                      U$/Hora (a ${dollarRate})
-                    </span>
-                    <span className="text-[8px] px-1 py-0.2 rounded bg-slate-950 text-slate-400 border border-slate-800">Congelado</span>
-                  </div>
-                  <div className="text-sm font-extrabold text-emerald-300 font-mono my-0.5">
-                    ${dollarRate > 0 && formData.hourly_rate_ars ? (parseFloat(formData.hourly_rate_ars) / dollarRate).toFixed(2) : '0.00'} <span className="text-[10px] font-sans font-normal text-slate-400">USD</span>
-                  </div>
-                  <span className="text-[9px] text-slate-500">Calculado automáticamente</span>
-                </div>
+                      <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-purple-300 font-semibold cursor-pointer hover:border-purple-500/40">
+                        <input
+                          type="checkbox"
+                          checked={formData.can_charge_third_party}
+                          onChange={(e) => setFormData({ ...formData, can_charge_third_party: e.target.checked })}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-purple-400 cursor-pointer accent-purple-500"
+                        />
+                        <span>Habilitado Terceros (<strong>3ros</strong>)</span>
+                      </label>
 
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
-                    Categoría
-                  </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-primary font-bold"
-                  >
-                    <option value="AYUDANTE">AYUDANTE</option>
-                    <option value="OFICIAL">OFICIAL</option>
-                    <option value="1/2 OFICIAL">1/2 OFICIAL</option>
-                    <option value="APRENDIZ">APRENDIZ</option>
-                    <option value="OFICIAL BLACK">OFICIAL BLACK</option>
-                  </select>
-                  <span className="text-[9px] text-slate-500">Escala sindical base</span>
-                </div>
-              </div>
-
-              {/* 5. CONSUMIBLES (PAÑOL) CON PORCENTAJE DE DESCUENTO */}
-              <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-200">
-                      Consumibles de Pañol (% Descuento al Contratista / Taller)
-                    </label>
-                    <p className="text-[10px] text-slate-400">
-                      Porcentaje de los insumos y materiales retirados que se descontará de la liquidación.
-                    </p>
-                  </div>
-                  <span className="text-xs font-mono font-extrabold text-amber-400 px-2 py-0.5 rounded bg-slate-900 border border-slate-800">
-                    {formData.consumables_discount_pct}% Descuento
-                  </span>
-                </div>
-
-                {/* Botones de porcentaje preestablecido */}
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { pct: 100, label: '100% Contratista', desc: 'Descuento total' },
-                    { pct: 60, label: '60% Contratista', desc: '40% Obra' },
-                    { pct: 50, label: '50% Compartido', desc: '50% Obra' },
-                    { pct: 0, label: '0% Obra / Cliente', desc: '100% a la obra' }
-                  ].map(btn => (
-                    <button
-                      key={btn.pct}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, consumables_discount_pct: btn.pct })}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all border text-center cursor-pointer ${
-                        Number(formData.consumables_discount_pct) === btn.pct
-                          ? 'bg-amber-950 text-amber-300 border-amber-500 shadow-md ring-1 ring-amber-500'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      <div>{btn.label}</div>
-                      <div className="text-[9px] opacity-70 font-normal">{btn.desc}</div>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Control Deslizante & Input Manual */}
-                <div className="flex items-center gap-3 pt-1">
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="5"
-                    value={formData.consumables_discount_pct}
-                    onChange={(e) => setFormData({ ...formData, consumables_discount_pct: Number(e.target.value) })}
-                    className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-                  />
-                  <div className="flex items-center gap-1 shrink-0">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={formData.consumables_discount_pct}
-                      onChange={(e) => {
-                        const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0))
-                        setFormData({ ...formData, consumables_discount_pct: val })
-                      }}
-                      className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono font-bold text-center focus:outline-none focus:border-amber-500"
-                    />
-                    <span className="text-xs text-slate-400 font-bold">%</span>
-                  </div>
-                </div>
-
-                {/* Barra visual de distribución Contratista vs Obra */}
-                <div className="space-y-1 pt-1 border-t border-slate-800/80">
-                  <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden flex border border-slate-800">
-                    <div 
-                      className="bg-amber-500 transition-all duration-200" 
-                      style={{ width: `${formData.consumables_discount_pct}%` }} 
-                      title={`Descuento Contratista: ${formData.consumables_discount_pct}%`}
-                    />
-                    <div 
-                      className="bg-purple-500 transition-all duration-200" 
-                      style={{ width: `${100 - formData.consumables_discount_pct}%` }} 
-                      title={`Imputación a la Obra: ${100 - formData.consumables_discount_pct}%`}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[10px] text-slate-400">
-                    <span className="text-amber-400 font-semibold">Descuento a Contratista: {formData.consumables_discount_pct}%</span>
-                    <span className="text-purple-400 font-semibold">Imputación a la Obra: {100 - formData.consumables_discount_pct}%</span>
+                      <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-amber-300 font-semibold cursor-pointer hover:border-amber-500/40">
+                        <input
+                          type="checkbox"
+                          checked={formData.is_foreman}
+                          onChange={(e) => setFormData({ ...formData, is_foreman: e.target.checked })}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-amber-400 cursor-pointer accent-amber-500"
+                        />
+                        <span>👷 Es Jefe de Obra (<strong>JO</strong>)</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* 6. ESTADO EN NÓMINA & PERMISOS/REQUERIMIENTOS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Estado en Nómina
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold cursor-pointer"
-                  >
-                    <option value="ACTIVO">ACTIVO 🟢</option>
-                    <option value="INACTIVO">INACTIVO 🔴</option>
-                  </select>
-                </div>
-
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex flex-col justify-center space-y-2 text-xs">
-                  <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.can_withdraw_materials}
-                      onChange={(e) => setFormData({ ...formData, can_withdraw_materials: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                    />
-                    <span>Permiso para retirar de Pañol (<strong>P</strong>)</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.can_impute_hours}
-                      onChange={(e) => setFormData({ ...formData, can_impute_hours: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                    />
-                    <span className="font-semibold text-cyan-300">Requiere imputar Horas (<strong>H</strong>)</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.can_charge_third_party}
-                      onChange={(e) => setFormData({ ...formData, can_charge_third_party: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-purple-400 cursor-pointer accent-purple-500"
-                    />
-                    <span className="font-semibold text-purple-300">Habilitado para Terceros / Presupuestos (<strong>3ros</strong>)</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 text-slate-300 cursor-pointer pt-1 border-t border-slate-800">
-                    <input
-                      type="checkbox"
-                      checked={formData.is_foreman}
-                      onChange={(e) => setFormData({ ...formData, is_foreman: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-400 cursor-pointer accent-amber-500"
-                    />
-                    <span className="font-semibold text-amber-300">👷 Es Jefe de Obra (aparece en Órdenes de Trabajo)</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* BOTONES DE ACCIÓN */}
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
+              {/* PIE DE ACCIONES FIJO */}
+              <div className="alon-modal-footer">
                 <button
                   type="button"
                   onClick={() => { setIsNewModalOpen(false); setEditingWorker(null) }}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingWorker}
-                  className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 text-slate-950 text-xs font-bold rounded-lg shadow-md hover:brightness-110 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  <Save className="w-3.5 h-3.5" />
+                  <Save className="w-4 h-4" />
                   <span>{savingWorker ? 'Guardando...' : (editingWorker ? 'Guardar Cambios' : 'Registrar Operario')}</span>
                 </button>
               </div>
