@@ -44,7 +44,8 @@ import {
   PhoneOff,
   Shield,
   Square,
-  CheckSquare
+  CheckSquare,
+  CopyPlus
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
@@ -52,6 +53,7 @@ import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import GridContextMenu from '../components/GridContextMenu'
+import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 import { auditService } from '../lib/auditService'
 
@@ -2041,12 +2043,16 @@ export default function Personal() {
     }
   }, [applyWorkerSinglePatch, showGridFeedback])
 
+  const nominaPasteRef = useRef(null)
+  const ratesPasteRef = useRef(null)
+
   const nominaGrid = useSpreadsheetGrid({
     rows: filteredWorkers,
     columns: nominaColumns,
     getRowId: (w) => w.id,
     storageKey: 'aloncar_grid_personal',
     onBatchUpdate: handleNominaBatchUpdate,
+    onPasteRow: (args) => nominaPasteRef.current?.(args),
     onFocusSearch: () => nominaSearchInputRef.current?.focus(),
     onCellActivate: (row, colDef) => {
       if (!row || !colDef) return
@@ -2219,6 +2225,7 @@ export default function Personal() {
     storageKey: 'aloncar_grid_tarifas',
     canEditCell: canEditRateCell,
     onBatchUpdate: handleRatesBatchUpdate,
+    onPasteRow: (args) => ratesPasteRef.current?.(args),
     onFocusSearch: () => rateSearchInputRef.current?.focus(),
     onCellActivate: (row, colDef) => {
       if (!row || !colDef) return
@@ -2235,6 +2242,83 @@ export default function Personal() {
     },
     showFeedback: showGridFeedback
   })
+
+  // ==========================================================================
+  // DUPLICAR / PEGAR FILA COMPLETA (menú clic derecho canónico) - Personal y Tarifas
+  // ==========================================================================
+  const WORKER_CLONE_FIELDS = ['category', 'trade', 'hourly_rate_ars', 'hourly_rate_usd', 'work_group', 'admin_center', 'status', 'phone', 'consumables', 'consumables_discount_pct', 'can_withdraw_materials', 'can_impute_hours', 'can_charge_third_party', 'is_foreman']
+  const RATE_CLONE_FIELDS = ['period', 'year', 'month', 'quincena', 'admin_center', 'rate_oficial_ars', 'rate_oficial_usd', 'has_ayudante', 'rate_ayudante_ars', 'rate_ayudante_usd', 'dollar_rate']
+  const RATE_PASTE_FIELDS = ['rate_oficial_ars', 'rate_oficial_usd', 'has_ayudante', 'rate_ayudante_ars', 'rate_ayudante_usd']
+
+  useEffect(() => {
+    nominaPasteRef.current = buildPasteRowHandler({
+      table: 'workers',
+      entityType: 'workers',
+      fields: WORKER_CLONE_FIELDS,
+      grid: nominaGrid,
+      setList: setWorkers,
+      nameOf: (r) => r.name || r.id,
+      showFeedback: showGridFeedback
+    })
+    const baseRatePaste = buildPasteRowHandler({
+      table: 'rate_cards',
+      entityType: 'rate_cards',
+      fields: RATE_PASTE_FIELDS,
+      grid: ratesGrid,
+      setList: setRateCards,
+      nameOf: (r) => `${r.entity_name || ''} (${r.period || ''})`,
+      showFeedback: showGridFeedback
+    })
+    ratesPasteRef.current = async (args) => {
+      if (args?.targetRow?.is_locked) {
+        showGridFeedback('error', `🔒 La tarifa de ${args.targetRow.entity_name} (${args.targetRow.period}) está bloqueada.`)
+        return
+      }
+      await baseRatePaste(args)
+    }
+  })
+
+  const handleDuplicateWorkerRow = async (w) => {
+    if (!w) return
+    try {
+      const created = await duplicateRecord({
+        table: 'workers',
+        entityType: 'workers',
+        source: w,
+        fields: WORKER_CLONE_FIELDS,
+        overrides: { name: `${w.name || 'Operario'} (COPIA)`, is_foreman: false },
+        nameOf: (r) => r.name || r.id
+      })
+      showGridFeedback('success', `Operario duplicado como "${created.name}".`)
+      loadWorkers()
+    } catch (err) {
+      console.error(err)
+      showGridFeedback('error', `Error al duplicar operario: ${err.message}`)
+    }
+  }
+
+  const handleDuplicateRateRow = async (rc) => {
+    if (!rc) return
+    if (rc.is_locked) {
+      showGridFeedback('error', `🔒 Período cerrado (${rc.period}): no se puede duplicar en un período bloqueado.`)
+      return
+    }
+    try {
+      const created = await duplicateRecord({
+        table: 'rate_cards',
+        entityType: 'rate_cards',
+        source: rc,
+        fields: RATE_CLONE_FIELDS,
+        overrides: { entity_name: `${rc.entity_name || 'TARIFA'} (COPIA)`, is_locked: false },
+        nameOf: (r) => `${r.entity_name} (${r.period})`
+      })
+      showGridFeedback('success', `Tarifa duplicada como "${created.entity_name}".`)
+      loadRateCards(currentPeriodKey)
+    } catch (err) {
+      console.error(err)
+      showGridFeedback('error', `Error al duplicar tarifa: ${err.message}`)
+    }
+  }
 
   const commitInlineRateEdit = async () => {
     if (!inlineRateEdit) return
@@ -3904,6 +3988,10 @@ export default function Personal() {
                           onContextMenu={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
+                            if (ratesGrid.activeCell?.rowIndex !== rowIndex) {
+                              ratesGrid.setActiveCell({ rowIndex, colIndex: ratesGrid.activeCell?.colIndex ?? 0 })
+                              ratesGrid.setSelectionRange?.(null)
+                            }
                             setContextMenuTarget({
                               row: rc,
                               rowIndex,
@@ -3912,7 +4000,7 @@ export default function Personal() {
                               isRowHeader: false,
                               entityType: 'rate_cards',
                               recordId: rc.id,
-                              recordLabel: `${rc.period} · ${rc.contractor_name || rc.category}`
+                              recordLabel: `${rc.period} · ${rc.entity_name || rc.contractor_name || rc.category || ''}`
                             })
                           }}
                           className={`group transition-colors select-none ${
@@ -4790,6 +4878,10 @@ export default function Personal() {
                           onContextMenu={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
+                            if (nominaGrid.activeCell?.rowIndex !== rowIndex) {
+                              nominaGrid.setActiveCell({ rowIndex, colIndex: nominaGrid.activeCell?.colIndex ?? 0 })
+                              nominaGrid.setSelectionRange?.(null)
+                            }
                             setContextMenuTarget({
                               row: w,
                               rowIndex,
@@ -5297,6 +5389,14 @@ export default function Personal() {
                                 title="Editar operario"
                               >
                                 <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateWorkerRow(w)}
+                                className="p-1 text-amber-400 hover:text-amber-300 rounded hover:bg-amber-500/10 transition-colors cursor-pointer"
+                                title="Duplicar fila"
+                              >
+                                <CopyPlus className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
@@ -6071,24 +6171,8 @@ export default function Personal() {
           }
           onDuplicateRow={
             activeTab === 'nomina'
-              ? (row) => {
-                  setFormData({
-                    name: `${row.name || ''} (Copia)`,
-                    category: row.category || 'OFICIAL',
-                    trade: row.trade || '',
-                    work_group: row.work_group || '',
-                    admin_center: row.admin_center || 'ASTILLERO',
-                    hourly_rate_ars: row.hourly_rate_ars || '',
-                    phone: row.phone || '',
-                    can_withdraw_materials: row.can_withdraw_materials ?? true,
-                    can_impute_hours: row.can_impute_hours ?? true,
-                    can_charge_third_party: row.can_charge_third_party ?? false,
-                    is_foreman: false
-                  })
-                  setEditingWorker(null)
-                  setIsNewModalOpen(true)
-                }
-              : null
+              ? (row) => handleDuplicateWorkerRow(row)
+              : (row) => handleDuplicateRateRow(row)
           }
           entityType={contextMenuTarget.entityType || 'workers'}
           recordId={contextMenuTarget.recordId}

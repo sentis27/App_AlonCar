@@ -28,6 +28,8 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | docs/02_producto/ESTANDARES_MODULOS_UI_UX.md | Guía Maestra de Estándares de Arquitectura, UI y UX (4 Zonas, KPIs compactos multicolores, Calendario y Excel Grid) | Devs / Agentes IA |
 | `GEMINI.md` | Protocolo de Gobernanza Arquitectónica y Operativa Unificado (v1.2) — Fuente Única de Verdad | Devs / Agentes IA (Antigravity) |
 | `CLAUDE.md` | Puntero de compatibilidad hacia `GEMINI.md` | Devs / Agentes IA (Claude Code) |
+| `app/src/lib/gridRowActions.js` | Servicio canónico compartido para Duplicar Fila (`duplicateRecord`) y Pegar Fila Completa (`pasteRowFields` / `buildPasteRowHandler`) con auditoría en `audit_logs` y Undo/Redo | Devs / Agentes IA |
+| `app/src/hooks/useGridContextMenu.js` | Hook compartido de estado y apertura del menú contextual canónico (`GridContextMenu.jsx`) | Devs / Agentes IA |
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)
 Diseño de los 6 módulos del ERP.

@@ -6,6 +6,9 @@ import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import GridContextMenu from '../components/GridContextMenu'
+import { useGridContextMenu } from '../hooks/useGridContextMenu'
+import { buildPasteRowHandler } from '../lib/gridRowActions'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import HighlightText from '../components/HighlightText'
@@ -628,6 +631,7 @@ export default function Panol() {
 
   // Referencia para evitar circularidad en pegado de filas
   const onPasteRowRef = useRef(null)
+  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
 
   // Guardar asignación combinada Barco + OT con cascada canónica
   const handleSaveShipAndWorkOrder = async (txId, newShipId, newWorkOrderId) => {
@@ -824,45 +828,20 @@ export default function Panol() {
     }
   }
 
-  // Pegar fila completa con soporte de portapapeles de grilla
-  const handlePasteRow = useCallback(
-    async ({ sourceRow, targetRow, targetRowIndex }) => {
-      if (!sourceRow || !targetRow) return
-      try {
-        const fieldsToCopy = {
-          ship_id: sourceRow.ship_id || null,
-          work_order_id: sourceRow.work_order_id || null,
-          material_id: sourceRow.material_id || null,
-          quantity_withdrawn: sourceRow.quantity_withdrawn ?? null,
-          weight_total: sourceRow.weight_total ?? null,
-          contractor_name: sourceRow.contractor_name || '',
-          worker_name: sourceRow.worker_name || '',
-          worker_id: sourceRow.worker_id || null,
-          cost_center: sourceRow.cost_center || 'CLIENTE',
-          notes: sourceRow.notes || ''
-        }
-
-        const { error } = await supabase
-          .from('inventory_transactions')
-          .update(fieldsToCopy)
-          .eq('id', targetRow.id)
-        if (error) throw error
-
-        setInventoryTx((prev) =>
-          prev.map((t) => (t.id === targetRow.id ? { ...t, ...fieldsToCopy } : t))
-        )
-        showFeedback('success', `Fila pegada exitosamente en fila #${targetRowIndex + 1}.`)
-      } catch (err) {
-        console.error('Error al pegar fila:', err)
-        showFeedback('error', 'Error al pegar fila: ' + err.message)
-      }
-    },
-    []
-  )
-
+  // Pegar fila completa (fábrica canónica: persistencia + audit_logs + Undo/Redo)
+  const PANOL_PASTE_FIELDS = ['ship_id', 'work_order_id', 'material_id', 'quantity_withdrawn', 'weight_total', 'contractor_name', 'worker_name', 'worker_id', 'cost_center', 'notes']
   useEffect(() => {
-    onPasteRowRef.current = handlePasteRow
-  }, [handlePasteRow])
+    onPasteRowRef.current = buildPasteRowHandler({
+      table: 'inventory_transactions',
+      entityType: 'inventory',
+      fields: PANOL_PASTE_FIELDS,
+      grid,
+      setList: setInventoryTx,
+      nameOf: (r) => r.id,
+      showFeedback,
+      user: user?.email
+    })
+  })
 
   // Instanciación del Hook de Hoja de Cálculo
   const grid = useSpreadsheetGrid({
@@ -2021,6 +2000,7 @@ export default function Panol() {
                     return (
                       <tr
                         key={tx.id}
+                        onContextMenu={(e) => openMenu(e, tx, rowIndex, { entityType: 'inventory', recordId: tx.id, recordLabel: mat?.name || '' }, grid)}
                         className={`group transition-colors ${
                           isDeletionReq
                             ? 'bg-rose-950/60 text-rose-300 font-bold border-y-2 border-rose-500/60'
@@ -2577,6 +2557,27 @@ export default function Panol() {
               </tbody>
             </table>
           </div>
+
+          {/* MENÚ CONTEXTUAL CANÓNICO (clic derecho) */}
+          {menuTarget && (
+            <GridContextMenu
+              target={menuTarget}
+              onClose={closeMenu}
+              onCopyCell={grid.copyActiveCell}
+              onCopyRow={grid.copyRow}
+              onPaste={grid.pasteToActiveOrRange}
+              onDeleteCell={grid.deleteActiveCellOrRange}
+              onDuplicateRow={(row) => handleDuplicateTx(row)}
+              onDeleteRow={(row) =>
+                row.is_deletion_requested
+                  ? (isAdmin ? handlePermanentDeleteTx(row) : showFeedback('error', 'Baja ya solicitada: espera la decisión del Administrador.'))
+                  : handleRequestDeletionTx(row)
+              }
+              entityType={menuTarget.entityType}
+              recordId={menuTarget.recordId}
+              recordLabel={menuTarget.recordLabel}
+            />
+          )}
 
           {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
           <GridStatusBarBottom

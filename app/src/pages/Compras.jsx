@@ -68,6 +68,7 @@ import { useAuth } from '../context/AuthContext'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import GridContextMenu from '../components/GridContextMenu'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText } from '../lib/searchEngine'
@@ -471,9 +472,9 @@ export default function Compras() {
   const [batchTargetStatus, setBatchTargetStatus] = useState('RECIBIDO')
   const [rowMenuTarget, setRowMenuTarget] = useState(null)
 
-  // Cerrar menú de fila contextual al hacer clic fuera o presionar Escape
+  // Cerrar menú de fila (#) al hacer clic fuera o presionar Escape (context_menu lo gestiona GridContextMenu)
   useEffect(() => {
-    if (!rowMenuTarget) return
+    if (!rowMenuTarget || rowMenuTarget.mode === 'context_menu') return
     function handleGlobalClick() {
       setRowMenuTarget(null)
     }
@@ -2659,6 +2660,10 @@ export default function Compras() {
                           onContextMenu={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
+                            if (grid.activeCell?.rowIndex !== rowIndex) {
+                              grid.setActiveCell({ rowIndex, colIndex: grid.activeCell?.colIndex ?? 0 })
+                              grid.setSelectionRange?.(null)
+                            }
                             setRowMenuTarget({
                               order: po,
                               rowIndex,
@@ -3543,66 +3548,29 @@ export default function Compras() {
               </table>
             </div>
 
-            {/* Menú Contextual de Clic Derecho en Fila (Estilo Excel) */}
+            {/* Menú Contextual Canónico de Clic Derecho en Fila (Single Source of Truth) */}
             {rowMenuTarget && rowMenuTarget.mode === 'context_menu' && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  top: Math.min(rowMenuTarget.y, (window.innerHeight || 800) - 160),
-                  left: Math.min(rowMenuTarget.x, (window.innerWidth || 1200) - 230)
+              <GridContextMenu
+                target={{
+                  row: rowMenuTarget.order,
+                  rowIndex: rowMenuTarget.rowIndex,
+                  x: rowMenuTarget.x,
+                  y: rowMenuTarget.y,
+                  isRowHeader: false
                 }}
-                className="fixed z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 w-52 text-left space-y-1 animate-in fade-in zoom-in-95 duration-100"
-              >
-                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 border-b border-slate-800 flex items-center justify-between">
-                  <span className="text-cyan-300 flex items-center gap-1.5">
-                    <span>Fila #{rowMenuTarget.rowIndex + 1}</span>
-                    <span className="text-slate-500 font-normal truncate max-w-[85px]">{rowMenuTarget.order?.material_name_raw || 'S/D'}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setRowMenuTarget(null)}
-                    className="text-slate-500 hover:text-white text-xs px-1"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { order, rowIndex } = rowMenuTarget
-                    setRowMenuTarget(null)
-                    handleInsertOrderContext(order, rowIndex, 'above')
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-200 hover:bg-cyan-950 hover:text-cyan-300 flex items-center gap-2 cursor-pointer transition-colors"
-                >
-                  <span className="text-sm">⬆️</span>
-                  <span>Insertar fila ARRIBA</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { order, rowIndex } = rowMenuTarget
-                    setRowMenuTarget(null)
-                    handleInsertOrderContext(order, rowIndex, 'below')
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-200 hover:bg-cyan-950 hover:text-cyan-300 flex items-center gap-2 cursor-pointer transition-colors"
-                >
-                  <span className="text-sm">⬇️</span>
-                  <span>Insertar fila DEBAJO</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { order } = rowMenuTarget
-                    setRowMenuTarget(null)
-                    handleDuplicateOrder(order)
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-800/80"
-                >
-                  <Copy className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Duplicar pedido al final</span>
-                </button>
-              </div>
+                onClose={() => setRowMenuTarget(null)}
+                onCopyCell={grid.copyActiveCell}
+                onCopyRow={grid.copyRow}
+                onPaste={grid.pasteToActiveOrRange}
+                onDeleteCell={grid.deleteActiveCellOrRange}
+                onInsertRowAbove={(row, idx) => handleInsertOrderContext(row, idx, 'above')}
+                onInsertRowBelow={(row, idx) => handleInsertOrderContext(row, idx, 'below')}
+                onDuplicateRow={(row) => handleDuplicateOrder(row)}
+                onDeleteRow={(row) => handleDeleteOrder(row.id)}
+                entityType="purchase_orders"
+                recordId={rowMenuTarget.order?.id}
+                recordLabel={rowMenuTarget.order?.material_name_raw || 'Pedido'}
+              />
             )}
           </div>
           </div>

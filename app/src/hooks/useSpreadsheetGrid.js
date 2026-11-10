@@ -812,9 +812,21 @@ export function useSpreadsheetGrid({
       return
     }
 
-    // Ctrl + C: Copiar celda
+    // Ctrl + C: Copiar fila completa (si hay fila seleccionada o Ctrl+Shift+C) o celda activa
     if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C') && !isEditingInput) {
       e.preventDefault()
+      if (e.shiftKey && activeCell) {
+        copyRow(activeCell.rowIndex)
+        return
+      }
+      if (selectedRowIds.size === 1) {
+        const selId = Array.from(selectedRowIds)[0]
+        const selIdx = rows.findIndex((r, idx) => getRowId(r, idx) === selId)
+        if (selIdx !== -1 && (!activeCell || activeCell.rowIndex === selIdx)) {
+          copyRow(selIdx)
+          return
+        }
+      }
       copyActiveCell()
       return
     }
@@ -975,7 +987,7 @@ export function useSpreadsheetGrid({
         })
       }
     }
-  }, [activeCell, selectionRange, rows, columns, getRowId, onFocusSearch, onCellActivate, undo, redo, copyActiveCell, pasteToActiveOrRange, executeFillDown, deleteActiveCellOrRange, showFeedback])
+  }, [activeCell, selectionRange, selectedRowIds, rows, columns, getRowId, onFocusSearch, onCellActivate, undo, redo, copyActiveCell, copyRow, pasteToActiveOrRange, executeFillDown, deleteActiveCellOrRange, showFeedback])
 
   // Mouse: Clic en celda
   const handleCellClick = useCallback((rowIndex, colIndex, e) => {

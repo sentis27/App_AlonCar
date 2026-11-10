@@ -8,6 +8,9 @@ import HighlightText from '../components/HighlightText'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import GridContextMenu from '../components/GridContextMenu'
+import { useGridContextMenu } from '../hooks/useGridContextMenu'
+import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
@@ -43,7 +46,8 @@ import {
   ExternalLink,
   ChevronDown,
   RotateCcw,
-  RotateCw
+  RotateCw,
+  CopyPlus
 } from 'lucide-react'
 
 // Tipos de Comprobante y Reglas de Negocio (DEC-017)
@@ -294,6 +298,8 @@ export default function Terceros() {
 
   // 2. Estados principales de datos
   const [services, setServices] = useState([])
+  const tercerosPasteRef = useRef(null)
+  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const [ships, setShips] = useState([])
   const [workOrders, setWorkOrders] = useState([])
   const [workItems, setWorkItems] = useState([])
@@ -1169,6 +1175,7 @@ export default function Terceros() {
     getRowId: (row) => row.id,
     storageKey: 'aloncar_grid_terceros',
     onBatchUpdate: handleSpreadsheetBatchUpdate,
+    onPasteRow: (args) => tercerosPasteRef.current?.(args),
     onCellActivate: (row, colDef) => activateTercerosCell(row, colDef.key),
     onFocusSearch: () => {
       searchInputRef.current?.focus()
@@ -1183,6 +1190,61 @@ export default function Terceros() {
     },
     showFeedback: (type, text) => showFeedback(type, text)
   })
+
+  // ==========================================================================
+  // DUPLICAR / PEGAR FILA COMPLETA (menú clic derecho canónico) - Terceros
+  // Importes solo si el rol puede editarlos (canEditAmounts). No copia nº de comprobante.
+  // ==========================================================================
+  const canMutateRows = activeRolePerspective !== 'direccion'
+  const TERCEROS_CLONE_FIELDS = ['ship_id', 'work_order_id', 'work_item_id', 'contractor_name', 'trade', 'voucher_type', 'status', 'amount_ars', 'usd_rate', 'amount_usd', 'direct_observations', 'specific_observations']
+  const TERCEROS_PASTE_FIELDS = ['ship_id', 'work_order_id', 'work_item_id', 'contractor_name', 'trade', 'direct_observations', 'specific_observations', ...(canEditAmounts ? ['amount_ars', 'usd_rate', 'amount_usd'] : [])]
+
+  useEffect(() => {
+    tercerosPasteRef.current = canMutateRows
+      ? buildPasteRowHandler({
+          table: 'third_party_services',
+          entityType: 'third_party_services',
+          fields: TERCEROS_PASTE_FIELDS,
+          grid,
+          setList: setServices,
+          nameOf: (r) => r.contractor_name || r.id,
+          showFeedback: (type, text) => showFeedback(type, text),
+          user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+        })
+      : () => showFeedback('error', 'Tu perfil (Dirección) es de solo lectura: no puede pegar filas.')
+  })
+
+  const handleDuplicateService = async (srv) => {
+    if (!canMutateRows) {
+      showFeedback('error', 'Tu perfil (Dirección) es de solo lectura: no puede duplicar filas.')
+      return
+    }
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const actor = activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+      await duplicateRecord({
+        table: 'third_party_services',
+        entityType: 'third_party_services',
+        source: srv,
+        fields: TERCEROS_CLONE_FIELDS,
+        overrides: {
+          entry_date: today,
+          voucher_date: today,
+          service_date: today,
+          audit_status: 'PENDIENTE',
+          created_by: actor,
+          updated_at: new Date().toISOString()
+        },
+        nameOf: (r) => r.contractor_name || r.id,
+        user: actor
+      })
+      showFeedback('success', `Comprobante de ${srv.contractor_name} duplicado (sin número de comprobante).`)
+      fetchData()
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al duplicar comprobante: ' + (err.message || err))
+    }
+  }
 
   // Helper de propiedades para cada celda
   function getSpreadsheetCellProps(rowIndex, colKey) {
@@ -1901,6 +1963,7 @@ export default function Terceros() {
                   return (
                     <tr
                       key={srv.id}
+                      onContextMenu={(e) => openMenu(e, srv, index, { entityType: 'third_party_services', recordId: srv.id, recordLabel: srv.contractor_name }, grid)}
                       className={`transition-colors select-none ${
                         isSelected
                           ? 'bg-cyan-950/40 text-cyan-50 border-l-2 border-l-cyan-400'
@@ -2365,6 +2428,21 @@ export default function Terceros() {
                             <History className="w-3.5 h-3.5" />
                           </button>
 
+                          {/* Duplicar fila */}
+                          {canMutateRows && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDuplicateService(srv)
+                              }}
+                              className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="Duplicar fila"
+                            >
+                              <CopyPlus className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
                           {/* Editar */}
                           {activeRolePerspective !== 'direccion' && (
                             <button
@@ -2402,6 +2480,23 @@ export default function Terceros() {
               </tbody>
             </table>
           </div>
+
+          {/* MENÚ CONTEXTUAL CANÓNICO (clic derecho) */}
+          {menuTarget && (
+            <GridContextMenu
+              target={menuTarget}
+              onClose={closeMenu}
+              onCopyCell={grid.copyActiveCell}
+              onCopyRow={grid.copyRow}
+              onPaste={canMutateRows ? grid.pasteToActiveOrRange : undefined}
+              onDeleteCell={canMutateRows ? grid.deleteActiveCellOrRange : undefined}
+              onDuplicateRow={canMutateRows ? (row) => handleDuplicateService(row) : undefined}
+              onDeleteRow={canEditAmounts ? (row) => handleDeleteService(row) : undefined}
+              entityType={menuTarget.entityType}
+              recordId={menuTarget.recordId}
+              recordLabel={menuTarget.recordLabel}
+            />
+          )}
 
           {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
           <GridStatusBarBottom
