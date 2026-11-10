@@ -38,29 +38,7 @@ import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 import { auditService } from '../lib/auditService'
 
-// ==============================================================================
-// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
-// ==============================================================================
-function HighlightText({ text, query, className = '' }) {
-  if (!text) return null
-  if (!query || !query.trim()) return <span className={className}>{text}</span>
-
-  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
-  return (
-    <span className={className}>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.trim().toLowerCase() ? (
-          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </span>
-  )
-}
+import HighlightText from '../components/HighlightText'
 
 
 // Grupos del Catálogo de Trabajos (OT.ABC)
@@ -2884,7 +2862,7 @@ export default function WorkOrders() {
                                     key={c}
                                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-[10px] font-mono font-bold text-slate-200"
                                   >
-                                    <span>{c}</span>
+                                    <span><HighlightText text={c} query={searchQuery} /></span>
                                     {is3ros && (
                                       <span
                                         className="text-[8px] px-1 rounded bg-purple-950 text-purple-300 border border-purple-600 font-black"
@@ -2942,7 +2920,7 @@ export default function WorkOrders() {
                           ) : (
                             <span className="font-bold text-amber-300 flex items-center gap-1 text-xs">
                               <User className="w-3 h-3 shrink-0" />
-                              <span>{row.foreman_name || 'Sin asignar'}</span>
+                              <span><HighlightText text={row.foreman_name || 'Sin asignar'} query={searchQuery} /></span>
                             </span>
                           )}
                           {!isLocked && woGrid.shouldRenderFillHandle(rowIndex, 1) && (
@@ -2989,12 +2967,17 @@ export default function WorkOrders() {
                           ) : (
                             <>
                               <span className="font-mono font-bold text-cyan-300 text-[11px] block">
-                                {row.work_type || 'HORA'}
+                                <HighlightText text={row.work_type || 'HORA'} query={searchQuery} />
                               </span>
                               <span className="text-[10px] text-slate-400 block">
-                                {row.assignment_type === 'Adicional / Específico'
-                                  ? `Adic. (${row.specific_budget_id || 'S/N'})`
-                                  : 'Presup. Gral.'}
+                                <HighlightText
+                                  text={
+                                    row.assignment_type === 'Adicional / Específico'
+                                      ? `Adic. (${row.specific_budget_id || 'S/N'})`
+                                      : 'Presup. Gral.'
+                                  }
+                                  query={searchQuery}
+                                />
                               </span>
                             </>
                           )}
@@ -3187,7 +3170,24 @@ export default function WorkOrders() {
         /* ========================================================= */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {workOrders
-            .filter(w => selectedShipFilter === 'todos' || w.ship_id === selectedShipFilter)
+            .filter(w => {
+              if (selectedShipFilter !== 'todos' && w.ship_id !== selectedShipFilter) return false
+              if (searchQuery.trim()) {
+                const items = itemsByWoMap[w.id] || []
+                const matchSearch = matchesUniversalSearch(
+                  {
+                    ...w,
+                    shipName: w.ships?.name,
+                    otNumber: w.ot_number,
+                    otTitle: w.title,
+                    itemsText: items.map(it => `${it.description || ''} ${(it.contractors || []).join(' ')} ${it.foreman_name || ''}`).join(' ')
+                  },
+                  searchQuery
+                )
+                if (!matchSearch) return false
+              }
+              return true
+            })
             .map(wo => {
               const items = itemsByWoMap[wo.id] || []
               const computed = computeOtState(wo, items)
@@ -3206,7 +3206,7 @@ export default function WorkOrders() {
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <span className="font-mono text-xs font-black text-primary px-2.5 py-0.5 rounded bg-primary/10 border border-primary/30">
-                        {wo.ot_number}
+                        <HighlightText text={wo.ot_number} query={searchQuery} />
                       </span>
                       <div className="flex flex-col items-end gap-1">
                         <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${computed.color}`}>
@@ -3222,10 +3222,14 @@ export default function WorkOrders() {
 
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 mb-1">
                       <Ship className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="text-white font-bold">{wo.ships?.name}</span>
+                      <span className="text-white font-bold">
+                        <HighlightText text={wo.ships?.name} query={searchQuery} />
+                      </span>
                     </div>
 
-                    <h3 className="text-base font-black text-white">{wo.title}</h3>
+                    <h3 className="text-base font-black text-white">
+                      <HighlightText text={wo.title} query={searchQuery} />
+                    </h3>
 
                     {/* Lista resumida de trabajos hijos dentro de esta OT con botón Separar */}
                     <div className="mt-3 space-y-1.5 border-t border-slate-800 pt-3">
@@ -3253,11 +3257,11 @@ export default function WorkOrders() {
                               className="truncate flex-1 cursor-pointer"
                             >
                               <span className="text-slate-200 block truncate">
-                                {item.description || 'Sin descripción'}
+                                <HighlightText text={item.description || 'Sin descripción'} query={searchQuery} />
                               </span>
                               {(item.contractors || []).length > 0 && (
                                 <span className="text-[10px] font-mono text-cyan-400">
-                                  {item.contractors.join(', ')}
+                                  <HighlightText text={item.contractors.join(', ')} query={searchQuery} />
                                 </span>
                               )}
                             </div>
@@ -3414,46 +3418,64 @@ export default function WorkOrders() {
                     </td>
                   </tr>
                 ) : (
-                  thirdPartyServices.map(tp => {
-                    const wo = workOrders.find(w => w.id === tp.work_order_id)
-                    const tpDate = tp.service_date || (tp.created_at ? String(tp.created_at).split('T')[0] : null)
-                    return (
-                      <tr key={tp.id} className="hover:bg-slate-800/30 transition-colors align-top">
-                        <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
-                          {formatShortDate(tpDate, true)}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-bold text-white block">{wo?.ships?.name || 'Barco'}</span>
-                          <span className="font-mono text-[11px] text-primary font-bold">
-                            {wo?.ot_number} &bull; {wo?.title}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-mono font-extrabold text-purple-300 px-2 py-0.5 rounded bg-purple-950 border border-purple-700">
-                            {tp.contractor_name}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-mono font-bold text-[10px]">
-                            {tp.status || 'PRC'} {tp.voucher_number ? `#${tp.voucher_number}` : ''}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">
-                          ${Number(tp.amount_ars || 0).toLocaleString('es-AR')}
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="p-2 rounded-lg bg-slate-950 border border-cyan-900/50 text-slate-200 whitespace-pre-wrap text-[11px]">
-                            {tp.direct_observations || '-'}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="p-2 rounded-lg bg-slate-950 border border-purple-900/50 text-purple-200 whitespace-pre-wrap text-[11px]">
-                            {tp.specific_observations || (
-                              <span className="text-slate-500 italic">Sin observaciones específicas cargadas</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3 text-right">
+                  thirdPartyServices
+                    .filter(tp => {
+                      if (!searchQuery.trim()) return true
+                      const wo = workOrders.find(w => w.id === tp.work_order_id)
+                      return matchesUniversalSearch(
+                        {
+                          ...tp,
+                          shipName: wo?.ships?.name,
+                          otNumber: wo?.ot_number,
+                          otTitle: wo?.title
+                        },
+                        searchQuery
+                      )
+                    })
+                    .map(tp => {
+                      const wo = workOrders.find(w => w.id === tp.work_order_id)
+                      const tpDate = tp.service_date || (tp.created_at ? String(tp.created_at).split('T')[0] : null)
+                      return (
+                        <tr key={tp.id} className="hover:bg-slate-800/30 transition-colors align-top">
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
+                            {formatShortDate(tpDate, true)}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="font-bold text-white block">
+                              <HighlightText text={wo?.ships?.name || 'Barco'} query={searchQuery} />
+                            </span>
+                            <span className="font-mono text-[11px] text-primary font-bold">
+                              <HighlightText text={wo?.ot_number} query={searchQuery} /> &bull; <HighlightText text={wo?.title} query={searchQuery} />
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="font-mono font-extrabold text-purple-300 px-2 py-0.5 rounded bg-purple-950 border border-purple-700">
+                              <HighlightText text={tp.contractor_name} query={searchQuery} />
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-mono font-bold text-[10px]">
+                              {tp.status || 'PRC'} {tp.voucher_number ? `#${tp.voucher_number}` : ''}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">
+                            ${Number(tp.amount_ars || 0).toLocaleString('es-AR')}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="p-2 rounded-lg bg-slate-950 border border-cyan-900/50 text-slate-200 whitespace-pre-wrap text-[11px]">
+                              <HighlightText text={tp.direct_observations || '-'} query={searchQuery} />
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="p-2 rounded-lg bg-slate-950 border border-purple-900/50 text-purple-200 whitespace-pre-wrap text-[11px]">
+                              {tp.specific_observations ? (
+                                <HighlightText text={tp.specific_observations} query={searchQuery} />
+                              ) : (
+                                <span className="text-slate-500 italic">Sin observaciones específicas cargadas</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-right">
                           <button
                             type="button"
                             onClick={() => setEditingThirdParty(tp)}

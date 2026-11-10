@@ -50,29 +50,7 @@ import GridRibbon from '../components/GridRibbon'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 
-// ==============================================================================
-// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
-// ==============================================================================
-function HighlightText({ text, query, className = '' }) {
-  if (!text) return null
-  if (!query || !query.trim()) return <span className={className}>{text}</span>
-
-  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
-  return (
-    <span className={className}>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.trim().toLowerCase() ? (
-          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </span>
-  )
-}
+import HighlightText from '../components/HighlightText'
 
 
 // Componentes predeterminados de la Ficha Técnica Dinámica Naval
@@ -2023,7 +2001,7 @@ export default function Ships() {
                                   <Ship className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                                   <div>
                                     <div className="font-extrabold text-sm text-white tracking-tight flex items-center gap-1.5">
-                                      <span>{cleanName}</span>
+                                      <span><HighlightText text={cleanName} query={searchTerm} /></span>
                                       {ship.is_active === false && (
                                         <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-950/80 text-rose-300 border border-rose-700 font-bold">
                                           Inactivo
@@ -2031,7 +2009,11 @@ export default function Ships() {
                                       )}
                                     </div>
                                     <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                                      {ship.matricula ? `Mat: ${ship.matricula}` : 'Sin matrícula'}
+                                      {ship.matricula ? (
+                                        <>Mat: <HighlightText text={ship.matricula} query={searchTerm} /></>
+                                      ) : (
+                                        'Sin matrícula'
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -2071,7 +2053,7 @@ export default function Ships() {
                                 </select>
                               ) : (
                                 <span className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700/80 text-slate-200 font-bold text-[11px]">
-                                  {ship.vessel_type || 'Pesquero'}
+                                  <HighlightText text={ship.vessel_type || 'Pesquero'} query={searchTerm} />
                                 </span>
                               )}
                               {cpType.renderHandle && (
@@ -2115,7 +2097,7 @@ export default function Ships() {
                                     ? 'bg-blue-950/80 text-blue-300 border-blue-800'
                                     : 'bg-purple-950/80 text-purple-300 border-purple-800'
                                 }`}>
-                                  {locClean}
+                                  <HighlightText text={locClean} query={searchTerm} />
                                 </span>
                               )}
                               {cpLoc.renderHandle && (
@@ -2228,11 +2210,11 @@ export default function Ships() {
                               ) : (
                                 <div>
                                   <div className="font-bold text-slate-200 truncate max-w-[170px]" title={ship.owners?.name}>
-                                    {ship.owners?.name || ship.client_name || 'Sin asignar'}
+                                    <HighlightText text={ship.owners?.name || ship.client_name || 'Sin asignar'} query={searchTerm} />
                                   </div>
                                   {ship.owners?.armador_name && (
                                     <div className="text-[11px] text-amber-300/90 font-medium">
-                                      Armador: {ship.owners.armador_name}
+                                      Armador: <HighlightText text={ship.owners.armador_name} query={searchTerm} />
                                     </div>
                                   )}
                                   {ship.owners?.armador_phone && (
@@ -2641,7 +2623,7 @@ export default function Ships() {
                                     ? 'bg-blue-950/80 text-blue-300 border-blue-800'
                                     : 'bg-amber-950/80 text-amber-300 border-amber-800'
                                 }`}>
-                                  {locClean}
+                                  <HighlightText text={locClean} query={searchTerm} />
                                 </span>
                               )}
                               {cpLoc.renderHandle && (
@@ -2681,7 +2663,7 @@ export default function Ships() {
                               ) : (
                                 <div className="flex items-center gap-1.5 font-bold text-white">
                                   <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                                  <span>{cleanShipName(stay.ships?.name)}</span>
+                                  <span><HighlightText text={cleanShipName(stay.ships?.name)} query={searchTerm} /></span>
                                 </div>
                               )}
                               {cpShip.renderHandle && (
@@ -2716,7 +2698,7 @@ export default function Ships() {
                                   className="bg-slate-950 border border-cyan-400 rounded px-2 py-1 text-xs text-white focus:outline-none"
                                 />
                               ) : (
-                                stay.start_date
+                                <HighlightText text={stay.start_date} query={searchTerm} />
                               )}
                               {cpStart.renderHandle && (
                                 <div
@@ -2750,7 +2732,9 @@ export default function Ships() {
                                   className="bg-slate-950 border border-cyan-400 rounded px-2 py-1 text-xs text-white focus:outline-none"
                                 />
                               ) : stay.end_date ? (
-                                <span className="text-slate-200">{stay.end_date}</span>
+                                <span className="text-slate-200">
+                                  <HighlightText text={stay.end_date} query={searchTerm} />
+                                </span>
                               ) : (
                                 <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold">
                                   En curso (=HOY)
@@ -2972,8 +2956,14 @@ export default function Ships() {
                                 <div className="flex items-center gap-2">
                                   <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
                                   <div>
-                                    <strong className="text-white text-sm block">{owner.name}</strong>
-                                    {owner.cuit && <span className="text-[10px] text-slate-400 font-mono">CUIT: {owner.cuit}</span>}
+                                    <strong className="text-white text-sm block">
+                                      <HighlightText text={owner.name} query={searchTerm} />
+                                    </strong>
+                                    {owner.cuit && (
+                                      <span className="text-[10px] text-slate-400 font-mono">
+                                        CUIT: <HighlightText text={owner.cuit} query={searchTerm} />
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -3009,7 +2999,7 @@ export default function Ships() {
                                   className="w-full bg-slate-950 border border-cyan-400 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
                                 />
                               ) : (
-                                owner.armador_name || 'No informado'
+                                <HighlightText text={owner.armador_name || 'No informado'} query={searchTerm} />
                               )}
                               {cpArmador.renderHandle && (
                                 <div
@@ -3049,7 +3039,7 @@ export default function Ships() {
                                   className="text-cyan-400 hover:underline flex items-center gap-1 font-bold"
                                 >
                                   <Phone className="w-3 h-3" />
-                                  <span>{owner.armador_phone}</span>
+                                  <span><HighlightText text={owner.armador_phone} query={searchTerm} /></span>
                                 </a>
                               ) : (
                                 <span className="text-slate-500">S/D</span>
@@ -3089,12 +3079,12 @@ export default function Ships() {
                                 <>
                                   {owner.email_principal && (
                                     <div className="text-slate-200 truncate max-w-[200px]" title={owner.email_principal}>
-                                      ✉️ {owner.email_principal}
+                                      ✉️ <HighlightText text={owner.email_principal} query={searchTerm} />
                                     </div>
                                   )}
                                   {owner.email_secundario && (
                                     <div className="text-slate-400 truncate max-w-[200px]" title={owner.email_secundario}>
-                                      📧 {owner.email_secundario}
+                                      📧 <HighlightText text={owner.email_secundario} query={searchTerm} />
                                     </div>
                                   )}
                                   {!owner.email_principal && !owner.email_secundario && (
