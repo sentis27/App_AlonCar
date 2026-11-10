@@ -2486,252 +2486,294 @@ export default function AdminDashboard() {
       {/* ========================================================================= */}
       {isRoleModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+          <div className="alon-modal-card max-w-5xl">
             {/* Cabecera del Modal */}
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Building2 className="w-5 h-5 text-primary" />
-                <h3 className="font-bold text-white text-base">
-                  {editingRole ? `Editar Puesto: ${editingRole.role_title}` : 'Crear Nuevo Puesto Institucional'}
-                </h3>
+            <div className="alon-modal-header">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Building2 className="w-5 h-5 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-black text-white text-sm truncate">
+                    {editingRole ? `Editar Puesto: ${editingRole.role_title}` : 'Crear Nuevo Puesto Institucional'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Estructura ➔ 2° Misión ➔ 3° Presets ➔ 4° Módulos.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
+                tabIndex={-1}
                 onClick={() => setIsRoleModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Formulario */}
-            <form onSubmit={handleSaveRoleSubmit} className="p-6 space-y-4 overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Título del Puesto con Lista Desplegable Estandarizada */}
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">
-                    Título del Puesto / Rol Técnico *
-                  </label>
-                  <select
-                    value={STANDARD_JOB_TITLES.includes(roleForm.role_title) ? roleForm.role_title : '__OTRO__'}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      if (val !== '__OTRO__') {
-                        setRoleForm({ ...roleForm, role_title: val })
-                      } else if (STANDARD_JOB_TITLES.includes(roleForm.role_title)) {
-                        setRoleForm({ ...roleForm, role_title: '' })
-                      }
-                    }}
-                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                  >
-                    {STANDARD_JOB_TITLES.map((title) => (
-                      <option key={title} value={title}>{title}</option>
-                    ))}
-                    <option value="__OTRO__">➕ Otro Puesto (Personalizado)...</option>
-                  </select>
+            <form onSubmit={handleSaveRoleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+              <div className="alon-modal-body">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
+                  {/* COLUMNA IZQUIERDA: BLOQUES 1 Y 2 */}
+                  <div className="space-y-3">
+                    {/* BLOQUE 1: ESTRUCTURA Y JERARQUÍA INSTITUCIONAL (.alon-chunk-sky) */}
+                    <div className="alon-chunk-sky space-y-2.5">
+                      <div className="flex items-center justify-between pb-1 border-b border-sky-500/20">
+                        <span className="font-black text-[11px] uppercase tracking-wider text-sky-400">
+                          1. Estructura y Jerarquía Institucional
+                        </span>
+                        <span className="text-[10px] text-sky-300/70 font-mono">Puesto & Dependencia</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {/* Título del Puesto con Lista Desplegable Estandarizada */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Título del Puesto / Rol Técnico *
+                          </label>
+                          <select
+                            value={STANDARD_JOB_TITLES.includes(roleForm.role_title) ? roleForm.role_title : '__OTRO__'}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              if (val !== '__OTRO__') {
+                                setRoleForm({ ...roleForm, role_title: val })
+                              } else if (STANDARD_JOB_TITLES.includes(roleForm.role_title)) {
+                                setRoleForm({ ...roleForm, role_title: '' })
+                              }
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-400 font-bold"
+                          >
+                            {STANDARD_JOB_TITLES.map((title) => (
+                              <option key={title} value={title}>{title}</option>
+                            ))}
+                            <option value="__OTRO__">➕ Otro Puesto (Personalizado)...</option>
+                          </select>
 
-                  {/* Input libre si eligió personalizado o no coincide con los estándares */}
-                  {(!STANDARD_JOB_TITLES.includes(roleForm.role_title) || roleForm.role_title === '') && (
-                    <input
-                      type="text"
-                      required
-                      value={roleForm.role_title}
-                      onChange={(e) => setRoleForm({ ...roleForm, role_title: e.target.value })}
-                      placeholder="Escribí el nombre del nuevo puesto..."
-                      className="mt-2 w-full bg-slate-900 border border-cyan-700 rounded-xl px-3 py-2 text-xs text-cyan-200 focus:outline-none focus:border-primary animate-in fade-in"
-                    />
-                  )}
-                </div>
+                          {/* Input libre si eligió personalizado o no coincide con los estándares */}
+                          {(!STANDARD_JOB_TITLES.includes(roleForm.role_title) || roleForm.role_title === '') && (
+                            <input
+                              type="text"
+                              required
+                              value={roleForm.role_title}
+                              onChange={(e) => setRoleForm({ ...roleForm, role_title: e.target.value })}
+                              placeholder="Escribí el nombre del nuevo puesto..."
+                              className="mt-1.5 w-full bg-slate-900 border border-sky-600 rounded-xl px-2.5 py-1.5 text-xs text-sky-200 focus:outline-none focus:border-sky-400 animate-in fade-in"
+                            />
+                          )}
+                        </div>
 
-                {/* Persona a Cargo */}
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">
-                    Persona a Cargo (Nombre y Apellido) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={roleForm.holder_name}
-                    onChange={(e) => setRoleForm({ ...roleForm, holder_name: e.target.value })}
-                    placeholder="ej. Hugo Obregozo / María José"
-                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold font-mono"
-                  />
-                </div>
+                        {/* Persona a Cargo */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Persona a Cargo (Nombre y Apellido) *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={roleForm.holder_name}
+                            onChange={(e) => setRoleForm({ ...roleForm, holder_name: e.target.value })}
+                            placeholder="ej. Hugo Obregozo / María José"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-400 font-bold font-mono"
+                          />
+                        </div>
 
-                {/* Departamento con Lista Desplegable Estandarizada */}
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">
-                    Departamento *
-                  </label>
-                  <select
-                    value={STANDARD_DEPARTMENTS.includes(roleForm.department) ? roleForm.department : '__OTRO__'}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      if (val !== '__OTRO__') {
-                        setRoleForm({ ...roleForm, department: val })
-                      } else if (STANDARD_DEPARTMENTS.includes(roleForm.department)) {
-                        setRoleForm({ ...roleForm, department: '' })
-                      }
-                    }}
-                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                  >
-                    {STANDARD_DEPARTMENTS.map((dept) => (
-                      <option key={dept} value={dept}>{dept}</option>
-                    ))}
-                    <option value="__OTRO__">➕ Otro Departamento (Personalizado)...</option>
-                  </select>
+                        {/* Departamento con Lista Desplegable Estandarizada */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Departamento *
+                          </label>
+                          <select
+                            value={STANDARD_DEPARTMENTS.includes(roleForm.department) ? roleForm.department : '__OTRO__'}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              if (val !== '__OTRO__') {
+                                setRoleForm({ ...roleForm, department: val })
+                              } else if (STANDARD_DEPARTMENTS.includes(roleForm.department)) {
+                                setRoleForm({ ...roleForm, department: '' })
+                              }
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-400 font-bold"
+                          >
+                            {STANDARD_DEPARTMENTS.map((dept) => (
+                              <option key={dept} value={dept}>{dept}</option>
+                            ))}
+                            <option value="__OTRO__">➕ Otro Departamento (Personalizado)...</option>
+                          </select>
 
-                  {/* Input libre si eligió departamento personalizado */}
-                  {(!STANDARD_DEPARTMENTS.includes(roleForm.department) || roleForm.department === '') && (
-                    <input
-                      type="text"
-                      required
-                      value={roleForm.department}
-                      onChange={(e) => setRoleForm({ ...roleForm, department: e.target.value })}
-                      placeholder="Escribí el nombre del nuevo departamento..."
-                      className="mt-2 w-full bg-slate-900 border border-cyan-700 rounded-xl px-3 py-2 text-xs text-cyan-200 focus:outline-none focus:border-primary animate-in fade-in"
-                    />
-                  )}
-                </div>
+                          {/* Input libre si eligió departamento personalizado */}
+                          {(!STANDARD_DEPARTMENTS.includes(roleForm.department) || roleForm.department === '') && (
+                            <input
+                              type="text"
+                              required
+                              value={roleForm.department}
+                              onChange={(e) => setRoleForm({ ...roleForm, department: e.target.value })}
+                              placeholder="Escribí el departamento..."
+                              className="mt-1.5 w-full bg-slate-900 border border-sky-600 rounded-xl px-2.5 py-1.5 text-xs text-sky-200 focus:outline-none focus:border-sky-400 animate-in fade-in"
+                            />
+                          )}
+                        </div>
 
-                {/* Reporta a */}
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-1">
-                    Reporta Jerárquicamente a
-                  </label>
-                  <select
-                    value={roleForm.reports_to || 'Dirección General & Administración Central'}
-                    onChange={(e) => setRoleForm({ ...roleForm, reports_to: e.target.value })}
-                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                  >
-                    {REPORTING_LINES.map((rep) => (
-                      <option key={rep} value={rep}>{rep}</option>
-                    ))}
-                  </select>
-                </div>
+                        {/* Reporta a */}
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Reporta Jerárquicamente a
+                          </label>
+                          <select
+                            value={roleForm.reports_to || 'Dirección General & Administración Central'}
+                            onChange={(e) => setRoleForm({ ...roleForm, reports_to: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-400 font-bold"
+                          >
+                            {REPORTING_LINES.map((rep) => (
+                              <option key={rep} value={rep}>{rep}</option>
+                            ))}
+                          </select>
+                        </div>
 
-                {/* Nivel de Seguridad */}
-                <div className="md:col-span-2">
-                  <label className="text-xs font-bold text-slate-400 block mb-1">
-                    Nivel de Seguridad
-                  </label>
-                  <select
-                    value={roleForm.security_level}
-                    onChange={(e) => setRoleForm({ ...roleForm, security_level: e.target.value })}
-                    className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                  >
-                    <option value="ADMINISTRADOR">👑 Administrador (Acceso Maestro)</option>
-                    <option value="DIRECCION">👔 Dirección / Gerencia</option>
-                    <option value="SUPERVISOR">🛡️ Supervisor / Jefe de Área</option>
-                    <option value="OPERATIVO">📋 Operativo / Carga</option>
-                    <option value="AUDITOR">👁️ Auditor (Solo Lectura)</option>
-                  </select>
-                </div>
-              </div>
+                        {/* Nivel de Seguridad */}
+                        <div className="sm:col-span-2">
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Nivel de Seguridad y Permisos
+                          </label>
+                          <select
+                            value={roleForm.security_level}
+                            onChange={(e) => setRoleForm({ ...roleForm, security_level: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-400 font-bold"
+                          >
+                            <option value="ADMINISTRADOR">👑 Administrador (Acceso Maestro)</option>
+                            <option value="DIRECCION">👔 Dirección / Gerencia</option>
+                            <option value="SUPERVISOR">🛡️ Supervisor / Jefe de Área</option>
+                            <option value="OPERATIVO">📋 Operativo / Carga</option>
+                            <option value="AUDITOR">👁️ Auditor (Solo Lectura)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
 
-              {/* Misión Principal del Puesto */}
-              <div>
-                <label className="text-xs font-bold text-cyan-300 block mb-1">
-                  Misión Principal del Puesto (Propósito Fundamental)
-                </label>
-                <textarea
-                  rows={2}
-                  value={roleForm.job_mission}
-                  onChange={(e) => setRoleForm({ ...roleForm, job_mission: e.target.value })}
-                  placeholder="ej. Conducir las operaciones y producción en astillero, acordar tarifas quincenales y coordinar la ejecución técnica de obras navales."
-                  className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary leading-relaxed"
-                />
-              </div>
+                    {/* BLOQUE 2: MISIÓN Y RESPONSABILIDADES (.alon-chunk-indigo) */}
+                    <div className="alon-chunk-indigo space-y-2.5">
+                      <div className="flex items-center justify-between pb-1 border-b border-indigo-500/20">
+                        <span className="font-black text-[11px] uppercase tracking-wider text-indigo-400">
+                          2. Misión y Responsabilidades Clave
+                        </span>
+                        <span className="text-[10px] text-indigo-300/70 font-mono">Perfil Funcional</span>
+                      </div>
 
-              {/* Responsabilidades y Tareas Clave */}
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">
-                  Responsabilidades y Tareas Clave (una por línea)
-                </label>
-                <textarea
-                  rows={4}
-                  value={roleForm.key_responsibilities}
-                  onChange={(e) => setRoleForm({ ...roleForm, key_responsibilities: e.target.value })}
-                  placeholder="Escribí una tarea o responsabilidad por línea:&#10;• Negociación de valores hora con contratistas&#10;• Fijación de la paritaria testigo del astillero&#10;• Autorización de órdenes de trabajo"
-                  className="w-full border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-primary font-mono leading-relaxed"
-                />
-              </div>
-
-              {/* Plantillas Rápidas (Presets) */}
-              <div className="pt-2">
-                <span className="text-xs font-bold text-slate-400 block mb-2">
-                  Plantillas Rápidas de Permisos (1 Clic):
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {ROLE_PRESETS.map(preset => (
-                    <button
-                      key={preset.name}
-                      type="button"
-                      onClick={() => setRoleForm({
-                        ...roleForm,
-                        security_level: preset.security_level,
-                        allowed_sections: preset.sections
-                      })}
-                      className="p-2 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl text-left transition-all cursor-pointer"
-                    >
-                      <strong className="text-xs text-white block">{preset.name}</strong>
-                      <span className="text-[10px] text-slate-400 block leading-tight mt-0.5">{preset.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Selector de Módulos Permitidos */}
-              <div className="pt-2">
-                <span className="text-xs font-bold text-slate-400 block mb-2">
-                  Módulos de la App Habilitados:
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 rounded-xl border border-slate-800">
-                  {SYSTEM_MODULES.map(mod => {
-                    const isChecked = roleForm.allowed_sections.includes(mod.key)
-                    const Icon = mod.icon
-                    return (
-                      <label 
-                        key={mod.key} 
-                        className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
-                          isChecked 
-                            ? 'bg-emerald-950/40 border-emerald-700 text-white font-bold' 
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setRoleForm({ ...roleForm, allowed_sections: [...roleForm.allowed_sections, mod.key] })
-                            } else {
-                              setRoleForm({ ...roleForm, allowed_sections: roleForm.allowed_sections.filter(s => s !== mod.key) })
-                            }
-                          }}
-                          className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                      {/* Misión Principal del Puesto */}
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                          Misión Principal del Puesto (Propósito Fundamental)
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={roleForm.job_mission}
+                          onChange={(e) => setRoleForm({ ...roleForm, job_mission: e.target.value })}
+                          placeholder="ej. Conducir las operaciones y producción en astillero, acordar tarifas quincenales y coordinar la ejecución técnica de obras navales."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-400 leading-relaxed"
                         />
-                        <Icon className={`w-3.5 h-3.5 ${mod.color}`} />
-                        <span>{mod.label}</span>
-                      </label>
-                    )
-                  })}
+                      </div>
+
+                      {/* Responsabilidades y Tareas Clave */}
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                          Responsabilidades y Tareas Clave (una por línea)
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={roleForm.key_responsibilities}
+                          onChange={(e) => setRoleForm({ ...roleForm, key_responsibilities: e.target.value })}
+                          placeholder="Escribí una tarea o responsabilidad por línea:&#10;• Negociación de valores hora con contratistas&#10;• Fijación de la paritaria testigo del astillero&#10;• Autorización de órdenes de trabajo"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-400 font-mono leading-relaxed"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* COLUMNA DERECHA: BLOQUES 3 Y 4 */}
+                  <div className="space-y-3">
+                    {/* BLOQUE 3: PRESETS RÁPIDOS (.alon-chunk-amber) */}
+                    <div className="alon-chunk-amber space-y-2">
+                      <div className="flex items-center justify-between pb-1 border-b border-amber-500/20">
+                        <span className="font-black text-[11px] uppercase tracking-wider text-amber-400">
+                          3. Plantillas Rápidas de Permisos (1 Clic)
+                        </span>
+                        <span className="text-[10px] text-amber-300/70 font-mono">Autoconfiguración</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {ROLE_PRESETS.map(preset => (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() => setRoleForm({
+                              ...roleForm,
+                              security_level: preset.security_level,
+                              allowed_sections: preset.sections
+                            })}
+                            className="p-2 bg-slate-900/60 hover:bg-amber-950/30 border border-slate-700 hover:border-amber-500/50 rounded-xl text-left transition-all cursor-pointer"
+                          >
+                            <strong className="text-xs text-white block truncate">{preset.name}</strong>
+                            <span className="text-[10px] text-slate-400 block leading-tight mt-0.5 line-clamp-2">{preset.desc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* BLOQUE 4: MATRIZ DE MÓDULOS HABILITADOS (.alon-chunk-purple) */}
+                    <div className="alon-chunk-purple space-y-2">
+                      <div className="flex items-center justify-between pb-1 border-b border-purple-500/20">
+                        <span className="font-black text-[11px] uppercase tracking-wider text-purple-400">
+                          4. Módulos de la App Habilitados
+                        </span>
+                        <span className="text-[10px] text-purple-300/70 font-mono">{roleForm.allowed_sections.length} seleccionados</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
+                        {SYSTEM_MODULES.map(mod => {
+                          const isChecked = roleForm.allowed_sections.includes(mod.key)
+                          const Icon = mod.icon
+                          return (
+                            <label 
+                              key={mod.key} 
+                              className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                                isChecked 
+                                  ? 'bg-purple-950/40 border-purple-500 text-white font-bold shadow-sm' 
+                                  : 'bg-slate-900/80 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setRoleForm({ ...roleForm, allowed_sections: [...roleForm.allowed_sections, mod.key] })
+                                  } else {
+                                    setRoleForm({ ...roleForm, allowed_sections: roleForm.allowed_sections.filter(s => s !== mod.key) })
+                                  }
+                                }}
+                                className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary shrink-0"
+                              />
+                              <Icon className={`w-3.5 h-3.5 ${mod.color} shrink-0`} />
+                              <span className="truncate">{mod.label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Botones de acción */}
-              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+              <div className="alon-modal-footer">
                 <button
                   type="button"
                   onClick={() => setIsRoleModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingRole}
-                  className="px-5 py-2 bg-primary hover:brightness-110 text-slate-950 rounded-xl text-xs font-extrabold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-5 py-1.5 bg-primary hover:brightness-110 text-slate-950 font-black rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-md"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{savingRole ? 'Guardando...' : 'Guardar Puesto'}</span>

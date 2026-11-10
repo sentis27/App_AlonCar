@@ -1015,7 +1015,7 @@ export default function Panol() {
     adminDeleteConfirmModal.isOpen
   ])
 
-  // Insertar nueva fila 100% en blanco al final de la planilla (solo fecha de hoy)
+  // Insertar nueva fila 100% en blanco en la posición activa (por defecto #1)
   const handleInsertRow = async () => {
     try {
       const todayStr = new Date().toISOString().split('T')[0]
@@ -1039,9 +1039,19 @@ export default function Panol() {
 
       if (error) throw error
 
-      setInventoryTx((prev) => [...prev, data])
+      const activeIdx = grid?.activeCell?.rowIndex ?? 0
+      const targetRow = filteredTransactions[activeIdx]
 
-      showFeedback('success', 'Fila 100% en blanco insertada al pie de la planilla (solo fecha de hoy).')
+      setInventoryTx((prev) => {
+        if (!targetRow) return [data, ...prev]
+        const realIdx = prev.findIndex((t) => t.id === targetRow.id)
+        if (realIdx === -1) return [data, ...prev]
+        const copy = [...prev]
+        copy.splice(realIdx, 0, data)
+        return copy
+      })
+
+      showFeedback('success', `Fila en blanco insertada en posición #${activeIdx + 1} (doble clic o Enter para cargar).`)
     } catch (err) {
       console.error(err)
       showFeedback('error', 'Error al insertar fila: ' + err.message)
@@ -1525,7 +1535,7 @@ export default function Panol() {
   }
 
   return (
-    <div className="space-y-4 pb-20 font-sans text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
+    <div className="space-y-4 pb-10 font-sans text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
       {/* Toast Feedback */}
       {feedback && (
         <div
@@ -1846,10 +1856,11 @@ export default function Panol() {
       </div>
 
       {/* ============================================================================== */}
-      {/* ZONA 3: BARRA DE CONTROL DECK Y FILTROS (.alon-zone-toolbar - Acento Cian)      */}
+      {/* BLOQUE OPERATIVO UNIFICADO (ZONA 3 + ZONA 4 EN UN SOLO BLOQUE)                 */}
       {/* ============================================================================== */}
-      <div className="alon-zone-toolbar flex flex-wrap items-center justify-between gap-3 p-3.5">
-        {/* Buscador reactivo integrado Canónico */}
+      <div className="alon-workspace-block">
+      <div className="alon-zone-toolbar p-3 space-y-2.5">
+        {/* NIVEL 1: Buscador reactivo integrado Canónico siempre visible */}
         <CrawlerSearchBar
           value={searchQuery}
           onChange={setSearchQuery}
@@ -1857,62 +1868,64 @@ export default function Panol() {
           placeholder="Buscar material, barco, OT, contratista, notas... [Ctrl+F | Esc limpia]"
         />
 
-        {/* Filtros en Cascada */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Filtro Período */}
-          <select
-            value={filterPeriod}
-            onChange={(e) => setFilterPeriod(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
-          >
-            <option value="TODOS">Todos los Períodos</option>
-            <option value="HOY">Solo Hoy</option>
-            <option value="QUINCENA">Quincena Actual</option>
-            <option value="MES">Mes Actual</option>
-          </select>
-
-          {/* Filtro Categoría */}
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
-          >
-            <option value="TODAS">Todas las Categorías</option>
-            <option value="MATERIALES">MATERIALES</option>
-            <option value="CONSUMIBLES">CONSUMIBLES</option>
-            <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
-            <option value="GASES">GASES</option>
-          </select>
-
-          {/* Filtro Barco */}
-          <select
-            value={filterShip}
-            onChange={(e) => setFilterShip(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
-          >
-            <option value="TODOS">Todos los Barcos</option>
-            {ships.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Toggle Control de Stock (Pestaña Catálogo) */}
-          {activeTab === 'catalogo' && (
-            <button
-              type="button"
-              onClick={() => setFilterStockOnly(!filterStockOnly)}
-              className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                filterStockOnly
-                  ? 'bg-cyan-950 border-cyan-500 text-cyan-300 shadow-md'
-                  : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
-              }`}
+        {/* NIVEL 2: Filtros en Cascada y Deshacer */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Filtro Período */}
+            <select
+              value={filterPeriod}
+              onChange={(e) => setFilterPeriod(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
             >
-              <Package className="w-3.5 h-3.5" />
-              <span>Solo con Control de Stock</span>
-            </button>
-          )}
+              <option value="TODOS">Todos los Períodos</option>
+              <option value="HOY">Solo Hoy</option>
+              <option value="QUINCENA">Quincena Actual</option>
+              <option value="MES">Mes Actual</option>
+            </select>
+
+            {/* Filtro Categoría */}
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
+            >
+              <option value="TODAS">Todas las Categorías</option>
+              <option value="MATERIALES">MATERIALES</option>
+              <option value="CONSUMIBLES">CONSUMIBLES</option>
+              <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
+              <option value="GASES">GASES</option>
+            </select>
+
+            {/* Filtro Barco */}
+            <select
+              value={filterShip}
+              onChange={(e) => setFilterShip(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
+            >
+              <option value="TODOS">Todos los Barcos</option>
+              {ships.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Toggle Control de Stock (Pestaña Catálogo) */}
+            {activeTab === 'catalogo' && (
+              <button
+                type="button"
+                onClick={() => setFilterStockOnly(!filterStockOnly)}
+                className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  filterStockOnly
+                    ? 'bg-cyan-950 border-cyan-500 text-cyan-300 shadow-md'
+                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Solo con Control de Stock</span>
+              </button>
+            )}
+          </div>
 
           {/* Botón Deshacer Universal */}
           <button
@@ -1969,7 +1982,7 @@ export default function Panol() {
             tabIndex={0}
             onKeyDown={grid.handleKeyDown}
             ref={grid.gridContainerRef}
-            className="w-full max-h-[620px] overflow-y-auto overflow-x-hidden relative focus:outline-none"
+            className="alon-grid-scroll"
           >
             <table className="w-full text-left text-[11px] border-collapse">
               {/* STICKY HEADER TIPO EXCEL */}
@@ -2587,20 +2600,18 @@ export default function Panol() {
           </div>
 
           {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
-          <div className="mt-3">
-            <GridStatusBarBottom
-              filteredCount={filteredTransactions.length}
-              totalCount={inventoryTx.length}
-              entityName="retiros"
-              hasActiveFilter={hasActivePanolFilter}
-              onClearFilters={handleClearAllPanolFilters}
-              selectionStats={grid.selectionStats}
-              globalAggregates={[
-                { label: 'Σ CANT', value: panolTotals.totalQty.toLocaleString('es-AR') },
-                { label: 'Σ PESO', value: `${panolTotals.totalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg` }
-              ]}
-            />
-          </div>
+          <GridStatusBarBottom
+            filteredCount={filteredTransactions.length}
+            totalCount={inventoryTx.length}
+            entityName="retiros"
+            hasActiveFilter={hasActivePanolFilter}
+            onClearFilters={handleClearAllPanolFilters}
+            selectionStats={grid.selectionStats}
+            globalAggregates={[
+              { label: 'Σ CANT', value: panolTotals.totalQty.toLocaleString('es-AR') },
+              { label: 'Σ PESO', value: `${panolTotals.totalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg` }
+            ]}
+          />
         </div>
       )}
 
@@ -2652,7 +2663,7 @@ export default function Panol() {
               </span>
             </div>
 
-            <div className="w-full max-h-[500px] overflow-y-auto">
+            <div className="alon-grid-scroll">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
@@ -2752,7 +2763,7 @@ export default function Panol() {
             )}
           </div>
 
-          <div className="w-full max-h-[620px] overflow-y-auto">
+          <div className="alon-grid-scroll">
             <table className="w-full text-left text-[11px] border-collapse">
               <thead className="sticky top-0 z-20 alon-grid-thead">
                 <tr>
@@ -2998,20 +3009,18 @@ export default function Panol() {
           </div>
 
           {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
-          <div className="mt-3">
-            <GridStatusBarBottom
-              filteredCount={filteredTransactions.length}
-              totalCount={inventoryTx.length}
-              entityName="retiros"
-              hasActiveFilter={hasActivePanolFilter}
-              onClearFilters={handleClearAllPanolFilters}
-              selectionStats={grid.selectionStats}
-              globalAggregates={[
-                { label: 'Σ CANT', value: panolTotals.totalQty.toLocaleString('es-AR') },
-                { label: 'Σ PESO', value: `${panolTotals.totalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg` }
-              ]}
-            />
-          </div>
+          <GridStatusBarBottom
+            filteredCount={filteredTransactions.length}
+            totalCount={inventoryTx.length}
+            entityName="retiros"
+            hasActiveFilter={hasActivePanolFilter}
+            onClearFilters={handleClearAllPanolFilters}
+            selectionStats={grid.selectionStats}
+            globalAggregates={[
+              { label: 'Σ CANT', value: panolTotals.totalQty.toLocaleString('es-AR') },
+              { label: 'Σ PESO', value: `${panolTotals.totalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg` }
+            ]}
+          />
         </div>
       )}
 
@@ -3037,6 +3046,7 @@ export default function Panol() {
           </div>
         </div>
       )}
+      </div>
 
       {/* ============================================================================== */}
       {/* MODALES DEL MÓDULO                                                             */}
@@ -3508,332 +3518,350 @@ function MultiWithdrawalModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden font-sans flex flex-col max-h-[92vh]">
+      <div className="alon-modal-card max-w-5xl">
         {/* Cabecera Modal */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+        <div className="alon-modal-header">
           <div className="flex items-center gap-2 text-white font-black text-sm">
-            {editingRow ? <Edit3 className="w-5 h-5 text-cyan-400" /> : <Package className="w-5 h-5 text-emerald-400" />}
-            <span>
-              {editingRow
-                ? 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL - MODO EDICIÓN'
-                : 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL'}
-            </span>
+            {editingRow ? <Edit3 className="w-4 h-4 text-cyan-400" /> : <Package className="w-4 h-4 text-emerald-400" />}
+            <div>
+              <span className="block leading-tight">
+                {editingRow
+                  ? 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL — MODO EDICIÓN'
+                  : 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL'}
+              </span>
+              <span className="text-[11px] font-normal text-slate-400 block">
+                Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Obra ➔ 2° Matriz de Materiales ➔ 3° Fecha y Notas.
+              </span>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white cursor-pointer">
+          <button type="button" tabIndex={-1} onClick={onClose} className="text-slate-500 hover:text-white cursor-pointer p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
-          {/* CASCADA CANÓNICA (Barco -> Contratista -> OT) */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-              <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <Anchor className="w-4 h-4 text-cyan-400" />
-                <span>1. Destino e Imputación de Obra</span>
-              </span>
-              <span className="text-slate-500 text-[11px]">Cascada: Barco ➔ Operario/Contratista ➔ OT</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Paso 1: Barco */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  1° Barco / Buque <span className="text-rose-400">*</span>
-                </label>
-                <select
-                  value={shipId}
-                  onChange={(e) => {
-                    const newShipId = e.target.value
-                    setShipId(newShipId)
-                    setWorkOrderId('')
-                  }}
-                  required
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="">Seleccionar Barco...</option>
-                  {ships.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div className="alon-modal-body space-y-3">
+            {/* BLOQUE 1: DESTINO E IMPUTACIÓN DE OBRA (BORDE SKY / CIAN) */}
+            <div className="alon-chunk-sky space-y-2.5">
+              <div className="flex items-center justify-between border-b border-sky-500/20 pb-1.5">
+                <span className="font-black text-sky-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Anchor className="w-3.5 h-3.5 text-sky-400" />
+                  <span>1. Destino e Imputación de Obra (Cascada Naval)</span>
+                </span>
+                <span className="text-slate-400 text-[10px]">Barco ➔ Operario/Contratista ➔ OT</span>
               </div>
 
-              {/* Paso 2: Operario / Contratista */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  2° Operario / Contratista <span className="text-rose-400">*</span>
-                </label>
-                <select
-                  value={contractorGroup}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    if (val === '__SOLICITAR_APERTURA_OT__') {
-                      onRequestOt && onRequestOt(shipId, contractorGroup || '')
-                      return
-                    }
-                    if (val === '__SOLICITAR_HABILITACION_OPERARIO__') {
-                      onRequestWorkerPermission && onRequestWorkerPermission()
-                      return
-                    }
-                    setContractorGroup(val)
-                  }}
-                  required
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-cyan-400 font-black focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="">-- Seleccionar Operario / Contratista --</option>
-                  {contractorGroup &&
-                    !enabled.astilleroWorkers.some((w) => w.name === contractorGroup) &&
-                    !enabled.contractorGroups.some((g) => g === contractorGroup) && (
-                      <option value={contractorGroup}>{contractorGroup} (Actual)</option>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                {/* Paso 1: Barco */}
+                <div>
+                  <label className="block text-slate-300 font-bold text-[11px] mb-1">
+                    1° Barco / Buque <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    autoFocus
+                    value={shipId}
+                    onChange={(e) => {
+                      const newShipId = e.target.value
+                      setShipId(newShipId)
+                      setWorkOrderId('')
+                    }}
+                    required
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="">Seleccionar Barco...</option>
+                    {ships.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Paso 2: Operario / Contratista */}
+                <div>
+                  <label className="block text-slate-300 font-bold text-[11px] mb-1">
+                    2° Operario / Contratista <span className="text-rose-400">*</span>
+                  </label>
+                  <select
+                    value={contractorGroup}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (val === '__SOLICITAR_APERTURA_OT__') {
+                        onRequestOt && onRequestOt(shipId, contractorGroup || '')
+                        return
+                      }
+                      if (val === '__SOLICITAR_HABILITACION_OPERARIO__') {
+                        onRequestWorkerPermission && onRequestWorkerPermission()
+                        return
+                      }
+                      setContractorGroup(val)
+                    }}
+                    required
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-cyan-400 font-black focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="">-- Seleccionar Operario / Contratista --</option>
+                    {contractorGroup &&
+                      !enabled.astilleroWorkers.some((w) => w.name === contractorGroup) &&
+                      !enabled.contractorGroups.some((g) => g === contractorGroup) && (
+                        <option value={contractorGroup}>{contractorGroup} (Actual)</option>
+                      )}
+                    {enabled.astilleroWorkers.length > 0 && (
+                      <optgroup label={`⭐ Personal Astillero (${enabled.astilleroWorkers.length})`}>
+                        {enabled.astilleroWorkers.map((w) => (
+                          <option key={`m_ast_${w.id || w.name}`} value={w.name}>
+                            {w.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     )}
-                  {enabled.astilleroWorkers.length > 0 && (
-                    <optgroup label={`⭐ Personal Astillero (${enabled.astilleroWorkers.length})`}>
-                      {enabled.astilleroWorkers.map((w) => (
-                        <option key={`m_ast_${w.id || w.name}`} value={w.name}>
-                          {w.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {enabled.contractorGroups.length > 0 && (
-                    <optgroup label={`🏗️ Contratistas (${enabled.contractorGroups.length})`}>
-                      {enabled.contractorGroups.map((grp) => (
-                        <option key={`m_cnt_${grp}`} value={grp}>
-                          {grp}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  <option
-                    value="__SOLICITAR_APERTURA_OT__"
-                    disabled={allocState.isOtRequestPending}
-                    className={`${allocState.isOtRequestPending ? 'text-slate-500 bg-slate-900' : 'text-rose-400 font-bold bg-slate-900'}`}
-                  >
-                    {allocState.isOtRequestPending ? 'Solicitud de OT enviada (1)' : '➕ Solicitar Apertura de OT a Admin...'}
-                  </option>
-                  <option value="__SOLICITAR_HABILITACION_OPERARIO__" className="text-cyan-400 font-bold bg-slate-900">
-                    ➕ Solicitar Habilitación de Operario a Admin...
-                  </option>
-                </select>
-              </div>
-
-              {/* Paso 3: OT con Descripción Completa */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-300 font-semibold">
-                    3° Orden de Trabajo (OT) <span className="text-rose-400">*</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-amber-400">
-                    <input
-                      type="checkbox"
-                      checked={isOtEmpty}
-                      onChange={(e) => {
-                        setIsOtEmpty(e.target.checked)
-                        if (e.target.checked) setWorkOrderId('')
-                      }}
-                      className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0 cursor-pointer"
-                    />
-                    <span>(⚠️ Sin OT)</span>
-                  </label>
-                </div>
-
-                <select
-                  value={workOrderId}
-                  disabled={isOtEmpty}
-                  onChange={(e) => {
-                    const newWoId = e.target.value
-                    setWorkOrderId(newWoId)
-                    if (contractorGroup && typeof getEnabledWorkersAndContractors === 'function') {
-                      const newEnabled = getEnabledWorkersAndContractors(shipId, newWoId)
-                      const isValid =
-                        newEnabled.astilleroWorkers.some((w) => w.name.toUpperCase() === contractorGroup.toUpperCase()) ||
-                        newEnabled.contractorGroups.some((g) => g.toUpperCase() === contractorGroup.toUpperCase())
-                      if (!isValid) setContractorGroup('')
-                    }
-                  }}
-                  required={!isOtEmpty}
-                  className={`w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 ${
-                    isOtEmpty ? 'opacity-40 cursor-not-allowed bg-slate-950' : 'font-semibold'
-                  }`}
-                >
-                  <option value="">(⚠️ Sin OT)</option>
-                  {availableWos.map((wo) => (
-                    <option key={wo.id} value={wo.id}>
-                      OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - {wo.title || wo.description}
+                    {enabled.contractorGroups.length > 0 && (
+                      <optgroup label={`🏗️ Contratistas (${enabled.contractorGroups.length})`}>
+                        {enabled.contractorGroups.map((grp) => (
+                          <option key={`m_cnt_${grp}`} value={grp}>
+                            {grp}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <option
+                      value="__SOLICITAR_APERTURA_OT__"
+                      disabled={allocState.isOtRequestPending}
+                      className={`${allocState.isOtRequestPending ? 'text-slate-500 bg-slate-900' : 'text-rose-400 font-bold bg-slate-900'}`}
+                    >
+                      {allocState.isOtRequestPending ? 'Solicitud de OT enviada (1)' : '➕ Solicitar Apertura de OT a Admin...'}
                     </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Aviso de Inconsistencia de OT & Botón Rojo de Apertura */}
-            {shipId && contractorGroup && availableWos.length === 0 && !isOtEmpty && (
-              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/80 flex items-center justify-between gap-3 animate-in fade-in">
-                <div className="flex items-center gap-2 text-rose-300 font-semibold text-xs">
-                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>No hay OT habilitada para este contratista en este buque.</span>
+                    <option value="__SOLICITAR_HABILITACION_OPERARIO__" className="text-cyan-400 font-bold bg-slate-900">
+                      ➕ Solicitar Habilitación de Operario a Admin...
+                    </option>
+                  </select>
                 </div>
-                {allocState.isOtRequestPending ? (
-                  <button
-                    type="button"
-                    disabled
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-500 border border-slate-700 font-bold text-xs cursor-not-allowed shrink-0"
-                    title="La solicitud de apertura de OT ya fue enviada a Jorge Sentis y está registrada en la base de datos."
-                  >
-                    Solicitud enviada (1)
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onRequestOt && onRequestOt(shipId, contractorGroup)}
-                    className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-xs animate-pulse shadow-md cursor-pointer flex items-center gap-1.5 shrink-0"
-                    title="Clic para solicitar formalmente a Jorge Sentis la apertura de una nueva OT para este contratista."
-                  >
-                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                    <span>Solicitar Apertura de OT a Admin</span>
-                  </button>
-                )}
-              </div>
-            )}
 
-            {/* Fecha del Retiro */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Fecha del Retiro</label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-slate-300 font-semibold mb-1">Observaciones Generales</label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Ej: Retiro para reparación de mamparo en bodega de popa..."
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* RENGLONES DINÁMICOS DE MATERIALES */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-              <span className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <Package className="w-4 h-4 text-emerald-400" />
-                <span>2. Insumos y Materiales Retirados ({items.length} renglones)</span>
-              </span>
-              <button
-                type="button"
-                onClick={handleAddItem}
-                className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-[11px] flex items-center gap-1 cursor-pointer transition-all shadow"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>+ Agregar Otro Material</span>
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {items.map((item, idx) => {
-                const mat = materials.find((m) => m.id === item.material_id)
-                let autoCostCenter = 'CLIENTE'
-                if (mat?.category === 'CONSUMIBLES' || mat?.category === 'ELEM.SEGURIDAD') {
-                  autoCostCenter = 'CLIENTE'
-                }
-                const weightRow = ((Number(mat?.weight_kg) || 0) * (Number(item.quantity) || 1)).toFixed(2)
-
-                return (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-center gap-3"
-                  >
-                    <span className="text-slate-500 font-mono text-xs w-5 shrink-0 text-center">#{idx + 1}</span>
-
-                    {/* Buscador inteligente de material */}
-                    <div className="flex-1 w-full min-w-[240px]">
-                      <MaterialSearchInput
-                        materials={materials}
-                        value={item.material_id}
-                        onChange={(mId) => handleItemChange(idx, 'material_id', mId)}
-                      />
-                    </div>
-
-                    {/* Cantidad */}
-                    <div className="w-24 shrink-0">
+                {/* Paso 3: OT con Descripción Completa */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-slate-300 font-bold text-[11px]">
+                      3° Orden de Trabajo (OT) <span className="text-rose-400">*</span>
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer text-[10px] text-amber-400">
                       <input
-                        type="number"
-                        min="0.1"
-                        step="any"
-                        placeholder="Cant."
-                        value={item.quantity}
-                        onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                        required
-                        className="w-full px-2.5 py-1.5 rounded bg-slate-950 border border-slate-700 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-400"
+                        type="checkbox"
+                        tabIndex={-1}
+                        checked={isOtEmpty}
+                        onChange={(e) => {
+                          setIsOtEmpty(e.target.checked)
+                          if (e.target.checked) setWorkOrderId('')
+                        }}
+                        className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0 cursor-pointer"
                       />
-                      <span className="text-[10px] text-slate-500 block text-center truncate">
-                        {mat?.unit_measure || 'un.'}
-                      </span>
-                    </div>
+                      <span>(⚠️ Sin OT)</span>
+                    </label>
+                  </div>
 
-                    {/* Peso Total Calculado */}
-                    <div className="w-24 shrink-0 text-center font-mono text-slate-400 text-xs">
-                      <span className="block font-bold text-slate-200">{weightRow} kg</span>
-                      <span className="text-[9px] text-slate-500">({mat?.weight_kg || 0} c/u)</span>
-                    </div>
+                  <select
+                    value={workOrderId}
+                    disabled={isOtEmpty}
+                    onChange={(e) => {
+                      const newWoId = e.target.value
+                      setWorkOrderId(newWoId)
+                      if (contractorGroup && typeof getEnabledWorkersAndContractors === 'function') {
+                        const newEnabled = getEnabledWorkersAndContractors(shipId, newWoId)
+                        const isValid =
+                          newEnabled.astilleroWorkers.some((w) => w.name.toUpperCase() === contractorGroup.toUpperCase()) ||
+                          newEnabled.contractorGroups.some((g) => g.toUpperCase() === contractorGroup.toUpperCase())
+                        if (!isValid) setContractorGroup('')
+                      }
+                    }}
+                    required={!isOtEmpty}
+                    className={`w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 ${
+                      isOtEmpty ? 'opacity-40 cursor-not-allowed bg-slate-950' : 'font-semibold'
+                    }`}
+                  >
+                    <option value="">(⚠️ Sin OT)</option>
+                    {availableWos.map((wo) => (
+                      <option key={wo.id} value={wo.id}>
+                        OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - {wo.title || wo.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-                    {/* Centro de Costo Deducido */}
-                    <div className="w-28 shrink-0">
-                      <select
-                        value={item.customCostCenter || autoCostCenter}
-                        disabled={!isAdmin}
-                        onChange={(e) => handleItemChange(idx, 'customCostCenter', e.target.value)}
-                        className={`w-full px-2 py-1.5 rounded text-[11px] font-bold border ${
-                          !isAdmin
-                            ? 'bg-slate-950 border-slate-800 text-cyan-400 opacity-90 cursor-not-allowed'
-                            : 'bg-slate-950 border-cyan-500 text-cyan-300'
-                        }`}
-                        title={!isAdmin ? 'Deducido automáticamente (Solo Admin puede modificar)' : 'Centro de Costo'}
-                      >
-                        <option value="CLIENTE">CLIENTE</option>
-                        <option value="CONTRATISTA">CONTRATISTA</option>
-                      </select>
-                    </div>
-
-                    {/* Botón Eliminar Renglón */}
+              {/* Aviso de Inconsistencia de OT & Botón Rojo de Apertura */}
+              {shipId && contractorGroup && availableWos.length === 0 && !isOtEmpty && (
+                <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-800/80 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-rose-300 font-semibold text-[11px]">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span>No hay OT habilitada para este contratista en este buque.</span>
+                  </div>
+                  {allocState.isOtRequestPending ? (
                     <button
                       type="button"
-                      disabled={items.length <= 1}
-                      onClick={() => handleRemoveItem(idx)}
-                      className={`p-1.5 rounded hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition-colors shrink-0 ${
-                        items.length <= 1 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
-                      }`}
+                      tabIndex={-1}
+                      disabled
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-500 border border-slate-700 font-bold text-[11px] cursor-not-allowed shrink-0"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      Solicitud enviada (1)
                     </button>
-                  </div>
-                )
-              })}
+                  ) : (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => onRequestOt && onRequestOt(shipId, contractorGroup)}
+                      className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[11px] shadow-md cursor-pointer flex items-center gap-1 shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>Solicitar Apertura de OT a Admin</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* BLOQUE 2: MATRIZ DE INSUMOS Y MATERIALES RETIRADOS (BORDE ESMERALDA) */}
+            <div className="alon-chunk-emerald space-y-2.5">
+              <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1.5">
+                <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>2. Matriz de Insumos y Materiales Retirados ({items.length} renglones)</span>
+                </span>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={handleAddItem}
+                  className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-[11px] flex items-center gap-1 cursor-pointer transition-all shadow"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>+ Agregar Otro Material</span>
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                {items.map((item, idx) => {
+                  const mat = materials.find((m) => m.id === item.material_id)
+                  let autoCostCenter = 'CLIENTE'
+                  if (mat?.category === 'CONSUMIBLES' || mat?.category === 'ELEM.SEGURIDAD') {
+                    autoCostCenter = 'CLIENTE'
+                  }
+                  const weightRow = ((Number(mat?.weight_kg) || 0) * (Number(item.quantity) || 1)).toFixed(2)
+
+                  return (
+                    <div
+                      key={idx}
+                      className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-center gap-2.5"
+                    >
+                      <span className="text-slate-500 font-mono text-xs w-5 shrink-0 text-center">#{idx + 1}</span>
+
+                      {/* Buscador inteligente de material */}
+                      <div className="flex-1 w-full min-w-[220px]">
+                        <MaterialSearchInput
+                          materials={materials}
+                          value={item.material_id}
+                          onChange={(mId) => handleItemChange(idx, 'material_id', mId)}
+                        />
+                      </div>
+
+                      {/* Cantidad */}
+                      <div className="w-28 shrink-0 flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="any"
+                          placeholder="Cant."
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                          required
+                          className="w-16 px-2 py-1.5 rounded bg-slate-950 border border-slate-700 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-400"
+                        />
+                        <span className="text-[10px] text-slate-400 font-semibold truncate">
+                          {mat?.unit_measure || 'un.'}
+                        </span>
+                      </div>
+
+                      {/* Peso Total Calculado */}
+                      <div className="w-20 shrink-0 text-center font-mono text-slate-400 text-[11px]">
+                        <span className="block font-bold text-slate-200">{weightRow} kg</span>
+                        <span className="text-[9px] text-slate-500">({mat?.weight_kg || 0} c/u)</span>
+                      </div>
+
+                      {/* Centro de Costo Deducido */}
+                      <div className="w-28 shrink-0">
+                        <select
+                          value={item.customCostCenter || autoCostCenter}
+                          disabled={!isAdmin}
+                          onChange={(e) => handleItemChange(idx, 'customCostCenter', e.target.value)}
+                          className={`w-full px-2 py-1.5 rounded text-[11px] font-bold border ${
+                            !isAdmin
+                              ? 'bg-slate-950 border-slate-800 text-cyan-400 opacity-90 cursor-not-allowed'
+                              : 'bg-slate-950 border-cyan-500 text-cyan-300'
+                          }`}
+                          title={!isAdmin ? 'Deducido automáticamente (Solo Admin puede modificar)' : 'Centro de Costo'}
+                        >
+                          <option value="CLIENTE">CLIENTE</option>
+                          <option value="CONTRATISTA">CONTRATISTA</option>
+                        </select>
+                      </div>
+
+                      {/* Botón Eliminar Renglón */}
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        disabled={items.length <= 1}
+                        onClick={() => handleRemoveItem(idx)}
+                        className={`p-1.5 rounded hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition-colors shrink-0 ${
+                          items.length <= 1 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* BLOQUE 3: FECHA Y OBSERVACIONES GENERALES (BORDE ÍNDIGO) */}
+            <div className="alon-chunk-indigo">
+              <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1.5 mb-2">
+                <span className="font-black text-indigo-400 uppercase tracking-wider text-[11px]">
+                  3. Fecha del Retiro y Observaciones Generales
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-slate-300 font-bold text-[11px] mb-1">Fecha del Retiro</label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-slate-300 font-bold text-[11px] mb-1">Observaciones Generales</label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Ej: Retiro para reparación de mamparo en bodega de popa..."
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Pie del Formulario */}
-          <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-800">
+          {/* Pie Fijo del Formulario */}
+          <div className="alon-modal-footer">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer"
+              className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-600/30 cursor-pointer flex items-center gap-1.5"
+              className="px-5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-600/30 cursor-pointer flex items-center gap-1.5"
             >
               <Check className="w-4 h-4 stroke-[3]" />
               <span>{editingRow ? 'Guardar Cambios' : `Confirmar Retiro (${items.length} materiales)`}</span>
@@ -3875,29 +3903,47 @@ function MaterialSearchInput({ materials, value, onChange }) {
 
   return (
     <div ref={containerRef} className="relative w-full font-sans">
-      <div
+      <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-2.5 py-1.5 rounded bg-slate-950 border border-slate-700 text-white cursor-pointer flex items-center justify-between hover:border-cyan-400"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+            e.preventDefault()
+            setIsOpen(true)
+          }
+        }}
+        className="w-full px-2.5 py-1.5 rounded bg-slate-950 border border-slate-700 text-white cursor-pointer flex items-center justify-between hover:border-cyan-400 focus:outline-none focus:border-cyan-400 text-left"
       >
         <span className="truncate font-semibold text-xs">
-          {selectedMat ? selectedMat.name : <span className="text-slate-500">Buscar material por nombre o rubro...</span>}
+          {selectedMat ? selectedMat.name : <span className="text-slate-500">Buscar material por nombre o rubro (Enter)...</span>}
         </span>
         {selectedMat && (
           <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-emerald-400 font-mono font-bold ml-1 shrink-0">
             Stock: {selectedMat.current_stock}
           </span>
         )}
-      </div>
+      </button>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-64 flex flex-col">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-56 flex flex-col">
           <div className="p-2 border-b border-slate-800 bg-slate-950">
             <input
               type="text"
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Escribe 'elec', 'chapa', 'disco'..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && matches.length > 0) {
+                  e.preventDefault()
+                  onChange(matches[0].id)
+                  setIsOpen(false)
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setIsOpen(false)
+                }
+              }}
+              placeholder="Escribe 'elec', 'chapa', 'disco' y presiona Enter..."
               className="w-full px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-400"
             />
           </div>
@@ -3939,79 +3985,6 @@ function MaterialSearchInput({ materials, value, onChange }) {
                 </div>
               ))
             )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 8: SOLICITAR HABILITACIÓN DE OPERARIO A JORGE SENTIS */}
-      {workerPermissionModal.isOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-cyan-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
-                <UserCheck className="w-5 h-5" />
-                <span>Solicitar Habilitación de Operario a Jorge Sentis</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })}
-                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              El operario seleccionado no cuenta actualmente con el permiso de retiro de materiales en Pañol (<strong>P</strong>).
-              Al enviar esta solicitud, <strong>Jorge Sentis (Administrador)</strong> podrá habilitarlo formalmente en el Padrón de Personal.
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">Operario sin Permiso</label>
-                <select
-                  value={workerPermissionModal.workerId}
-                  onChange={(e) => setWorkerPermissionModal((prev) => ({ ...prev, workerId: e.target.value }))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-cyan-400 font-bold focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="">-- Seleccionar Operario a Habilitar --</option>
-                  {unauthorizedWorkers.map((w) => (
-                    <option key={`unauth_${w.id}`} value={w.id}>
-                      {w.name} ({w.trade || 'General'} - {w.admin_center || 'Astillero'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">Motivo / Justificación</label>
-                <textarea
-                  rows={3}
-                  value={workerPermissionModal.reason}
-                  onChange={(e) => setWorkerPermissionModal((prev) => ({ ...prev, reason: e.target.value }))}
-                  placeholder="Ej: Asignado a tareas urgentes en dique, requiere retirar insumos de trabajo y EPP..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmitWorkerPermission}
-                className="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Enviar Solicitud a Jorge Sentis</span>
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -4202,162 +4175,225 @@ function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden font-sans">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
-          <div className="flex items-center gap-2 text-white font-black text-sm">
-            <Package className="w-5 h-5 text-emerald-400" />
-            <span>ALTA DE MATERIAL EN CATÁLOGO B.D</span>
+      <div className="alon-modal-card max-w-4xl">
+        <div className="alon-modal-header">
+          <div className="flex items-center gap-2 text-white font-black text-sm min-w-0">
+            <Package className="w-5 h-5 text-emerald-400 shrink-0" />
+            <div className="min-w-0">
+              <span className="block leading-tight truncate">ALTA DE MATERIAL EN CATÁLOGO B.D (PAÑOL)</span>
+              <span className="text-[11px] font-normal text-slate-400 block truncate">
+                Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Identificación ➔ 2° Medidas ➔ 3° Stock & Alertas ➔ 4° Seguridad Naval.
+              </span>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">
+          <button type="button" tabIndex={-1} onClick={onClose} className="text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Nombre Técnico Oficial *</label>
-            <input
-              type="text"
-              required
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: CHAPA NAVAL GRADO A 1/2' x 1500 x 6000..."
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold uppercase focus:outline-none focus:border-cyan-400"
-            />
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div className="alon-modal-body">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
+              {/* COLUMNA IZQUIERDA: BLOQUES 1 Y 2 */}
+              <div className="space-y-3">
+                {/* BLOQUE 1: IDENTIFICACIÓN TÉCNICA Y CLASIFICACIÓN (BORDE SKY / CIAN) */}
+                <div className="alon-chunk-sky space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
+                    <span className="font-black text-sky-400 uppercase tracking-wider text-[11px]">
+                      1. Identificación Técnica y Clasificación
+                    </span>
+                    <span className="text-[10px] text-slate-400">Catálogo oficial</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-bold text-[11px] mb-1">
+                      Nombre Técnico Oficial <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Ej: CHAPA NAVAL GRADO A 1/2' x 1500 x 6000..."
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold uppercase focus:outline-none focus:border-cyan-400 text-xs"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 font-bold text-[11px] mb-1">
+                        Categoría General <span className="text-rose-400">*</span>
+                      </label>
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400 text-xs"
+                      >
+                        <option value="MATERIALES">MATERIALES</option>
+                        <option value="CONSUMIBLES">CONSUMIBLES</option>
+                        <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-bold text-[11px] mb-1">
+                        Rubro Técnico <span className="text-rose-400">*</span>
+                      </label>
+                      <select
+                        value={rubro}
+                        onChange={(e) => setRubro(e.target.value)}
+                        required
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 text-xs"
+                      >
+                        <option value="">Seleccionar Rubro...</option>
+                        {rubros.map((r) => (
+                          <option key={r.id} value={r.name}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* BLOQUE 2: MÉTRICAS FÍSICAS Y UNIDAD DE MEDIDA (BORDE ÍNDIGO) */}
+                <div className="alon-chunk-indigo space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
+                    <span className="font-black text-indigo-400 uppercase tracking-wider text-[11px]">
+                      2. Métricas Físicas y Unidad de Despacho
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 font-bold text-[11px] mb-1">Unidad de Medida</label>
+                      <select
+                        value={unitMeasure}
+                        onChange={(e) => setUnitMeasure(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-400 text-xs"
+                      >
+                        <option value="Unidad">Unidad</option>
+                        <option value="kg">Kilogramo (kg)</option>
+                        <option value="metro">Metro lineal</option>
+                        <option value="m2">Metro cuadrado (m2)</option>
+                        <option value="Litro">Litro</option>
+                        <option value="Bolsón">Bolsón</option>
+                        <option value="Tubo">Tubo / Cilindro</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-bold text-[11px] mb-1">Peso Unitario (kg)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder="0.00"
+                        value={weightKg}
+                        onChange={(e) => setWeightKg(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-indigo-400 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* COLUMNA DERECHA: BLOQUES 3 Y 4 */}
+              <div className="space-y-3">
+                {/* BLOQUE 3: PARÁMETROS DE STOCK Y ALERTAS (BORDE ESMERALDA) */}
+                <div className="alon-chunk-emerald space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
+                    <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px]">
+                      3. Stock y Alertas de Reposición
+                    </span>
+                    <span className="text-[10px] text-emerald-300 font-bold">Depósito Central</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 font-bold text-[11px] mb-1">Stock Inicial Actual</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={currentStock}
+                        onChange={(e) => setCurrentStock(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-emerald-500 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-bold text-[11px] mb-1">Stock Mínimo (Alerta)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={minimumStock}
+                        onChange={(e) => setMinimumStock(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-emerald-500 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-white block text-[11px]">Lleva Control de Stock Físico</span>
+                      <span className="text-slate-400 text-[10px]">Desmarcar solo si es compra directa sin depósito</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={requiresStockControl}
+                      onChange={(e) => setRequiresStockControl(e.target.checked)}
+                      className="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-700 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* BLOQUE 4: COEFICIENTE DE SEGURIDAD NAVAL (BORDE ÁMBAR) */}
+                <div className="alon-chunk-amber space-y-2">
+                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
+                    <span className="font-black text-amber-400 uppercase tracking-wider text-[11px]">
+                      4. Coeficiente de Seguridad Naval
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-bold text-[11px] mb-1">% Seguridad Naval (Merma / Desperdicio)</label>
+                    <select
+                      disabled={!isAdmin}
+                      value={securityFactor}
+                      onChange={(e) => setSecurityFactor(e.target.value)}
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${
+                        !isAdmin ? 'bg-slate-950 border-slate-800 text-slate-500' : 'bg-slate-950 border-slate-700 text-white focus:outline-none focus:border-amber-400'
+                      }`}
+                    >
+                      <option value="1.02">2% (1.02)</option>
+                      <option value="1.06">6% (1.06 Estándar Astillero)</option>
+                      <option value="1.10">10% (1.10)</option>
+                      <option value="1.15">15% (1.15)</option>
+                      <option value="1.20">20% (1.20)</option>
+                    </select>
+                  </div>
+                  <p className="text-[10px] text-slate-400 italic">
+                    Aplica automáticamente sobre los cálculos de reposición y pedidos de compra directa.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Categoría General *</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
-              >
-                <option value="MATERIALES">MATERIALES</option>
-                <option value="CONSUMIBLES">CONSUMIBLES</option>
-                <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Rubro Técnico *</label>
-              <select
-                value={rubro}
-                onChange={(e) => setRubro(e.target.value)}
-                required
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-              >
-                <option value="">Seleccionar Rubro...</option>
-                {rubros.map((r) => (
-                  <option key={r.id} value={r.name}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Unidad de Medida</label>
-              <select
-                value={unitMeasure}
-                onChange={(e) => setUnitMeasure(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-              >
-                <option value="Unidad">Unidad</option>
-                <option value="kg">Kilogramo (kg)</option>
-                <option value="metro">Metro lineal</option>
-                <option value="m2">Metro cuadrado (m2)</option>
-                <option value="Litro">Litro</option>
-                <option value="Bolsón">Bolsón</option>
-                <option value="Tubo">Tubo / Cilindro</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Peso Unitario (kg)</label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={weightKg}
-                onChange={(e) => setWeightKg(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Stock Inicial</label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={currentStock}
-                onChange={(e) => setCurrentStock(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Stock Mínimo de Alerta</label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={minimumStock}
-                onChange={(e) => setMinimumStock(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">% Seguridad Naval</label>
-              <select
-                disabled={!isAdmin}
-                value={securityFactor}
-                onChange={(e) => setSecurityFactor(e.target.value)}
-                className={`w-full px-3 py-2 rounded-lg border ${
-                  !isAdmin ? 'bg-slate-950 border-slate-800 text-slate-500' : 'bg-slate-950 border-slate-700 text-white'
-                }`}
-              >
-                <option value="1.02">2% (1.02)</option>
-                <option value="1.06">6% (1.06 Estándar)</option>
-                <option value="1.10">10% (1.10)</option>
-                <option value="1.15">15% (1.15)</option>
-                <option value="1.20">20% (1.20)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
-            <div>
-              <span className="font-bold text-white block">Lleva Control de Stock Físico</span>
-              <span className="text-slate-500 text-[10px]">Desmarcar si es compra eventual que no se inventaría</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={requiresStockControl}
-              onChange={(e) => setRequiresStockControl(e.target.checked)}
-              className="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-700 cursor-pointer"
-            />
-          </div>
-
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+          <div className="alon-modal-footer">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
+              className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer text-xs"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-emerald-600/30"
+              className="px-5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-emerald-600/30 transition-all"
             >
               Guardar Material
             </button>

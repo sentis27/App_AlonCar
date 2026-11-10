@@ -2013,7 +2013,7 @@ export default function Compras() {
   }
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-4 pb-10">
       {/* ========================================================= */}
       {/* ZONA 1: CABECERA PRINCIPAL Y CONTEXTO DE MÓDULO */}
       {/* ========================================================= */}
@@ -2417,9 +2417,11 @@ export default function Compras() {
             </div>
           </div>
 
-          {/* ZONA 3: BARRA DE FILTROS & HERRAMIENTAS */}
-          <div className="alon-zone-toolbar p-2.5 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-            {/* Buscador Canónico con atajos Ctrl+F y Esc */}
+          {/* BLOQUE OPERATIVO UNIFICADO (ZONA 3 + ZONA 4 EN UN SOLO BLOQUE) */}
+          <div className="alon-workspace-block">
+          {/* ZONA 3: BARRA DE FILTROS & HERRAMIENTAS (2 NIVELES: NIVEL 1 BUSCADOR / NIVEL 2 FILTROS) */}
+          <div className="alon-zone-toolbar p-3 space-y-2.5 text-xs">
+            {/* NIVEL 1: Buscador Canónico con atajos Ctrl+F y Esc siempre visible */}
             <CrawlerSearchBar
               value={searchQuery}
               onChange={setSearchQuery}
@@ -2428,114 +2430,117 @@ export default function Compras() {
               placeholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F | Esc limpia todo)"
             />
 
-            {/* Selectores */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {viewMode === 'completa' && (
+            {/* NIVEL 2: Selectores y Alternadores Rápidos */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              {/* Selectores */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {viewMode === 'completa' && (
+                  <select
+                    value={filterSupplier}
+                    onChange={(e) => setFilterSupplier(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 max-w-[160px]"
+                  >
+                    <option value="TODOS">Todos los Proveedores</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} {s.is_gas_supplier ? '💨' : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 <select
-                  value={filterSupplier}
-                  onChange={(e) => setFilterSupplier(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 max-w-[160px]"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                  title={STATUS_OPTIONS.find((s) => s.value === filterStatus)?.tooltip || 'Filtrar por estado'}
                 >
-                  <option value="TODOS">Todos los Proveedores</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} {s.is_gas_supplier ? '💨' : ''}
+                  {STATUS_OPTIONS.map((st) => (
+                    <option key={st.value} value={st.value} title={st.tooltip}>
+                      {st.label}
                     </option>
                   ))}
                 </select>
-              )}
 
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
-                title={STATUS_OPTIONS.find((s) => s.value === filterStatus)?.tooltip || 'Filtrar por estado'}
-              >
-                {STATUS_OPTIONS.map((st) => (
-                  <option key={st.value} value={st.value} title={st.tooltip}>
-                    {st.label}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={filterFortnight}
+                  onChange={(e) => setFilterFortnight(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="TODAS">Todas las Quincenas</option>
+                  {availableFortnights.map((fn) => (
+                    <option key={fn} value={fn}>
+                      {fn === currentFortnight ? `★ ${fn} (Actual)` : fn}
+                    </option>
+                  ))}
+                </select>
 
-              <select
-                value={filterFortnight}
-                onChange={(e) => setFilterFortnight(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
-              >
-                <option value="TODAS">Todas las Quincenas</option>
-                {availableFortnights.map((fn) => (
-                  <option key={fn} value={fn}>
-                    {fn === currentFortnight ? `★ ${fn} (Actual)` : fn}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={filterChargeType}
+                  onChange={(e) => setFilterChargeType(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="TODOS">Todos los Destinos</option>
+                  <option value="DIRECT">Directo para Obra</option>
+                  <option value="VIA_PANOL">Para Pañol / Stock</option>
+                  <option value="STANDBY">Stand-by en Depósito</option>
+                </select>
+              </div>
 
-              <select
-                value={filterChargeType}
-                onChange={(e) => setFilterChargeType(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
-              >
-                <option value="TODOS">Todos los Destinos</option>
-                <option value="DIRECT">Directo para Obra</option>
-                <option value="VIA_PANOL">Para Pañol / Stock</option>
-                <option value="STANDBY">Stand-by en Depósito</option>
-              </select>
-            </div>
-
-            {/* Alternadores Rápidos */}
-            <div className="flex items-center gap-1.5 border-l border-slate-800 pl-2.5">
-              <button
-                onClick={() => setFilterNewOnly(!filterNewOnly)}
-                className={`px-2 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 ${
-                  filterNewOnly
-                    ? 'bg-rose-950 border border-rose-500 text-rose-300'
-                    : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
-                }`}
-                title="Filtrar materiales que no existen en base maestra"
-              >
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Nuevos ({kpis.newMaterialsCount})</span>
-              </button>
-
-              {viewMode === 'completa' && (
+              {/* Alternadores Rápidos */}
+              <div className="flex items-center gap-1.5 border-l border-slate-800 pl-2.5">
                 <button
-                  onClick={() => setHideReconciled(!hideReconciled)}
+                  onClick={() => setFilterNewOnly(!filterNewOnly)}
                   className={`px-2 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 ${
-                    hideReconciled
-                      ? 'bg-purple-950 border border-purple-500 text-purple-300'
+                    filterNewOnly
+                      ? 'bg-rose-950 border border-rose-500 text-rose-300'
                       : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
                   }`}
-                  title="Ocultar las compras que ya fueron conciliadas con factura"
+                  title="Filtrar materiales que no existen en base maestra"
                 >
-                  <span>🟣 Ocultar Conc.</span>
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Nuevos ({kpis.newMaterialsCount})</span>
                 </button>
-              )}
 
-              {/* Botón Deshacer (Ctrl+Z) / Rehacer (Ctrl+Y) */}
-              {grid.canUndo && (
-                <button
-                  type="button"
-                  onClick={grid.undo}
-                  className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
-                  title="Deshacer el último cambio (Ctrl + Z)"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Deshacer (Ctrl+Z)</span>
-                </button>
-              )}
+                {viewMode === 'completa' && (
+                  <button
+                    onClick={() => setHideReconciled(!hideReconciled)}
+                    className={`px-2 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 ${
+                      hideReconciled
+                        ? 'bg-purple-950 border border-purple-500 text-purple-300'
+                        : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                    title="Ocultar las compras que ya fueron conciliadas con factura"
+                  >
+                    <span>🟣 Ocultar Conc.</span>
+                  </button>
+                )}
 
-              {grid.canRedo && (
-                <button
-                  type="button"
-                  onClick={grid.redo}
-                  className="px-2 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
-                  title="Rehacer el cambio deshecho (Ctrl + Y)"
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                  <span>Rehacer (Ctrl+Y)</span>
-                </button>
-              )}
+                {/* Botón Deshacer (Ctrl+Z) / Rehacer (Ctrl+Y) */}
+                {grid.canUndo && (
+                  <button
+                    type="button"
+                    onClick={grid.undo}
+                    className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
+                    title="Deshacer el último cambio (Ctrl + Z)"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Deshacer (Ctrl+Z)</span>
+                  </button>
+                )}
+
+                {grid.canRedo && (
+                  <button
+                    type="button"
+                    onClick={grid.redo}
+                    className="px-2 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
+                    title="Rehacer el cambio deshecho (Ctrl + Y)"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>Rehacer (Ctrl+Y)</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2579,7 +2584,7 @@ export default function Compras() {
               tabIndex={0}
               onKeyDown={grid.handleKeyDown}
               ref={grid.gridContainerRef}
-              className="w-full max-h-[620px] overflow-y-auto overflow-x-hidden relative focus:outline-none"
+              className="alon-grid-scroll"
             >
               <table className="w-full text-left text-[11px] border-collapse">
                 {/* STICKY HEADER TIPO EXCEL (FIT-TO-VIEWPORT SIN SCROLL HORIZONTAL) */}
@@ -3556,45 +3561,6 @@ export default function Compras() {
                       )
                     })
                   )}
-
-                  {/* Fila de Acción Rápida al pie de la tabla (Imagen 2) */}
-                  <tr className="border-t-2 border-dashed border-slate-800/80 bg-slate-950/40 hover:bg-slate-900/60 transition-colors">
-                    <td colSpan={spreadsheetColumns.length + 3} className="py-2.5 px-4">
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={handleAddNewBlankOrder}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-yellow-500/15 hover:bg-yellow-500/25 border border-yellow-500/60 text-yellow-300 font-black text-xs shadow-md transition-all cursor-pointer"
-                          >
-                            <Plus className="w-4 h-4 text-yellow-400" />
-                            <span>+ nuevo pedido</span>
-                          </button>
-
-                          <span className="text-slate-600 text-xs hidden sm:inline">|</span>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingOrder(null)
-                              setShowOrderModal(true)
-                            }}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-slate-400 hover:text-cyan-300 text-xs font-semibold transition-colors cursor-pointer"
-                          >
-                            <FileText className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>o cargar con formulario multi-material...</span>
-                          </button>
-                        </div>
-
-                        <div className="text-[11px] text-slate-500 font-mono hidden md:flex items-center gap-1">
-                          <span>💡 Tip:</span>
-                          <span>Usa el icono</span>
-                          <Copy className="w-3 h-3 text-cyan-400 inline mx-0.5" />
-                          <span>para duplicar en 1-clic, o copia fila con Ctrl+C y pega con Ctrl+V</span>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -3660,6 +3626,7 @@ export default function Compras() {
                 </button>
               </div>
             )}
+          </div>
           </div>
 
           {/* ========================================================= */}
@@ -3939,6 +3906,8 @@ export default function Compras() {
             </div>
           </div>
 
+          {/* BLOQUE OPERATIVO UNIFICADO: ZONA 3 + ZONA 4 (PROVEEDORES) */}
+          <div className="alon-workspace-block">
           {/* ZONA 3: BARRA DE HERRAMIENTAS, MENÚ DE BÚSQUEDA Y VISTAS */}
           <div className="alon-zone-toolbar flex flex-wrap items-center justify-between gap-3 p-3">
             {/* Buscador reactivo de Proveedores */}
@@ -4005,7 +3974,7 @@ export default function Compras() {
           {/* ZONA 4: TABLA DE PROVEEDORES (GRILLA CON ARQUITECTURA COMPLETA) */}
           {suppliersViewMode === 'lista' ? (
             <div className="alon-zone-grid">
-              <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
+              <div className="alon-grid-scroll">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="sticky top-0 z-20 alon-grid-thead">
                     <tr>
@@ -4498,6 +4467,7 @@ export default function Compras() {
               )}
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -5338,325 +5308,365 @@ function OrderFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="alon-modal-card max-w-5xl">
         {/* Cabecera del Modal */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
-          <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-cyan-400" />
-              {order ? 'Editar Pedido de Compra' : 'Cargar Materiales (Multi-Renglón por OT / Obra)'}
-            </h3>
-            <p className="text-xs text-slate-400">
-              {viewMode === 'simple'
-                ? 'Solicitud simplificada: carga los materiales que necesitás sin preocuparte por precios ni proveedores.'
-                : 'Defina la obra o pañol una sola vez y agregue múltiples renglones de materiales.'}
-            </p>
+        <div className="alon-modal-header">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 font-bold shrink-0">
+              <ShoppingCart className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-black text-white truncate">
+                {order ? 'Editar Pedido de Compra' : 'Cargar Materiales (Multi-Renglón por OT / Obra)'}
+              </h3>
+              <p className="text-[11px] text-slate-400 truncate">
+                Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Destino/OT ➔ 2° Parámetros ➔ 3° Matriz de Materiales.
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+          <button type="button" tabIndex={-1} onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0">
+            ✕
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs flex-1 overflow-y-auto pr-1">
-          {/* SECCIÓN 1: ENCABEZADO COMÚN */}
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-            <h4 className="text-[11px] uppercase tracking-wider font-bold text-cyan-400">1. Destino y Datos del Trabajo</h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1 font-semibold">Destino</label>
-                <select
-                  value={chargeType}
-                  onChange={(e) => setChargeType(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-                >
-                  <option value="DIRECT">Carga Directa para Obra (Buque)</option>
-                  <option value="VIA_PANOL">Reposición de Stock (Pañol)</option>
-                  <option value="STANDBY">Stand-By en Depósito</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 font-semibold">Fecha (Doble Clic para Calendario)</label>
-                <input
-                  type="date"
-                  value={orderDate}
-                  onChange={(e) => setOrderDate(e.target.value)}
-                  onDoubleClick={(e) => e.target.showPicker && e.target.showPicker()}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
-                  title="Doble clic para abrir calendario"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 font-semibold">Urgencia</label>
-                <select
-                  value={urgency}
-                  onChange={(e) => setUrgency(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500 font-bold"
-                >
-                  <option value="SIN_APURO">🟢 Sin Apuro (Normal)</option>
-                  <option value="URGENTE">🔴 Urgente (Prioridad Alta)</option>
-                  <option value="PROXIMA_SALIDA">🟡 Próxima Salida de Buque</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Buque y OT (solo para Carga Directa) */}
-            {chargeType === 'DIRECT' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-850">
-                <div>
-                  <label className="block text-slate-400 mb-1 font-semibold">Buque / Obra</label>
-                  <select
-                    value={shipId}
-                    onChange={(e) => {
-                      setShipId(e.target.value)
-                      setWorkOrderId('')
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-                    required
-                  >
-                    <option value="">-- Seleccionar Buque --</option>
-                    {ships.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 mb-1 font-semibold">Orden de Trabajo (OT - Opcional)</label>
-                  <select
-                    value={workOrderId}
-                    onChange={(e) => setWorkOrderId(e.target.value)}
-                    className={`w-full bg-slate-900 border rounded-lg p-2 focus:outline-none focus:border-cyan-500 ${
-                      !workOrderId ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-slate-700 text-white'
-                    }`}
-                  >
-                    <option value="">-- ⚠️ Dejar OT en blanco (Pendiente de apertura) --</option>
-                    {availableWorkOrders.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.ot_number ? `OT #${w.ot_number} - ` : ''}{w.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* DESCRIPCIÓN DE LA OT VISIBLE */}
-                {selectedWorkOrder && (
-                  <div className="col-span-full bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300">
-                    <span className="font-bold text-cyan-400">Descripción de la OT: </span>
-                    <span>{selectedWorkOrder.description || selectedWorkOrder.title || 'Sin descripción técnica adicional.'}</span>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div className="alon-modal-body">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
+              {/* COLUMNA IZQUIERDA: BLOQUES 1 Y 2 */}
+              <div className="space-y-3">
+                {/* BLOQUE 1: DESTINO E IMPUTACIÓN DE OBRA (BORDE SKY / CIAN) */}
+                <div className="alon-chunk-sky space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
+                    <span className="font-black text-sky-400 uppercase tracking-wider text-[11px]">
+                      1. Destino e Imputación de Obra
+                    </span>
+                    <span className="text-[10px] text-slate-400">Origen de imputación</span>
                   </div>
-                )}
-              </div>
-            )}
 
-            {/* Persona o Sector que Solicita (Solo Desplegable - Por defecto PAÑOL con opción a cambiar) */}
-            <div className="pt-2 border-t border-slate-850">
-              <label className="block text-slate-400 mb-1 font-semibold">Persona o Sector que Solicita</label>
-              <select
-                value={requestedByName}
-                onChange={(e) => setRequestedByName(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
-              >
-                <option value="PAÑOL">PAÑOL (Por Defecto)</option>
-                <optgroup label="Personal Habilitado (Pañol)">
-                  {authorizedWorkers.map((w) => (
-                    <option key={w.id} value={w.name}>
-                      {w.name} {w.trade ? `(${w.trade})` : ''}
-                    </option>
-                  ))}
-                </optgroup>
-                {otherWorkers.length > 0 && (
-                  <optgroup label="Demás Personal de Nómina">
-                    {otherWorkers.map((w) => (
-                      <option key={w.id} value={w.name}>
-                        {w.name} {w.trade ? `(${w.trade})` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {contractorGroups.length > 0 && (
-                  <optgroup label="🏗️ Contratistas Externos">
-                    {contractorGroups.map((grp) => (
-                      <option key={`m_cnt_${grp}`} value={grp}>
-                        {grp}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label="Sectores / Áreas Comunes">
-                  <option value="ADMINISTRACION">ADMINISTRACION</option>
-                  <option value="OFICINA TECNICA">OFICINA TECNICA</option>
-                  <option value="MANTENIMIENTO">MANTENIMIENTO</option>
-                  <option value="CALIDAD / SEGURIDAD">CALIDAD / SEGURIDAD</option>
-                </optgroup>
-                {requestedByName &&
-                  requestedByName !== 'PAÑOL' &&
-                  !authorizedWorkers.some((w) => w.name === requestedByName) &&
-                  !otherWorkers.some((w) => w.name === requestedByName) &&
-                  !['ADMINISTRACION', 'OFICINA TECNICA', 'MANTENIMIENTO', 'CALIDAD / SEGURIDAD'].includes(requestedByName) && (
-                    <option value={requestedByName}>{requestedByName} (Actual)</option>
-                  )}
-              </select>
-            </div>
-          </div>
-
-          {/* SECCIÓN 2: GRILLA DINÁMICA DE MATERIALES */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-[11px] uppercase tracking-wider font-bold text-cyan-400">
-                2. Materiales e Insumos ({items.length} renglones)
-              </h4>
-              <button
-                type="button"
-                onClick={handleAddItem}
-                className="px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>Agregar Renglón</span>
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {items.map((it, idx) => (
-                <div key={idx} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3 relative group">
-                  <div className="flex items-center justify-between border-b border-slate-850 pb-2">
-                    <span className="font-mono text-cyan-400 font-bold">Renglón #{idx + 1}</span>
-                    {items.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(idx)}
-                        className="text-slate-500 hover:text-rose-400 transition-colors"
-                        title="Eliminar este renglón"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Destino del Pedido</label>
+                      <select
+                        autoFocus
+                        value={chargeType}
+                        onChange={(e) => setChargeType(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-cyan-500 text-xs"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                        <option value="DIRECT">Carga Directa para Obra (Buque)</option>
+                        <option value="VIA_PANOL">Reposición de Stock (Pañol)</option>
+                        <option value="STANDBY">Stand-By en Depósito</option>
+                      </select>
+                    </div>
 
-                  {/* Nombre del Material con Autocomplete */}
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-semibold flex items-center justify-between">
-                      <span>Material / Insumo</span>
-                      <span className="text-[10px] text-slate-500">
-                        Unidad deducida: <strong className="text-cyan-400">{it.unit_measure}</strong>
-                      </span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: BRONCE SAE 64 X KILO, MADERA ANCHICO x METRO..."
-                      value={it.material_name_raw}
-                      onChange={(e) => handleItemChange(idx, 'material_name_raw', e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-cyan-500"
-                      required
-                    />
-
-                    {/* Sugerencias de Catálogo si escribe */}
-                    {it.material_name_raw && !it.material_id && (
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        {materials
-                          .filter((m) => m.name.toLowerCase().includes(it.material_name_raw.toLowerCase()))
-                          .slice(0, 4)
-                          .map((m) => (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => handleSelectCatalogMaterial(idx, m)}
-                              className="px-2 py-0.5 rounded bg-slate-850 hover:bg-cyan-950 border border-slate-700 text-[10px] text-slate-300 hover:text-cyan-300 transition-colors"
-                            >
-                              ✓ {m.name} ({m.unit_measure || 'unidad'})
-                            </button>
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Solicitante</label>
+                      <select
+                        value={requestedByName}
+                        onChange={(e) => setRequestedByName(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer text-xs"
+                      >
+                        <option value="PAÑOL">PAÑOL (Por Defecto)</option>
+                        <optgroup label="Personal Habilitado (Pañol)">
+                          {authorizedWorkers.map((w) => (
+                            <option key={w.id} value={w.name}>
+                              {w.name} {w.trade ? `(${w.trade})` : ''}
+                            </option>
                           ))}
-                      </div>
-                    )}
+                        </optgroup>
+                        {otherWorkers.length > 0 && (
+                          <optgroup label="Demás Personal de Nómina">
+                            {otherWorkers.map((w) => (
+                              <option key={w.id} value={w.name}>
+                                {w.name} {w.trade ? `(${w.trade})` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {contractorGroups.length > 0 && (
+                          <optgroup label="🏗️ Contratistas Externos">
+                            {contractorGroups.map((grp) => (
+                              <option key={`m_cnt_${grp}`} value={grp}>
+                                {grp}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="Sectores / Áreas Comunes">
+                          <option value="ADMINISTRACION">ADMINISTRACION</option>
+                          <option value="OFICINA TECNICA">OFICINA TECNICA</option>
+                          <option value="MANTENIMIENTO">MANTENIMIENTO</option>
+                          <option value="CALIDAD / SEGURIDAD">CALIDAD / SEGURIDAD</option>
+                        </optgroup>
+                        {requestedByName &&
+                          requestedByName !== 'PAÑOL' &&
+                          !authorizedWorkers.some((w) => w.name === requestedByName) &&
+                          !otherWorkers.some((w) => w.name === requestedByName) &&
+                          !['ADMINISTRACION', 'OFICINA TECNICA', 'MANTENIMIENTO', 'CALIDAD / SEGURIDAD'].includes(requestedByName) && (
+                            <option value={requestedByName}>{requestedByName} (Actual)</option>
+                          )}
+                      </select>
+                    </div>
                   </div>
 
-                  {/* Cantidad y Unidad Automática Bloqueada */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-slate-400 mb-1 font-semibold">Cantidad</label>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0.01"
-                        value={it.quantity}
-                        onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-400 mb-1 font-semibold">Unidad Medida</label>
-                      <input
-                        type="text"
-                        value={it.unit_measure}
-                        disabled
-                        className="w-full bg-slate-850 border border-slate-800 rounded-lg p-2 text-cyan-300 font-bold cursor-not-allowed uppercase"
-                        title="Deducida automáticamente por reglas de nomenclatura"
-                      />
-                    </div>
-
-                    {/* Campos de Costo y Proveedor: solo visibles en Modo Completo */}
-                    {viewMode === 'completa' && (
-                      <>
+                  {/* Buque y OT (solo para Carga Directa) */}
+                  {chargeType === 'DIRECT' && (
+                    <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <div>
-                          <label className="block text-slate-400 mb-1 font-semibold">Proveedor</label>
+                          <label className="block text-slate-300 mb-1 font-bold text-[11px]">
+                            Buque / Obra <span className="text-rose-400">*</span>
+                          </label>
                           <select
-                            value={it.supplier_id}
-                            onChange={(e) => handleItemChange(idx, 'supplier_id', e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                            value={shipId}
+                            onChange={(e) => {
+                              setShipId(e.target.value)
+                              setWorkOrderId('')
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-cyan-500 text-xs"
+                            required
                           >
-                            <option value="">-- Sin Proveedor --</option>
-                            {suppliers.map((s) => (
+                            <option value="">-- Seleccionar Buque --</option>
+                            {ships.map((s) => (
                               <option key={s.id} value={s.id}>{s.name}</option>
                             ))}
                           </select>
                         </div>
 
                         <div>
-                          <label className="block text-slate-400 mb-1 font-semibold">$/U Cotizado AR$</label>
-                          <input
-                            type="number"
-                            step="any"
-                            placeholder="Vacío por defecto"
-                            value={it.supplier_quoted_price}
-                            onChange={(e) => handleItemChange(idx, 'supplier_quoted_price', e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
-                          />
+                          <label className="block text-slate-300 mb-1 font-bold text-[11px]">
+                            Orden de Trabajo (OT)
+                          </label>
+                          <select
+                            value={workOrderId}
+                            onChange={(e) => setWorkOrderId(e.target.value)}
+                            className={`w-full bg-slate-900 border rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500 text-xs ${
+                              !workOrderId ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-slate-700 text-white'
+                            }`}
+                          >
+                            <option value="">-- ⚠️ Sin OT (Pendiente de apertura) --</option>
+                            {availableWorkOrders.map((w) => (
+                              <option key={w.id} value={w.id}>
+                                {w.ot_number ? `OT #${w.ot_number} - ` : ''}{w.title}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                      </>
-                    )}
+                      </div>
+
+                      {/* DESCRIPCIÓN DE LA OT VISIBLE */}
+                      {selectedWorkOrder && (
+                        <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2 text-[11px] text-slate-300">
+                          <span className="font-bold text-cyan-400">Detalle OT: </span>
+                          <span>{selectedWorkOrder.description || selectedWorkOrder.title || 'Sin descripción técnica adicional.'}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* BLOQUE 2: PARÁMETROS DEL PEDIDO (BORDE ÁMBAR) */}
+                <div className="alon-chunk-amber space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
+                    <span className="font-black text-amber-400 uppercase tracking-wider text-[11px]">
+                      2. Parámetros y Cronograma de Compra
+                    </span>
                   </div>
 
-                  {/* Observaciones del Renglón */}
-                  <div>
-                    <input
-                      type="text"
-                      placeholder="Observaciones de este material (medida específica, espesor, urgencia interna)..."
-                      value={it.observations}
-                      onChange={(e) => handleItemChange(idx, 'observations', e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-750 rounded-lg p-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-500"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Fecha del Pedido</label>
+                      <input
+                        type="date"
+                        value={orderDate}
+                        onChange={(e) => setOrderDate(e.target.value)}
+                        onDoubleClick={(e) => e.target.showPicker && e.target.showPicker()}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-amber-400 cursor-pointer text-xs"
+                        title="Doble clic para abrir calendario"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Nivel de Urgencia</label>
+                      <select
+                        value={urgency}
+                        onChange={(e) => setUrgency(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-400 font-bold text-xs"
+                      >
+                        <option value="SIN_APURO">🟢 Sin Apuro (Normal)</option>
+                        <option value="URGENTE">🔴 Urgente (Prioridad Alta)</option>
+                        <option value="PROXIMA_SALIDA">🟡 Próxima Salida de Buque</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* COLUMNA DERECHA: BLOQUE 3 */}
+              <div className="space-y-3">
+                {/* BLOQUE 3: MATRIZ DE INSUMOS Y MATERIALES SOLICITADOS (BORDE ESMERALDA) */}
+                <div className="alon-chunk-emerald space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
+                    <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px]">
+                      3. Matriz de Insumos y Materiales ({items.length} renglones)
+                    </span>
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={handleAddItem}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-slate-950 rounded-lg font-black text-[11px] flex items-center gap-1 transition-all cursor-pointer shadow"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>+ Agregar Renglón</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {items.map((it, idx) => (
+                      <div key={idx} className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 space-y-2 relative group">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-1">
+                          <span className="font-mono text-cyan-400 font-bold text-[11px]">Renglón #{idx + 1}</span>
+                          {items.length > 1 && (
+                            <button
+                              type="button"
+                              tabIndex={-1}
+                              onClick={() => handleRemoveItem(idx)}
+                              className="text-slate-500 hover:text-rose-400 transition-colors cursor-pointer p-0.5"
+                              title="Eliminar este renglón"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Nombre del Material con Autocomplete */}
+                        <div>
+                          <label className="block text-slate-300 mb-1 font-semibold text-[11px] flex items-center justify-between">
+                            <span>Material / Insumo Solicitado <span className="text-rose-400">*</span></span>
+                            <span className="text-[10px] text-slate-400">
+                              Unidad: <strong className="text-cyan-400">{it.unit_measure}</strong>
+                            </span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej: CHAPA NAVAL 1/4', ELECTRODO CONARCO 7018..."
+                            value={it.material_name_raw}
+                            onChange={(e) => handleItemChange(idx, 'material_name_raw', e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white text-xs font-medium focus:outline-none focus:border-cyan-500"
+                            required
+                          />
+
+                          {/* Sugerencias de Catálogo si escribe */}
+                          {it.material_name_raw && !it.material_id && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {materials
+                                .filter((m) => m.name.toLowerCase().includes(it.material_name_raw.toLowerCase()))
+                                .slice(0, 3)
+                                .map((m) => (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    tabIndex={-1}
+                                    onClick={() => handleSelectCatalogMaterial(idx, m)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-cyan-950 border border-slate-700 text-[10px] text-slate-300 hover:text-cyan-300 transition-colors"
+                                  >
+                                    ✓ {m.name} ({m.unit_measure || 'un.'})
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Cantidad y Unidad Automática Bloqueada */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div>
+                            <label className="block text-slate-400 mb-1 font-bold text-[10px]">Cantidad</label>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0.01"
+                              value={it.quantity}
+                              onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-500 text-xs"
+                              required
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 mb-1 font-bold text-[10px]">Unidad</label>
+                            <input
+                              type="text"
+                              tabIndex={-1}
+                              value={it.unit_measure}
+                              disabled
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-cyan-300 font-bold text-center cursor-not-allowed uppercase text-xs"
+                              title="Deducida automáticamente por reglas de nomenclatura"
+                            />
+                          </div>
+
+                          {/* Campos de Costo y Proveedor: solo visibles en Modo Completo */}
+                          {viewMode === 'completa' && (
+                            <>
+                              <div>
+                                <label className="block text-slate-400 mb-1 font-bold text-[10px]">Proveedor</label>
+                                <select
+                                  value={it.supplier_id}
+                                  onChange={(e) => handleItemChange(idx, 'supplier_id', e.target.value)}
+                                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-cyan-500"
+                                >
+                                  <option value="">-- Sin Proveedor --</option>
+                                  {suppliers.map((s) => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-slate-400 mb-1 font-bold text-[10px]">$/U Cotiz. AR$</label>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  placeholder="$0"
+                                  value={it.supplier_quoted_price}
+                                  onChange={(e) => handleItemChange(idx, 'supplier_quoted_price', e.target.value)}
+                                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white font-mono text-right text-xs focus:outline-none focus:border-cyan-500"
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Observaciones del Renglón */}
+                        <div>
+                          <input
+                            type="text"
+                            placeholder="Observaciones de este material (medida específica, espesor, urgencia)..."
+                            value={it.observations}
+                            onChange={(e) => handleItemChange(idx, 'observations', e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Botones de acción */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800 shrink-0">
+          {/* Botones de acción fijos */}
+          <div className="alon-modal-footer">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors cursor-pointer"
+              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold rounded-lg transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
+              className="px-5 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
             >
               {saving ? 'Guardando...' : order ? 'Actualizar Pedido' : `Registrar ${items.length} Materiales`}
             </button>
@@ -6560,223 +6570,326 @@ function SupplierModal({ supplier, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-cyan-400" />
-            {supplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
-          </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="alon-modal-card max-w-5xl">
+        <div className="alon-modal-header">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Building2 className="w-5 h-5 text-cyan-400 shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-black text-white truncate">
+                {supplier ? `Editar Proveedor: ${supplier.name}` : 'Registrar Nuevo Proveedor'}
+              </h3>
+              <p className="text-[11px] text-slate-400 truncate">
+                Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Datos & Rubros ➔ 2° Contacto ➔ 3° Facturación ➔ 4° Gases P-02.
+              </p>
+            </div>
+          </div>
+          <button type="button" tabIndex={-1} onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0">
+            ✕
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          <div>
-            <label className="block text-slate-400 mb-1 font-semibold">Nombre / Razón Social</label>
-            <input
-              type="text"
-              placeholder="Ej: FERREMAT, AIR LIQUIDE, CASA CARLITOS..."
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-bold uppercase focus:outline-none focus:border-cyan-500"
-              required
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div className="alon-modal-body">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
+              {/* COLUMNA IZQUIERDA: BLOQUES 1 Y 2 */}
+              <div className="space-y-3">
+                {/* BLOQUE 1: IDENTIFICACIÓN Y RUBROS (BORDE SKY / CIAN) */}
+                <div className="alon-chunk-sky space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
+                    <span className="font-black text-sky-400 uppercase tracking-wider text-[11px]">
+                      1. Identificación y Rubros del Proveedor
+                    </span>
+                    <span className="text-[10px] text-cyan-400 font-bold">{selectedTrades.length} rubros activos</span>
+                  </div>
 
-          {/* COMBOBOX MULTI-RUBRO (CHIPS + ESCRIBIR NUEVO) */}
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-            <label className="block text-slate-400 font-semibold flex items-center justify-between">
-              <span>Rubros Asignados (Multi-Selección)</span>
-              <span className="text-[10px] text-cyan-400 font-bold">{selectedTrades.length} seleccionados</span>
-            </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">
+                        Nombre / Razón Social <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Ej: FERREMAT, AIR LIQUIDE, CASA CARLITOS..."
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold uppercase focus:outline-none focus:border-cyan-500 text-xs"
+                        required
+                      />
+                    </div>
 
-            {/* Chips de rubros seleccionados */}
-            <div className="flex flex-wrap gap-1.5 min-h-[28px] p-1.5 bg-slate-900 rounded-lg border border-slate-800">
-              {selectedTrades.length === 0 ? (
-                <span className="text-[11px] text-slate-500 italic">Selecciona rubros abajo o escribe uno nuevo</span>
-              ) : (
-                selectedTrades.map((t, idx) => (
-                  <span
-                    key={idx}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold"
-                  >
-                    <span>{t}</span>
-                    <button type="button" onClick={() => handleToggleTrade(t)} className="text-cyan-400 hover:text-white">✕</button>
-                  </span>
-                ))
-              )}
-            </div>
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">CUIT / CUIL</label>
+                      <input
+                        type="text"
+                        placeholder="30-50014764-9"
+                        value={cuitCuil}
+                        onChange={(e) => setCuitCuil(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-500 text-xs"
+                      />
+                    </div>
+                  </div>
 
-            {/* Rubros comunes para tildar rápido */}
-            <div className="flex flex-wrap gap-1 pt-1">
-              {STANDARD_TRADES.map((st) => {
-                const isChecked = selectedTrades.includes(st)
-                return (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => handleToggleTrade(st)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
-                      isChecked
-                        ? 'bg-cyan-500 text-slate-950 font-bold'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {isChecked ? `✓ ${st}` : `+ ${st}`}
-                  </button>
-                )
-              })}
-            </div>
+                  {/* COMBOBOX MULTI-RUBRO (CHIPS + ESCRIBIR NUEVO) */}
+                  <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 space-y-2">
+                    <label className="block text-slate-300 font-bold text-[10px] uppercase tracking-wider">
+                      Rubros Asignados (Multi-Selección Oficial)
+                    </label>
 
-            {/* Input para agregar nuevo rubro libre */}
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="text"
-                placeholder="Escribir otro rubro nuevo..."
-                value={newTradeInput}
-                onChange={(e) => setNewTradeInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleAddNewTrade()
-                  }
-                }}
-                className="flex-1 bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-1 text-xs text-white uppercase"
-              />
-              <button
-                type="button"
-                onClick={handleAddNewTrade}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-semibold"
-              >
-                + Agregar
-              </button>
-            </div>
-          </div>
+                    {/* Chips de rubros seleccionados */}
+                    <div className="flex flex-wrap gap-1 min-h-[26px] p-1.5 bg-slate-950 rounded-lg border border-slate-800">
+                      {selectedTrades.length === 0 ? (
+                        <span className="text-[10px] text-slate-500 italic">Selecciona rubros abajo o escribe uno nuevo</span>
+                      ) : (
+                        selectedTrades.map((t, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold"
+                          >
+                            <span>{t}</span>
+                            <button type="button" tabIndex={-1} onClick={() => handleToggleTrade(t)} className="text-cyan-400 hover:text-white cursor-pointer">✕</button>
+                          </span>
+                        ))
+                      )}
+                    </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">CUIT / CUIL</label>
-              <input
-                type="text"
-                placeholder="30-50014764-9"
-                value={cuitCuil}
-                onChange={(e) => setCuitCuil(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
-              />
-            </div>
+                    {/* Rubros comunes para tildar rápido */}
+                    <div className="flex flex-wrap gap-1">
+                      {STANDARD_TRADES.map((st) => {
+                        const isChecked = selectedTrades.includes(st)
+                        return (
+                          <button
+                            key={st}
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() => handleToggleTrade(st)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
+                              isChecked
+                                ? 'bg-cyan-500 text-slate-950 font-bold'
+                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {isChecked ? `✓ ${st}` : `+ ${st}`}
+                          </button>
+                        )
+                      })}
+                    </div>
 
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Teléfono / WhatsApp</label>
-              <input
-                type="text"
-                placeholder="+5492234810922"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Dirección Física (Mar del Plata)</label>
-              <input
-                type="text"
-                placeholder="Ej: Juan B. Justo 1420"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-            <div className="flex items-center pt-5">
-              <label className="flex items-center gap-2 text-slate-300 font-semibold cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isLocalSupplier}
-                  onChange={(e) => setIsLocalSupplier(e.target.checked)}
-                  className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500"
-                />
-                <span>🛵 Proveedor Local (Retiro por Mandado)</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Email</label>
-              <input
-                type="email"
-                placeholder="contacto@proveedor.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-400 mb-1 font-semibold">Forma de Pago</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
-              >
-                <option value="CUENTA_CORRIENTE">Cuenta Corriente</option>
-                <option value="CONTADO">Contado / Transferencia</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Parámetros de Gases P-02 */}
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-3">
-            <label className="flex items-center gap-2 text-white font-semibold cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isGasSupplier}
-                onChange={(e) => setIsGasSupplier(e.target.checked)}
-                className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500"
-              />
-              <span>💨 Es Proveedor de Gases Industriales (Regla P-02)</span>
-            </label>
-
-            {isGasSupplier && (
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800 text-[11px]">
-                <div>
-                  <label className="block text-slate-400 mb-1">N° Cliente</label>
-                  <input
-                    type="text"
-                    placeholder="2234867"
-                    value={clientNumber}
-                    onChange={(e) => setClientNumber(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono"
-                  />
+                    {/* Input para agregar nuevo rubro libre */}
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <input
+                        type="text"
+                        placeholder="Escribir otro rubro nuevo..."
+                        value={newTradeInput}
+                        onChange={(e) => setNewTradeInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleAddNewTrade()
+                          }
+                        }}
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white uppercase focus:outline-none focus:border-cyan-500"
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={handleAddNewTrade}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded text-[11px] font-bold cursor-pointer shrink-0"
+                      >
+                        + Agregar
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-slate-400 mb-1">Día Corte Pedido</label>
-                  <input
-                    type="text"
-                    placeholder="Martes <12hs"
-                    value={orderCutoffDay}
-                    onChange={(e) => setOrderCutoffDay(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 mb-1">Día de Entrega</label>
-                  <input
-                    type="text"
-                    placeholder="Miércoles"
-                    value={deliveryDay}
-                    onChange={(e) => setDeliveryDay(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white"
-                  />
+
+                {/* BLOQUE 2: CONTACTO Y UBICACIÓN (BORDE ÍNDIGO) */}
+                <div className="alon-chunk-indigo space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
+                    <span className="font-black text-indigo-400 uppercase tracking-wider text-[11px]">
+                      2. Contacto, Mensajería y Ubicación
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Persona de Contacto</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Marcelo / Vendedor"
+                        value={contactName}
+                        onChange={(e) => setContactName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Teléfono / WhatsApp</label>
+                      <input
+                        type="text"
+                        placeholder="+5492234810922"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Email de Facturación / Pedidos</label>
+                      <input
+                        type="email"
+                        placeholder="contacto@proveedor.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Dirección Física (MdP)</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Juan B. Justo 1420"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2 pt-1">
+                      <label className="flex items-center gap-2 text-slate-300 font-bold cursor-pointer text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={isLocalSupplier}
+                          onChange={(e) => setIsLocalSupplier(e.target.checked)}
+                          className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500 w-3.5 h-3.5"
+                        />
+                        <span>🛵 Proveedor Local (Retiro Directo por Mandado en Mar del Plata)</span>
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
+
+              {/* COLUMNA DERECHA: BLOQUES 3 Y 4 */}
+              <div className="space-y-3">
+                {/* BLOQUE 3: CONDICIONES COMERCIALES Y FACTURACIÓN (BORDE ESMERALDA) */}
+                <div className="alon-chunk-emerald space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
+                    <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px]">
+                      3. Condiciones Comerciales y Facturación
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Forma de Pago</label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-emerald-500 font-bold text-xs"
+                      >
+                        <option value="CUENTA_CORRIENTE">Cuenta Corriente</option>
+                        <option value="CONTADO">Contado / Transferencia</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Medio de Facturación</label>
+                      <select
+                        value={billingMedium}
+                        onChange={(e) => setBillingMedium(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-emerald-500 text-xs"
+                      >
+                        <option value="EMAIL">Email</option>
+                        <option value="PORTAL">Portal / Web AFIP</option>
+                        <option value="PAPEL">Físico / Remito Papel</option>
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Observaciones Generales</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Condiciones de entrega, descuentos, cuenta bancaria..."
+                        value={observations}
+                        onChange={(e) => setObservations(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* BLOQUE 4: PARÁMETROS ESPECIALES DE GASES INDUSTRIALES (BORDE PÚRPURA) */}
+                <div className="alon-chunk-purple space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-purple-500/20 pb-1">
+                    <span className="font-black text-purple-400 uppercase tracking-wider text-[11px]">
+                      4. Gases Industriales y Tubos (Regla P-02)
+                    </span>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-white font-bold cursor-pointer text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={isGasSupplier}
+                      onChange={(e) => setIsGasSupplier(e.target.checked)}
+                      className="rounded border-slate-700 text-purple-500 focus:ring-purple-400 w-3.5 h-3.5"
+                    />
+                    <span>💨 Es Proveedor de Gases Industriales (Air Liquide, etc.)</span>
+                  </label>
+
+                  {isGasSupplier && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-purple-500/30 text-xs">
+                      <div>
+                        <label className="block text-slate-400 mb-1 font-bold text-[10px]">N° Cliente</label>
+                        <input
+                          type="text"
+                          placeholder="2234867"
+                          value={clientNumber}
+                          onChange={(e) => setClientNumber(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 mb-1 font-bold text-[10px]">Día Corte Pedido</label>
+                        <input
+                          type="text"
+                          placeholder="Martes <12hs"
+                          value={orderCutoffDay}
+                          onChange={(e) => setOrderCutoffDay(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 mb-1 font-bold text-[10px]">Día Entrega</label>
+                        <input
+                          type="text"
+                          placeholder="Miércoles"
+                          value={deliveryDay}
+                          onChange={(e) => setDeliveryDay(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancelar</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-lg">
+          <div className="alon-modal-footer">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-5 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-black rounded-xl cursor-pointer transition-all shadow-md shadow-cyan-600/30"
+            >
               {saving ? 'Guardando...' : supplier ? 'Guardar Cambios' : 'Registrar Proveedor'}
             </button>
           </div>

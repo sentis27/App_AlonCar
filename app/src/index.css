@@ -39,17 +39,27 @@
     box-shadow: 0 8px 24px -6px rgba(99, 102, 241, 0.12);
   }
 
-  /* ZONA 3: Barra de Búsqueda, Filtros y Comandos Grid (Acento Cian) */
+  /* BLOQUE OPERATIVO UNIFICADO: Ancla Zona 3 + Zona 4 como UN SOLO BLOQUE inamovible */
+  .alon-workspace-block {
+    @apply sticky top-0 z-20 flex flex-col gap-2.5;
+  }
+
+  /* ZONA 3: Barra de Búsqueda, Filtros y Comandos Grid (Acento Cian — Solidaria con Zona 4) */
   .alon-zone-toolbar {
-    @apply relative rounded-2xl p-3.5 border border-cyan-500/35 border-l-4 border-l-cyan-400 shadow-lg;
-    background: linear-gradient(135deg, rgba(22, 78, 99, 0.34) 0%, rgba(15, 23, 42, 0.95) 50%, rgba(15, 23, 42, 0.92) 100%);
-    box-shadow: 0 8px 24px -6px rgba(6, 182, 212, 0.12);
+    @apply sticky top-0 z-30 rounded-2xl p-3 border border-cyan-500/40 border-l-4 border-l-cyan-400 shadow-xl backdrop-blur-md;
+    background: linear-gradient(135deg, rgba(14, 58, 76, 0.96) 0%, rgba(15, 23, 42, 0.98) 50%, rgba(2, 6, 23, 0.98) 100%);
+    box-shadow: 0 10px 28px -6px rgba(6, 182, 212, 0.18);
   }
 
   /* ZONA 4: Planilla / Hoja de Cálculo Editable (Acento Esmeralda) */
   .alon-zone-grid {
     @apply relative rounded-2xl overflow-hidden border border-emerald-500/30 border-t-2 border-t-emerald-400/80 bg-slate-950/95 shadow-2xl;
     box-shadow: 0 12px 32px -8px rgba(16, 185, 129, 0.12);
+  }
+
+  /* Contenedor de Scroll Interno Tabulado de la Planilla (Único scroll vertical de datos) */
+  .alon-grid-scroll {
+    @apply w-full overflow-y-auto overflow-x-auto max-h-[calc(100vh-340px)] relative focus:outline-none;
   }
 
   /* Cinta superior informativa de la Hoja de Cálculo */
@@ -61,5 +71,55 @@
   /* Encabezado fijo (Sticky Header) diferenciado de las filas de datos */
   .alon-grid-thead {
     @apply sticky top-0 z-20 bg-slate-900 text-[10px] uppercase font-extrabold text-emerald-200/90 tracking-wider border-b-2 border-emerald-500/40 shadow-sm backdrop-blur-md;
+  }
+
+  /* ==========================================================================
+     ESTÁNDAR DE SUBMENÚS Y MODALES DE CARGA (CHROMA-CHUNKING & VIEWPORT BUDGET)
+     Divide visualmente cada bloque funcional por color y mantiene el pie fijo.
+     ========================================================================== */
+  .alon-modal-card {
+    @apply w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh];
+  }
+
+  .alon-modal-header {
+    @apply px-5 py-3 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between shrink-0;
+  }
+
+  .alon-modal-body {
+    @apply p-4 overflow-y-auto flex-1;
+  }
+
+  .alon-modal-footer {
+    @apply px-5 py-3 border-t border-slate-800 bg-slate-950/95 flex items-center justify-between gap-3 shrink-0 sticky bottom-0 z-20;
+  }
+
+  .alon-chunk-amber {
+    @apply p-3.5 rounded-xl bg-slate-950/90 border border-amber-500/40 border-l-4 border-l-amber-400 shadow-md;
+    background: linear-gradient(135deg, rgba(120, 53, 15, 0.16) 0%, rgba(2, 6, 23, 0.95) 60%);
+  }
+
+  .alon-chunk-rose {
+    @apply p-3.5 rounded-xl bg-slate-950/90 border border-rose-500/40 border-l-4 border-l-rose-400 shadow-md;
+    background: linear-gradient(135deg, rgba(136, 19, 55, 0.16) 0%, rgba(2, 6, 23, 0.95) 60%);
+  }
+
+  .alon-chunk-indigo {
+    @apply p-3.5 rounded-xl bg-slate-950/90 border border-indigo-500/40 border-l-4 border-l-indigo-400 shadow-md;
+    background: linear-gradient(135deg, rgba(49, 46, 129, 0.18) 0%, rgba(2, 6, 23, 0.95) 60%);
+  }
+
+  .alon-chunk-emerald {
+    @apply p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/40 border-l-4 border-l-emerald-400 shadow-md;
+    background: linear-gradient(135deg, rgba(6, 78, 59, 0.18) 0%, rgba(2, 6, 23, 0.95) 60%);
+  }
+
+  .alon-chunk-purple {
+    @apply p-3.5 rounded-xl bg-slate-950/90 border border-purple-500/40 border-l-4 border-l-purple-400 shadow-md;
+    background: linear-gradient(135deg, rgba(88, 28, 135, 0.18) 0%, rgba(2, 6, 23, 0.95) 60%);
+  }
+
+  .alon-chunk-sky {
+    @apply p-3.5 rounded-xl bg-slate-950/90 border border-sky-500/40 border-l-4 border-l-sky-400 shadow-md;
+    background: linear-gradient(135deg, rgba(12, 74, 110, 0.2) 0%, rgba(2, 6, 23, 0.95) 60%);
   }
 }
