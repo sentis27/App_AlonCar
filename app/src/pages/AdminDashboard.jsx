@@ -47,7 +47,9 @@ import {
   ShoppingCart,
   MessageSquare,
   Wrench,
-  History
+  History,
+  CheckSquare,
+  Square
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -1743,6 +1745,7 @@ export default function AdminDashboard() {
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
+                    <th className="py-2.5 px-2 w-10 text-center font-bold text-slate-400 bg-slate-900 border-b border-r border-slate-750">#</th>
                     <th className="py-2.5 px-3">Mes y Año</th>
                     <th className="py-2.5 px-3 text-right">Dólar Referencia ($ / USD)</th>
                     <th className="py-2.5 px-3 text-center">Inflación Mensual (%)</th>
@@ -1755,12 +1758,12 @@ export default function AdminDashboard() {
                 <tbody className="divide-y divide-slate-800/60 font-medium">
                   {macroVariables.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-500">
+                      <td colSpan={8} className="py-8 text-center text-slate-500">
                         No hay variables macroeconómicas cargadas aún. Utiliza el formulario superior para crear la primera.
                       </td>
                     </tr>
                   ) : (
-                    macroVariables.map(item => {
+                    macroVariables.map((item, idx) => {
                       const monthName = MONTH_NAMES[item.month - 1]
                       const q1Key = `${item.year}-${String(item.month).padStart(2, '0')}-1Q`
                       const q2Key = `${item.year}-${String(item.month).padStart(2, '0')}-2Q`
@@ -1770,6 +1773,16 @@ export default function AdminDashboard() {
 
                       return (
                         <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-2.5 px-2 w-10 text-center border-r border-slate-800/80 bg-slate-900/50 font-mono text-[11px] text-slate-500">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenMacroModal(item)}
+                              className="hover:text-cyan-300 hover:bg-slate-800 px-1 py-0.5 rounded font-bold cursor-pointer transition-colors"
+                              title="Clic para editar parámetros de este mes"
+                            >
+                              {idx + 1}
+                            </button>
+                          </td>
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -1861,14 +1874,22 @@ export default function AdminDashboard() {
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
-                    <th className="py-2.5 px-3 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={ratePeriods.length > 0 && selectedPeriods.size === ratePeriods.length}
-                        onChange={toggleSelectAllPeriods}
-                        className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                        title="Seleccionar todas las quincenas"
-                      />
+                    <th className="py-2.5 px-2 w-10 text-center font-bold text-slate-400 bg-slate-900 border-b border-r border-slate-750">
+                      <div className="flex flex-col items-center justify-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={toggleSelectAllPeriods}
+                          className="text-slate-400 hover:text-cyan-300 transition-colors"
+                          title="Seleccionar todas las quincenas"
+                        >
+                          {ratePeriods.length > 0 && selectedPeriods.size === ratePeriods.length ? (
+                            <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <span className="text-[10px] text-slate-500 font-mono">#</span>
+                      </div>
                     </th>
                     <th className="py-2.5 px-3">Quincena (Período)</th>
                     <th className="py-2.5 px-3 text-right">Dólar Quincenal (AR$/USD)</th>
@@ -1887,7 +1908,7 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ) : (
-                    ratePeriods.map(p => {
+                    ratePeriods.map((p, pIdx) => {
                       const hasRates = p.rates_count > 0
                       const isSelected = selectedPeriods.has(p.period)
 
@@ -1896,15 +1917,40 @@ export default function AdminDashboard() {
                           key={p.period} 
                           className={`hover:bg-slate-800/30 transition-colors ${isSelected ? 'bg-cyan-950/20' : ''}`}
                         >
-                          {/* Checkbox de selección manual */}
-                          <td className="py-3 px-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleSelectPeriod(p.period)}
-                              className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                              title={`Seleccionar quincena ${p.period}`}
-                            />
+                          {/* Columna 0 Canónica: Checkbox apilado sobre botón # interactivo */}
+                          <td className="py-2 px-2 w-10 text-center border-r border-slate-800/80 bg-slate-900/50">
+                            <div className="flex flex-col items-center justify-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleSelectPeriod(p.period)
+                                }}
+                                className="text-slate-400 hover:text-cyan-300 transition-colors"
+                                title={isSelected ? 'Deseleccionar quincena' : 'Seleccionar quincena'}
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                                ) : (
+                                  <Square className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleOpenQuincenaDollar(p)
+                                }}
+                                className={`text-[10px] font-mono px-1 py-0.5 rounded transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-cyan-950/60 text-cyan-300 font-bold border border-cyan-800'
+                                    : 'text-slate-500 hover:text-cyan-400 hover:bg-slate-800'
+                                }`}
+                                title={`Clic para ajustar cotización de dólar de ${p.period}`}
+                              >
+                                {pIdx + 1}
+                              </button>
+                            </div>
                           </td>
 
                           {/* Quincena */}

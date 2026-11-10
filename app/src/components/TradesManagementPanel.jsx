@@ -11,7 +11,10 @@ import {
   X,
   HardHat,
   RefreshCw,
-  Check
+  Check,
+  CheckSquare,
+  Square,
+  Copy
 } from 'lucide-react'
 import {
   fetchTradesCatalog,
@@ -40,6 +43,26 @@ export default function TradesManagementPanel() {
 
   const [deletingTrade, setDeletingTrade] = useState(null)
   const [reassignTrade, setReassignTrade] = useState('')
+
+  // Selección múltiple para gestión matricial y exportación
+  const [selectedTrades, setSelectedTrades] = useState(new Set())
+
+  const toggleSelectAllTrades = () => {
+    if (filteredTradeStats.length > 0 && selectedTrades.size === filteredTradeStats.length) {
+      setSelectedTrades(new Set())
+    } else {
+      setSelectedTrades(new Set(filteredTradeStats.map(s => s.trade)))
+    }
+  }
+
+  const toggleSelectTrade = (trade) => {
+    setSelectedTrades(prev => {
+      const next = new Set(prev)
+      if (next.has(trade)) next.delete(trade)
+      else next.add(trade)
+      return next
+    })
+  }
 
   useEffect(() => {
     loadCatalog()
@@ -289,12 +312,59 @@ export default function TradesManagementPanel() {
           </span>
         </div>
 
+        {/* BARRA DE ACCIONES MASIVAS AL SELECCIONAR RUBROS */}
+        {selectedTrades.size > 0 && (
+          <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 flex items-center justify-between text-xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-amber-300 font-mono">{selectedTrades.size}</span>
+              <span className="text-slate-300">rubros seleccionados</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const text = Array.from(selectedTrades).join(', ')
+                  navigator.clipboard.writeText(text)
+                  showFeedback('success', `${selectedTrades.size} rubros copiados al portapapeles.`)
+                }}
+                className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copiar Nombres</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedTrades(new Set())}
+                className="px-2.5 py-1 text-slate-400 hover:text-white text-xs cursor-pointer"
+              >
+                Limpiar selección
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* TABLA DE RUBROS */}
         <div className="overflow-x-auto rounded-xl border border-slate-800">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="py-2.5 px-3 w-10 text-center">#</th>
+                <th className="py-2.5 px-2 w-10 text-center font-bold text-slate-400 bg-slate-950 border-r border-slate-850">
+                  <div className="flex flex-col items-center justify-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllTrades}
+                      className="text-slate-400 hover:text-amber-300 transition-colors"
+                      title="Seleccionar todos los rubros visibles"
+                    >
+                      {filteredTradeStats.length > 0 && selectedTrades.size === filteredTradeStats.length ? (
+                        <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                      ) : (
+                        <Square className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    <span className="text-[10px] text-slate-500 font-mono">#</span>
+                  </div>
+                </th>
                 <th className="py-2.5 px-4">Nombre del Rubro</th>
                 <th className="py-2.5 px-4 text-center">Operarios Asignados</th>
                 <th className="py-2.5 px-4">Distribución por Centro</th>
@@ -318,10 +388,44 @@ export default function TradesManagementPanel() {
               ) : (
                 filteredTradeStats.map((stat, idx) => {
                   const inUse = stat.total > 0
+                  const isSelected = selectedTrades.has(stat.trade)
                   return (
-                    <tr key={stat.trade} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-2.5 px-3 text-center text-slate-500 font-mono text-[11px]">
-                        {idx + 1}
+                    <tr key={stat.trade} className={`transition-colors ${isSelected ? 'bg-amber-950/20' : 'hover:bg-slate-800/30'}`}>
+                      {/* Columna 0 Canónica: Checkbox apilado sobre botón # interactivo */}
+                      <td className="py-2 px-2 w-10 text-center border-r border-slate-800/80 bg-slate-950/50">
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleSelectTrade(stat.trade)
+                            }}
+                            className="text-slate-400 hover:text-amber-300 transition-colors"
+                            title={isSelected ? 'Deseleccionar rubro' : 'Seleccionar rubro'}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingTrade(stat)
+                              setEditedName(stat.trade)
+                            }}
+                            className={`text-[10px] font-mono px-1 py-0.5 rounded transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-amber-950/80 text-amber-300 font-bold border border-amber-800'
+                                : 'text-slate-500 hover:text-amber-400 hover:bg-slate-800'
+                            }`}
+                            title={`Clic para editar rubro "${stat.trade}"`}
+                          >
+                            {idx + 1}
+                          </button>
+                        </div>
                       </td>
                       <td className="py-2.5 px-4">
                         <span className="font-extrabold text-white text-xs tracking-wide">

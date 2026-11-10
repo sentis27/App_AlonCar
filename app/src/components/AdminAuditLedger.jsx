@@ -15,7 +15,9 @@ import {
   CheckCircle2,
   ExternalLink,
   Layers,
-  Database
+  Database,
+  Copy,
+  X
 } from 'lucide-react'
 import {
   auditService,
@@ -38,6 +40,7 @@ export default function AdminAuditLedger() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedLogDetail, setSelectedLogDetail] = useState(null)
 
   const loadAuditLedger = useCallback(async () => {
     try {
@@ -424,8 +427,15 @@ export default function AdminAuditLedger() {
 
                     return (
                       <tr key={log.id || idx} className="hover:bg-slate-900/70 transition-colors">
-                        <td className="py-2 px-3 text-center font-mono text-[11px] text-slate-500">
-                          {idx + 1}
+                        <td className="py-2 px-2 w-10 text-center font-mono text-[11px] border-r border-slate-800/80 bg-slate-900/50">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedLogDetail(log)}
+                            className="px-1.5 py-0.5 rounded text-cyan-400 hover:text-white hover:bg-cyan-950/80 font-bold cursor-pointer transition-colors"
+                            title="Clic para inspeccionar payload JSON y ficha técnica del evento"
+                          >
+                            #{idx + 1}
+                          </button>
                         </td>
                         <td className="py-2 px-3 font-mono text-[11px] text-slate-300 whitespace-nowrap">
                           {formattedDate}
@@ -496,6 +506,94 @@ export default function AdminAuditLedger() {
             </table>
           </div>
         </div>
+
+        {/* MODAL DE INSPECCIÓN TÉCNICA DEL EVENTO DE AUDITORÍA */}
+        {selectedLogDetail && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                      AUDIT_ACTION_LABELS[selectedLogDetail.action]?.badge || 'bg-slate-800 text-slate-300'
+                    }`}>
+                      {AUDIT_ACTION_LABELS[selectedLogDetail.action]?.label || selectedLogDetail.action}
+                    </span>
+                    <h3 className="text-sm font-bold text-white font-mono">
+                      {selectedLogDetail.entity_name || selectedLogDetail.entity_id}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Planilla: <strong className="text-cyan-300">{AUDIT_ENTITY_CATALOG[selectedLogDetail.entity_type]?.label || selectedLogDetail.entity_type}</strong> • Por: <span className="text-white font-semibold">{selectedLogDetail.performed_by || 'Sistema'}</span> • {new Date(selectedLogDetail.created_at).toLocaleString('es-AR')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLogDetail(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 overflow-y-auto flex-1 pr-1 text-xs">
+                {selectedLogDetail.details?.field && (
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Cambio Atómico</span>
+                    <div className="flex items-center gap-2 font-mono text-xs">
+                      <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-bold">
+                        {selectedLogDetail.details.field_label || selectedLogDetail.details.field}
+                      </span>
+                      <span className="line-through text-rose-400">
+                        {String(selectedLogDetail.details.old_value ?? '(vacío)')}
+                      </span>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      <span className="font-bold text-emerald-300">
+                        {String(selectedLogDetail.details.new_value ?? '(vacío)')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Payload JSON Completo</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(selectedLogDetail, null, 2))
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Copiar JSON</span>
+                    </button>
+                  </div>
+                  <pre className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-300 overflow-x-auto max-h-60">
+                    {JSON.stringify(selectedLogDetail, null, 2)}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                <Link
+                  to={selectedLogDetail.details?.module_route || AUDIT_ENTITY_CATALOG[selectedLogDetail.entity_type]?.route || '/'}
+                  className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
+                >
+                  <span>Ir a la planilla correspondiente</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLogDetail(null)}
+                  className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
