@@ -23,6 +23,8 @@ import {
   AUDIT_ACTION_LABELS
 } from '../lib/auditService'
 import { exportToSpreadsheet } from '../lib/exportEngine'
+import HighlightText from './HighlightText'
+import { matchesUniversalSearch } from '../lib/searchEngine'
 
 export default function AdminAuditLedger() {
   const [logs, setLogs] = useState([])
@@ -71,19 +73,22 @@ export default function AdminAuditLedger() {
     return Array.from(set).sort()
   }, [logs])
 
-  // Filtrado instantáneo por buscador de texto
+  // Filtrado instantáneo por buscador de texto omnicanal (Estándar 03)
   const filteredLogs = useMemo(() => {
     if (!searchQuery.trim()) return logs
-    const q = searchQuery.trim().toLowerCase()
     return logs.filter((log) => {
       const entityLabel = AUDIT_ENTITY_CATALOG[log.entity_type]?.label || log.entity_type || ''
       const detailsStr = log.details ? JSON.stringify(log.details) : ''
-      return (
-        String(log.entity_name || '').toLowerCase().includes(q) ||
-        String(log.performed_by || '').toLowerCase().includes(q) ||
-        String(log.action || '').toLowerCase().includes(q) ||
-        entityLabel.toLowerCase().includes(q) ||
-        detailsStr.toLowerCase().includes(q)
+      return matchesUniversalSearch(
+        log,
+        searchQuery,
+        {
+          entityLabel,
+          detailsStr,
+          performed_by: log.performed_by,
+          action: log.action,
+          entity_name: log.entity_name
+        }
       )
     })
   }, [logs, searchQuery])
@@ -427,36 +432,40 @@ export default function AdminAuditLedger() {
                         </td>
                         <td className="py-2 px-3">
                           <span className="font-semibold text-cyan-300 text-[11px]">
-                            {sheetName}
+                            <HighlightText text={sheetName} query={searchQuery} />
                           </span>
                         </td>
                         <td className="py-2 px-3 font-mono text-[11px] text-slate-200">
-                          {log.performed_by || 'Sistema'}
+                          <HighlightText text={log.performed_by || 'Sistema'} query={searchQuery} />
                         </td>
                         <td className="py-2 px-3">
                           <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border inline-block ${actionMeta.badge}`}>
-                            {actionMeta.label}
+                            <HighlightText text={actionMeta.label} query={searchQuery} />
                           </span>
                         </td>
                         <td className="py-2 px-3 font-bold text-white max-w-[200px] truncate" title={log.entity_name || log.entity_id}>
-                          {log.entity_name || log.entity_id || '—'}
+                          <HighlightText text={log.entity_name || log.entity_id || '—'} query={searchQuery} />
                         </td>
                         <td className="py-2 px-3 font-mono text-[11px]">
                           {hasFieldDiff ? (
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] font-bold">
-                                {d.field_label || d.field || 'Campo'}
+                                <HighlightText text={d.field_label || d.field || 'Campo'} query={searchQuery} />
                               </span>
                               <span className="px-1.5 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/50 line-through max-w-[180px] truncate">
-                                {d.old_value !== null && d.old_value !== undefined && String(d.old_value) !== ''
-                                  ? String(d.old_value)
-                                  : '(vacío)'}
+                                {d.old_value !== null && d.old_value !== undefined && String(d.old_value) !== '' ? (
+                                  <HighlightText text={String(d.old_value)} query={searchQuery} />
+                                ) : (
+                                  '(vacío)'
+                                )}
                               </span>
                               <ArrowRight className="w-3 h-3 text-slate-500 shrink-0" />
                               <span className="px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold max-w-[220px] truncate">
-                                {d.new_value !== null && d.new_value !== undefined && String(d.new_value) !== ''
-                                  ? String(d.new_value)
-                                  : '(vacío)'}
+                                {d.new_value !== null && d.new_value !== undefined && String(d.new_value) !== '' ? (
+                                  <HighlightText text={String(d.new_value)} query={searchQuery} />
+                                ) : (
+                                  '(vacío)'
+                                )}
                               </span>
                             </div>
                           ) : d.changes ? (

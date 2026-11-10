@@ -55,30 +55,7 @@ import AiGovernancePanel from '../components/AiGovernancePanel'
 import ComprasSettingsPanel from '../components/ComprasSettingsPanel'
 import TradesManagementPanel from '../components/TradesManagementPanel'
 import AdminAuditLedger from '../components/AdminAuditLedger'
-
-// ==============================================================================
-// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
-// ==============================================================================
-function HighlightText({ text, query, className = '' }) {
-  if (!text) return null
-  if (!query || !query.trim()) return <span className={className}>{text}</span>
-
-  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
-  return (
-    <span className={className}>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.trim().toLowerCase() ? (
-          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </span>
-  )
-}
+import HighlightText from '../components/HighlightText'
 
 
 // Módulos del sistema controlables en la matriz de seguridad

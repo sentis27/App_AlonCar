@@ -19,6 +19,8 @@ import {
   renameMasterTrade,
   deleteMasterTrade
 } from '../lib/tradesCatalog'
+import HighlightText from './HighlightText'
+import { matchesUniversalSearch } from '../lib/searchEngine'
 
 export default function TradesManagementPanel() {
   const [workers, setWorkers] = useState([])
@@ -63,11 +65,10 @@ export default function TradesManagementPanel() {
     }
   }
 
-  // Filtrado para búsqueda rápida en grilla
+  // Filtrado para búsqueda rápida en grilla (Estándar 03)
   const filteredTradeStats = useMemo(() => {
     if (!searchTerm.trim()) return tradeStats
-    const term = searchTerm.trim().toUpperCase()
-    return tradeStats.filter(s => s.trade.includes(term))
+    return tradeStats.filter(s => matchesUniversalSearch(s.trade, searchTerm))
   }, [tradeStats, searchTerm])
 
   const totalAssignedWorkers = useMemo(() => {
@@ -324,7 +325,7 @@ export default function TradesManagementPanel() {
                       </td>
                       <td className="py-2.5 px-4">
                         <span className="font-extrabold text-white text-xs tracking-wide">
-                          {stat.trade}
+                          <HighlightText text={stat.trade} query={searchTerm} />
                         </span>
                       </td>
                       <td className="py-2.5 px-4 text-center">

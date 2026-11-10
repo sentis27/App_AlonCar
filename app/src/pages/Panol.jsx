@@ -8,7 +8,8 @@ import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
-import { buildUniversalSearchCorpus, normalizeSearchText } from '../lib/searchEngine'
+import HighlightText from '../components/HighlightText'
+import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
 import {
   Package,
   Plus,
@@ -68,32 +69,6 @@ import {
   evaluateAllocationState
 } from '../lib/allocationEngine'
 
-// ==============================================================================
-// COMPONENTE AUXILIAR: Resaltador de coincidencias de búsqueda en amarillo
-// ==============================================================================
-function HighlightText({ text, query }) {
-  if (!text) return null
-  const textStr = String(text)
-  if (!query || !query.trim()) return <span>{textStr}</span>
-
-  const q = query.trim().toLowerCase()
-  const idx = textStr.toLowerCase().indexOf(q)
-  if (idx === -1) return <span>{textStr}</span>
-
-  const before = textStr.substring(0, idx)
-  const match = textStr.substring(idx, idx + q.length)
-  const after = textStr.substring(idx + q.length)
-
-  return (
-    <span>
-      {before}
-      <mark className="bg-amber-400 text-slate-950 font-semibold px-0.5 rounded-xs">
-        {match}
-      </mark>
-      <HighlightText text={after} query={query} />
-    </span>
-  )
-}
 
 // Colores de insignias para % de Seguridad Naval
 function getSecurityFactorBadge(factor) {
@@ -541,23 +516,25 @@ export default function Panol() {
       }
 
       if (searchQuery.trim()) {
-        const q = normalizeSearchText(searchQuery)
         const ship = ships.find((s) => s.id === t.ship_id)
         const wo = workOrders.find((w) => w.id === t.work_order_id)
-        const corpus = buildUniversalSearchCorpus({
-          ...t,
-          ship_name: ship?.name || '',
-          vessel_type: ship?.vessel_type || '',
-          work_order_title: wo?.title || '',
-          work_order_description: wo?.description || '',
-          ot_number: wo?.ot_number || '',
-          material_name: mat?.name || '',
-          material_category: mat?.category || '',
-          material_rubro: mat?.rubro || '',
-          worker_name: t.worker_name || '',
-          contractor_name: t.contractor_name || ''
-        })
-        if (!corpus.includes(q)) return false
+        const match = matchesUniversalSearch(
+          t,
+          searchQuery,
+          {
+            ship_name: ship?.name || '',
+            vessel_type: ship?.vessel_type || '',
+            work_order_title: wo?.title || '',
+            work_order_description: wo?.description || '',
+            ot_number: wo?.ot_number || '',
+            material_name: mat?.name || '',
+            material_category: mat?.category || '',
+            material_rubro: mat?.rubro || '',
+            worker_name: t.worker_name || '',
+            contractor_name: t.contractor_name || ''
+          }
+        )
+        if (!match) return false
       }
 
       return true
@@ -2109,7 +2086,7 @@ export default function Panol() {
                                   className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] font-mono text-white focus:outline-none"
                                 />
                               ) : (
-                                <span>{dateVal || '—'}</span>
+                                <span><HighlightText text={dateVal || '—'} query={searchQuery} /></span>
                               )}
                               {cp.renderHandle && (
                                 <div
@@ -2192,9 +2169,11 @@ export default function Panol() {
                               {wo ? (
                                 <div className="truncate">
                                   <span className="font-mono text-cyan-300 font-bold bg-cyan-950/60 px-1 py-0.5 rounded border border-cyan-800/50 mr-1.5">
-                                    OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}
+                                    OT #<HighlightText text={wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} query={searchQuery} />
                                   </span>
-                                  <span className="text-slate-200 text-xs truncate">{wo.title || wo.description}</span>
+                                  <span className="text-slate-200 text-xs truncate">
+                                    <HighlightText text={wo.title || wo.description} query={searchQuery} />
+                                  </span>
                                 </div>
                               ) : (
                                 <div className="flex items-center justify-between gap-1">
@@ -2674,14 +2653,16 @@ export default function Panol() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {Object.entries(gasStats.contractorDebts).map(([cName, data]) => {
-                    const longHeld = gasStats.longHeldContractors.find((lh) => lh.contractor === cName)
-                    return (
-                      <tr key={cName} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-2.5 px-3 font-bold text-white flex items-center gap-2">
-                          <Building2 className="w-4 h-4 text-cyan-400" />
-                          <span>{cName}</span>
-                        </td>
+                  {Object.entries(gasStats.contractorDebts)
+                    .filter(([cName]) => !searchQuery.trim() || matchesUniversalSearch(cName, searchQuery))
+                    .map(([cName, data]) => {
+                      const longHeld = gasStats.longHeldContractors.find((lh) => lh.contractor === cName)
+                      return (
+                        <tr key={cName} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="py-2.5 px-3 font-bold text-white flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-cyan-400" />
+                            <span><HighlightText text={cName} query={searchQuery} /></span>
+                          </td>
                         <td className="py-2.5 px-3 text-center">
                           <span
                             className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-black text-xs ${
