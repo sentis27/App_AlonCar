@@ -69,6 +69,7 @@ import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import GridContextMenu from '../components/GridContextMenu'
+import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText } from '../lib/searchEngine'
@@ -1781,6 +1782,97 @@ export default function Compras() {
       return true
     })
   }, [suppliers, supplierKpiFilter, supplierSearchQuery])
+
+  // =========================================================
+  // HOOK DE GRILLA INDUSTRIAL CANÓNICA PARA PROVEEDORES
+  // =========================================================
+  const suppliersGridColumns = useMemo(() => [
+    { key: 'name', label: 'Proveedor / Razón Social', readOnly: false },
+    { key: 'trades', label: 'Rubros', readOnly: false },
+    { key: 'is_local_supplier', label: 'Local (MDP)', readOnly: false },
+    { key: 'cuit_cuil', label: 'CUIT / CUIL', readOnly: false },
+    { key: 'phone', label: 'Teléfono / WhatsApp', readOnly: false },
+    { key: 'email', label: 'Email', readOnly: false },
+    { key: 'payment_method', label: 'Pago', readOnly: false },
+    { key: 'observations', label: 'Notas / Observaciones', readOnly: false }
+  ], [])
+
+  const [supplierMenuTarget, setSupplierMenuTarget] = useState(null)
+  const suppliersPasteRef = useRef(null)
+
+  const SUPPLIERS_CLONE_FIELDS = [
+    'name', 'cuit_cuil', 'trade', 'trades', 'payment_method',
+    'billing_timing', 'billing_medium', 'late_billing_alert',
+    'contact_name', 'phone', 'email', 'address', 'observations',
+    'is_gas_supplier', 'client_number', 'order_cutoff_day', 'delivery_day',
+    'order_channel', 'enabled_purchases', 'enabled_third_party',
+    'enabled_materials', 'is_active', 'is_local_supplier'
+  ]
+  const SUPPLIERS_PASTE_FIELDS = [
+    'trade', 'trades', 'payment_method', 'cuit_cuil',
+    'phone', 'email', 'address', 'observations', 'is_local_supplier'
+  ]
+
+  const suppliersGrid = useSpreadsheetGrid({
+    rows: filteredSuppliers,
+    columns: suppliersGridColumns,
+    getRowId: (s) => s.id,
+    storageKey: 'aloncar_grid_suppliers',
+    onBatchUpdate: async (updates) => {
+      if (!updates || updates.length === 0) return
+      for (const u of updates) {
+        await saveSupplierInlineEdit(u.rowId, u.colKey, u.value)
+      }
+    },
+    onPasteRow: (args) => suppliersPasteRef.current?.(args),
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef || colDef.readOnly) return
+      setSupplierInlineEdit({
+        supplierId: row.id,
+        field: colDef.key,
+        value: colDef.key === 'trades'
+          ? (row.trades && row.trades.length > 0 ? row.trades.join(', ') : row.trade || '')
+          : (row[colDef.key] ?? '')
+      })
+    }
+  })
+
+  useEffect(() => {
+    suppliersPasteRef.current = buildPasteRowHandler({
+      table: 'suppliers',
+      entityType: 'suppliers',
+      fields: SUPPLIERS_PASTE_FIELDS,
+      grid: suppliersGrid,
+      setList: setSuppliers,
+      nameOf: (r) => r.name || r.id,
+      showFeedback: (type, text) => showFeedbackMsg(type, text),
+      user: user?.email || profile?.full_name || 'Compras'
+    })
+  })
+
+  const handleDuplicateSupplier = useCallback(async (sup) => {
+    if (!sup) return
+    try {
+      const copy = await duplicateRecord({
+        table: 'suppliers',
+        entityType: 'suppliers',
+        source: sup,
+        fields: SUPPLIERS_CLONE_FIELDS,
+        overrides: {
+          name: `${sup.name || 'Proveedor'} (Copia)`
+        },
+        nameOf: (r) => r.name || r.id,
+        user: user?.email || profile?.full_name || 'Compras'
+      })
+      if (copy) {
+        setSuppliers((prev) => [copy, ...prev])
+        showFeedbackMsg('success', `Proveedor duplicado como "${copy.name}".`)
+      }
+    } catch (err) {
+      console.error('Error al duplicar proveedor:', err)
+      showFeedbackMsg('error', 'Error al duplicar proveedor: ' + err.message)
+    }
+  }, [showFeedbackMsg, user, profile])
 
   // Estadísticas reactivas inferiores
   const stats = useMemo(() => {
@@ -3919,11 +4011,59 @@ export default function Compras() {
 
           {/* ZONA 4: TABLA DE PROVEEDORES (GRILLA CON ARQUITECTURA COMPLETA) */}
           {suppliersViewMode === 'lista' ? (
-            <div className="alon-zone-grid">
+            <div
+              className="alon-zone-grid"
+              ref={suppliersGrid.gridContainerRef}
+              tabIndex={0}
+              onKeyDown={suppliersGrid.handleKeyDown}
+            >
+              <GridRibbon
+                activeCellBadge={suppliersGrid.activeCellBadge || 'PADRÓN PROVEEDORES'}
+                selectedCount={suppliersGrid.selectedRangeCount}
+                metrics={suppliersGrid.ribbonMetrics}
+                undoCount={suppliersGrid.undoCount}
+                redoCount={suppliersGrid.redoCount}
+                onUndo={suppliersGrid.undo}
+                onRedo={suppliersGrid.redo}
+                onInsertRow={() => {
+                  setEditingSupplier(null)
+                  setShowSupplierModal(true)
+                }}
+                insertRowLabel="+ Nuevo Proveedor"
+                exportRows={filteredSuppliers}
+                exportColumns={[
+                  { key: 'name', label: 'Proveedor' },
+                  { key: 'trades', label: 'Rubros' },
+                  { key: 'is_local_supplier', label: 'Local MDP' },
+                  { key: 'cuit_cuil', label: 'CUIT' },
+                  { key: 'phone', label: 'Teléfono' },
+                  { key: 'email', label: 'Email' },
+                  { key: 'payment_method', label: 'Pago' },
+                  { key: 'observations', label: 'Observaciones' }
+                ]}
+                exportFilename="padron_proveedores"
+              />
               <div className="alon-grid-scroll">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="sticky top-0 z-20 alon-grid-thead">
                     <tr>
+                      <th className="py-2.5 px-2 w-10 text-center font-bold text-slate-400 bg-slate-900 border-b border-r border-slate-750">
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={suppliersGrid.toggleSelectAll}
+                            className="text-slate-400 hover:text-cyan-300 transition-colors"
+                            title="Seleccionar todos los proveedores visibles"
+                          >
+                            {suppliersGrid.isAllSelected ? (
+                              <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <span className="text-[10px] text-slate-500 font-mono">#</span>
+                        </div>
+                      </th>
                       <th className="py-2.5 px-3">Proveedor / Razón Social</th>
                       <th className="py-2.5 px-3">Rubros</th>
                       <th className="py-2.5 px-3 text-center">Local (MDP)</th>
@@ -3938,7 +4078,7 @@ export default function Compras() {
                   <tbody className="divide-y divide-slate-800/60">
                     {filteredSuppliers.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-8 text-center text-slate-500">
+                        <td colSpan={10} className="py-8 text-center text-slate-500">
                           <p className="text-sm">No se encontraron proveedores que coincidan con los filtros aplicados.</p>
                           {(supplierKpiFilter !== 'TODOS' || supplierSearchQuery) && (
                             <button
@@ -3954,10 +4094,84 @@ export default function Compras() {
                         </td>
                       </tr>
                     ) : (
-                      filteredSuppliers.map((sup) => {
+                      filteredSuppliers.map((sup, sIdx) => {
                         const allTrades = sup.trades && sup.trades.length > 0 ? sup.trades : sup.trade ? [sup.trade] : []
                         return (
-                          <tr key={sup.id} className="hover:bg-slate-800/50 transition-colors">
+                          <tr
+                            key={sup.id}
+                            className={`transition-colors ${
+                              suppliersGrid.selectedRowIds.has(sup.id)
+                                ? 'bg-cyan-950/30'
+                                : 'hover:bg-slate-800/50'
+                            }`}
+                            onContextMenu={(e) => {
+                              e.preventDefault()
+                              setSupplierMenuTarget({
+                                x: e.clientX,
+                                y: e.clientY,
+                                rowIndex: sIdx,
+                                row: sup,
+                                recordId: sup.id,
+                                recordLabel: sup.name
+                              })
+                            }}
+                          >
+                            {/* Columna 0 Canónica: Checkbox apilado sobre botón # interactivo */}
+                            <td
+                              className="py-1 px-1 w-10 text-center border-r border-slate-800/80 bg-slate-900/50"
+                              onContextMenu={(e) => {
+                                e.preventDefault()
+                                setSupplierMenuTarget({
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  rowIndex: sIdx,
+                                  row: sup,
+                                  recordId: sup.id,
+                                  recordLabel: sup.name
+                                })
+                              }}
+                            >
+                              <div className="flex flex-col items-center justify-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    suppliersGrid.toggleSelectRow(sup.id)
+                                  }}
+                                  className="text-slate-400 hover:text-cyan-300 transition-colors"
+                                  title={suppliersGrid.selectedRowIds.has(sup.id) ? 'Deseleccionar fila' : 'Seleccionar fila'}
+                                >
+                                  {suppliersGrid.selectedRowIds.has(sup.id) ? (
+                                    <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                                  ) : (
+                                    <Square className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    const rect = e.currentTarget.getBoundingClientRect()
+                                    setSupplierMenuTarget({
+                                      x: rect.right + 4,
+                                      y: rect.top,
+                                      rowIndex: sIdx,
+                                      row: sup,
+                                      recordId: sup.id,
+                                      recordLabel: sup.name
+                                    })
+                                  }}
+                                  className={`text-[10px] font-mono px-1 py-0.5 rounded transition-all ${
+                                    suppliersGrid.selectedRowIds.has(sup.id)
+                                      ? 'bg-cyan-950/60 text-cyan-300 font-bold border border-cyan-800'
+                                      : 'text-slate-500 hover:text-cyan-400 hover:bg-slate-800'
+                                  }`}
+                                  title="Clic para menú de fila / Clic derecho para menú contextual"
+                                >
+                                  {sIdx + 1}
+                                </button>
+                              </div>
+                            </td>
                             {/* 1. Proveedor / Razón Social (Doble Clic para editar) */}
                             <td
                               onDoubleClick={() => setSupplierInlineEdit({ supplierId: sup.id, field: 'name', value: sup.name || '' })}
@@ -4251,6 +4465,37 @@ export default function Compras() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Menú Contextual Canónico de Proveedores (Clic Derecho / Botón #) */}
+              {supplierMenuTarget && (
+                <GridContextMenu
+                  target={supplierMenuTarget}
+                  onClose={() => setSupplierMenuTarget(null)}
+                  onCopyCell={suppliersGrid.copyActiveCell}
+                  onCopyRow={suppliersGrid.copyRow}
+                  onPaste={suppliersGrid.pasteToActiveOrRange}
+                  onDeleteCell={suppliersGrid.deleteActiveCellOrRange}
+                  onDuplicateRow={(row) => handleDuplicateSupplier(row)}
+                  onDeleteRow={(row) => handleDeleteSupplier(row)}
+                  customActions={[
+                    {
+                      id: 'edit-supplier',
+                      label: '✏️ Editar ficha de proveedor',
+                      icon: Edit3,
+                      iconClass: 'text-cyan-400',
+                      hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-cyan-300',
+                      visible: true,
+                      onClick: () => {
+                        setEditingSupplier(supplierMenuTarget.row)
+                        setShowSupplierModal(true)
+                      }
+                    }
+                  ]}
+                  entityType="suppliers"
+                  recordId={supplierMenuTarget.recordId}
+                  recordLabel={supplierMenuTarget.recordLabel}
+                />
+              )}
             </div>
           ) : (
             /* VISTA 2: FICHAS (CARDS) */
@@ -4414,6 +4659,50 @@ export default function Compras() {
             </div>
           )}
           </div>
+
+          {/* BARRA DE ESTADO Y ACCIONES MASIVAS CANÓNICA DE PROVEEDORES */}
+          <GridStatusBarBottom
+            filteredCount={filteredSuppliers.length}
+            totalCount={suppliers.length}
+            entityName="proveedores"
+            hasActiveFilter={supplierKpiFilter !== 'TODOS' || Boolean(supplierSearchQuery)}
+            onClearFilters={() => {
+              setSupplierKpiFilter('TODOS')
+              setSupplierSearchQuery('')
+            }}
+            selectionStats={suppliersGrid.selectionStats}
+            onClearSelection={() => {
+              suppliersGrid.setSelectionRange(null)
+              suppliersGrid.clearRowSelection()
+            }}
+            customSelection={suppliersGrid.selectedRowIds.size > 0 ? {
+              count: suppliersGrid.selectedRowIds.size,
+              label: 'proveedores tildados',
+              onClear: suppliersGrid.clearRowSelection
+            } : null}
+            globalAggregates={[
+              { label: 'Padrón Total', value: suppliers.length },
+              { label: 'Locales MDP', value: supplierKpis.local, highlight: true },
+              { label: 'Sin Contacto', value: supplierKpis.noContact },
+              { label: 'Sin Rubro', value: supplierKpis.noTrade }
+            ]}
+            extraActions={suppliersGrid.selectedRowIds.size > 0 ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selectedRows = suppliers.filter((s) => suppliersGrid.selectedRowIds.has(s.id))
+                    const csv = selectedRows.map((s) => `${s.name},${(s.trades || [s.trade]).join(';')},${s.phone || ''},${s.email || ''}`).join('\n')
+                    navigator.clipboard.writeText(csv)
+                    showFeedbackMsg('success', `${selectedRows.length} proveedores copiados al portapapeles.`)
+                  }}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-700/50 rounded text-xs font-semibold cursor-pointer"
+                >
+                  Copiar Selección ({suppliersGrid.selectedRowIds.size})
+                </button>
+              </div>
+            ) : null}
+          />
         </div>
       )}
 
