@@ -55,29 +55,7 @@ import GridContextMenu from '../components/GridContextMenu'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 import { auditService } from '../lib/auditService'
 
-// ==============================================================================
-// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
-// ==============================================================================
-function HighlightText({ text, query, className = '' }) {
-  if (!text) return null
-  if (!query || !query.trim()) return <span className={className}>{text}</span>
-
-  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
-  return (
-    <span className={className}>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.trim().toLowerCase() ? (
-          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </span>
-  )
-}
+import HighlightText from '../components/HighlightText'
 
 import initialPersonnelData from '../data/initialPersonnel.json'
 
@@ -3989,7 +3967,9 @@ export default function Personal() {
                           </td>
                           <td className="py-2 px-3">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-xs font-bold text-slate-400">{rc.period}</span>
+                              <span className="font-mono text-xs font-bold text-slate-400">
+                                <HighlightText text={rc.period} query={rateTableSearch} />
+                              </span>
                               {isLocked && (
                                 <Lock
                                   className="w-3 h-3 text-amber-400 cursor-help"
@@ -4001,10 +3981,12 @@ export default function Personal() {
                           <td className="py-2 px-3">
                             {rc.admin_center === 'ASTILLERO' ? (
                               <span className={`px-2 py-0.5 rounded text-[10px] border ${getCategoryBadgeStyle(rc.entity_name)}`}>
-                                {rc.entity_name}
+                                <HighlightText text={rc.entity_name} query={rateTableSearch} />
                               </span>
                             ) : (
-                              <span className="font-extrabold text-white font-mono">{rc.entity_name}</span>
+                              <span className="font-extrabold text-white font-mono">
+                                <HighlightText text={rc.entity_name} query={rateTableSearch} />
+                              </span>
                             )}
                           </td>
 
@@ -4042,14 +4024,14 @@ export default function Personal() {
                                 onChange={(e) => setInlineRateEdit(prev => ({ ...prev, value: e.target.value }))}
                                 onBlur={() => commitInlineRateEdit()}
                                 onKeyDown={(e) => {
-                                  e.stopPropagation()
-                                  if (e.key === 'Enter') commitInlineRateEdit()
-                                  if (e.key === 'Escape') setInlineRateEdit(null)
+                                   e.stopPropagation()
+                                   if (e.key === 'Enter') commitInlineRateEdit()
+                                   if (e.key === 'Escape') setInlineRateEdit(null)
                                 }}
                                 className="w-28 bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
                               />
                             ) : (
-                              <span>${parseFloat(rc.rate_oficial_ars || 0).toLocaleString('es-AR')}</span>
+                              <span>$<HighlightText text={parseFloat(rc.rate_oficial_ars || 0).toLocaleString('es-AR')} query={rateTableSearch} /></span>
                             )}
                             {!isLocked && ratesGrid.shouldRenderFillHandle(rowIndex, 0) && (
                               <div
@@ -4062,7 +4044,7 @@ export default function Personal() {
                           </td>
 
                           <td className="py-2 px-3 text-center font-mono font-extrabold text-emerald-400">
-                            ${parseFloat(rc.rate_oficial_usd || 0).toFixed(2)}
+                            $<HighlightText text={parseFloat(rc.rate_oficial_usd || 0).toFixed(2)} query={rateTableSearch} />
                           </td>
 
                           {/* Col 1: Ayudante AR$ (Doble clic editable si !rc.is_locked y aplica ayudante) */}
@@ -4100,14 +4082,14 @@ export default function Personal() {
                                 onChange={(e) => setInlineRateEdit(prev => ({ ...prev, value: e.target.value }))}
                                 onBlur={() => commitInlineRateEdit()}
                                 onKeyDown={(e) => {
-                                  e.stopPropagation()
-                                  if (e.key === 'Enter') commitInlineRateEdit()
-                                  if (e.key === 'Escape') setInlineRateEdit(null)
+                                   e.stopPropagation()
+                                   if (e.key === 'Enter') commitInlineRateEdit()
+                                   if (e.key === 'Escape') setInlineRateEdit(null)
                                 }}
                                 className="w-28 bg-slate-950 border border-amber-400 rounded px-2 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
                               />
                             ) : rc.rate_ayudante_ars ? (
-                              <span className="text-white">${parseFloat(rc.rate_ayudante_ars).toLocaleString('es-AR')}</span>
+                              <span className="text-white">$<HighlightText text={parseFloat(rc.rate_ayudante_ars).toLocaleString('es-AR')} query={rateTableSearch} /></span>
                             ) : (
                               <span className="text-slate-600 font-normal italic">No aplica</span>
                             )}
@@ -4122,10 +4104,12 @@ export default function Personal() {
                           </td>
 
                           <td className="py-2 px-3 text-center font-mono font-extrabold text-amber-400">
-                            {rc.rate_ayudante_usd ? `$${parseFloat(rc.rate_ayudante_usd).toFixed(2)}` : '-'}
+                            {rc.rate_ayudante_usd ? (
+                              <span>$<HighlightText text={parseFloat(rc.rate_ayudante_usd).toFixed(2)} query={rateTableSearch} /></span>
+                            ) : '-'}
                           </td>
                           <td className="py-2 px-3 text-center font-mono text-slate-400">
-                            ${rc.dollar_rate}
+                            $<HighlightText text={String(rc.dollar_rate)} query={rateTableSearch} />
                           </td>
                           <td className="py-2 px-3 text-center">
                             <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
@@ -4133,7 +4117,7 @@ export default function Personal() {
                                 ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
                                 : 'bg-amber-950 text-amber-300 border-amber-800'
                             }`}>
-                              {rc.admin_center}
+                              <HighlightText text={rc.admin_center} query={rateTableSearch} />
                             </span>
                           </td>
                           <td className="py-2 px-3 text-right">
@@ -4896,7 +4880,9 @@ export default function Personal() {
                               />
                             ) : (
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-white">{w.name}</span>
+                                <span className="font-bold text-white">
+                                  <HighlightText text={w.name} query={searchTerm} />
+                                </span>
                                 {w.is_foreman && (
                                   <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600 font-extrabold">
                                     👷 Jefe de Obra
@@ -4905,7 +4891,9 @@ export default function Personal() {
                                 {w.phone && (
                                   <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800 font-mono flex items-center gap-1" title={`WhatsApp / Móvil: ${w.phone}`}>
                                     <Phone className="w-2.5 h-2.5" />
-                                    <span>{w.phone}</span>
+                                    <span>
+                                      <HighlightText text={w.phone} query={searchTerm} />
+                                    </span>
                                   </span>
                                 )}
                               </div>
@@ -4970,7 +4958,7 @@ export default function Personal() {
                               )
                             ) : w.category ? (
                               <span className={`px-2 py-0.5 rounded text-[10px] uppercase border inline-block ${getCategoryBadgeStyle(w.category)}`}>
-                                {w.category}
+                                <HighlightText text={w.category} query={searchTerm} />
                               </span>
                             ) : (
                               <span className="text-slate-600">-</span>
@@ -5040,7 +5028,8 @@ export default function Personal() {
                                       className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRubroBadgeColor(tr)}`}
                                       title={tIdx === 0 ? 'Rubro Principal' : 'Rubro Secundario Habilitado'}
                                     >
-                                      {tIdx === 0 && String(w.trade || '').includes(',') ? `⭐ ${tr}` : tr}
+                                      {tIdx === 0 && String(w.trade || '').includes(',') ? '⭐ ' : ''}
+                                      <HighlightText text={tr} query={searchTerm} />
                                     </span>
                                   ))}
                               </div>
@@ -5083,7 +5072,7 @@ export default function Personal() {
                                 className="w-24 bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
                               />
                             ) : w.hourly_rate_ars > 0 ? (
-                              `$${parseFloat(w.hourly_rate_ars).toLocaleString('es-AR')}`
+                              <span>$<HighlightText text={parseFloat(w.hourly_rate_ars).toLocaleString('es-AR')} query={searchTerm} /></span>
                             ) : (
                               <span className="text-slate-600">-</span>
                             )}
@@ -5098,7 +5087,7 @@ export default function Personal() {
 
                           {/* U$/Hora (Calculado automáticamente) */}
                           <td className="py-2 px-2 text-center font-mono font-extrabold text-emerald-400">
-                            ${usdCalc}
+                            $<HighlightText text={String(usdCalc)} query={searchTerm} />
                           </td>
 
                           {/* Col 4: Grupo de Trabajo */}
@@ -5130,7 +5119,7 @@ export default function Personal() {
                               />
                             ) : (
                               <span className="font-mono text-cyan-300 font-bold px-2 py-0.5 rounded bg-slate-950 border border-slate-800">
-                                {w.work_group}
+                                <HighlightText text={w.work_group} query={searchTerm} />
                               </span>
                             )}
                             {nominaGrid.shouldRenderFillHandle(rowIndex, 4) && (
@@ -5179,7 +5168,7 @@ export default function Personal() {
                                   ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
                                   : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
                               }`}>
-                                {w.admin_center}
+                                <HighlightText text={w.admin_center} query={searchTerm} />
                               </span>
                             )}
                             {nominaGrid.shouldRenderFillHandle(rowIndex, 5) && (
