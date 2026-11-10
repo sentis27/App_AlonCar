@@ -40,7 +40,8 @@ import {
   BellOff,
   UserPlus,
   Undo2,
-  Redo2
+  Redo2,
+  CopyPlus
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -48,6 +49,9 @@ import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
+import GridContextMenu from '../components/GridContextMenu'
+import { useGridContextMenu } from '../hooks/useGridContextMenu'
+import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 
 import HighlightText from '../components/HighlightText'
@@ -350,6 +354,10 @@ export default function Ships() {
   // MODO HOJA DE CÁLCULO (GOOGLE SHEETS / EXCEL) EN LAS 3 PESTAÑAS DE BARCOS
   // ==========================================================================
   const shipsSearchInputRef = useRef(null)
+  const shipsPasteRef = useRef(null)
+  const staysPasteRef = useRef(null)
+  const ownersPasteRef = useRef(null)
+  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const [inlineShipEdit, setInlineShipEdit] = useState(null)   // { rowId, colKey, value }
   const [inlineStayEdit, setInlineStayEdit] = useState(null)   // { rowId, colKey, value }
   const [inlineOwnerEdit, setInlineOwnerEdit] = useState(null) // { rowId, colKey, value }
@@ -442,6 +450,7 @@ export default function Ships() {
     getRowId: (s) => s.id,
     storageKey: 'aloncar_grid_ships',
     onBatchUpdate: handleShipsBatchUpdate,
+    onPasteRow: (args) => shipsPasteRef.current?.(args),
     onFocusSearch: () => {
       shipsSearchInputRef.current?.focus()
       shipsSearchInputRef.current?.select()
@@ -592,6 +601,7 @@ export default function Ships() {
     getRowId: (st) => st.id,
     storageKey: 'aloncar_grid_ship_stays',
     onBatchUpdate: handleStaysBatchUpdate,
+    onPasteRow: (args) => staysPasteRef.current?.(args),
     onFocusSearch: () => {
       shipsSearchInputRef.current?.focus()
       shipsSearchInputRef.current?.select()
@@ -724,6 +734,7 @@ export default function Ships() {
     getRowId: (o) => o.id,
     storageKey: 'aloncar_grid_owners',
     onBatchUpdate: handleOwnersBatchUpdate,
+    onPasteRow: (args) => ownersPasteRef.current?.(args),
     onFocusSearch: () => {
       shipsSearchInputRef.current?.focus()
       shipsSearchInputRef.current?.select()
@@ -735,6 +746,110 @@ export default function Ships() {
     },
     showFeedback: showShipsGridFeedback
   })
+
+  // ==========================================================================
+  // DUPLICAR / PEGAR FILA COMPLETA (menú clic derecho canónico) - Barcos
+  // Campos clonables = columnas reales ya usadas en los payloads de alta.
+  // ==========================================================================
+  const SHIP_CLONE_FIELDS = ['vessel_type', 'current_location', 'eslora_mts', 'manga_mts', 'puntal_mts', 'superficie_casco_m2', 'owner_id', 'notes', 'technical_specs']
+  const STAY_CLONE_FIELDS = ['ship_id', 'location', 'start_date', 'end_date', 'notes']
+  const OWNER_CLONE_FIELDS = ['armador_name', 'armador_phone', 'email_principal', 'email_secundario', 'notes']
+
+  useEffect(() => {
+    shipsPasteRef.current = buildPasteRowHandler({
+      table: 'ships',
+      entityType: 'ships',
+      fields: SHIP_CLONE_FIELDS,
+      grid: shipsGrid,
+      setList: setShips,
+      mergeLocal: (row, patch) => ({
+        ...row,
+        ...patch,
+        ...('owner_id' in patch ? { owners: owners.find(o => o.id === patch.owner_id) || null } : {})
+      }),
+      nameOf: (r) => r.name,
+      showFeedback: showShipsGridFeedback,
+      user: user?.email
+    })
+    staysPasteRef.current = buildPasteRowHandler({
+      table: 'ship_stays',
+      entityType: 'ship_stays',
+      fields: STAY_CLONE_FIELDS,
+      grid: staysGrid,
+      setList: setStays,
+      mergeLocal: (row, patch) => ({
+        ...row,
+        ...patch,
+        ...('ship_id' in patch ? { ships: ships.find(s => s.id === patch.ship_id) || row.ships } : {})
+      }),
+      nameOf: (r) => cleanShipName(r.ships?.name) || r.id,
+      showFeedback: showShipsGridFeedback,
+      user: user?.email
+    })
+    ownersPasteRef.current = buildPasteRowHandler({
+      table: 'owners',
+      entityType: 'owners',
+      fields: OWNER_CLONE_FIELDS,
+      grid: ownersGrid,
+      setList: setOwners,
+      nameOf: (r) => r.name,
+      showFeedback: showShipsGridFeedback,
+      user: user?.email
+    })
+  })
+
+  const handleDuplicateShip = async (ship) => {
+    try {
+      const created = await duplicateRecord({
+        table: 'ships',
+        entityType: 'ships',
+        source: ship,
+        fields: SHIP_CLONE_FIELDS,
+        overrides: { name: `${ship.name} (COPIA)`, is_active: true },
+        nameOf: (r) => r.name,
+        user: user?.email
+      })
+      showShipsGridFeedback('success', `Buque duplicado como "${created.name}".`)
+      await loadInitialData()
+    } catch (err) {
+      showShipsGridFeedback('error', `Error al duplicar buque: ${err.message}`)
+    }
+  }
+
+  const handleDuplicateStay = async (stay) => {
+    try {
+      await duplicateRecord({
+        table: 'ship_stays',
+        entityType: 'ship_stays',
+        source: stay,
+        fields: STAY_CLONE_FIELDS,
+        nameOf: () => cleanShipName(stay.ships?.name) || stay.id,
+        user: user?.email
+      })
+      showShipsGridFeedback('success', 'Estadía duplicada correctamente.')
+      await loadInitialData()
+    } catch (err) {
+      showShipsGridFeedback('error', `Error al duplicar estadía: ${err.message}`)
+    }
+  }
+
+  const handleDuplicateOwner = async (owner) => {
+    try {
+      const created = await duplicateRecord({
+        table: 'owners',
+        entityType: 'owners',
+        source: owner,
+        fields: OWNER_CLONE_FIELDS,
+        overrides: { name: `${owner.name} (COPIA)`, is_active: true },
+        nameOf: (r) => r.name,
+        user: user?.email
+      })
+      showShipsGridFeedback('success', `Armador duplicado como "${created.name}".`)
+      await loadInitialData()
+    } catch (err) {
+      showShipsGridFeedback('error', `Error al duplicar armador: ${err.message}`)
+    }
+  }
 
   const commitInlineOwnerEdit = async (overrideValue = undefined) => {
     if (!inlineOwnerEdit) return
@@ -1962,6 +2077,7 @@ export default function Ships() {
                         return (
                           <tr
                             key={ship.id}
+                            onContextMenu={(e) => openMenu(e, ship, rowIndex, { entityType: 'ships', recordId: ship.id, recordLabel: cleanName }, shipsGrid)}
                             className={`hover:bg-slate-800/40 transition-colors align-top ${
                               ship.orphan_owner_alert
                                 ? 'bg-rose-500/[0.04]'
@@ -2300,6 +2416,15 @@ export default function Ships() {
                                   <Pencil className="w-3.5 h-3.5" />
                                 </button>
 
+                                <button
+                                  type="button"
+                                  onClick={() => handleDuplicateShip(ship)}
+                                  className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg cursor-pointer transition-all"
+                                  title="Duplicar fila"
+                                >
+                                  <CopyPlus className="w-3.5 h-3.5" />
+                                </button>
+
                                 {activeRolePerspective === 'admin' && (
                                   <button
                                     type="button"
@@ -2591,7 +2716,11 @@ export default function Ships() {
                         const cpEnd = getStaysCellProps(rowIndex, 'end_date')
 
                         return (
-                          <tr key={stay.id} className="hover:bg-slate-800/40 transition-colors">
+                          <tr
+                            key={stay.id}
+                            onContextMenu={(e) => openMenu(e, stay, rowIndex, { entityType: 'ship_stays', recordId: stay.id, recordLabel: cleanShipName(stay.ships?.name) }, staysGrid)}
+                            className="hover:bg-slate-800/40 transition-colors"
+                          >
                             {/* 1. Locación Limpia (Doble clic editable) */}
                             <td
                               {...cpLoc.domProps}
@@ -2770,6 +2899,14 @@ export default function Ships() {
                                 )}
                                 <button
                                   type="button"
+                                  onClick={() => handleDuplicateStay(stay)}
+                                  className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg cursor-pointer transition-all"
+                                  title="Duplicar fila"
+                                >
+                                  <CopyPlus className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => setModalStay({ isOpen: true, stay, defaultShipId: stay.ship_id })}
                                   className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
                                   title="Editar movimiento"
@@ -2930,7 +3067,11 @@ export default function Ships() {
                         const cpEmail = getOwnersCellProps(rowIndex, 'email_principal')
 
                         return (
-                          <tr key={owner.id} className="hover:bg-slate-800/40 transition-colors">
+                          <tr
+                            key={owner.id}
+                            onContextMenu={(e) => openMenu(e, owner, rowIndex, { entityType: 'owners', recordId: owner.id, recordLabel: owner.name }, ownersGrid)}
+                            className="hover:bg-slate-800/40 transition-colors"
+                          >
                             {/* 1. Empresa (Doble clic editable) */}
                             <td
                               {...cpName.domProps}
@@ -3122,6 +3263,14 @@ export default function Ships() {
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
+                                  onClick={() => handleDuplicateOwner(owner)}
+                                  className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg cursor-pointer transition-all"
+                                  title="Duplicar fila"
+                                >
+                                  <CopyPlus className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => setModalOwner({ isOpen: true, owner })}
                                   className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
                                   title="Editar armador"
@@ -3251,6 +3400,30 @@ export default function Ships() {
         </div>
       )}
       </div>
+
+      {/* MENÚ CONTEXTUAL CANÓNICO (clic derecho) - Buques / Estadías / Armadores */}
+      {menuTarget && (() => {
+        const cfg = menuTarget.entityType === 'ship_stays'
+          ? { grid: staysGrid, duplicate: handleDuplicateStay, remove: null }
+          : menuTarget.entityType === 'owners'
+          ? { grid: ownersGrid, duplicate: handleDuplicateOwner, remove: handleOpenDeleteOwner }
+          : { grid: shipsGrid, duplicate: handleDuplicateShip, remove: handleToggleShipActive }
+        return (
+          <GridContextMenu
+            target={menuTarget}
+            onClose={closeMenu}
+            onCopyCell={cfg.grid.copyActiveCell}
+            onCopyRow={cfg.grid.copyRow}
+            onPaste={cfg.grid.pasteToActiveOrRange}
+            onDeleteCell={cfg.grid.deleteActiveCellOrRange}
+            onDuplicateRow={(row) => cfg.duplicate(row)}
+            onDeleteRow={cfg.remove ? (row) => cfg.remove(row) : undefined}
+            entityType={menuTarget.entityType}
+            recordId={menuTarget.recordId}
+            recordLabel={menuTarget.recordLabel}
+          />
+        )
+      })()}
 
       {/* ========================================================================= */}
       {selectedShip360 && (

@@ -42,6 +42,7 @@ export default function GridContextMenu({
   onInsertRowBelow,
   onDuplicateRow,
   onDeleteRow,
+  customActions = [],
   entityType = 'workers',
   recordId,
   recordLabel = ''
@@ -114,6 +115,55 @@ export default function GridContextMenu({
 
   if (!target) return null
 
+  // ==========================================================================
+  // REGISTRO DECLARATIVO DE ACCIONES (Single Source of Truth del menú)
+  // Para sumar una función nueva a TODAS las planillas: agregar un ítem aquí.
+  // Para una función puntual de un módulo: pasar `customActions` por prop.
+  // Cada ítem: { id, label, icon, shortcut, visible, onClick, iconClass, hoverClass, bold }
+  // ==========================================================================
+  const sections = [
+    {
+      id: 'clipboard',
+      items: [
+        { id: 'copy-cell', label: 'Copiar celda', icon: Copy, shortcut: 'Ctrl+C', visible: Boolean(onCopyCell) && !target.isRowHeader, onClick: () => onCopyCell() },
+        { id: 'copy-row', label: 'Copiar fila completa', icon: Copy, iconClass: 'text-slate-400', visible: Boolean(onCopyRow), onClick: () => onCopyRow(target.rowIndex) },
+        { id: 'paste', label: 'Pegar', icon: ClipboardPaste, shortcut: 'Ctrl+V', visible: Boolean(onPaste), onClick: () => onPaste() }
+      ]
+    },
+    {
+      id: 'audit',
+      items: [
+        { id: 'history', label: 'Ver historial de cambios', icon: History, bold: true, visible: true, keepOpen: true, hoverClass: 'hover:bg-cyan-950/50 text-cyan-300 hover:text-cyan-200', onClick: handleOpenHistory }
+      ]
+    },
+    {
+      id: 'mutations',
+      items: [
+        { id: 'insert-above', label: 'Insertar fila arriba', icon: ArrowUpToLine, iconClass: 'text-emerald-400', hoverClass: 'hover:bg-slate-800/80 text-slate-300 hover:text-emerald-300', visible: Boolean(onInsertRowAbove), onClick: () => onInsertRowAbove(target.row, target.rowIndex) },
+        { id: 'insert-below', label: 'Insertar fila abajo', icon: ArrowDownToLine, iconClass: 'text-emerald-400', hoverClass: 'hover:bg-slate-800/80 text-slate-300 hover:text-emerald-300', visible: Boolean(onInsertRowBelow), onClick: () => onInsertRowBelow(target.row, target.rowIndex) },
+        { id: 'duplicate-row', label: 'Duplicar fila', icon: CopyPlus, iconClass: 'text-amber-400', hoverClass: 'hover:bg-slate-800/80 text-slate-300 hover:text-amber-300', visible: Boolean(onDuplicateRow), onClick: () => onDuplicateRow(target.row, target.rowIndex) }
+      ]
+    },
+    {
+      id: 'custom',
+      items: (customActions || []).map((a) => ({
+        ...a,
+        onClick: () => a.onClick?.(target.row, target.rowIndex, target)
+      }))
+    },
+    {
+      id: 'destructive',
+      items: [
+        { id: 'clear-cell', label: 'Limpiar celda', icon: Eraser, iconClass: 'text-slate-400', shortcut: 'Supr', hoverClass: 'hover:bg-slate-800/80 text-slate-300 hover:text-slate-100', visible: Boolean(onDeleteCell) && !target.isRowHeader, onClick: () => onDeleteCell() },
+        { id: 'delete-row', label: 'Eliminar registro', icon: Trash2, iconClass: 'text-rose-400', hoverClass: 'hover:bg-rose-950/60 text-rose-400 hover:text-rose-300', visible: Boolean(onDeleteRow), onClick: () => onDeleteRow(target.row, target.rowIndex) }
+      ]
+    }
+  ]
+
+  const visibleSections = sections
+    .map((sec) => ({ ...sec, items: sec.items.filter((it) => it.visible !== false) }))
+    .filter((sec) => sec.items.length > 0)
+
   // Clampear posición dentro de la pantalla para evitar desbordes
   const menuWidth = 240
   const menuHeight = 320
@@ -153,148 +203,35 @@ export default function GridContextMenu({
           </div>
 
           <div className="py-1">
-            {/* 1. Copiar Celda */}
-            {onCopyCell && !target.isRowHeader && (
-              <button
-                type="button"
-                onClick={() => {
-                  onCopyCell()
-                  onClose?.()
-                }}
-                className="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 text-slate-300 hover:text-cyan-300 flex items-center justify-between transition-colors"
+            {visibleSections.map((section, sIdx) => (
+              <div
+                key={section.id}
+                className={sIdx > 0 ? 'border-t border-slate-800/60 mt-1 pt-1' : ''}
               >
-                <span className="flex items-center gap-2">
-                  <Copy className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Copiar celda</span>
-                </span>
-                <kbd className="text-[10px] text-slate-500 font-mono">Ctrl+C</kbd>
-              </button>
-            )}
-
-            {/* 2. Copiar Fila Completa */}
-            {onCopyRow && (
-              <button
-                type="button"
-                onClick={() => {
-                  onCopyRow(target.rowIndex)
-                  onClose?.()
-                }}
-                className="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 text-slate-300 hover:text-cyan-300 flex items-center justify-between transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <Copy className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Copiar fila completa</span>
-                </span>
-              </button>
-            )}
-
-            {/* 3. Pegar */}
-            {onPaste && (
-              <button
-                type="button"
-                onClick={() => {
-                  onPaste()
-                  onClose?.()
-                }}
-                className="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 text-slate-300 hover:text-cyan-300 flex items-center justify-between transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <ClipboardPaste className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Pegar</span>
-                </span>
-                <kbd className="text-[10px] text-slate-500 font-mono">Ctrl+V</kbd>
-              </button>
-            )}
-
-            {/* 4. Ver Historial de Cambios */}
-            <button
-              type="button"
-              onClick={handleOpenHistory}
-              className="w-full text-left px-3 py-1.5 hover:bg-cyan-950/50 text-cyan-300 hover:text-cyan-200 flex items-center gap-2 transition-colors border-t border-slate-800/60 mt-1 pt-1.5"
-            >
-              <History className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="font-medium">Ver historial de cambios</span>
-            </button>
-
-            {/* 5. Inserciones de Fila */}
-            {(onInsertRowAbove || onInsertRowBelow || onDuplicateRow) && (
-              <div className="border-t border-slate-800/60 my-1 pt-1">
-                {onInsertRowAbove && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onInsertRowAbove(target.row, target.rowIndex)
-                      onClose?.()
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 text-slate-300 hover:text-emerald-300 flex items-center gap-2 transition-colors"
-                  >
-                    <ArrowUpToLine className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Insertar fila arriba</span>
-                  </button>
-                )}
-                {onInsertRowBelow && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onInsertRowBelow(target.row, target.rowIndex)
-                      onClose?.()
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 text-slate-300 hover:text-emerald-300 flex items-center gap-2 transition-colors"
-                  >
-                    <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Insertar fila abajo</span>
-                  </button>
-                )}
-                {onDuplicateRow && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onDuplicateRow(target.row, target.rowIndex)
-                      onClose?.()
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 text-slate-300 hover:text-amber-300 flex items-center gap-2 transition-colors"
-                  >
-                    <CopyPlus className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Duplicar fila</span>
-                  </button>
-                )}
+                {section.items.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        item.onClick?.()
+                        if (!item.keepOpen) onClose?.()
+                      }}
+                      className={`w-full text-left px-3 py-1.5 flex items-center justify-between transition-colors ${item.hoverClass || 'hover:bg-slate-800/80 text-slate-300 hover:text-cyan-300'}`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {Icon && <Icon className={`w-3.5 h-3.5 ${item.iconClass || 'text-cyan-400'}`} />}
+                        <span className={item.bold ? 'font-medium' : ''}>{item.label}</span>
+                      </span>
+                      {item.shortcut && (
+                        <kbd className="text-[10px] text-slate-500 font-mono">{item.shortcut}</kbd>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
-            )}
-
-            {/* 6. Borrado y Limpieza */}
-            {(onDeleteCell || onDeleteRow) && (
-              <div className="border-t border-slate-800/60 my-1 pt-1">
-                {onDeleteCell && !target.isRowHeader && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onDeleteCell()
-                      onClose?.()
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-slate-800/80 text-slate-300 hover:text-slate-100 flex items-center justify-between transition-colors"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Eraser className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Limpiar celda</span>
-                    </span>
-                    <kbd className="text-[10px] text-slate-500 font-mono">Supr</kbd>
-                  </button>
-                )}
-                {onDeleteRow && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onDeleteRow(target.row, target.rowIndex)
-                      onClose?.()
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-rose-950/60 text-rose-400 hover:text-rose-300 flex items-center gap-2 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Eliminar registro</span>
-                  </button>
-                )}
-              </div>
-            )}
+            ))}
           </div>
         </div>
       )}
