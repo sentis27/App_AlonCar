@@ -41,7 +41,9 @@ import {
   UserPlus,
   Undo2,
   Redo2,
-  CopyPlus
+  CopyPlus,
+  Square,
+  CheckSquare
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -2045,7 +2047,23 @@ export default function Ships() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                     <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3 px-2 text-center w-10">#</th>
+                      <th className="py-2 px-1 w-9 text-center select-none">
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={shipsGrid.toggleSelectAll}
+                            className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                            title="Seleccionar o deseleccionar todos los buques visibles"
+                          >
+                            {shipsGrid.isAllSelected ? (
+                              <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
+                        </div>
+                      </th>
                       <th className="py-3 px-3">Buque ✎</th>
                       <th className="py-3 px-3">Tipo ✎</th>
                       <th className="py-3 px-3">Locación ✎</th>
@@ -2074,21 +2092,51 @@ export default function Ships() {
                         const cpLoc = getShipsCellProps(rowIndex, 'current_location')
                         const cpOwner = getShipsCellProps(rowIndex, 'owner_id')
 
+                        const isShipSelected = shipsGrid.selectedRowIds.has(ship.id)
+
                         return (
                           <tr
                             key={ship.id}
                             onContextMenu={(e) => openMenu(e, ship, rowIndex, { entityType: 'ships', recordId: ship.id, recordLabel: cleanName }, shipsGrid)}
                             className={`hover:bg-slate-800/40 transition-colors align-top ${
-                              ship.orphan_owner_alert
+                              isShipSelected
+                                ? 'bg-cyan-950/40 text-cyan-50'
+                                : ship.orphan_owner_alert
                                 ? 'bg-rose-500/[0.04]'
                                 : hasPendingReq
                                 ? 'bg-amber-500/[0.02]'
                                 : ''
                             }`}
                           >
-                            {/* 0. Número Ordinal (#) */}
-                            <td className="py-3.5 px-2 text-center font-mono text-[11px] text-slate-500 font-bold whitespace-nowrap">
-                              {rowIndex + 1}
+                            {/* 0. Columna 0 Canónica ([ ] / #) */}
+                            <td className="py-1 px-1 text-center w-9 select-none relative">
+                              <div className="flex flex-col items-center justify-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => shipsGrid.toggleSelectRow(ship.id)}
+                                  className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                                  title="Seleccionar buque"
+                                >
+                                  {isShipSelected ? (
+                                    <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                                  ) : (
+                                    <Square className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openMenu(e, ship, rowIndex, { entityType: 'ships', recordId: ship.id, recordLabel: cleanName }, shipsGrid)
+                                  }}
+                                  className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
+                                    isShipSelected ? 'text-cyan-300 bg-cyan-950/50 ring-1 ring-cyan-500/40' : 'text-slate-500 group-hover:text-cyan-400'
+                                  }`}
+                                  title={`Fila #${rowIndex + 1} • Clic para menú contextual (o clic derecho)`}
+                                >
+                                  {rowIndex + 1}
+                                </button>
+                              </div>
                             </td>
 
                             {/* 1. Buque (Doble clic editable) */}
@@ -2652,6 +2700,11 @@ export default function Ships() {
             }}
             selectionStats={shipsGrid.selectionStats}
             onClearSelection={() => shipsGrid.setSelectionRange(null)}
+            customSelection={shipsGrid.selectedRowIds.size > 0 ? {
+              count: shipsGrid.selectedRowIds.size,
+              label: 'buques tildados',
+              onClear: shipsGrid.clearRowSelection
+            } : null}
             globalAggregates={[
               { label: 'Varadero', value: varaderoCount, highlight: true },
               { label: 'Muelle', value: muelleCount },
@@ -2690,6 +2743,23 @@ export default function Ships() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                     <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-2 px-1 w-9 text-center select-none">
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={staysGrid.toggleSelectAll}
+                            className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                            title="Seleccionar o deseleccionar todas las estadías visibles"
+                          >
+                            {staysGrid.isAllSelected ? (
+                              <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
+                        </div>
+                      </th>
                       <th className="py-3 px-4">Locación ✎</th>
                       <th className="py-3 px-4">Buque ✎</th>
                       <th className="py-3 px-4 text-center">Comienzo ✎</th>
@@ -2701,12 +2771,13 @@ export default function Ships() {
                   <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
                     {filteredStays.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-slate-500">
+                        <td colSpan={7} className="text-center py-8 text-slate-500">
                           No hay movimientos registrados todavía. Tocá &ldquo;+ Registrar Movimiento&rdquo; para asentar el primer ingreso.
                         </td>
                       </tr>
                     ) : (
                       filteredStays.map((stay, rowIndex) => {
+                        const isStaySelected = staysGrid.selectedRowIds.has(stay.id)
                         const isOngoing = !stay.end_date
                         const days = calculateStayDays(stay.start_date, stay.end_date)
                         const locClean = cleanLocation(stay.location)
@@ -2719,8 +2790,40 @@ export default function Ships() {
                           <tr
                             key={stay.id}
                             onContextMenu={(e) => openMenu(e, stay, rowIndex, { entityType: 'ship_stays', recordId: stay.id, recordLabel: cleanShipName(stay.ships?.name) }, staysGrid)}
-                            className="hover:bg-slate-800/40 transition-colors"
+                            className={`hover:bg-slate-800/40 transition-colors ${
+                              isStaySelected ? 'bg-cyan-950/40 text-cyan-50' : ''
+                            }`}
                           >
+                            {/* 0. Columna 0 Canónica ([ ] / #) */}
+                            <td className="py-1 px-1 text-center w-9 select-none relative">
+                              <div className="flex flex-col items-center justify-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => staysGrid.toggleSelectRow(stay.id)}
+                                  className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                                  title="Seleccionar estadía"
+                                >
+                                  {isStaySelected ? (
+                                    <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                                  ) : (
+                                    <Square className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openMenu(e, stay, rowIndex, { entityType: 'ship_stays', recordId: stay.id, recordLabel: cleanShipName(stay.ships?.name) }, staysGrid)
+                                  }}
+                                  className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
+                                    isStaySelected ? 'text-cyan-300 bg-cyan-950/50 ring-1 ring-cyan-500/40' : 'text-slate-500 group-hover:text-cyan-400'
+                                  }`}
+                                  title={`Fila #${rowIndex + 1} • Clic para menú contextual (o clic derecho)`}
+                                >
+                                  {rowIndex + 1}
+                                </button>
+                              </div>
+                            </td>
                             {/* 1. Locación Limpia (Doble clic editable) */}
                             <td
                               {...cpLoc.domProps}
@@ -3010,6 +3113,11 @@ export default function Ships() {
             onClearFilters={() => setSearchTerm('')}
             selectionStats={staysGrid.selectionStats}
             onClearSelection={() => staysGrid.setSelectionRange(null)}
+            customSelection={staysGrid.selectedRowIds.size > 0 ? {
+              count: staysGrid.selectedRowIds.size,
+              label: 'estadías tildadas',
+              onClear: staysGrid.clearRowSelection
+            } : null}
             globalAggregates={[
               { label: 'Total Estadías', value: stays.length, highlight: true },
             ]}
@@ -3043,6 +3151,23 @@ export default function Ships() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                     <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-2 px-1 w-9 text-center select-none">
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={ownersGrid.toggleSelectAll}
+                            className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                            title="Seleccionar o deseleccionar todas las empresas armadoras visibles"
+                          >
+                            {ownersGrid.isAllSelected ? (
+                              <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
+                        </div>
+                      </th>
                       <th className="py-3 px-4">Empresa / Razón Social ✎</th>
                       <th className="py-3 px-4">Nombre del Armador ✎</th>
                       <th className="py-3 px-4">Teléfono Directo ✎</th>
@@ -3054,12 +3179,13 @@ export default function Ships() {
                   <tbody className="divide-y divide-slate-800/80 text-xs font-medium">
                     {filteredOwners.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-slate-500">
+                        <td colSpan={7} className="text-center py-8 text-slate-500">
                           No hay empresas armadoras que coincidan con la búsqueda. Tocá &ldquo;+ Nueva Empresa Armadora&rdquo;.
                         </td>
                       </tr>
                     ) : (
                       filteredOwners.map((owner, rowIndex) => {
+                        const isOwnerSelected = ownersGrid.selectedRowIds.has(owner.id)
                         const ownerShips = ships.filter(s => s.owner_id === owner.id)
                         const cpName = getOwnersCellProps(rowIndex, 'name')
                         const cpArmador = getOwnersCellProps(rowIndex, 'armador_name')
@@ -3070,8 +3196,40 @@ export default function Ships() {
                           <tr
                             key={owner.id}
                             onContextMenu={(e) => openMenu(e, owner, rowIndex, { entityType: 'owners', recordId: owner.id, recordLabel: owner.name }, ownersGrid)}
-                            className="hover:bg-slate-800/40 transition-colors"
+                            className={`hover:bg-slate-800/40 transition-colors ${
+                              isOwnerSelected ? 'bg-cyan-950/40 text-cyan-50' : ''
+                            }`}
                           >
+                            {/* 0. Columna 0 Canónica ([ ] / #) */}
+                            <td className="py-1 px-1 text-center w-9 select-none relative">
+                              <div className="flex flex-col items-center justify-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => ownersGrid.toggleSelectRow(owner.id)}
+                                  className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                                  title="Seleccionar armador"
+                                >
+                                  {isOwnerSelected ? (
+                                    <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                                  ) : (
+                                    <Square className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openMenu(e, owner, rowIndex, { entityType: 'owners', recordId: owner.id, recordLabel: owner.name }, ownersGrid)
+                                  }}
+                                  className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
+                                    isOwnerSelected ? 'text-cyan-300 bg-cyan-950/50 ring-1 ring-cyan-500/40' : 'text-slate-500 group-hover:text-cyan-400'
+                                  }`}
+                                  title={`Fila #${rowIndex + 1} • Clic para menú contextual (o clic derecho)`}
+                                >
+                                  {rowIndex + 1}
+                                </button>
+                              </div>
+                            </td>
                             {/* 1. Empresa (Doble clic editable) */}
                             <td
                               {...cpName.domProps}
@@ -3393,6 +3551,11 @@ export default function Ships() {
             onClearFilters={() => setSearchTerm('')}
             selectionStats={ownersGrid.selectionStats}
             onClearSelection={() => ownersGrid.setSelectionRange(null)}
+            customSelection={ownersGrid.selectedRowIds.size > 0 ? {
+              count: ownersGrid.selectedRowIds.size,
+              label: 'armadores tildados',
+              onClear: ownersGrid.clearRowSelection
+            } : null}
             globalAggregates={[
               { label: 'Empresas Registradas', value: owners.length, highlight: true },
             ]}
