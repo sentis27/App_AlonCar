@@ -8,7 +8,7 @@ import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
 import GridContextMenu from '../components/GridContextMenu'
 import { useGridContextMenu } from '../hooks/useGridContextMenu'
-import { buildPasteRowHandler } from '../lib/gridRowActions'
+import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import HighlightText from '../components/HighlightText'
@@ -932,6 +932,90 @@ export default function Panol() {
       }`
     }
   }
+
+  // ==============================================================================
+  // MOTOR HOJA DE CÁLCULO PARA CATÁLOGO DE MATERIALES (materialsGrid)
+  // ==============================================================================
+  const materialsColumns = useMemo(
+    () => [
+      { key: 'name', label: 'Material / Insumo', readOnly: false },
+      { key: 'rubro', label: 'Rubro Técnico', readOnly: true },
+      { key: 'category', label: 'Categoría', readOnly: true },
+      { key: 'weight_kg', label: 'Peso Unit. (kg)', isNumeric: true, readOnly: false },
+      { key: 'current_stock', label: 'Stock Actual', isNumeric: true, readOnly: true },
+      { key: 'minimum_stock', label: 'Stock Mínimo', isNumeric: true, readOnly: false },
+      { key: 'requires_stock_control', label: 'Lleva Stock Físico', readOnly: false },
+      { key: 'security_factor', label: '% Seg. Naval', readOnly: !isAdmin }
+    ],
+    [isAdmin]
+  )
+
+  const materialsPasteRef = useRef(null)
+  const MATERIALS_CLONE_FIELDS = ['name', 'category', 'rubro', 'unit_measure', 'weight_kg', 'minimum_stock', 'requires_stock_control', 'security_factor', 'location_bin', 'description', 'notes']
+  const MATERIALS_PASTE_FIELDS = ['name', 'category', 'rubro', 'unit_measure', 'weight_kg', 'minimum_stock', 'requires_stock_control', 'security_factor', 'location_bin', 'description', 'notes']
+
+  const materialsGrid = useSpreadsheetGrid({
+    rows: filteredMaterials,
+    columns: materialsColumns,
+    getRowId: (m) => m.id,
+    storageKey: 'aloncar_panol_materials_grid',
+    showFeedback: (type, text) => showFeedback(type, text),
+    onPasteRow: (args) => materialsPasteRef.current?.(args),
+    onCellActivate: (row, colDef) => {
+      if (!row || !colDef || colDef.readOnly) return
+      setInlineEdit({ id: row.id, field: colDef.key, value: String(row[colDef.key] ?? '') })
+    }
+  })
+
+  useEffect(() => {
+    materialsPasteRef.current = buildPasteRowHandler({
+      table: 'materials',
+      entityType: 'materials',
+      fields: MATERIALS_PASTE_FIELDS,
+      grid: materialsGrid,
+      setList: setMaterials,
+      nameOf: (r) => r.name || r.id,
+      showFeedback,
+      user: user?.email
+    })
+  })
+
+  const handleDuplicateMaterial = async (mat) => {
+    try {
+      const actor = user?.email || 'Administrador'
+      await duplicateRecord({
+        table: 'materials',
+        entityType: 'materials',
+        source: mat,
+        fields: MATERIALS_CLONE_FIELDS,
+        overrides: {
+          name: `${mat.name} (Copia)`,
+          current_stock: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        nameOf: (r) => r.name,
+        user: actor
+      })
+      showFeedback('success', `Material "${mat.name}" duplicado con stock 0.`)
+      fetchData()
+    } catch (err) {
+      console.error(err)
+      showFeedback('error', 'Error al duplicar material: ' + (err.message || err))
+    }
+  }
+
+  const criticalMaterialsCount = useMemo(() => {
+    return materials.filter(m => {
+      const curr = Number(m.current_stock) || 0
+      const min = Number(m.minimum_stock) || 0
+      return m.requires_stock_control && curr <= min
+    }).length
+  }, [materials])
+
+  const stockControlledCount = useMemo(() => {
+    return materials.filter(m => m.requires_stock_control).length
+  }, [materials])
 
   // Atajos de teclado globales para la grilla (Ctrl+C, Ctrl+V, Ctrl+Z, Ctrl+Y, Ctrl+D)
   useEffect(() => {
@@ -2558,8 +2642,8 @@ export default function Panol() {
             </table>
           </div>
 
-          {/* MENÚ CONTEXTUAL CANÓNICO (clic derecho) */}
-          {menuTarget && (
+          {/* MENÚ CONTEXTUAL CANÓNICO (clic derecho) - Planillas */}
+          {menuTarget && menuTarget.entityType !== 'materials' && (
             <GridContextMenu
               target={menuTarget}
               onClose={closeMenu}
@@ -2715,7 +2799,12 @@ export default function Panol() {
       {/* PESTAÑA 3: CATÁLOGO MAESTRO B.D MATERIALES & STOCK FÍSICO                     */}
       {/* ============================================================================== */}
       {activeTab === 'catalogo' && (
-        <div className="alon-zone-grid">
+        <div
+          ref={materialsGrid.gridContainerRef}
+          tabIndex={0}
+          onKeyDown={materialsGrid.handleKeyDown}
+          className="alon-zone-grid focus:outline-none"
+        >
           {/* Ribbon Superior de Catálogo */}
           <div className="alon-grid-ribbon">
             <div className="flex items-center gap-2">
@@ -2724,23 +2813,23 @@ export default function Panol() {
                 <span>CATÁLOGO B.D MATERIALES</span>
               </span>
               <span className="text-slate-400 text-[11px]">
-                Doble clic en celdas para editar Nombre, Peso, Stock Mínimo y Control de Stock
+                {materialsGrid.activeCellBadge || 'Doble clic en celdas para editar Nombre, Peso, Stock Mínimo y Control de Stock'}
               </span>
             </div>
 
-            {selectedMatIds.size > 0 && (
+            {materialsGrid.selectedRowIds.size > 0 && (
               <button
                 type="button"
                 onClick={() => {
                   const selectedList = materials
-                    .filter((m) => selectedMatIds.has(m.id))
+                    .filter((m) => materialsGrid.selectedRowIds.has(m.id))
                     .map((m) => ({ id: m.id, name: m.name, unit_measure: m.unit_measure }))
                   navigate(`/compras?nuevo=true&multiMaterials=${encodeURIComponent(JSON.stringify(selectedList))}`)
                 }}
                 className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg animate-in fade-in"
               >
                 <ShoppingCart className="w-3.5 h-3.5 stroke-[3]" />
-                <span>🛒 Generar Pedido de Compra en Lote ({selectedMatIds.size})</span>
+                <span>🛒 Generar Pedido de Compra en Lote ({materialsGrid.selectedRowIds.size})</span>
               </button>
             )}
           </div>
@@ -2749,18 +2838,22 @@ export default function Panol() {
             <table className="w-full text-left text-[11px] border-collapse">
               <thead className="sticky top-0 z-20 alon-grid-thead">
                 <tr>
-                  <th className="py-1 px-1 w-8 text-center select-none">
-                    <button
-                      type="button"
-                      onClick={toggleSelectAllMats}
-                      className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
-                    >
-                      {selectedMatIds.size === filteredMaterials.length && filteredMaterials.length > 0 ? (
-                        <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
-                      ) : (
-                        <Square className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                  <th className="py-2 px-1 w-9 text-center select-none">
+                    <div className="flex flex-col items-center justify-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={materialsGrid.toggleSelectAll}
+                        className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                        title="Seleccionar o deseleccionar todos los materiales visibles"
+                      >
+                        {materialsGrid.isAllSelected ? (
+                          <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                        ) : (
+                          <Square className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
+                    </div>
                   </th>
                   <th className="py-2 px-1.5">Material / Insumo ✎</th>
                   <th className="py-2 px-1.5">Rubro Técnico</th>
@@ -2775,7 +2868,7 @@ export default function Panol() {
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-sans">
                 {filteredMaterials.map((mat, idx) => {
-                  const isSelected = selectedMatIds.has(mat.id)
+                  const isSelected = materialsGrid.selectedRowIds.has(mat.id)
                   const curr = Number(mat.current_stock) || 0
                   const min = Number(mat.minimum_stock) || 0
                   const isCritical = curr <= min && mat.requires_stock_control
@@ -2784,19 +2877,36 @@ export default function Panol() {
                   return (
                     <tr
                       key={mat.id}
+                      onContextMenu={(e) => openMenu(e, mat, idx, { entityType: 'materials', recordId: mat.id, recordLabel: mat.name }, materialsGrid)}
                       className={`group transition-colors ${
-                        isSelected ? 'bg-cyan-950/30' : isCritical ? 'bg-rose-950/20' : 'hover:bg-slate-800/40'
+                        isSelected ? 'bg-cyan-950/40 text-cyan-50' : isCritical ? 'bg-rose-950/20' : 'hover:bg-slate-800/40'
                       }`}
                     >
-                      {/* Checkbox */}
-                      <td className="py-1 px-1 text-center w-8 select-none">
-                        <button
-                          type="button"
-                          onClick={() => toggleSelectMat(mat.id)}
-                          className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
-                        >
-                          {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
-                        </button>
+                      {/* 0. Columna 0 Canónica ([ ] / #) */}
+                      <td className="py-1 px-1 text-center w-9 select-none relative">
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => materialsGrid.toggleSelectRow(mat.id)}
+                            className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                            title="Seleccionar material"
+                          >
+                            {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openMenu(e, mat, idx, { entityType: 'materials', recordId: mat.id, recordLabel: mat.name }, materialsGrid)
+                            }}
+                            className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
+                              isSelected ? 'text-cyan-300 bg-cyan-950/50 ring-1 ring-cyan-500/40' : 'text-slate-500 group-hover:text-cyan-400'
+                            }`}
+                            title={`Fila #${idx + 1} • Clic para menú contextual (o clic derecho)`}
+                          >
+                            {idx + 1}
+                          </button>
+                        </div>
                       </td>
 
                       {/* Nombre Material */}
@@ -2990,17 +3100,65 @@ export default function Panol() {
             </table>
           </div>
 
-          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (ARQUETIPO CARGA DE DATOS) */}
+          {/* MENÚ CONTEXTUAL CANÓNICO (clic derecho) - Catálogo */}
+          {menuTarget && menuTarget.entityType === 'materials' && (
+            <GridContextMenu
+              target={menuTarget}
+              onClose={closeMenu}
+              onCopyCell={materialsGrid.copyActiveCell}
+              onCopyRow={materialsGrid.copyRow}
+              onPaste={materialsGrid.pasteToActiveOrRange}
+              onDeleteCell={materialsGrid.deleteActiveCellOrRange}
+              onDuplicateRow={(row) => handleDuplicateMaterial(row)}
+              customActions={[
+                {
+                  id: 'reponer-material',
+                  label: '🛒 Reponer en Compras',
+                  icon: ShoppingCart,
+                  iconClass: 'text-cyan-400',
+                  hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-cyan-300',
+                  visible: true,
+                  onClick: () => navigate(`/compras?nuevo=true&materialId=${menuTarget.row.id}&materialName=${encodeURIComponent(menuTarget.row.name)}`)
+                },
+                {
+                  id: 'ajustar-stock',
+                  label: '✏️ Ajustar inventario físico',
+                  icon: Edit3,
+                  iconClass: 'text-amber-400',
+                  hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-amber-300',
+                  visible: true,
+                  onClick: () => setShowStockAdjustModal({ isOpen: true, material: menuTarget.row })
+                }
+              ]}
+              entityType="materials"
+              recordId={menuTarget.recordId}
+              recordLabel={menuTarget.recordLabel}
+            />
+          )}
+
+          {/* BARRA INFERIOR FLOTANTE ESTANDARIZADA (CATÁLOGO DE MATERIALES) */}
           <GridStatusBarBottom
-            filteredCount={filteredTransactions.length}
-            totalCount={inventoryTx.length}
-            entityName="retiros"
-            hasActiveFilter={hasActivePanolFilter}
-            onClearFilters={handleClearAllPanolFilters}
-            selectionStats={grid.selectionStats}
+            filteredCount={filteredMaterials.length}
+            totalCount={materials.length}
+            entityName="materiales"
+            hasActiveFilter={Boolean(searchQuery || activeKpiFilter || filterCategory !== 'TODAS' || filterStockOnly)}
+            onClearFilters={() => {
+              setSearchQuery('')
+              setActiveKpiFilter(null)
+              setFilterCategory('TODAS')
+              setFilterStockOnly(false)
+            }}
+            selectionStats={materialsGrid.selectionStats}
+            onClearSelection={() => materialsGrid.setSelectionRange(null)}
+            customSelection={materialsGrid.selectedRowIds.size > 0 ? {
+              count: materialsGrid.selectedRowIds.size,
+              label: 'materiales tildados',
+              onClear: materialsGrid.clearRowSelection
+            } : null}
             globalAggregates={[
-              { label: 'Σ CANT', value: panolTotals.totalQty.toLocaleString('es-AR') },
-              { label: 'Σ PESO', value: `${panolTotals.totalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg` }
+              { label: 'Total Insumos', value: materials.length, highlight: true },
+              { label: 'Stock Crítico', value: criticalMaterialsCount },
+              { label: 'Con Control Físico', value: stockControlledCount }
             ]}
           />
         </div>
