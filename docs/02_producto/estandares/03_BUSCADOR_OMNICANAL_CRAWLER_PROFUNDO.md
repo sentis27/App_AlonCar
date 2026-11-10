@@ -65,6 +65,19 @@ export function normalizeSearchText(str) {
 
 ---
 
+## 3. Regla de Visibilidad Permanente y Ubicación en Nivel 1 de Zona 3
+
+1. **Prohibición Absoluta de Ocultar el Buscador:** El `CrawlerSearchBar` **nunca** debe desaparecer de la vista del operario cuando este hace scroll hacia las filas inferiores de cualquier tabla.
+2. **Estructura de 2 Niveles en `.alon-zone-toolbar`:**
+   - **Nivel 1 (Arriba):** `<CrawlerSearchBar />` dedicado en la primera fila de la Zona 3 (nunca desplazado ni comprimido al costado de otros selectores).
+   - **Nivel 2 (Abajo):** Píldoras de segmentación rápida (`Todos`, `Astillero`, `Contratistas`, etc.), selectores de filtro y botones de `Deshacer / Rehacer`.
+3. **Bloque Operativo Unificado (`.alon-workspace-block` + `.alon-grid-scroll`):** Al envolver `.alon-zone-toolbar` y `.alon-zone-grid` dentro de `.alon-workspace-block` (`sticky top-0 z-20 flex flex-col gap-2.5`) y dimensionar el scroll de la tabla con `.alon-grid-scroll` (`max-h-[calc(100vh-260px)]`), la Zona 3 jamás se superpone sobre la Zona 4 y el operario ve simultáneamente en todo momento:
+   - **Nivel 1 de Zona 3:** Buscador `CrawlerSearchBar`
+   - **Nivel 2 de Zona 3:** Píldoras/selectores compactos de filtro activo + `Undo/Redo`
+   - **Zona 4:** Borde esmeralda superior + `GridRibbon` + Títulos de columnas (`thead sticky`) + Filas de datos en scroll.
+
+---
+
 ## 4. Componente Canónico: `CrawlerSearchBar.jsx`
 
 En lugar de crear inputs HTML repetidos en cada módulo, toda la interfaz del buscador de la Zona 3 está encapsulada en `app/src/components/CrawlerSearchBar.jsx`:

@@ -21,6 +21,7 @@ Al construir vistas tabulares, el modelo de lenguaje comete **4 fallas por defec
 - **NEVER** atrapes ni pierdas el foco del teclado tras confirmar un valor; la confirmación debe desplazar el foco de manera predecible hacia la siguiente coordenada lógica.
 - **NEVER** interrumpas al usuario con alertas de confirmación para acciones cotidianas que pueden revertirse mediante el historial de deshacer en memoria.
 - **NEVER** proceses el pegado de datos como texto plano dentro de un único campo cuando el portapapeles contiene una estructura bidimensional (filas por columnas).
+- **NEVER** apliques `sticky` de forma aislada a `.alon-zone-toolbar` sin envolver también a `.alon-zone-grid` dentro del contenedor unificado `.alon-workspace-block`; jamás permitas que la Zona 3 tape la cinta `GridRibbon` ni los títulos de columnas (`thead`), ni que el recorrido vertical esconda el buscador (`CrawlerSearchBar`). Zona 3 y Zona 4 funcionan siempre como **un solo bloque** con scroll confinado a `.alon-grid-scroll`.
 - **NEVER** implementes lógica de selección, copiado, pegado o historial de forma aislada dentro de una vista particular; toda mejora tabular debe vivir en el motor compartido.
 
 ---

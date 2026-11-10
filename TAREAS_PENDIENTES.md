@@ -556,3 +556,9 @@ Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales
 - **Enfoque de Cámara en Edición:**
   - Botón `[ ✎ Editar ]` de la grilla histórica actualizado con desplazamiento suave (`tarifarioFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })`) y halo animado cian (`ring-2 ring-cyan-400`) para orientar de inmediato la mirada del usuario.
 - **Fecha de corte:** 2026-11-06.
+
+
+## Sesion 2026-11-10 - Chroma-Chunking en modales
+
+[x] Modales OrderFormModal y SupplierModal (Compras), NewMaterialModal (Panol) y Puestos (Admin) con .alon-modal-card + .alon-chunk-* + footer fijo
+[ ] Verificar NewMaterialModal con datos reales: tabla materials devolvio 0 filas en la prueba runtime
