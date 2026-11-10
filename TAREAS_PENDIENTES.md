@@ -558,7 +558,13 @@ Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales
 - **Fecha de corte:** 2026-11-06.
 
 
-## Sesion 2026-11-10 - Chroma-Chunking en modales
+## Sesion 2026-11-10 - Chroma-Chunking en modales, Hotfix Horas y Crawler Omnicanal
 
 [x] Modales OrderFormModal y SupplierModal (Compras), NewMaterialModal (Panol) y Puestos (Admin) con .alon-modal-card + .alon-chunk-* + footer fijo
+[x] Reparación de crash crítico en LaborLogs.jsx: corrección de ReferenceError stats por hoursStats en GridStatusBarBottom y normalización de kpiFilter
+[x] Estándar 03 — Crawler Omnicanal & HighlightText Canónico:
+    - Componente canónico app/src/components/HighlightText.jsx con soporte multi-término y estilo visual amarillo unificado.
+    - searchEngine.js con polimorfismo de corpus (admite string precalculado u objeto) e indexación automática profunda de adjuntos (PDF, JPG, URLs, OCR y opciones de buque/OT/rubro).
+    - Terceros.jsx: corrección del buscador omnicanal (resolución de 0 filas), corrección de casing en clearAllFilters ('todos') e integración de HighlightText en todas las columnas de la grilla.
+    - Verificación 16/16 tests unitarios aprobados y consulta en caliente a Supabase (10 registros reales).
 [ ] Verificar NewMaterialModal con datos reales: tabla materials devolvio 0 filas en la prueba runtime
