@@ -562,9 +562,13 @@ Siguiente revisión: Al iniciar Módulo M4 Pañol / Materiales
 
 [x] Modales OrderFormModal y SupplierModal (Compras), NewMaterialModal (Panol) y Puestos (Admin) con .alon-modal-card + .alon-chunk-* + footer fijo
 [x] Reparación de crash crítico en LaborLogs.jsx: corrección de ReferenceError stats por hoursStats en GridStatusBarBottom y normalización de kpiFilter
-[x] Estándar 03 — Crawler Omnicanal & HighlightText Canónico:
+[x] Estándar 03 — Despliegue Universal del Crawler Omnicanal y HighlightText Canónico en Todos los Módulos del ERP:
     - Componente canónico app/src/components/HighlightText.jsx con soporte multi-término y estilo visual amarillo unificado.
     - searchEngine.js con polimorfismo de corpus (admite string precalculado u objeto) e indexación automática profunda de adjuntos (PDF, JPG, URLs, OCR y opciones de buque/OT/rubro).
     - Terceros.jsx: corrección del buscador omnicanal (resolución de 0 filas), corrección de casing en clearAllFilters ('todos') e integración de HighlightText en todas las columnas de la grilla.
-    - Verificación 16/16 tests unitarios aprobados y consulta en caliente a Supabase (10 registros reales).
+    - Etapa 1 (Personal & Tarifas): Personal.jsx con HighlightText unificado en Padrón de Operarios y Tarifario Quincenal histórico.
+    - Etapa 2 (Horas & Imputaciones): LaborLogs.jsx con crawler omnicanal y resaltado amarillo en tabla de imputaciones (carga), control diario de nómina y sábana quincenal tipo Sheets (con buscador de operarios dedicado).
+    - Etapa 3 (OTs & Barcos): WorkOrders.jsx (planilla unificada, vista de OTs y terceros vinculados) y Ships.jsx (buques, movimientos/estadías y armadores) con crawler profundo y resaltado en todas las columnas.
+    - Etapa 4 (Pañol & Admin): Panol.jsx (movimientos de stock, kardex, tubos de gas y retenciones), AdminAuditLedger.jsx (Libro de Auditoría de audit_logs con búsqueda sobre detalles y cambios) y TradesManagementPanel.jsx (Rubros oficiales y operarios asignados).
+    - Verificación completa: vite build limpio (3.05s) + tests runtime contra Supabase con datos en caliente (workers, rate_cards, ships, work_orders, owners, audit_logs, organization_roles).
 [ ] Verificar NewMaterialModal con datos reales: tabla materials devolvio 0 filas en la prueba runtime
