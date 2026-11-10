@@ -39,29 +39,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 
-// ==============================================================================
-// COMPONENTE ESTÁNDAR DE RESALTADO DE COINCIDENCIAS DE BÚSQUEDA
-// ==============================================================================
-function HighlightText({ text, query, className = '' }) {
-  if (!text) return null
-  if (!query || !query.trim()) return <span className={className}>{text}</span>
-
-  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const parts = String(text).split(new RegExp('(' + escaped + ')', 'gi'))
-  return (
-    <span className={className}>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.trim().toLowerCase() ? (
-          <mark key={i} className="bg-amber-400 text-slate-950 font-bold px-0.5 rounded-xs">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </span>
-  )
-}
+import HighlightText from '../components/HighlightText'
 
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
@@ -260,6 +238,7 @@ export default function LaborLogs() {
   const [selectedMonth, setSelectedMonth] = useState('10') // Octubre
   const [selectedYear, setSelectedYear] = useState('2026')
   const [selectedQuincenaWorker, setSelectedQuincenaWorker] = useState(null) // Para inspección y ajuste 1-clic
+  const [sabanaSearch, setSabanaSearch] = useState('')
 
   // Estado para Edición / Carga Rápida In-situ
   // Modal enfocado de Buque / OT en Doble Clic
@@ -1412,14 +1391,24 @@ export default function LaborLogs() {
     }
   })
 
-  // Operarios filtrados para el Control Diario
+  // Operarios filtrados para el Control Diario (Búsqueda Omnicanal Estándar 03)
   const filteredDailyList = unifiedDailyList.filter(item => {
-    // Filtro por búsqueda
-    const term = dailySearch.toLowerCase()
-    const matchSearch = !term || 
-      item.worker.name.toLowerCase().includes(term) || 
-      item.defaultRubro.toLowerCase().includes(term) ||
-      item.logs.some(l => l.rubro?.toLowerCase().includes(term) || l.work_orders?.ships?.name?.toLowerCase().includes(term))
+    // Filtro por búsqueda omnicanal con soporte multi-token y crawler profundo
+    const matchSearch = !dailySearch || matchesUniversalSearch(item, dailySearch, {
+      extraSearchableValues: [
+        item.worker?.name,
+        item.defaultRubro,
+        item.type,
+        ...(item.logs || []).flatMap(l => [
+          l.rubro,
+          l.work_orders?.ships?.name,
+          l.work_orders?.ot_number,
+          l.work_orders?.title,
+          l.cost_center,
+          l.notes
+        ])
+      ]
+    })
 
     // Filtro por tipo o estado
     if (!matchSearch) return false
@@ -1553,17 +1542,26 @@ export default function LaborLogs() {
     return Array.from(map.values())
   }, [astilleroSource, recentLogs])
 
+  // Operarios filtrados para la Sábana Quincenal (Búsqueda Omnicanal Estándar 03)
+  const filteredSabanaWorkers = useMemo(() => {
+    return allQuincenaWorkers.filter(w => {
+      if (!sabanaSearch) return true
+      return matchesUniversalSearch(w, sabanaSearch)
+    })
+  }, [allQuincenaWorkers, sabanaSearch])
+
   // Registros filtrados reactivos en la pestaña de detalle (sincronizados con el Radar de 5 KPIs)
   const filteredLogs = useMemo(() => {
     return recentLogs.filter(log => {
       const shipName = log.ships?.name || log.work_orders?.ships?.name || ''
       const matchWorker = !filterWorker || matchesUniversalSearch(
-        buildUniversalSearchCorpus(log, {
+        log,
+        filterWorker,
+        {
           ship_name: shipName,
           ot_number: log.work_orders?.ot_number,
           ot_title: log.work_orders?.title
-        }),
-        filterWorker
+        }
       )
       const matchDate = !filterDate || log.date_logged === filterDate
       const matchShip = !filterShip || shipName === filterShip
@@ -3388,7 +3386,7 @@ export default function LaborLogs() {
                                       className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
                                     />
                                   ) : (
-                                    <span>{log.date_logged}</span>
+                                    <span><HighlightText text={log.date_logged} query={filterWorker} /></span>
                                   )}
                                   {cp.renderHandle && (
                                     <div
@@ -3411,11 +3409,13 @@ export default function LaborLogs() {
                                   className={`py-2 px-3 cursor-pointer ${cp.className}`}
                                   title="Doble clic para cambiar Buque u Orden de Trabajo"
                                 >
-                                  <span className="font-semibold text-white block truncate max-w-[160px]">{shipDisplayName}</span>
+                                  <span className="font-semibold text-white block truncate max-w-[160px]">
+                                    <HighlightText text={shipDisplayName} query={filterWorker} />
+                                  </span>
                                   {log.work_order_id ? (
                                     <span className="text-[11px] text-slate-400 block truncate max-w-[160px]">
-                                      {otNumber ? <strong className="text-cyan-300 font-mono mr-1">{otNumber}</strong> : null}
-                                      {otTitle || 'OT'}
+                                      {otNumber ? <strong className="text-cyan-300 font-mono mr-1"><HighlightText text={otNumber} query={filterWorker} /></strong> : null}
+                                      <HighlightText text={otTitle || 'OT'} query={filterWorker} />
                                     </span>
                                   ) : (
                                     <span className="text-[10px] text-amber-400 font-bold">⚠️ Sin OT (Doble clic)</span>
@@ -3457,7 +3457,9 @@ export default function LaborLogs() {
                                     />
                                   ) : (
                                     <div className="flex items-center gap-1.5">
-                                      <span className="font-medium text-slate-200">{log.worker_name}</span>
+                                      <span className="font-medium text-slate-200">
+                                        <HighlightText text={log.worker_name} query={filterWorker} />
+                                      </span>
                                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
                                         log.worker_type === 'Astillero'
                                           ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
@@ -3465,7 +3467,7 @@ export default function LaborLogs() {
                                           ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
                                           : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
                                       }`}>
-                                        {log.worker_type || 'Astillero'}
+                                        <HighlightText text={log.worker_type || 'Astillero'} query={filterWorker} />
                                       </span>
                                     </div>
                                   )}
@@ -3510,7 +3512,7 @@ export default function LaborLogs() {
                                         ? 'bg-amber-950 text-amber-300 border border-amber-700/80 font-bold'
                                         : 'bg-slate-800 text-slate-300'
                                     }`}>
-                                      {log.rubro || 'General'}
+                                      <HighlightText text={log.rubro || 'General'} query={filterWorker} />
                                     </span>
                                   )}
                                   {cp.renderHandle && (
@@ -3551,7 +3553,7 @@ export default function LaborLogs() {
                                       className="w-14 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-center text-xs text-white focus:outline-none font-mono"
                                     />
                                   ) : (
-                                    <span>{log.hours_normal ?? log.hours_worked ?? 0}</span>
+                                    <span><HighlightText text={log.hours_normal ?? log.hours_worked ?? 0} query={filterWorker} /></span>
                                   )}
                                   {cp.renderHandle && (
                                     <div
@@ -3591,7 +3593,7 @@ export default function LaborLogs() {
                                       className="w-14 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-center text-xs text-white focus:outline-none font-mono"
                                     />
                                   ) : (
-                                    <span>{log.hours_extra_50 || 0}</span>
+                                    <span><HighlightText text={log.hours_extra_50 || 0} query={filterWorker} /></span>
                                   )}
                                   {cp.renderHandle && (
                                     <div
@@ -3631,7 +3633,7 @@ export default function LaborLogs() {
                                       className="w-14 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-center text-xs text-white focus:outline-none font-mono"
                                     />
                                   ) : (
-                                    <span>{log.hours_extra_100 || 0}</span>
+                                    <span><HighlightText text={log.hours_extra_100 || 0} query={filterWorker} /></span>
                                   )}
                                   {cp.renderHandle && (
                                     <div
@@ -3646,7 +3648,7 @@ export default function LaborLogs() {
 
                             {/* Total (calculado automáticamente) */}
                             <td className="py-2 px-3 text-center font-mono font-bold text-primary whitespace-nowrap">
-                              {log.hours_worked} hs
+                              <HighlightText text={`${log.hours_worked} hs`} query={filterWorker} />
                             </td>
 
                             {/* 8. Estado */}
@@ -4091,8 +4093,12 @@ export default function LaborLogs() {
 
                           {/* Operario */}
                           <td className="py-2.5 px-3 align-top">
-                            <span className="font-bold text-white block">{item.worker.name}</span>
-                            <span className="text-[10px] text-slate-400">Habitual: {item.defaultRubro}</span>
+                            <span className="font-bold text-white block">
+                              <HighlightText text={item.worker.name} query={dailySearch} />
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              Habitual: <HighlightText text={item.defaultRubro} query={dailySearch} />
+                            </span>
                           </td>
 
                           {/* Tipo */}
@@ -4104,7 +4110,7 @@ export default function LaborLogs() {
                                 ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
                                 : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
                             }`}>
-                              {item.type}
+                              <HighlightText text={item.type} query={dailySearch} />
                             </span>
                           </td>
 
@@ -4135,15 +4141,19 @@ export default function LaborLogs() {
                                       title={`Doble clic para cambiar Buque u OT: ${shipName} - ${ot?.title || 'Sin OT'}`}
                                     >
                                       <Ship className="w-3 h-3 text-cyan-400 mr-1 shrink-0" />
-                                      <strong className="text-white mr-1 truncate">{shipName}:</strong>
+                                      <strong className="text-white mr-1 truncate">
+                                        <HighlightText text={shipName} query={dailySearch} />:
+                                      </strong>
                                       {ot ? (
                                         <span className="text-cyan-300 font-mono font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50 mr-1 shrink-0">
-                                          {ot.ot_number}
+                                          <HighlightText text={ot.ot_number} query={dailySearch} />
                                         </span>
                                       ) : (
                                         <span className="text-amber-400 font-bold text-[10px] mr-1 shrink-0">⚠️ Sin OT</span>
                                       )}
-                                      <span className="text-slate-300 truncate text-[10px]">{ot?.title || '(Doble clic para asignar)'}</span>
+                                      <span className="text-slate-300 truncate text-[10px]">
+                                        <HighlightText text={ot?.title || '(Doble clic para asignar)'} query={dailySearch} />
+                                      </span>
                                       {item.logs.length > 1 && (
                                         <span className="ml-1 text-[10px] text-cyan-400 font-mono font-bold shrink-0">
                                           ({l.hours_worked || l.hours_normal || 0}h)
@@ -4193,7 +4203,7 @@ export default function LaborLogs() {
                                               : 'bg-slate-800 text-slate-300'
                                           }`}
                                         >
-                                          {l.rubro || 'General'}
+                                          <HighlightText text={l.rubro || 'General'} query={dailySearch} />
                                         </span>
                                       )}
                                     </div>
@@ -4469,6 +4479,27 @@ export default function LaborLogs() {
               <span className="text-xs font-mono font-bold text-slate-400 px-2 py-1 bg-slate-950 rounded-lg border border-slate-800">
                 {selectedYear}
               </span>
+
+              {/* Buscador de Operario en Sábana (Estándar 03) */}
+              <div className="relative min-w-[200px]">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar operario en la sábana..."
+                  value={sabanaSearch}
+                  onChange={(e) => setSabanaSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                />
+                {sabanaSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSabanaSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -4498,42 +4529,51 @@ export default function LaborLogs() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {allQuincenaWorkers.map(w => {
-                  let sumNorm = 0
-                  let sum50 = 0
-                  let sum100 = 0
+                {filteredSabanaWorkers.length === 0 ? (
+                  <tr>
+                    <td colSpan={daysInQuincena.length + 5} className="py-8 text-center text-slate-400">
+                      No se encontraron operarios en la sábana coincidentes con &quot;{sabanaSearch}&quot;
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSabanaWorkers.map(w => {
+                    let sumNorm = 0
+                    let sum50 = 0
+                    let sum100 = 0
 
-                  return (
-                    <tr key={w.name} className="hover:bg-slate-800/30 transition-colors">
-                      {/* Nombre Operario Fijo con acción de filtrado/inspección */}
-                      <td className="py-2.5 px-3 text-left font-medium border-r border-slate-800 sticky left-0 bg-slate-900 z-10">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedQuincenaWorker(w.name === selectedQuincenaWorker ? null : w.name)
-                            const el = document.getElementById('quincena-inspector-section')
-                            if (el) el.scrollIntoView({ behavior: 'smooth' })
-                          }}
-                          className={`text-left font-bold flex items-center justify-between w-full group transition-colors cursor-pointer ${
-                            selectedQuincenaWorker === w.name ? 'text-primary' : 'text-slate-200 hover:text-cyan-300'
-                          }`}
-                          title="Clic para ver y editar todas las horas de este operario"
-                        >
-                          <span className="truncate max-w-[120px]">{w.name}</span>
-                          <span className="flex items-center gap-1.5 shrink-0">
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-                              w.type === 'Astillero'
-                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
-                                : w.type === 'Taller'
-                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
-                                : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
-                            }`}>
-                              {w.type}
+                    return (
+                      <tr key={w.name} className="hover:bg-slate-800/30 transition-colors">
+                        {/* Nombre Operario Fijo con acción de filtrado/inspección */}
+                        <td className="py-2.5 px-3 text-left font-medium border-r border-slate-800 sticky left-0 bg-slate-900 z-10">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedQuincenaWorker(w.name === selectedQuincenaWorker ? null : w.name)
+                              const el = document.getElementById('quincena-inspector-section')
+                              if (el) el.scrollIntoView({ behavior: 'smooth' })
+                            }}
+                            className={`text-left font-bold flex items-center justify-between w-full group transition-colors cursor-pointer ${
+                              selectedQuincenaWorker === w.name ? 'text-primary' : 'text-slate-200 hover:text-cyan-300'
+                            }`}
+                            title="Clic para ver y editar todas las horas de este operario"
+                          >
+                            <span className="truncate max-w-[120px]">
+                              <HighlightText text={w.name} query={sabanaSearch} />
                             </span>
-                            <Pencil className="w-3 h-3 opacity-40 group-hover:opacity-100 text-cyan-400 transition-opacity" />
-                          </span>
-                        </button>
-                      </td>
+                            <span className="flex items-center gap-1.5 shrink-0">
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                                w.type === 'Astillero'
+                                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
+                                  : w.type === 'Taller'
+                                  ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                  : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                              }`}>
+                                <HighlightText text={w.type} query={sabanaSearch} />
+                              </span>
+                              <Pencil className="w-3 h-3 opacity-40 group-hover:opacity-100 text-cyan-400 transition-opacity" />
+                            </span>
+                          </button>
+                        </td>
 
                       {/* Días del 1 al 15 (o 16 al fin) con clic interactivo para editar celda */}
                       {daysInQuincena.map(day => {
@@ -4618,7 +4658,7 @@ export default function LaborLogs() {
                       </td>
                     </tr>
                   )
-                })}
+                }))}
               </tbody>
             </table>
           </div>
