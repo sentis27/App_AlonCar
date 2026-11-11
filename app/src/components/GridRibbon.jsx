@@ -13,7 +13,7 @@ import { exportToSpreadsheet } from '../lib/exportEngine'
 export default function GridRibbon({
   activeCellBadge = null,
   onInsertRow = null,
-  insertRowLabel = '+ Insertar Fila en #1',
+  insertRowLabel = 'Nueva Fila en Blanco',
   undoCount = 0,
   maxUndo = 50,
   totalRows = 0,
@@ -67,7 +67,7 @@ export default function GridRibbon({
             title="Insertar una nueva fila en blanco en la grilla"
           >
             <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            <span>{insertRowLabel}</span>
+            <span>{String(insertRowLabel || 'Nueva Fila en Blanco').replace(/^\+\s*/, '')}</span>
           </button>
         )}
 

@@ -12,7 +12,7 @@
 ## 0. Protocolo Pre-Flight Contra el "Vicio de Memoria" (Inviolable)
 
 1. **PROHIBICIÓN DE TRABAJAR DE MEMORIA:**  
-   Ningún agente de IA puede enumerar módulos, asumir qué tablas existen o diseñar una solución transversal sin **leer primero este archivo (`00_INDICE_DE_MODULOS_Y_CLASIFICACION.md`) e `INDICE_PLANILLAS.md`**.
+   Ningún agente de IA puede enumerar módulos, asumir qué tablas existen o diseñar una solución transversal sin **leer primero este archivo (`00_INDICE_DE_MODULOS_Y_CLASIFICACION.md`), `docs/00_ARQUITECTURA_TABLAS_Y_FOLIOS.md` e `INDICE_PLANILLAS.md`**.
 2. **INDEXACIÓN OBLIGATORIA DE NUEVOS COMPONENTES:**  
    Cada vez que se cree un módulo, submódulo de carga, pestaña o herramienta de visualización/análisis (sea Gallo o Gallina), **DEBE registrarse en las tablas de las Secciones 2.A o 2.B de este documento** indicando su ruta, pestaña, tabla(s) Supabase asociadas y vínculo con la base de datos de auditoría (`audit_logs`).
 

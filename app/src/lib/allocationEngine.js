@@ -1,15 +1,54 @@
+import { supabase } from './supabase.js'
+
 /**
  * ==============================================================================
  * ALON CAR ERP - MOTOR CENTRAL DE ASIGNACIONES (ALLOCATION ENGINE)
  * ==============================================================================
  * Centraliza la regla de negocio canónica para:
  * 1. Padrón y permisos (Personal y Tarifas: can_withdraw_materials, can_impute_hours, can_charge_third_party)
- * 2. Personal Propio Astillero (individuales) vs Contratistas Externos (grupos de trabajo)
+ * 2. Personal Propio Astillero (dinámico desde Supabase `workers`)
  * 3. Habilitación por Buque (Asignación en ítems de trabajo)
  * 4. Estrechamiento de OTs por Contratista (Regla idéntica a Horas: ASTILLERO.* habilita a todo el personal propio)
  * 5. Cascada estricta de validación y estado reactivo (Alertas, Bypass Sin OT y Contador de Solicitud en BD)
  */
 
+let _globalWorkersCache = null
+
+/**
+ * Inyecta o sincroniza el padrón dinámico de operarios en memoria
+ */
+export function setAllocationWorkersCache(workers = []) {
+  if (Array.isArray(workers) && workers.length > 0) {
+    _globalWorkersCache = workers
+  }
+}
+
+export function getAllocationWorkersCache() {
+  return _globalWorkersCache
+}
+
+/**
+ * Consulta la nómina dinámica directamente desde Supabase `workers`
+ */
+export async function fetchDynamicWorkersRoster() {
+  try {
+    const { data, error } = await supabase
+      .from('workers')
+      .select('id, name, trade, admin_center, status, work_group, can_withdraw_materials, can_impute_hours, can_charge_third_party')
+      .order('name', { ascending: true })
+
+    if (!error && Array.isArray(data) && data.length > 0) {
+      _globalWorkersCache = data
+      return data
+    }
+    if (error) console.warn('Advertencia en fetchDynamicWorkersRoster:', error.message)
+  } catch (err) {
+    console.warn('Error leyendo workers dinámicos:', err)
+  }
+  return null
+}
+
+// Fallback estático de seguridad exclusivo para contingencias sin conectividad
 export const NOMINA_ASTILLERO_BASE = [
   { name: 'Rodriguez, Enzo', defaultRubro: 'Raschinear' },
   { name: 'Colonga, Franco', defaultRubro: 'Raschinear' },
@@ -82,7 +121,12 @@ export function normalizeText(str = '') {
 export function filterEligiblePersonnel(workers = [], options = {}) {
   const { permissionField = 'can_withdraw_materials' } = options
 
-  const activeWorkers = workers.filter((w) => w.status !== 'INACTIVO')
+  // Si no se pasaron workers explícitos, usar el caché dinámico sincronizado
+  const effectiveWorkers = (Array.isArray(workers) && workers.length > 0)
+    ? workers
+    : (_globalWorkersCache || [])
+
+  const activeWorkers = effectiveWorkers.filter((w) => w.status !== 'INACTIVO')
 
   const eligibleAstillero = []
   const unauthorizedWorkers = []
@@ -312,8 +356,18 @@ export function evaluateAllocationState({
  * Si workOrderId está vacío (!workOrderId), devuelve la nómina completa según la regla canónica de Pañol y Terceros.
  */
 export function getEnabledWorkersAndContractors(shipId, workOrderId, workItems = [], eligiblePersonnel = null) {
-  const baseAstillero = eligiblePersonnel?.astilleroWorkers || NOMINA_ASTILLERO_BASE.map(w => ({ id: w.name, name: w.name, trade: w.defaultRubro, admin_center: 'ASTILLERO' }))
-  const baseContractors = eligiblePersonnel?.contractorGroups || CONTRATISTAS_FRECUENTES
+  let effectiveEligible = eligiblePersonnel
+  if (!effectiveEligible && _globalWorkersCache && _globalWorkersCache.length > 0) {
+    effectiveEligible = filterEligiblePersonnel(_globalWorkersCache, { permissionField: null })
+  }
+
+  const baseAstillero = effectiveEligible?.astilleroWorkers?.length > 0
+    ? effectiveEligible.astilleroWorkers
+    : NOMINA_ASTILLERO_BASE.map(w => ({ id: w.name, name: w.name, trade: w.defaultRubro, admin_center: 'ASTILLERO' }))
+
+  const baseContractors = effectiveEligible?.contractorGroups?.length > 0
+    ? effectiveEligible.contractorGroups
+    : CONTRATISTAS_FRECUENTES
 
   if (!workOrderId) {
     return {

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { saveMacroVariables } from '../lib/macroVariablesService'
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
@@ -52,17 +53,18 @@ export default function Dashboard() {
       try {
         setLoading(true)
         // Consultar conteos en paralelo desde Supabase
-        const [shipsRes, otsRes, materialsRes] = await Promise.all([
+        const [shipsRes, otsRes, materialsRes, hoursRes] = await Promise.all([
           supabase.from('ships').select('id', { count: 'exact', head: true }),
           supabase.from('work_orders').select('id', { count: 'exact', head: true }),
-          supabase.from('materials').select('id', { count: 'exact', head: true })
+          supabase.from('materials').select('id', { count: 'exact', head: true }),
+          supabase.from('daily_labor_logs').select('id', { count: 'exact', head: true })
         ])
 
         setStats({
           shipsCount: shipsRes.count || 0,
           otsCount: otsRes.count || 0,
           materialsCount: materialsRes.count || 0,
-          hoursCount: 0
+          hoursCount: hoursRes.count || 0
         })
       } catch (err) {
         console.error('Error al cargar métricas:', err)
@@ -107,33 +109,28 @@ export default function Dashboard() {
       const dRate = parseFloat(macroForm.dollar_rate) || 1500
       const infPct = parseFloat(macroForm.monthly_inflation_pct) || 0
 
-      // 1. Guardar en macro_variables
-      const { error: macroErr } = await supabase
-        .from('macro_variables')
-        .upsert({
-          year: yr,
-          month: mo,
-          dollar_rate: dRate,
-          monthly_inflation_pct: infPct,
-          updated_by: profile?.full_name || user?.email || 'Administrador',
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'year,month' })
+      const previous = (macroVariables || []).find(m => m.year === yr && m.month === mo)
 
-      if (macroErr) throw macroErr
-
-      // 2. Sincronizar automáticamente en las rate_cards del mes (1Q y 2Q)
-      await supabase
-        .from('rate_cards')
-        .update({
-          dollar_rate: dRate,
-          monthly_inflation_pct: infPct
-        })
-        .eq('year', yr)
-        .eq('month', mo)
+      await saveMacroVariables({
+        year: yr,
+        month: mo,
+        dollar_rate: dRate,
+        dollar_rate_1q: dRate,
+        dollar_rate_2q: dRate,
+        monthly_inflation_pct: infPct,
+        updated_by: profile?.full_name || user?.email || 'Administrador',
+        previousValues: previous ? {
+          dollar_rate: previous.dollar_rate,
+          dollar_rate_1q: previous.dollar_rate_1q,
+          dollar_rate_2q: previous.dollar_rate_2q,
+          monthly_inflation_pct: previous.monthly_inflation_pct
+        } : null,
+        user
+      })
 
       setMacroMessage({
         type: 'success',
-        text: `Parámetros guardados: Dólar a $${dRate.toLocaleString('es-AR')} e Inflación en ${infPct}% para ${MONTH_NAMES[mo - 1]} ${yr}. Se aplicó a la 1ª y 2ª quincena.`
+        text: `Parámetros guardados y auditados: Dólar a $${dRate.toLocaleString('es-AR')} e Inflación en ${infPct}% para ${MONTH_NAMES[mo - 1]} ${yr}. Se aplicó a la 1ª y 2ª quincena.`
       })
       setTimeout(() => setMacroMessage(null), 5000)
       loadMacroVariables()

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+import { logCellChange, logRowAction } from '../lib/auditService'
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
 import GridStatusBarBottom from '../components/GridStatusBarBottom'
@@ -12,6 +13,7 @@ import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import HighlightText from '../components/HighlightText'
+import { assignMonotonicFolios, stampNewRecordWithFolio } from '../lib/monotonicFolioEngine'
 import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
 import {
   Package,
@@ -69,7 +71,8 @@ import {
   filterEligiblePersonnel,
   getShipEnabledContractors,
   getContractorEnabledWos,
-  evaluateAllocationState
+  evaluateAllocationState,
+  setAllocationWorkersCache
 } from '../lib/allocationEngine'
 
 
@@ -237,13 +240,16 @@ export default function Panol() {
       ])
 
       if (matRes.data) setMaterials(matRes.data)
-      if (invRes.data) setInventoryTx(invRes.data)
+      if (invRes.data) setInventoryTx(assignMonotonicFolios(invRes.data, { dateField: 'transaction_date' }))
       if (gasRes.data) setGasMovements(gasRes.data)
       if (rubrosRes.data) setRubros(rubrosRes.data)
       if (supRes.data) setSuppliers(supRes.data)
       if (shipsRes.data) setShips(shipsRes.data)
       if (woRes.data) setWorkOrders(woRes.data)
-      if (workersRes.data) setWorkers(workersRes.data)
+      if (workersRes.data) {
+        setWorkers(workersRes.data)
+        setAllocationWorkersCache(workersRes.data)
+      }
       if (workItemsRes.data) setWorkItems(workItemsRes.data)
       if (alertsRes.data) setPendingAlerts(alertsRes.data)
     } catch (err) {
@@ -689,6 +695,21 @@ export default function Panol() {
       const { error } = await supabase.from('inventory_transactions').update(updates).eq('id', txId)
       if (error) throw error
 
+      const targetTx = inventoryTx.find(t => t.id === txId)
+      logCellChange({
+        entityType: 'inventory_transactions',
+        entityId: txId,
+        entityName: `Retiro #${txId}`,
+        field: 'ship_id',
+        fieldLabel: 'Barco / OT',
+        oldValue: `${targetTx?.ship_id || 'Sin buque'} / ${targetTx?.work_order_id || 'Sin OT'}`,
+        newValue: `${cleanShipId || 'Sin buque'} / ${cleanWoId || 'Sin OT'}`,
+        sheetName: 'Pañol · Stock y Movimientos',
+        moduleRoute: '/panol',
+        changeOrigin: 'MODAL_PICKER',
+        user: user?.email || (isAdmin ? 'JORGE SENTIS' : 'Operador Pañol')
+      })
+
       setInventoryTx(prev => prev.map(t => t.id === txId ? { ...t, ...updates } : t))
     } catch (err) {
       console.error('Error guardando Barco/OT:', err)
@@ -816,6 +837,20 @@ export default function Panol() {
 
       const { error } = await supabase.from('inventory_transactions').update(updates).eq('id', txId)
       if (error) throw error
+
+      logCellChange({
+        entityType: 'inventory_transactions',
+        entityId: txId,
+        entityName: tx?.material_id ? (materials.find(m => m.id === tx.material_id)?.name || txId) : txId,
+        field,
+        fieldLabel: field,
+        oldValue: prevVal,
+        newValue: finalValue,
+        sheetName: 'Pañol · Stock y Movimientos',
+        moduleRoute: '/panol',
+        changeOrigin: 'INLINE_CELL',
+        user: user?.email || (isAdmin ? 'JORGE SENTIS' : 'Operador Pañol')
+      })
 
       setInventoryTx((prev) =>
         prev.map((t) => (t.id === txId ? { ...t, ...updates } : t))
@@ -1065,12 +1100,13 @@ export default function Panol() {
         ship_id: null,
         work_order_id: null,
         contractor_name: '',
-        cost_center: 'CLIENTE',
+        cost_center: null,
         weight_total: null,
         notes: '',
         transaction_date: todayStr
       }
 
+      const stampedTx = stampNewRecordWithFolio(newTx, inventoryTx)
       const { data, error } = await supabase
         .from('inventory_transactions')
         .insert([newTx])
@@ -1079,19 +1115,20 @@ export default function Panol() {
 
       if (error) throw error
 
+      const rowWithFolio = { ...data, _rowSeq: stampedTx._rowSeq }
       const activeIdx = grid?.activeCell?.rowIndex ?? 0
       const targetRow = filteredTransactions[activeIdx]
 
       setInventoryTx((prev) => {
-        if (!targetRow) return [data, ...prev]
+        if (!targetRow) return [rowWithFolio, ...prev]
         const realIdx = prev.findIndex((t) => t.id === targetRow.id)
-        if (realIdx === -1) return [data, ...prev]
+        if (realIdx === -1) return [rowWithFolio, ...prev]
         const copy = [...prev]
-        copy.splice(realIdx, 0, data)
+        copy.splice(realIdx, 0, rowWithFolio)
         return copy
       })
 
-      showFeedback('success', `Fila en blanco insertada en posición #${activeIdx + 1} (doble clic o Enter para cargar).`)
+      showFeedback('success', `Fila en blanco insertada con Folio #${stampedTx._rowSeq} (doble clic o Enter para cargar).`)
     } catch (err) {
       console.error(err)
       showFeedback('error', 'Error al insertar fila: ' + err.message)
@@ -1117,6 +1154,18 @@ export default function Panol() {
       const { data, error } = await supabase.from('inventory_transactions').insert([cloned]).select().single()
       if (error) throw error
 
+      logRowAction({
+        action: 'ROW_DUPLICATE',
+        entityType: 'inventory_transactions',
+        entityId: data.id,
+        entityName: `Retiro duplicado #${data.id}`,
+        rowData: cloned,
+        sheetName: 'Pañol · Stock y Movimientos',
+        moduleRoute: '/panol',
+        changeOrigin: 'GRID_ACTION',
+        user: user?.email || (isAdmin ? 'JORGE SENTIS' : 'Operador Pañol')
+      })
+
       setInventoryTx((prev) => [data, ...prev])
       showFeedback('success', 'Retiro duplicado exitosamente con fecha de hoy.')
     } catch (err) {
@@ -1139,6 +1188,18 @@ export default function Panol() {
         .eq('id', tx.id)
 
       if (error) throw error
+
+      logRowAction({
+        action: 'STATUS_CHANGE',
+        entityType: 'inventory_transactions',
+        entityId: tx.id,
+        entityName: `Solicitud baja #${tx.id}`,
+        changes: { is_deletion_requested: true, deletion_requested_by: userIdentifier },
+        sheetName: 'Pañol · Stock y Movimientos',
+        moduleRoute: '/panol',
+        changeOrigin: 'GRID_ACTION',
+        user: userIdentifier
+      })
 
       setInventoryTx((prev) =>
         prev.map((t) => (t.id === tx.id ? { ...t, is_deletion_requested: true, deletion_requested_by: userIdentifier } : t))
@@ -1167,6 +1228,18 @@ export default function Panol() {
 
       const { error } = await supabase.from('inventory_transactions').delete().eq('id', tx.id)
       if (error) throw error
+
+      logRowAction({
+        action: 'ROW_DELETE',
+        entityType: 'inventory_transactions',
+        entityId: tx.id,
+        entityName: `Retiro eliminado #${tx.id}`,
+        rowData: tx,
+        sheetName: 'Pañol · Stock y Movimientos',
+        moduleRoute: '/panol',
+        changeOrigin: 'GRID_ACTION',
+        user: user?.email || (isAdmin ? 'JORGE SENTIS' : 'Operador Pañol')
+      })
 
       setInventoryTx((prev) => prev.filter((t) => t.id !== tx.id))
       setAdminDeleteConfirmModal({ isOpen: false, tx: null })
@@ -1237,6 +1310,19 @@ export default function Panol() {
           notes: `[Apertura OT solicitada a Jorge Sentis: ${requestOtModal.reason || 'Sin detalle'}]`
         }
         await supabase.from('inventory_transactions').update(rowUpdates).eq('id', requestOtModal.txId)
+
+        logRowAction({
+          action: 'STATUS_CHANGE',
+          entityType: 'inventory_transactions',
+          entityId: requestOtModal.txId,
+          entityName: `Apertura OT para ${requestOtModal.targetWorkerOrContractor}`,
+          changes: rowUpdates,
+          sheetName: 'Pañol · Stock y Movimientos',
+          moduleRoute: '/panol',
+          changeOrigin: 'MODAL_REQUEST_OT',
+          user: user?.email || (isAdmin ? 'JORGE SENTIS' : 'Operador Pañol')
+        })
+
         setInventoryTx((prev) =>
           prev.map((t) => (t.id === requestOtModal.txId ? { ...t, ...rowUpdates } : t))
         )
@@ -1360,6 +1446,21 @@ export default function Panol() {
       const { error } = await supabase.from('materials').update(updates).eq('id', matId)
       if (error) throw error
 
+      const mat = materials.find((m) => m.id === matId)
+      logCellChange({
+        entityType: 'materials',
+        entityId: matId,
+        entityName: mat?.name || matId,
+        field,
+        fieldLabel: field,
+        oldValue: mat ? mat[field] : null,
+        newValue: parsedValue,
+        sheetName: 'Pañol · Catálogo Maestro de Materiales',
+        moduleRoute: '/panol',
+        changeOrigin: 'INLINE_CELL',
+        user: user?.email || (isAdmin ? 'JORGE SENTIS' : 'Operador Pañol')
+      })
+
       setMaterials((prev) =>
         prev.map((m) => (m.id === matId ? { ...m, ...updates } : m))
       )
@@ -1440,6 +1541,19 @@ export default function Panol() {
         }
 
         setInventoryTx((prev) => prev.map((t) => (t.id === editId ? { ...t, ...updates } : t)))
+
+        logRowAction({
+          action: 'MODAL_SAVE',
+          entityType: 'inventory_transactions',
+          entityId: editId,
+          entityName: `Retiro #${editId}`,
+          changes: updates,
+          sheetName: 'Pañol · Stock y Movimientos',
+          moduleRoute: '/panol',
+          changeOrigin: 'MODAL_WITHDRAWAL',
+          user: user?.email || 'Pañolero'
+        })
+
         setShowWithdrawalModal(false)
         setEditingWithdrawalRow(null)
         showFeedback('success', 'Fila modificada con éxito mediante la ventana de ajuste.')
@@ -1494,6 +1608,18 @@ export default function Panol() {
         .select()
 
       if (txErr) throw txErr
+
+      logRowAction({
+        action: 'ROW_INSERT',
+        entityType: 'inventory_transactions',
+        entityId: (createdTxs && createdTxs[0]?.id) || 'batch',
+        entityName: `Retiro múltiple (${txInserts.length} items)`,
+        rowData: { count: txInserts.length, contractor: contractorName, ship_id: shipId, work_order_id: workOrderId },
+        sheetName: 'Pañol · Stock y Movimientos',
+        moduleRoute: '/panol',
+        changeOrigin: 'MODAL_WITHDRAWAL',
+        user: user?.email || 'Pañolero'
+      })
 
       // Actualizar stocks en materials
       for (const upd of matUpdates) {
@@ -1718,7 +1844,7 @@ export default function Panol() {
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer hover:scale-[1.02]"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>+ Registrar Retiro Multi-Material</span>
+                <span>Registrar Retiro Multi-Material</span>
               </button>
             )}
 
@@ -1729,7 +1855,7 @@ export default function Panol() {
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer hover:scale-[1.02]"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>+ Nuevo Material</span>
+                <span>Nuevo Material</span>
               </button>
             )}
 
@@ -1740,7 +1866,7 @@ export default function Panol() {
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer hover:scale-[1.02]"
               >
                 <Flame className="w-4 h-4 stroke-[2.5]" />
-                <span>+ Movimiento de Tubos</span>
+                <span>Movimiento de Tubos</span>
               </button>
             )}
           </div>
@@ -1997,7 +2123,7 @@ export default function Panol() {
           <GridRibbon
             activeCellBadge={grid.activeCellBadge}
             onInsertRow={handleInsertRow}
-            insertRowLabel={`+ Insertar Fila en #${(grid.activeCell?.rowIndex ?? 0) + 1}`}
+            insertRowLabel="+ Fila en Blanco"
             undoCount={grid.undoStack?.length || 0}
             totalRows={filteredTransactions.length}
             entityName="filas"
@@ -2111,8 +2237,9 @@ export default function Panol() {
                                   ? 'text-cyan-300'
                                   : 'text-slate-500 group-hover:text-cyan-400'
                               }`}
+                              title={`Fila #${tx._rowSeq || rowIndex + 1} (DNI Inviolable de Registro)`}
                             >
-                              {rowIndex + 1}
+                              {tx._rowSeq || rowIndex + 1}
                             </span>
                           </div>
                         </td>
@@ -2183,9 +2310,15 @@ export default function Panol() {
                               className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-semibold ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : 'text-slate-200'}`}
                               title="Doble clic para cambiar Buque u Orden de Trabajo"
                             >
-                              <div className="flex items-center gap-1.5 font-bold text-white truncate" title={ship?.name || 'ASTILLERO'}>
-                                <Anchor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                                <HighlightText text={ship?.name || 'ASTILLERO'} query={searchQuery} />
+                              <div className="flex items-center gap-1.5 font-bold text-white truncate" title={ship?.name || 'Sin buque asignado'}>
+                                {ship ? (
+                                  <>
+                                    <Anchor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                    <HighlightText text={ship.name} query={searchQuery} />
+                                  </>
+                                ) : (
+                                  <span className="text-slate-500 font-normal italic text-[11px]">— Sin Buque (Doble clic)</span>
+                                )}
                               </div>
                               {cp.renderHandle && (
                                 <div
@@ -2493,15 +2626,19 @@ export default function Panol() {
                               className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer text-center ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
                               title={isAdmin ? 'Doble clic para alternar CLIENTE / CONTRATISTA' : 'Centro de Costo deducido (Solo Admin)'}
                             >
-                              <span
-                                className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
-                                  isCliente
-                                    ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
-                                    : 'bg-amber-950 text-amber-300 border-amber-800'
-                                }`}
-                              >
-                                {tx.cost_center || 'CLIENTE'}
-                              </span>
+                              {tx.cost_center ? (
+                                <span
+                                  className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                    isCliente
+                                      ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                                      : 'bg-amber-950 text-amber-300 border-amber-800'
+                                  }`}
+                                >
+                                  {tx.cost_center}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 italic text-[10px]">—</span>
+                              )}
                               {cp.renderHandle && (
                                 <div
                                   onMouseDown={grid.handleFillHandleMouseDown}

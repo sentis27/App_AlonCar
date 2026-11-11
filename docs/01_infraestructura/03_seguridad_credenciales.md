@@ -37,3 +37,12 @@ Antes de escribir tu primer token sensible en el archivo `.env` o de descargar l
    service-account.json
    ```
 3. Verifica que Git los reconozca como excluidos antes de realizar tu primer commit. Esto blinda la seguridad desde el segundo cero del desarrollo.
+
+---
+
+## 4. Evidencia Empírica de Verificación (D-04 / Ola 2 Refactorización)
+
+* **Estado en Git:** `service-account.json` está explicitado en `.gitignore` (línea 3) y su estado es `!! service-account.json` (ignorado activo).
+* **Historial Git:** Verificado con `git log --all --full-history -- service-account.json` (0 commits en la historia del repositorio).
+* **Aislamiento de Frontend:** Verificado con búsqueda recursiva en `app/src/` (0 importaciones o referencias en código de cliente Vite).
+* **Uso exclusivo:** Exclusivamente consumido por servidores locales seguros o scripts Node backend/MCP.

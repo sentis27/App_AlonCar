@@ -11,15 +11,17 @@ En lugar de copiar y pegar JSX en cada página, la cinta superior está 100% mod
 Proyecta:
 - Modo operativo: `[⚡ MODO PLANILLA]` o `[CELDA A1]`
 - Leyenda operativa de atajos de teclado (`Ctrl+D`, `Tab`, `Enter`, etc.)
-- Botón canónico de inserción: `[+ Insertar Fila en #X]`
+- Botón canónico de inserción o acción:
+  - **Si inserta fila in-situ en la grilla:** `[+ Fila en Blanco]` (crea registro real en base de datos con únicamente la fecha de hoy, sin pre-asignar entidades ni forzar 'ASTILLERO' o centros de costo).
+  - **Si abre menú modal:** Debe llamarse idéntico al botón de Zona 1 (ej. `[+ Nuevo Buque]`, `[+ Cargar Trabajo]`).
 - **Botón canónico de exportación a Excel / Sheets:** `[📥 Exportar]` (vía `exportEngine.js`)
 - Contador de memoria Undo (`X/50`) y conteo de filas visibles
 
 ```jsx
 <GridRibbon
   activeCellBadge={grid.activeCellBadge}
-  onInsertRow={handleInsertRow}
-  insertRowLabel="+ Insertar Fila en #1"
+  onInsertRow={handleInsertBlankRow}
+  insertRowLabel="+ Fila en Blanco"
   undoCount={grid.undoStack?.length || 0}
   totalRows={filteredRows.length}
   entityName="registros"

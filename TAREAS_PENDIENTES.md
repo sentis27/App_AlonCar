@@ -60,6 +60,33 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 
 ---
 
+### 🏛️ Plan de Desacoplamiento y Deuda Arquitectónica (Gobernado por SKL-017 / SKL-008)
+> Diagnóstico completo y hoja de ruta sellada en `docs/02_producto/05_auditorias/LINEA_BASE_ARQUITECTURA.md`
+
+- [x] **Ola 1: Sincronización y Quick Wins del Núcleo (~4.5 hs)**
+  - [x] A-01: Inyectar `workers` dinámico en `allocationEngine.js`
+  - [x] A-02: Unificar catálogo de rubros en `tradesCatalog.js`
+  - [x] C-01: Unificar servicio de variables macroeconómicas con auditoría en `audit_logs`
+  - [x] C-03: Conectar conteo real de horas en Dashboard central
+- [x] **Ola 2: Trazabilidad, Seguridad y Control de Acceso (~4.5 hs - Parcial n8n postergado)**
+  - [x] B-02: Auditoría obligatoria canónica en `Panol`, `Ships` y `Terceros` (mutaciones directas eliminadas)
+  - [ ] D-02: Respaldar `workflow.json` reales de n8n en el repo (Postergado a próxima sesión por usuario)
+  - [x] D-03: Proteger Edge Function Deno con verificación JWT de Supabase Auth
+  - [x] D-04: Verificación empírica de aislamiento de credenciales (`service-account.json` ignorado en git)
+- [ ] **Ola 3: Desarticulación Quirúrgica de Monolitos (~15 hs)**
+  - [x] B-01.1: Modularizar `Compras.jsx` (Reducido de 9.076L a 242L, subpaneles en `components/compras/`, modales y `comprasConstants.js`)
+  - [x] B-01.2 & B-04: Modularizar `Personal.jsx` (Reducido de 6.186L a 152L, 3 subpaneles en `components/personal/`, eliminación total de fallback `initialPersonnel.json`)
+  - [x] B-01.3: Modularizar `LaborLogs.jsx` (Reducido de 6.111L a 200L, subpaneles `LaborCargaPanel`, `LaborControlDiarioPanel`, `LaborSabanaPanel` en `components/labor/`, `LaborModals.jsx` y `laborConstants.js`)
+  - [x] C-02: Culminar extracción de `AdminDashboard.jsx` (Reducido de 3.034L a 231L, 4 subpaneles en `components/admin/`)
+  - [x] B-01.4 (Parte 1 - Ships): Modularizar `Ships.jsx` (Reducido de 5.048L a 202L, subpaneles `ShipsBarcosPanel`, `ShipsEstadiasPanel`, `ShipsArmadoresPanel` en `components/ships/`, `ShipsModals.jsx` y `shipsConstants.js`)
+  - [ ] B-01.4 (Restante): Modularizar `Panol`, `WorkOrders`, `Terceros`
+- [ ] **Ola 4: Capa de Servicios y Clean Architecture (~6 hs)**
+  - [ ] B-03 / D-01: Crear capa `app/src/services/`
+  - [ ] A-03: Modularizar motor de IA `aiLaborEngine.js`
+  - [ ] A-04: Modularizar `useSpreadsheetGrid.js` en sub-hooks
+
+---
+
 ### 🧭 Próximos Pasos Sugeridos (Backlog Priorizado)
 - [ ] **0. Rediseño Visual y Experiencia de Usuario (UX) del Dashboard del Administrador (`/admin`):**
   - **Estado:** Pendiente de revisión por Dirección / Usuario.
@@ -217,6 +244,33 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
     - **Linux Desktop (Ubuntu / GNOME):** Barra de estado superior (Top Bar con reloj/notificaciones), dock lateral flotante con indicadores de punto y paleta grafito/naranja Yaru.
     - **Linux Terminal / TUI ("Modo Consola / Hacker"):** Modo de alta ingeniería con tipografía monoespaciada (*JetBrains Mono* / *Fira Code*), marcos de recuadro geométricos ASCII, badges `[OK]` y barras de progreso en texto sobre fondo negro puro (`#0A0E14`).
     - **Puente Naval (Radar / ECDIS):** Modo de alto contraste nocturno con azul marino ultra profundo y acentos verde sonar/ámbar.
+
+---
+
+### 🏛️ Plan de Desacoplamiento y Deuda Arquitectónica (Gobernado por SKL-017 / SKL-008)
+> Diagnóstico completo y hoja de ruta sellada en `docs/02_producto/05_auditorias/LINEA_BASE_ARQUITECTURA.md`
+
+- [x] **Ola 1: Sincronización y Quick Wins del Núcleo (~4.5 hs)**
+  - [x] A-01: Inyectar `workers` dinámico en `allocationEngine.js`
+  - [x] A-02: Unificar catálogo de rubros en `tradesCatalog.js`
+  - [x] C-01: Unificar servicio de variables macroeconómicas con auditoría en `audit_logs`
+  - [x] C-03: Conectar conteo real de horas en Dashboard central
+- [x] **Ola 2: Trazabilidad, Seguridad y Control de Acceso (~4.5 hs - Parcial n8n postergado)**
+  - [x] B-02: Auditoría obligatoria canónica en `Panol`, `Ships` y `Terceros` (mutaciones directas eliminadas)
+  - [ ] D-02: Respaldar `workflow.json` reales de n8n en el repo (Postergado a próxima sesión por usuario)
+  - [x] D-03: Proteger Edge Function Deno con verificación JWT de Supabase Auth
+  - [x] D-04: Verificación empírica de aislamiento de credenciales (`service-account.json` ignorado en git)
+- [ ] **Ola 3: Desarticulación Quirúrgica de Monolitos (~15 hs)**
+  - [x] B-01.1: Modularizar `Compras.jsx` (Reducido de 9.076L a 242L, subpaneles en `components/compras/`, modales y `comprasConstants.js`)
+  - [x] B-01.2 & B-04: Modularizar `Personal.jsx` (Reducido de 6.186L a 152L, 3 subpaneles en `components/personal/`, eliminación total de fallback `initialPersonnel.json`)
+  - [x] B-01.3: Modularizar `LaborLogs.jsx` (Reducido de 6.111L a 200L, subpaneles `LaborCargaPanel`, `LaborControlDiarioPanel`, `LaborSabanaPanel` en `components/labor/`, `LaborModals.jsx` y `laborConstants.js`)
+  - [x] C-02: Culminar extracción de `AdminDashboard.jsx` (Reducido de 3.034L a 231L, 4 subpaneles en `components/admin/`)
+  - [x] B-01.4 (Parte 1 - Ships): Modularizar `Ships.jsx` (Reducido de 5.048L a 202L, subpaneles `ShipsBarcosPanel`, `ShipsEstadiasPanel`, `ShipsArmadoresPanel` en `components/ships/`, `ShipsModals.jsx` y `shipsConstants.js`)
+  - [ ] B-01.4 (Restante): Modularizar `Panol`, `WorkOrders`, `Terceros`
+- [ ] **Ola 4: Capa de Servicios y Clean Architecture (~6 hs)**
+  - [ ] B-03 / D-01: Crear capa `app/src/services/`
+  - [ ] A-03: Modularizar motor de IA `aiLaborEngine.js`
+  - [ ] A-04: Modularizar `useSpreadsheetGrid.js` en sub-hooks
 
 ---
 

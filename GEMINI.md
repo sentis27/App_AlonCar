@@ -41,7 +41,8 @@ Antes de ejecutar cualquier herramienta en un turno, el meta-protocolo **`SKL-01
 | **Diseño o refactorización de UI, formularios y flujos** | **`SKL-012`** (`ergonomia-flujo-visual-senior`) | `read_file` (Inspección visual) | Cumplimiento del Test del Vector Único, Top-Down estricto y compresión dimensional. |
 | **Planillas editables, grillas y tablas operativas** | **`SKL-013`** (`data-grid-poweruser`) | `read_file` (Inspección de grid) | Navegación direccional por teclado, mutación in-situ y uso del motor canónico. |
 | **Crear, editar o conectar código / datos / persistencia** | `SKL-009` (`ingenieria-codigo-senior`) + **`SKL-015`** (`defensive-erp-contracts`) + `SKL-007` | `run_command` / `read_file` (**PROHIBIDO** empezar con `write_file`/`edit_file`) | Test de runtime real con datos `> 0` + `npm run build` + Reporte de Calidad y Trazabilidad. |
-| **Auditar, revisar u ordenar un módulo** | `SKL-009` (Modo Auditoría) | `read_file` / medición real del código | Entregar matriz de Diagnóstico Técnico Senior ordenada por severidad (sin tocar código hasta autorización). |
+| **Auditar, revisar u ordenar un módulo o arquitectura** | **`SKL-017`** (`architectural-modularity-auditor`) + `SKL-009` | `read_file` / `run_command` (Inspección) | Entregar diagnóstico LCOM/CBO, Blast Radius y matriz de severidad; canalizar refactors con `SKL-008`. |
+| **Cierre de sesión o revisión pre-commit** | **`SKL-017`** (Modo 2: Delta Diario) | `git status -s` / `git diff` | Dictamen APROBADO PARA COMMIT / DETENERSE POR RIESGO estampado en `docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md`. |
 | **Nuevo módulo o pantalla desde cero** | Sección 4 de este documento + `SKL-009` | **NINGUNO** si no tiene clasificación | Detenerse y preguntar si es `CARGA_EDICION` (Gallo) o `METRICAS_ANALISIS` (Gallina). |
 | **Infraestructura Docker / Backend Node+PG** | `SKL-010` (`chasis-docker-multiapp`) + `SKL-011` (`motor-backend-capas`) | `read_file` de las skills `SKL-010` y `SKL-011` | Aislamiento por `${APP_SLUG}`, 4 capas estrictas (`Route → Controller → Service → Repo`) y `env.js` fail-fast. |
 
@@ -53,6 +54,12 @@ Antes de ejecutar cualquier herramienta en un turno, el meta-protocolo **`SKL-01
    - Si el cambio se relaciona con algo que ya existe en otra planilla (ej. rubros, categorías, grupos, barcos, OTs), **leer primero cómo lo obtiene esa planilla** para reutilizar la misma fuente de datos.
 2. **FASE 2 — INTERVENCIÓN QUIRÚRGICA Y MODULAR (`SKL-009`):**
    - Usar únicamente las columnas y props reales verificadas en la Fase 1 (`SKL-009 P4`).
+   - **🛑 5 Candados Mecánicos Inviolables Anti-Rot:**
+     1. **Caja Nueva:** Prohibido >250L en páginas. Toda pestaña/subpanel/modal nuevo NACE en `app/src/components/`.
+     2. **Cero Hardcode:** Prohibido arrays estáticos en frontend. Datos maestros se leen de Supabase/lib.
+     3. **Cero SQL en Vista:** Prohibido `supabase.from()` directo en JSX. Mutar vía `app/src/lib/` o `services/`.
+     4. **Trazabilidad:** Toda mutación en grillas invoca obligatoriamente `auditService.logCellChange/logRowAction`.
+     5. **onBlur Blindado:** Todo input editable usa `onBlur={() => commitFn()}` (cero paso de evento `e`).
    - **Prohibido duplicar catálogos o lógica:** si dos pantallas usan los mismos datos o reglas, extraerlos a un módulo exportable único en `app/src/lib/` para que ambas consuman la misma fuente de verdad (`SKL-009 P1 y P2`).
    - **Prohibido seguir inflando monolitos:** todo subpanel, modal nuevo o motor de más de 150 líneas se crea como archivo modular en `app/src/components/` o `app/src/lib/` (`SKL-009 P3`).
 3. **FASE 3 — VERIFICACIÓN DE RUNTIME REAL (`SKL-007`):**
@@ -180,6 +187,7 @@ Al finalizar cada sesión o cuando el usuario pida actualizar repositorios:
 - `.agents/skills/transversal/schema-gatekeeper/` — **SKL-014**: freno de inspección empírica y cero asunciones de memoria de contratos y tablas.
 - `.agents/skills/transversal/defensive-erp-contracts/` — **SKL-015**: diseño defensivo, tolerancia cero a errores silenciosos, atomicidad y sanitización escalar.
 - `.agents/skills/transversal/context-aware-skill-router/` — **SKL-016**: meta-protocolo de enrutamiento contextual por globs y economía de atención.
+- `.agents/skills/transversal/architectural-modularity-auditor/` — **SKL-017**: auditoría arquitectónica profunda, cohesión/acoplamiento empíricos (LCOM/CBO), tracker anti-rot de IA, modo Línea Base por Cuadrantes y modo Delta Diario pre-commit.
 
 ### 7.2 Agentes especializados
 - `automation-governance-architect` — Activa automáticamente ante modificaciones a workflows en producción o a pedido expreso.

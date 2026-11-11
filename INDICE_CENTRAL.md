@@ -28,8 +28,19 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | docs/02_producto/ESTANDARES_MODULOS_UI_UX.md | Guía Maestra de Estándares de Arquitectura, UI y UX (4 Zonas, KPIs compactos multicolores, Calendario y Excel Grid) | Devs / Agentes IA |
 | `GEMINI.md` | Protocolo de Gobernanza Arquitectónica y Operativa Unificado (v1.2) — Fuente Única de Verdad | Devs / Agentes IA (Antigravity) |
 | `CLAUDE.md` | Puntero de compatibilidad hacia `GEMINI.md` | Devs / Agentes IA (Claude Code) |
+| `docs/00_ARQUITECTURA_TABLAS_Y_FOLIOS.md` | Padrón Maestro de Arquitectura de Tablas y Folios Operativos (# DNI de Fila inviolable) | Todos / Devs / Agentes IA |
+| `app/src/lib/monotonicFolioEngine.js` | Motor Canónico de Folios Monótonos Crecientes (# DNI de Registro) para grillas ERP | Devs / Agentes IA |
 | `app/src/lib/gridRowActions.js` | Servicio canónico compartido para Duplicar Fila (`duplicateRecord`) y Pegar Fila Completa (`pasteRowFields` / `buildPasteRowHandler`) con auditoría en `audit_logs` y Undo/Redo | Devs / Agentes IA |
 | `app/src/hooks/useGridContextMenu.js` | Hook compartido de estado y apertura del menú contextual canónico (`GridContextMenu.jsx`) | Devs / Agentes IA |
+| `app/src/components/admin/` | Subpaneles modulares de M9 Admin (`AdminRolesMatrixPanel`, `AdminMacroPanel`, `AdminAlertsCompliancePanel`, `AdminLiveKpiRadar`) | Devs / Agentes IA |
+| `app/src/components/personal/` | Subpaneles modulares de M8 Personal (`PersonalNominaPanel`, `PersonalTarifarioPanel`, `PersonalAnalisisPanel`) | Devs / Agentes IA |
+| `app/src/components/compras/` | Subpaneles y modales modulares de M4 Compras (`ComprasPedidosPanel`, `ComprasProveedoresPanel`, `ComprasOcrPanel`, `OrderFormModal`, `NewMaterialModal`, `ComprasAuxModals`) | Devs / Agentes IA |
+| `app/src/lib/comprasConstants.js` | Constantes, helpers y funciones canónicas del módulo de Compras (`isCostAuditError`, `STATUS_OPTIONS`, `deduceUnitMeasure`, etc.) | Devs / Agentes IA |
+| `app/src/components/labor/` | Subpaneles y modales modulares de M3 Horas (`LaborCargaPanel`, `LaborControlDiarioPanel`, `LaborSabanaPanel`, `LaborModals`) | Devs / Agentes IA |
+| `app/src/lib/laborConstants.js` | Constantes y funciones canónicas del módulo de Horas (`cleanShipName`, `NOMINA_ASTILLERO_BASE`, `calculateHoursStats`, etc.) | Devs / Agentes IA |
+| `app/src/components/ships/` | Subpaneles y modales modulares de M7 Flota Naval (`ShipsBarcosPanel`, `ShipsEstadiasPanel`, `ShipsArmadoresPanel`, `ShipsModals`) | Devs / Agentes IA |
+| `app/src/lib/shipsConstants.js` | Constantes y funciones canónicas de Flota Naval y Estadías (`cleanShipName`, `cleanLocation`, `calculateStayDays`, `calculateBerthMeters`, etc.) | Devs / Agentes IA |
+| `docs/02_producto/05_auditorias/README.md` | Sistema Central de Auditorías Arquitectónicas, Línea Base (`LINEA_BASE_ARQUITECTURA.md`) y Ledger Diario (`BITACORA_DELTAS_SESION.md`) | Devs / Agentes IA |
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)
 Diseño de los 6 módulos del ERP.
@@ -99,6 +110,9 @@ Estas 6 Skills son fundacionales — se usan en cualquier contexto del proyecto:
 
 - **context-aware-skill-router (SKL-016)** (`.agents/skills/transversal/context-aware-skill-router/SKILL.md`)
   - Meta-protocolo de enrutamiento selectivo de skills por globs de archivos y criticidad funcional.
+
+- **architectural-modularity-auditor (SKL-017)** (`.agents/skills/transversal/architectural-modularity-auditor/SKILL.md`)
+  - Auditoría arquitectónica profunda, cohesión (LCOM) y acoplamiento (CBO) empíricos, tracker anti-rot de IA, modo Línea Base por Cuadrantes y modo Delta Diario pre-commit.
 
 ### Skills por Módulo ERP
 

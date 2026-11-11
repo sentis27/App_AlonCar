@@ -2,8 +2,10 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
+import { logCellChange, logRowAction } from '../lib/auditService'
 
 import HighlightText from '../components/HighlightText'
+import { assignMonotonicFolios, stampNewRecordWithFolio } from '../lib/monotonicFolioEngine'
 
 import ShipWorkOrderPickerModal from '../components/ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../components/ContractorPickerModal'
@@ -14,7 +16,7 @@ import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import CrawlerSearchBar from '../components/CrawlerSearchBar'
 import GridRibbon from '../components/GridRibbon'
 import { buildUniversalSearchCorpus, normalizeSearchText, matchesUniversalSearch } from '../lib/searchEngine'
-import { getEnabledWorkersAndContractors } from '../lib/allocationEngine'
+import { getEnabledWorkersAndContractors, setAllocationWorkersCache, filterEligiblePersonnel } from '../lib/allocationEngine'
 import {
   Wrench,
   Building2,
@@ -427,11 +429,12 @@ export default function Terceros() {
       if (mvRes.error) console.warn('Aviso macro_variables:', mvRes.error.message)
       if (vhRes.error) console.warn('Aviso third_party_voucher_history:', vhRes.error.message)
 
-      setServices(srvRes.data || [])
+      setServices(assignMonotonicFolios(srvRes.data || [], { dateField: 'service_date' }))
       setShips(shpRes.data || [])
       setWorkOrders(woRes.data || [])
       setWorkItems(wiRes?.data || [])
       setContractors(wkrRes.data || [])
+      setAllocationWorkersCache(wkrRes.data || [])
       setMacroVariables(mvRes.data || [])
       setVoucherHistory(vhRes.data || [])
     } catch (err) {
@@ -670,18 +673,21 @@ export default function Terceros() {
 
         if (updErr) throw updErr
 
-        // Registrar auditoría de edición
-        await supabase.from('audit_logs').insert({
-          action: 'EDICION_TERCEROS',
-          entity_type: 'third_party_services',
-          entity_id: editingService.id,
-          entity_name: formData.contractor_name,
-          details: {
-            changes: payload,
+        // Registrar auditoría canónica de edición
+        await logRowAction({
+          action: 'MODAL_SAVE',
+          entityType: 'third_party_services',
+          entityId: editingService.id,
+          entityName: formData.contractor_name,
+          changes: {
+            ...payload,
             previous_amount_ars: editingService.amount_ars,
             new_amount_ars: parsedArs
           },
-          performed_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+          sheetName: 'Terceros · Servicios y Facturación',
+          moduleRoute: '/terceros',
+          changeOrigin: 'MODAL_FORM',
+          user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
         })
 
         showFeedback('success', `Comprobante de ${formData.contractor_name} actualizado exitosamente.`)
@@ -689,11 +695,26 @@ export default function Terceros() {
         // Creación
         payload.created_by = activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
 
-        const { error: insErr } = await supabase
+        const { data: insData, error: insErr } = await supabase
           .from('third_party_services')
           .insert(payload)
+          .select()
+          .single()
 
         if (insErr) throw insErr
+
+        // Registrar auditoría canónica de alta
+        await logRowAction({
+          action: 'ROW_INSERT',
+          entityType: 'third_party_services',
+          entityId: insData?.id || 'new',
+          entityName: formData.contractor_name,
+          rowData: payload,
+          sheetName: 'Terceros · Servicios y Facturación',
+          moduleRoute: '/terceros',
+          changeOrigin: 'MODAL_FORM',
+          user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+        })
 
         showFeedback('success', `Comprobante de ${formData.contractor_name} (${formData.voucher_type}) cargado con éxito.`)
       }
@@ -722,19 +743,22 @@ export default function Terceros() {
 
       if (delErr) throw delErr
 
-      // Registrar auditoría
-      await supabase.from('audit_logs').insert({
-        action: 'ELIMINACION_TERCEROS',
-        entity_type: 'third_party_services',
-        entity_id: service.id,
-        entity_name: service.contractor_name,
-        details: {
+      // Registrar auditoría canónica de baja
+      await logRowAction({
+        action: 'ROW_DELETE',
+        entityType: 'third_party_services',
+        entityId: service.id,
+        entityName: service.contractor_name,
+        rowData: {
           voucher_type: service.voucher_type,
           voucher_number: service.voucher_number,
           amount_ars: service.amount_ars,
           amount_usd: service.amount_usd
         },
-        performed_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+        sheetName: 'Terceros · Servicios y Facturación',
+        moduleRoute: '/terceros',
+        changeOrigin: 'GRID_ACTION',
+        user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
       })
 
       showFeedback('success', 'Registro de Terceros eliminado y asentado en Hoja de Auditorías.')
@@ -742,6 +766,64 @@ export default function Terceros() {
     } catch (err) {
       console.error('Error eliminando servicio:', err)
       showFeedback('error', 'No se pudo eliminar el comprobante: ' + (err.message || err))
+    }
+  }
+
+  // Insertar nueva fila 100% en blanco en la grilla (solo fecha del día precargada)
+  const handleInsertBlankRow = async () => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0]
+      const rate = getDollarRateForDate(todayStr, macroVariables) || 1500
+      const newService = {
+        service_date: todayStr,
+        entry_date: todayStr,
+        voucher_date: todayStr,
+        ship_id: null,
+        work_order_id: null,
+        work_item_id: null,
+        contractor_name: '',
+        trade: 'VARIOS',
+        voucher_type: 'RMO',
+        voucher_number: null,
+        amount_ars: 0,
+        usd_rate: rate,
+        amount_usd: 0,
+        direct_observations: null,
+        specific_observations: null,
+        status: 'RMO',
+        audit_status: 'PENDIENTE',
+        created_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE',
+        is_active: true
+      }
+
+      const stampedService = stampNewRecordWithFolio(newService, services)
+      const { data, error } = await supabase
+        .from('third_party_services')
+        .insert([newService])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const rowWithFolio = { ...data, _rowSeq: stampedService._rowSeq }
+      setServices((prev) => [rowWithFolio, ...prev])
+      showFeedback('success', `Fila en blanco insertada con Folio #${stampedService._rowSeq} (doble clic o Enter para cargar).`)
+
+      // Registrar auditoría canónica de alta
+      await logRowAction({
+        action: 'ROW_INSERT',
+        entityType: 'third_party_services',
+        entityId: data.id,
+        entityName: `Fila en blanco #${stampedService._rowSeq}`,
+        rowData: data,
+        sheetName: 'Terceros · Servicios y Facturación',
+        moduleRoute: '/terceros',
+        changeOrigin: 'RIBBON_INSERT',
+        user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+      })
+    } catch (err) {
+      console.error('Error insertando fila en blanco en terceros:', err)
+      showFeedback('error', 'Error al insertar fila en blanco: ' + (err.message || err))
     }
   }
 
@@ -801,19 +883,22 @@ export default function Terceros() {
         changed_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
       })
 
-      // 3. Registrar en audit_logs general
-      await supabase.from('audit_logs').insert({
-        action: 'EVOLUCION_COMPROBANTE_TERCEROS',
-        entity_type: 'third_party_services',
-        entity_id: evolvingService.id,
-        entity_name: evolvingService.contractor_name,
-        details: {
+      // 3. Registrar en auditoría canónica
+      await logRowAction({
+        action: 'STATUS_CHANGE',
+        entityType: 'third_party_services',
+        entityId: evolvingService.id,
+        entityName: evolvingService.contractor_name,
+        changes: {
           from_voucher_type: evolvingService.voucher_type,
           to_voucher_type: evolutionForm.target_voucher_type,
           invoice_number: evolutionForm.new_voucher_number,
           notes: evolutionForm.evolution_notes
         },
-        performed_by: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+        sheetName: 'Terceros · Servicios y Facturación',
+        moduleRoute: '/terceros',
+        changeOrigin: 'MODAL_EVOLUTION',
+        user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
       })
 
       showFeedback('success', `Comprobante evolucionado exitosamente a ${evolutionForm.target_voucher_type} (${evolutionForm.new_voucher_number}).`)
@@ -856,6 +941,22 @@ export default function Terceros() {
         .eq('id', auditingService.id)
 
       if (updErr) throw updErr
+
+      // Registrar auditoría canónica de conformidad técnica
+      await logRowAction({
+        action: 'STATUS_CHANGE',
+        entityType: 'third_party_services',
+        entityId: auditingService.id,
+        entityName: auditingService.contractor_name,
+        changes: {
+          audit_status: auditForm.audit_status,
+          audit_notes: auditForm.audit_notes.trim()
+        },
+        sheetName: 'Terceros · Servicios y Facturación',
+        moduleRoute: '/terceros',
+        changeOrigin: 'MODAL_TECHNICAL_AUDIT',
+        user: auditorName
+      })
 
       showFeedback('success', `Conformidad técnica guardada como "${auditForm.audit_status}".`)
       setAuditingService(null)
@@ -1326,6 +1427,21 @@ export default function Terceros() {
         .update(updateData)
         .eq('id', serviceId)
       if (error) throw error
+
+      logCellChange({
+        entityType: 'third_party_services',
+        entityId: serviceId,
+        entityName: targetService.contractor_name || String(serviceId),
+        field,
+        fieldLabel: field,
+        oldValue: targetService[field],
+        newValue: cleanedValue,
+        sheetName: 'Terceros · Servicios y Facturación',
+        moduleRoute: '/terceros',
+        changeOrigin: 'INLINE_CELL',
+        user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+      })
+
       showFeedback('success', 'Campo actualizado correctamente.')
     } catch (err) {
       console.error('Error guardando celda inline:', err)
@@ -1554,7 +1670,7 @@ export default function Terceros() {
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>+ Cargar Comprobante</span>
+                <span>Cargar Comprobante</span>
               </button>
             )}
           </div>
@@ -1883,8 +1999,8 @@ export default function Terceros() {
           {/* Ribbon Canónico (Estándar 04) con Exportación integrada */}
           <GridRibbon
             activeCellBadge={grid.activeCellBadge}
-            onInsertRow={activeRolePerspective !== 'direccion' ? handleOpenNewModal : null}
-            insertRowLabel="+ Insertar Fila en #1"
+            onInsertRow={activeRolePerspective !== 'direccion' ? handleInsertBlankRow : null}
+            insertRowLabel="+ Fila en Blanco"
             undoCount={grid.undoStack?.length || 0}
             totalRows={filteredServices.length}
             entityName="comprobantes"
@@ -1999,9 +2115,9 @@ export default function Terceros() {
                             className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
                               isSelected ? 'text-cyan-300 bg-cyan-950/50 ring-1 ring-cyan-500/40' : 'text-slate-500 group-hover:text-cyan-400'
                             }`}
-                            title={`Fila #${index + 1} • Clic para menú contextual (o clic derecho)`}
+                            title={`Fila #${srv._rowSeq || index + 1} (DNI Inviolable) • Clic para menú contextual (o clic derecho)`}
                           >
-                            {index + 1}
+                            {srv._rowSeq || index + 1}
                           </button>
                         </div>
                       </td>
@@ -3649,6 +3765,21 @@ export default function Terceros() {
               })
               .eq('id', serviceId)
             if (error) throw error
+
+            logCellChange({
+              entityType: 'third_party_services',
+              entityId: serviceId,
+              entityName: target.contractor_name || String(serviceId),
+              field: 'ship_wo',
+              fieldLabel: 'Buque y OT',
+              oldValue: `${target.ship_id || 'Sin buque'} / ${target.work_order_id || 'Sin OT'}`,
+              newValue: `${shipId || 'Sin buque'} / ${workOrderId || 'Sin OT'}`,
+              sheetName: 'Terceros · Servicios y Facturación',
+              moduleRoute: '/terceros',
+              changeOrigin: 'MODAL_PICKER',
+              user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
+            })
+
             if (!workOrderId) {
               showFeedback('success', 'Buque asignado. OT dejada en blanco (sumada a KPI Falta Cargar OT).')
             } else {

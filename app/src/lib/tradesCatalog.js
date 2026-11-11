@@ -1,29 +1,105 @@
 import { supabase } from './supabase.js'
 
-export const CANONICAL_BASE_TRADES = [
-  'CALDERERIA',
-  'CARPINTERIA',
-  'COBRERIA',
-  'CORTE/PLEGADO',
-  'ELECTRICIDAD',
-  'FIBRA VIDRIO',
-  'FLETE',
-  'FRIGORISTA',
-  'GASISTA',
-  'HIDRAULICA',
-  'MANIOBRA',
-  'MATERIALES',
-  'MECANICA',
-  'MISCELANEOS',
-  'PAÑOLERO',
-  'PINTURA',
-  'RASCHINAJE',
-  'SERENO',
-  'SERVICIOS',
-  'SOLDADURA',
-  'TECNICOS',
-  'TORNERIA'
+// ============================================================================
+// CATÁLOGO OFICIAL UNIFICADO DE RUBROS Y OFICIOS (ALON CAR ERP)
+// ============================================================================
+export const OFFICIAL_RUBROS_CATALOG = [
+  { code: 'CALDERERIA', label: 'Calderería' },
+  { code: 'RASCHINAJE', label: 'Raschinear' },
+  { code: 'SOLDADURA', label: 'Soldadura' },
+  { code: 'PINTURA', label: 'Pintura' },
+  { code: 'MECANICA', label: 'Mecánica' },
+  { code: 'CARPINTERIA', label: 'Carpintería naval' },
+  { code: 'ELECTRICIDAD', label: 'Electricidad' },
+  { code: 'MANIOBRA', label: 'Maniobras y varada' },
+  { code: 'MAQUINARIA', label: 'Maquinaria' },
+  { code: 'TORNERIA', label: 'Tornería' },
+  { code: 'PRFV', label: 'PRFV / Plásticos' },
+  { code: 'FIBRA VIDRIO', label: 'Fibra de Vidrio / PRFV' },
+  { code: 'PANOLERO', label: 'Pañolero' },
+  { code: 'MANDADOS', label: 'Mandados' },
+  { code: 'SUPERVISION', label: 'Supervisión' },
+  { code: 'FERIADO', label: 'Feriado' },
+  { code: 'COBRERIA', label: 'Cobrería' },
+  { code: 'CORTE/PLEGADO', label: 'Corte y Plegado' },
+  { code: 'FLETE', label: 'Flete' },
+  { code: 'FRIGORISTA', label: 'Frigorista' },
+  { code: 'GASISTA', label: 'Gasista' },
+  { code: 'HIDRAULICA', label: 'Hidráulica' },
+  { code: 'MATERIALES', label: 'Materiales' },
+  { code: 'MISCELANEOS', label: 'Misceláneos' },
+  { code: 'SERENO', label: 'Sereno' },
+  { code: 'SERVICIOS', label: 'Servicios' },
+  { code: 'TECNICOS', label: 'Técnicos' }
 ]
+
+// Lista canónica de códigos base en mayúsculas
+export const CANONICAL_BASE_TRADES = OFFICIAL_RUBROS_CATALOG.map(r => r.code)
+
+// Normalizar texto sin acentos y en mayúsculas
+export function normalizeText(str = '') {
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim()
+}
+
+// Convertir un código o texto de rubro a su etiqueta legible estándar
+export function canonicalizeRubroLabel(raw = '') {
+  const norm = normalizeText(raw)
+  if (!norm) return 'General'
+  if (norm.includes('CALDER')) return 'Calderería'
+  if (norm.includes('RASCHIN')) return 'Raschinear'
+  if (norm.includes('SOLDAD')) return 'Soldadura'
+  if (norm.includes('PINT')) return 'Pintura'
+  if (norm.includes('MECAN')) return 'Mecánica'
+  if (norm.includes('CARPINT')) return 'Carpintería naval'
+  if (norm.includes('ELECTR')) return 'Electricidad'
+  if (norm.includes('MANIOBR') || norm.includes('VARAD')) return 'Maniobras y varada'
+  if (norm.includes('MAQUIN') || norm.includes('PALA') || norm.includes('GRUA')) return 'Maquinaria'
+  if (norm.includes('TORN')) return 'Tornería'
+  if (norm.includes('PRFV') || norm.includes('FIBRA')) return 'PRFV / Plásticos'
+  if (norm.includes('PANOL')) return 'Pañolero'
+  if (norm.includes('MANDAD')) return 'Mandados'
+  if (norm.includes('FLETE')) return 'Flete'
+  if (norm.includes('SUPERV') || norm.includes('TECNIC')) return 'Supervisión'
+  if (norm.includes('FERIAD')) return 'Feriado'
+  if (norm.includes('COBRE')) return 'Cobrería'
+  if (norm.includes('CORTE') || norm.includes('PLEGAD')) return 'Corte y Plegado'
+  if (norm.includes('FRIGOR')) return 'Frigorista'
+  if (norm.includes('GASIST')) return 'Gasista'
+  if (norm.includes('HIDRAUL')) return 'Hidráulica'
+  if (norm.includes('SEREN')) return 'Sereno'
+  return raw.trim()
+}
+
+// Desglosar el campo `trade` de un operario/contratista (soporta Multi-Rubro separado por comas)
+export function parseWorkerTrades(tradeStr = '') {
+  const parts = String(tradeStr || '')
+    .split(/[,;/|]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+
+  if (parts.length === 0) {
+    return {
+      rawList: ['GENERAL'],
+      labelList: ['General'],
+      primaryRaw: 'GENERAL',
+      primaryLabel: 'General'
+    }
+  }
+
+  const rawList = parts.map(p => p.toUpperCase())
+  const labelList = Array.from(new Set(parts.map(p => canonicalizeRubroLabel(p))))
+
+  return {
+    rawList,
+    labelList,
+    primaryRaw: rawList[0],
+    primaryLabel: labelList[0] || 'General'
+  }
+}
 
 /**
  * Carga el catálogo consolidado de rubros y operarios desde Supabase.

@@ -41,6 +41,7 @@ import { useGridContextMenu } from '../hooks/useGridContextMenu'
 import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 import { auditService } from '../lib/auditService'
+import { assignMonotonicFolios } from '../lib/monotonicFolioEngine'
 
 import HighlightText from '../components/HighlightText'
 
@@ -390,8 +391,8 @@ export default function WorkOrders() {
       ])
 
       if (shipsRes.data) setShips(shipsRes.data)
-      if (wosRes.data) setWorkOrders(wosRes.data)
-      if (itemsRes.data) setWorkItems(itemsRes.data)
+      if (wosRes.data) setWorkOrders(assignMonotonicFolios(wosRes.data, { dateField: 'created_at' }))
+      if (itemsRes.data) setWorkItems(assignMonotonicFolios(itemsRes.data, { dateField: 'created_at' }))
       if (workersRes.data) setWorkers(workersRes.data)
       if (tplRes.data) setTemplates(tplRes.data)
       if (tpRes.data) setThirdPartyServices(tpRes.data)
@@ -717,7 +718,7 @@ export default function WorkOrders() {
         })
       }
     })
-    return rows
+    return assignMonotonicFolios(rows, { dateField: 'created_at', idField: 'id' })
   }, [workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList, otMetricsAndDatesMap])
 
   // Filtrado de filas unificadas
@@ -2299,7 +2300,7 @@ export default function WorkOrders() {
             className="px-4 py-2 bg-gradient-to-r from-primary to-cyan-500 hover:brightness-110 text-slate-950 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span>+ Cargar Trabajo / Nueva OT</span>
+            <span>Cargar Trabajo</span>
           </button>
         </div>
       </div>
@@ -2632,7 +2633,7 @@ export default function WorkOrders() {
             <GridRibbon
               activeCellBadge={woGrid.activeCellBadge || 'PLANILLA UNIFICADA OTs'}
               onInsertRow={() => handleOpenNewWorkModal(null)}
-              insertRowLabel="+ Insertar Trabajo en OT"
+              insertRowLabel="+ Cargar Trabajo"
               undoCount={woGrid.undoStack?.length || 0}
               totalRows={filteredRows.length}
               entityName="trabajos"
@@ -2695,9 +2696,12 @@ export default function WorkOrders() {
                         onContextMenu={(e) => openMenu(e, row, rowIndex, { entityType: 'work_orders', recordId: row.isPlaceholder ? row.work_order_id : row.id, recordLabel: row.wo?.ot_number || '' }, woGrid)}
                         className="hover:bg-slate-800/30 transition-colors align-top select-none"
                       >
-                        {/* 0. Número Ordinal de Fila (#) */}
-                        <td className="py-3 px-2 text-center font-mono text-[11px] text-slate-500 font-bold whitespace-nowrap">
-                          {rowIndex + 1}
+                        {/* 0. Número Ordinal de Fila (# DNI Inviolable de Registro) */}
+                        <td
+                          className="py-3 px-2 text-center font-mono text-[11px] text-slate-500 font-bold whitespace-nowrap"
+                          title={`Fila #${row._rowSeq || row.item?._rowSeq || rowIndex + 1} (DNI Inviolable)`}
+                        >
+                          {row._rowSeq || row.item?._rowSeq || rowIndex + 1}
                         </td>
 
                         {/* Col 0: Barco */}

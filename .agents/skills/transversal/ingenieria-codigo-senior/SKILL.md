@@ -29,6 +29,7 @@ Ningún archivo ni función puede mezclar transporte/presentación, reglas de ne
   2. `lib/` o `utils/`: reglas de negocio, validadores, formateadores y cálculos como **funciones puras** (entra dato → sale resultado).
   3. `hooks/`: coordinación de estado, filtros, paginación y atajos.
   4. `pages/` y `components/`: estructura visual y disparo de acciones.
+  > **🛑 Prohibición de Persistencia en Vista:** Queda terminantemente prohibido ejecutar `supabase.from().select/insert/update/delete` directamente dentro de callbacks de eventos o JSX en componentes visuales. Toda operación de base de datos debe residir en funciones de `lib/` o `services/`.
 - **En Backend:**
   1. `routes/`: definición de rutas y middlewares de entrada.
   2. `controllers/`: lectura de `req` y emisión de código HTTP en `res`. Cero SQL/ORM.
@@ -37,10 +38,12 @@ Ningún archivo ni función puede mezclar transporte/presentación, reglas de ne
 
 ### P2. Una sola fuente de verdad (prohibido el estado duplicado)
 - Todo valor que pueda derivarse de datos ya presentes en memoria (KPIs, totales, conteos, listas filtradas) **se calcula al vuelo (`useMemo` o selector puro) y nunca se duplica en otro `useState` o columna redundante**.
+- **Cero Catálogos Hardcodeados:** Prohibido declarar arrays estáticos de datos maestros (nombres de operarios, rubros, roles, barcos, proveedores) en archivos locales `.js`/`.jsx`. Todo catálogo de negocio se consulta dinámicamente desde Supabase o desde el servicio unificado en `app/src/lib/`.
 - Dos fuentes para el mismo dato garantizan desincronización.
 
 ### P3. Modularidad con criterio de cohesión
 Ni archivos monolíticos de miles de líneas, ni fragmentación artificial en decenas de archivos diminutos:
+- **La Regla de la "Caja Nueva":** Todo subpanel, pestaña adicional, modal o herramienta que supere ~150–200 líneas **NACE OBLIGATORIAMENTE en su propio archivo modular** dentro de `app/src/components/[modulo]/`. La página orquestadora solo debe importar el componente y montarlo en un bloque limpio de pocas líneas.
 - **Regla de extracción obligatoria:** un bloque se extrae a su propio archivo cuando:
   1. Supera ~250–300 líneas y tiene una responsabilidad propia (un modal, una subtabla, un panel de configuración, un servicio).
   2. Su lógica aparece **2 o más veces** en el sistema.
@@ -62,6 +65,8 @@ El código senior asume que la red falla, la base rechaza datos, el entorno est�
 - **Tres estados obligatorios en operaciones asíncronas:** `cargando` (con bloqueo de doble envío), `éxito` y `error explícito` visible y accionable para el usuario. Prohibido el `catch (e) { console.error(e) }` que traga el error en silencio.
 - **Acceso seguro a estructuras:** lectura defensiva (`?.`, `??`, valores por defecto) para que un dato nulo o incompleto nunca rompa el renderizado ni tumbe el proceso servidor.
 - **Transaccionalidad:** toda operación que modifique más de una tabla o registro relacionado se ejecuta dentro de una transacción atómica (todo o nada).
+- **Trazabilidad Inquebrantable (`auditService`):** Toda mutación de datos en grillas y formularios operativos invoca obligatoriamente `auditService.logCellChange()` o `auditService.logRowAction()`, garantizando persistencia en `audit_logs` con usuario real.
+- **Blindaje Anti-Corrupción en Inputs (`onBlur`):** Todo manejador de pérdida de foco en celdas o formularios editables se declara estrictamente como `onBlur={() => commitFn()}` (función flecha sin argumentos), impidiendo terminantemente que el `FocusEvent` se envíe como valor a la base de datos produciendo `[object Object]`.
 - **Errores tipados y centralizados:** las capas internas lanzan errores de dominio con código y causa (`AppError`); una única barrera de salida los traduce a respuesta HTTP o mensaje de interfaz sin filtrar trazas internas ni secretos en producción.
 
 ### P7. Regla del Boy Scout acotada

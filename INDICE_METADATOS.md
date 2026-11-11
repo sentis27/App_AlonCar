@@ -64,6 +64,9 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/03_conceptos/CON-004-modelo-paginacion-por-operario.md | concepto | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/planillas/horas-planillas-de-registro.md |
 | docs/02_producto/04_procesos/PRO-002-mapeo-blindado-estadisticas-log.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/04_procesos/PRO-003-alertas-humanizadas-e9a.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
+| docs/02_producto/05_auditorias/README.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-10 | INDICE_CENTRAL.md |
+| docs/02_producto/05_auditorias/LINEA_BASE_ARQUITECTURA.md | registro | auditar-tareas | completo | transversal | activo | 2026-11-10 | docs/02_producto/05_auditorias/README.md |
+| docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md | registro | auditar-tareas | cambios | transversal | activo | 2026-11-10 | docs/02_producto/05_auditorias/README.md |
 | docs/03_negocio/README.md | indice | ninguno | ignorar | fase-2 | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | docs/03_negocio/tarifario_puesta_en_seco_alfa.md | catalogo-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | docs/planillas/resumen-gerencial.md |
 | docs/planillas/horas-planillas-de-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
@@ -82,6 +85,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | .agents/skills/transversal/product-collector/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/rtk/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/session-audit/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/architectural-modularity-auditor/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-10 | INDICE_CENTRAL.md |
 | .agents/skills/M1-activos/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/M2-recursos/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/M3-operaciones/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
