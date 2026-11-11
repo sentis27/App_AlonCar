@@ -40,6 +40,15 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | `app/src/lib/laborConstants.js` | Constantes y funciones canónicas del módulo de Horas (`cleanShipName`, `NOMINA_ASTILLERO_BASE`, `calculateHoursStats`, etc.) | Devs / Agentes IA |
 | `app/src/components/ships/` | Subpaneles y modales modulares de M7 Flota Naval (`ShipsBarcosPanel`, `ShipsEstadiasPanel`, `ShipsArmadoresPanel`, `ShipsModals`) | Devs / Agentes IA |
 | `app/src/lib/shipsConstants.js` | Constantes y funciones canónicas de Flota Naval y Estadías (`cleanShipName`, `cleanLocation`, `calculateStayDays`, `calculateBerthMeters`, etc.) | Devs / Agentes IA |
+| `app/src/components/panol/` | Subpaneles y modales modulares de M4 Pañol Central & Materiales (`PanolHeader`, `PanolAlertasPanel`, `PanolToolbar`, `PanolMovimientosPanel`, `PanolStockPanel`, `PanolModals`) | Devs / Agentes IA |
+| `app/src/lib/panolConstants.js` | Constantes, columnas, helpers y filtros de Pañol Central y Stock (`calculateGasStats`, `calculatePanolKpis`, `filterPanolTransactions`, etc.) | Devs / Agentes IA |
+| `app/src/lib/panolService.js` | Capa de servicio y persistencia desacoplada para Pañol (`fetchPanolData`, `saveInlineTxService`, `saveInlineMaterialService`, etc.) | Devs / Agentes IA |
+| `app/src/components/workOrders/` | Subcomponentes modulares de M6 Órdenes de Trabajo (`WorkOrdersHeader`, `WorkOrdersKpiRadar`, `WorkOrdersToolbar`, `WorkOrdersUnificadoPanel`, `WorkOrdersOtsPanel`, `WorkOrdersTercerosPanel`, `WorkOrdersModals`) | Devs / Agentes IA |
+| `app/src/lib/workOrdersConstants.js` | Constantes, columnas, ciclo de vida de 8 estados (GS-003), helpers y filtros de Órdenes de Trabajo (`computeOtState`, `computeOtMetricsAndDates`, `filterUnifiedRows`, etc.) | Devs / Agentes IA |
+| `app/src/lib/workOrdersService.js` | Capa de servicio y persistencia desacoplada para Órdenes de Trabajo (`fetchWorkOrdersData`, `saveWorkOrderService`, `separateWorkItemService`, etc.) | Devs / Agentes IA |
+| `app/src/components/terceros/` | Subcomponentes modulares de M5 Terceros & Contratistas Externos (`TercerosHeader`, `TercerosKpiRadar`, `TercerosToolbar`, `TercerosFilasPanel`, `TercerosFichasPanel`, `TercerosModals`) | Devs / Agentes IA |
+| `app/src/lib/tercerosConstants.js` | Constantes, columnas, ciclo de comprobantes DEC-017 (PRC, RMO, RPF, FCR, SDT), helpers y filtros de Terceros (`getDollarRateForDate`, `filterTercerosServices`, etc.) | Devs / Agentes IA |
+| `app/src/lib/tercerosService.js` | Capa de servicio y persistencia desacoplada para Terceros (`fetchTercerosData`, `saveServiceService`, `confirmEvolutionService`, `saveAuditService`, etc.) | Devs / Agentes IA |
 | `docs/02_producto/05_auditorias/README.md` | Sistema Central de Auditorías Arquitectónicas, Línea Base (`LINEA_BASE_ARQUITECTURA.md`) y Ledger Diario (`BITACORA_DELTAS_SESION.md`) | Devs / Agentes IA |
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)

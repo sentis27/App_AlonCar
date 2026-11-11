@@ -73,13 +73,15 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - [ ] D-02: Respaldar `workflow.json` reales de n8n en el repo (Postergado a próxima sesión por usuario)
   - [x] D-03: Proteger Edge Function Deno con verificación JWT de Supabase Auth
   - [x] D-04: Verificación empírica de aislamiento de credenciales (`service-account.json` ignorado en git)
-- [ ] **Ola 3: Desarticulación Quirúrgica de Monolitos (~15 hs)**
+- [x] **Ola 3: Desarticulación Quirúrgica de Monolitos (~15 hs) — 100% CUMPLIDA (7 de 7 monolitos transaccionales y 8 de 8 páginas críticas reducidas a < 250L)**
   - [x] B-01.1: Modularizar `Compras.jsx` (Reducido de 9.076L a 242L, subpaneles en `components/compras/`, modales y `comprasConstants.js`)
   - [x] B-01.2 & B-04: Modularizar `Personal.jsx` (Reducido de 6.186L a 152L, 3 subpaneles en `components/personal/`, eliminación total de fallback `initialPersonnel.json`)
   - [x] B-01.3: Modularizar `LaborLogs.jsx` (Reducido de 6.111L a 200L, subpaneles `LaborCargaPanel`, `LaborControlDiarioPanel`, `LaborSabanaPanel` en `components/labor/`, `LaborModals.jsx` y `laborConstants.js`)
   - [x] C-02: Culminar extracción de `AdminDashboard.jsx` (Reducido de 3.034L a 231L, 4 subpaneles en `components/admin/`)
   - [x] B-01.4 (Parte 1 - Ships): Modularizar `Ships.jsx` (Reducido de 5.048L a 202L, subpaneles `ShipsBarcosPanel`, `ShipsEstadiasPanel`, `ShipsArmadoresPanel` en `components/ships/`, `ShipsModals.jsx` y `shipsConstants.js`)
-  - [ ] B-01.4 (Restante): Modularizar `Panol`, `WorkOrders`, `Terceros`
+  - [x] B-01.4 (Parte 2 - Panol): Modularizar `Panol.jsx` (Reducido de 4.922L a 219L, subpaneles `PanolHeader`, `PanolAlertasPanel`, `PanolToolbar`, `PanolMovimientosPanel`, `PanolStockPanel` en `components/panol/`, `PanolModals.jsx`, `panolConstants.js` y `panolService.js`)
+  - [x] B-01.4 (Parte 3 - WorkOrders): Modularizar `WorkOrders.jsx` (Reducido de 5.614L a 238L, subcomponentes `WorkOrdersHeader`, `WorkOrdersKpiRadar`, `WorkOrdersToolbar`, `WorkOrdersUnificadoPanel`, `WorkOrdersOtsPanel`, `WorkOrdersTercerosPanel`, `WorkOrdersModals.jsx` en `components/workOrders/`, `workOrdersConstants.js` y `workOrdersService.js`)
+  - [x] B-01.4 (Parte 4 - Terceros): Modularizar `Terceros.jsx` (Reducido de 3.825L a 246L, subcomponentes `TercerosHeader`, `TercerosKpiRadar`, `TercerosToolbar`, `TercerosFilasPanel`, `TercerosFichasPanel`, `TercerosModals.jsx` en `components/terceros/`, `tercerosConstants.js` y `tercerosService.js`)
 - [ ] **Ola 4: Capa de Servicios y Clean Architecture (~6 hs)**
   - [ ] B-03 / D-01: Crear capa `app/src/services/`
   - [ ] A-03: Modularizar motor de IA `aiLaborEngine.js`
@@ -260,13 +262,15 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - [ ] D-02: Respaldar `workflow.json` reales de n8n en el repo (Postergado a próxima sesión por usuario)
   - [x] D-03: Proteger Edge Function Deno con verificación JWT de Supabase Auth
   - [x] D-04: Verificación empírica de aislamiento de credenciales (`service-account.json` ignorado en git)
-- [ ] **Ola 3: Desarticulación Quirúrgica de Monolitos (~15 hs)**
+- [x] **Ola 3: Desarticulación Quirúrgica de Monolitos (~15 hs) — 100% CUMPLIDA (7 de 7 monolitos transaccionales y 8 de 8 páginas críticas reducidas a < 250L)**
   - [x] B-01.1: Modularizar `Compras.jsx` (Reducido de 9.076L a 242L, subpaneles en `components/compras/`, modales y `comprasConstants.js`)
   - [x] B-01.2 & B-04: Modularizar `Personal.jsx` (Reducido de 6.186L a 152L, 3 subpaneles en `components/personal/`, eliminación total de fallback `initialPersonnel.json`)
   - [x] B-01.3: Modularizar `LaborLogs.jsx` (Reducido de 6.111L a 200L, subpaneles `LaborCargaPanel`, `LaborControlDiarioPanel`, `LaborSabanaPanel` en `components/labor/`, `LaborModals.jsx` y `laborConstants.js`)
   - [x] C-02: Culminar extracción de `AdminDashboard.jsx` (Reducido de 3.034L a 231L, 4 subpaneles en `components/admin/`)
   - [x] B-01.4 (Parte 1 - Ships): Modularizar `Ships.jsx` (Reducido de 5.048L a 202L, subpaneles `ShipsBarcosPanel`, `ShipsEstadiasPanel`, `ShipsArmadoresPanel` en `components/ships/`, `ShipsModals.jsx` y `shipsConstants.js`)
-  - [ ] B-01.4 (Restante): Modularizar `Panol`, `WorkOrders`, `Terceros`
+  - [x] B-01.4 (Parte 2 - Panol): Modularizar `Panol.jsx` (Reducido de 4.922L a 219L, subpaneles `PanolHeader`, `PanolAlertasPanel`, `PanolToolbar`, `PanolMovimientosPanel`, `PanolStockPanel` en `components/panol/`, `PanolModals.jsx`, `panolConstants.js` y `panolService.js`)
+  - [x] B-01.4 (Parte 3 - WorkOrders): Modularizar `WorkOrders.jsx` (Reducido de 5.614L a 238L, subcomponentes `WorkOrdersHeader`, `WorkOrdersKpiRadar`, `WorkOrdersToolbar`, `WorkOrdersUnificadoPanel`, `WorkOrdersOtsPanel`, `WorkOrdersTercerosPanel`, `WorkOrdersModals.jsx` en `components/workOrders/`, `workOrdersConstants.js` y `workOrdersService.js`)
+  - [x] B-01.4 (Parte 4 - Terceros): Modularizar `Terceros.jsx` (Reducido de 3.825L a 246L, subcomponentes `TercerosHeader`, `TercerosKpiRadar`, `TercerosToolbar`, `TercerosFilasPanel`, `TercerosFichasPanel`, `TercerosModals.jsx` en `components/terceros/`, `tercerosConstants.js` y `tercerosService.js`)
 - [ ] **Ola 4: Capa de Servicios y Clean Architecture (~6 hs)**
   - [ ] B-03 / D-01: Crear capa `app/src/services/`
   - [ ] A-03: Modularizar motor de IA `aiLaborEngine.js`
