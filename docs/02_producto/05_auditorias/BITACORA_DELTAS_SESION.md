@@ -7,6 +7,20 @@
 
 <!-- Las nuevas entradas de cierre se agregan aquí arriba -->
 
+## [2026-11-12] Sesión de Cierre — Fix Pantalla en Negro Barco/OT (Terceros) & Consolidación Regla Naval OTs (`be899a3`)
+- **Hora:** 17:43 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (commit `be899a3` + documentación de cierre):**
+  * `app/src/components/ShipWorkOrderPickerModal.jsx`: Reubicación de hooks `useMemo` (`selectedWo` y `previewScope`) por encima del early-return `if (!isOpen) return null`, eliminando el crash fatal por `react-hooks(rules-of-hooks)` ("pantalla en negro" en Terceros al asignar Buque/OT), más integración de regla naval y preview hover.
+  * `app/src/components/terceros/TercerosModals.jsx`: Comparación segura `String(wo.ship_id) === String(formData.ship_id)` e integración de `WorkOrderSelectorWithHover` y `WorkOrderScopeHoverCard`.
+  * Módulos de OTs consolidados en `be899a3`: `CloseWorkOrderTreeModal.jsx`, `WorkOrderScopeHoverCard.jsx`, `WorkOrderSelectorWithHover.jsx`, `workOrdersConstants.js`, `workOrdersService.js`, `PanolModals.jsx`, `LaborModals.jsx`.
+- **Blast Radius:** Sistémico controlado (componente canónico `ShipWorkOrderPickerModal` compartido por Terceros, Horas, Pañol y Compras).
+- **Tracker Anti-Rot:** 0 Pecados detectados (`oxlint --deny=rules-of-hooks`: 0 errores).
+- **Trazabilidad Supabase:** Verificado `auditService` en `tercerosService.js` (`saveShipWoPickerService`) y `workOrdersService.js`.
+- **Compilación / Build:** `npm run build` PASS en 3.32s (`2069` módulos, 0 errores).
+- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT**
+- **Commit asociado:** `be899a3` (código) + `docs: cierre de sesion 2026-11-12 - auditoria delta, matriz de datos, tareas y ERR-004`
+---
+
 ## [2026-11-11] Ejecución /goal — Sub-Ola 4.3 de Refactorización Completada (Hallazgos B-03 & D-01: Capa Formal de Servicios / Clean Architecture — 100% Ola 4 CERRADA)
 - **Hora:** 22:25 ART | **Agente:** Antigravity (Modo /goal Autónomo) | **Revisor:** Usuario
 - **Superficie evaluada:** 

@@ -1,6 +1,6 @@
 ---
 version: 1.5
-last_updated: 2026-11-11
+last_updated: 2026-11-12
 status: DOCUMENTO_VIVO_ACTIVO
 evolution_api_status: CONECTADO_LISTO
 ---
@@ -351,3 +351,16 @@ Al seleccionar cualquier material del rubro `GASES` en el formulario de retiro d
 * **Rol Responsable:** `ADMINISTRACION` / `FINANZAS`
 * **Parámetros de Alerta:**
   * Horario: `08:30 hs` | Frecuencia: `DIARIO` | Límite: `2 intentos`.
+
+---
+
+## 8. Módulo de Órdenes de Trabajo (`work_orders` y `work_items`)
+
+### 8.1. Regla OT-01: Bloqueo de Imputación sobre OTs Finalizadas y Cierre Atómico de Árbol
+* **Código:** `REQ_OT_BLOQUEO_IMPUTACION_FINALIZADA`
+* **Módulo:** `ots` / `panol` / `horas` / `compras` / `terceros`
+* **Campos Clave:** `work_items.status` (`Finalizado` | `Facturado` | `Desestimado`), `work_orders.status`
+* **Trigger:** Todas las subtareas (`work_items`) de una OT pasan a estado `Finalizado` o `Facturado` (individualmente o mediante Cierre de Árbol en 1-Clic en `CloseWorkOrderTreeModal.jsx`).
+* **Comportamiento de Gobernanza en UI:** La OT queda oculta por defecto en los selectores de carga e imputación (`ShipWorkOrderPickerModal`, `WorkOrderSelectorWithHover`) en Pañol, Horas, Compras y Terceros para impedir imputación de costos sobre obras cerradas (salvo activación explícita del conmutador `Ver finalizadas`).
+* **Rol Responsable:** `jefe_obra` / `admin` (ejecutor del cierre de árbol en `WorkOrders`, con registro automático en `audit_logs`).
+* **Dato Pendiente Asociado:** Definir con Dirección/Usuario qué disparador documental obligatorio se exigirá antes de habilitar el cierre atómico de una OT (ej. conformidad técnica firmada o rendición final de horas).

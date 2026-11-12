@@ -1,7 +1,7 @@
 # Índice de Metadatos — App_AlonCar
 
 > **schema-version:** 1.0
-> **Última actualización:** 2026-07-24
+> **Última actualización:** 2026-11-12
 > **Propósito:** Tabla máquina para consumo exclusivo del Agente IA. Para navegación humana, usar `INDICE_CENTRAL.md`.
 
 ## Vocabularios Controlados
@@ -33,9 +33,9 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | Archivo | Tipo | Comportamiento-IA | Lectura | Fase | Estado | Última revisión | Depende de |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | README.md | portada | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
-| INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-06-14 | ninguno |
-| INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-06-14 | INDICE_CENTRAL.md |
-| TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-06-14 | INDICE_CENTRAL.md |
+| INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-12 | ninguno |
+| INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-12 | INDICE_CENTRAL.md |
+| TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-11-12 | INDICE_CENTRAL.md |
 | INDICE_PLANILLAS.md | indice | consultar-siempre | completo | fase-2 | activo | 2026-06-18 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md |
 | ROADMAP_NEGOCIO.md | roadmap | auditar-avances | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | GUIA_ANTIGRAVITY.md | instrucciones-agente | auditar-reglas | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md \| ROADMAP_NEGOCIO.md |
@@ -45,7 +45,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/01_infraestructura/03_seguridad_credenciales.md | protocolo | ninguno | completo | fase-1 | activo | 2026-06-10 | ninguno |
 | docs/01_infraestructura/04_arquitectura_mcp.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-06-10 | docs/01_infraestructura/01_stack_tecnico.md |
 | docs/01_infraestructura/04_servidor_mcp.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-06-10 | docs/01_infraestructura/01_stack_tecnico.md |
-| docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-07-19 | INDICE_CENTRAL.md |
+| docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-11-12 | INDICE_CENTRAL.md |
 | docs/02_producto/registro_paso_a_paso.md | registro | auditar-decisiones | cambios | transversal | activo | 2026-06-10 | ninguno |
 | docs/02_producto/01_decisiones/DEC-003-separacion-indices.md | decision | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/02_producto/01_decisiones/DEC-004-desdoblamiento-nodo-validaciones-e4.md | decision | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
@@ -60,13 +60,14 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/01_decisiones/DEC-013-reconciliacion-horas-materiales-inbox.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-08-21 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/01_decisiones/DEC-014-resumen-gerencial-horas-presupuestos-workspace.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-08-21 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/02_errores/ERR-003-service-account-permisos-sheets.md | error | ninguno | cambios | transversal | activo | 2026-06-14 | docs/02_producto/README.md |
+| docs/02_producto/02_errores/ERR-004-hooks-condicionales-pantalla-negra-picker-modal.md | error | ninguno | cambios | fase-2+ | borrador | 2026-11-12 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-003-arquitectura-bitacora.md | concepto | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-004-modelo-paginacion-por-operario.md | concepto | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/planillas/horas-planillas-de-registro.md |
 | docs/02_producto/04_procesos/PRO-002-mapeo-blindado-estadisticas-log.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/04_procesos/PRO-003-alertas-humanizadas-e9a.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/05_auditorias/README.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-10 | INDICE_CENTRAL.md |
 | docs/02_producto/05_auditorias/LINEA_BASE_ARQUITECTURA.md | registro | auditar-tareas | completo | transversal | activo | 2026-11-10 | docs/02_producto/05_auditorias/README.md |
-| docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md | registro | auditar-tareas | cambios | transversal | activo | 2026-11-10 | docs/02_producto/05_auditorias/README.md |
+| docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md | registro | auditar-tareas | cambios | transversal | activo | 2026-11-12 | docs/02_producto/05_auditorias/README.md |
 | docs/03_negocio/README.md | indice | ninguno | ignorar | fase-2 | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | docs/03_negocio/tarifario_puesta_en_seco_alfa.md | catalogo-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | docs/planillas/resumen-gerencial.md |
 | docs/planillas/horas-planillas-de-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
@@ -97,3 +98,4 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |
 | mcp-server/package.json | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | mcp-server/index.js |
 | docs/03_negocio/proyecto_perfil_puesto_y_matriz_responsabilidades.md | documentacion-negocio | auditar-reglas | completo | fase-2 | activo | 2026-10-09 | INDICE_CENTRAL.md |
+| docs/MATRIZ_RESPONSABILIDAD_DATOS.md | documentacion-negocio | auditar-reglas | cambios | fase-2+ | activo | 2026-11-12 | INDICE_CENTRAL.md |

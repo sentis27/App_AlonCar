@@ -60,6 +60,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-08-09 | DEC-015 | Interfaz de Grilla con Edición Inline Condicional por Permisos | decision |
 | 2026-08-09 | DEC-016 | Tooltip con Descripción de OT en Dropdown de Selección | decision |
 | 2026-08-10 | DEC-017 | Leyendas de ayuda interactiva (Tooltips) para Tipos de Comprobante | decision |
+| 2026-11-12 | ERR-004 | Pantalla en negro al asignar Buque y OT por hook condicional en modal picker | error |
 
 ---
 
@@ -92,6 +93,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | ERR-001 | Skills en docs/ vs .agents/skills/ nativo | 1 | borrador | 2026-06-10 | — |
 | ERR-002 | Apps Script bloqueado por Service Account | 1 | borrador | 2026-06-10 | — |
 | ERR-003 | Google Sheets API: The caller does not have permission | 1 | borrador | 2026-06-14 | — |
+| ERR-004 | Pantalla en negro al asignar Buque y OT por hook condicional en modal picker | 3 | borrador | 2026-11-12 | — |
 
 ## Conceptos
 
