@@ -82,10 +82,10 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - [x] B-01.4 (Parte 2 - Panol): Modularizar `Panol.jsx` (Reducido de 4.922L a 219L, subpaneles `PanolHeader`, `PanolAlertasPanel`, `PanolToolbar`, `PanolMovimientosPanel`, `PanolStockPanel` en `components/panol/`, `PanolModals.jsx`, `panolConstants.js` y `panolService.js`)
   - [x] B-01.4 (Parte 3 - WorkOrders): Modularizar `WorkOrders.jsx` (Reducido de 5.614L a 238L, subcomponentes `WorkOrdersHeader`, `WorkOrdersKpiRadar`, `WorkOrdersToolbar`, `WorkOrdersUnificadoPanel`, `WorkOrdersOtsPanel`, `WorkOrdersTercerosPanel`, `WorkOrdersModals.jsx` en `components/workOrders/`, `workOrdersConstants.js` y `workOrdersService.js`)
   - [x] B-01.4 (Parte 4 - Terceros): Modularizar `Terceros.jsx` (Reducido de 3.825L a 246L, subcomponentes `TercerosHeader`, `TercerosKpiRadar`, `TercerosToolbar`, `TercerosFilasPanel`, `TercerosFichasPanel`, `TercerosModals.jsx` en `components/terceros/`, `tercerosConstants.js` y `tercerosService.js`)
-- [ ] **Ola 4: Capa de Servicios y Clean Architecture (~6 hs)**
-  - [ ] B-03 / D-01: Crear capa `app/src/services/`
-  - [ ] A-03: Modularizar motor de IA `aiLaborEngine.js`
-  - [ ] A-04: Modularizar `useSpreadsheetGrid.js` en sub-hooks
+- [x] **Ola 4: Capa de Servicios y Clean Architecture (~6 hs) — 100% CUMPLIDA**
+  - [x] A-03 (Sub-Ola 4.1): Modularizar motor de IA `aiLaborEngine.js` (Reducido de 1.120L a 214L, prompts extraídos a `aiPrompts.js` y formateadores puros a `aiTextFormatters.js`)
+  - [x] A-04 (Sub-Ola 4.2): Modularizar `useSpreadsheetGrid.js` en sub-hooks (Reducido de 1.255L a 162L, sub-hooks extraídos a `hooks/grid/`: `useGridHistory`, `useGridSelection`, `useGridClipboard`, `useGridNavigation`)
+  - [x] B-03 / D-01 (Sub-Ola 4.3): Crear capa formal `app/src/services/` (`personalService.js`, `comprasService.js`, `laborService.js`, `shipsService.js`, `index.js`) con fachada unificada y auditoría obligatoria
 
 ---
 
@@ -271,10 +271,10 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
   - [x] B-01.4 (Parte 2 - Panol): Modularizar `Panol.jsx` (Reducido de 4.922L a 219L, subpaneles `PanolHeader`, `PanolAlertasPanel`, `PanolToolbar`, `PanolMovimientosPanel`, `PanolStockPanel` en `components/panol/`, `PanolModals.jsx`, `panolConstants.js` y `panolService.js`)
   - [x] B-01.4 (Parte 3 - WorkOrders): Modularizar `WorkOrders.jsx` (Reducido de 5.614L a 238L, subcomponentes `WorkOrdersHeader`, `WorkOrdersKpiRadar`, `WorkOrdersToolbar`, `WorkOrdersUnificadoPanel`, `WorkOrdersOtsPanel`, `WorkOrdersTercerosPanel`, `WorkOrdersModals.jsx` en `components/workOrders/`, `workOrdersConstants.js` y `workOrdersService.js`)
   - [x] B-01.4 (Parte 4 - Terceros): Modularizar `Terceros.jsx` (Reducido de 3.825L a 246L, subcomponentes `TercerosHeader`, `TercerosKpiRadar`, `TercerosToolbar`, `TercerosFilasPanel`, `TercerosFichasPanel`, `TercerosModals.jsx` en `components/terceros/`, `tercerosConstants.js` y `tercerosService.js`)
-- [ ] **Ola 4: Capa de Servicios y Clean Architecture (~6 hs)**
-  - [ ] B-03 / D-01: Crear capa `app/src/services/`
-  - [ ] A-03: Modularizar motor de IA `aiLaborEngine.js`
-  - [ ] A-04: Modularizar `useSpreadsheetGrid.js` en sub-hooks
+- [x] **Ola 4: Capa de Servicios y Clean Architecture (~6 hs) — 100% CUMPLIDA**
+  - [x] A-03 (Sub-Ola 4.1): Modularizar motor de IA `aiLaborEngine.js` (Reducido de 1.120L a 214L, prompts extraídos a `aiPrompts.js` y formateadores puros a `aiTextFormatters.js`)
+  - [x] A-04 (Sub-Ola 4.2): Modularizar `useSpreadsheetGrid.js` en sub-hooks (Reducido de 1.255L a 162L, sub-hooks extraídos a `hooks/grid/`: `useGridHistory`, `useGridSelection`, `useGridClipboard`, `useGridNavigation`)
+  - [x] B-03 / D-01 (Sub-Ola 4.3): Crear capa formal `app/src/services/` (`personalService.js`, `comprasService.js`, `laborService.js`, `shipsService.js`, `index.js`) con fachada unificada y auditoría obligatoria
 
 ---
 

@@ -1,6 +1,6 @@
 ---
-version: 1.4
-last_updated: 2026-11-10
+version: 1.5
+last_updated: 2026-11-11
 status: DOCUMENTO_VIVO_ACTIVO
 evolution_api_status: CONECTADO_LISTO
 ---

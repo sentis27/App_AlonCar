@@ -32,6 +32,8 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | `app/src/lib/monotonicFolioEngine.js` | Motor Canónico de Folios Monótonos Crecientes (# DNI de Registro) para grillas ERP | Devs / Agentes IA |
 | `app/src/lib/gridRowActions.js` | Servicio canónico compartido para Duplicar Fila (`duplicateRecord`) y Pegar Fila Completa (`pasteRowFields` / `buildPasteRowHandler`) con auditoría en `audit_logs` y Undo/Redo | Devs / Agentes IA |
 | `app/src/hooks/useGridContextMenu.js` | Hook compartido de estado y apertura del menú contextual canónico (`GridContextMenu.jsx`) | Devs / Agentes IA |
+| `app/src/hooks/useSpreadsheetGrid.js` | Orquestador canónico de hoja de cálculo ERP (reducido a 162L), con navegación 100% teclado, Fill-handle, selección 2D y Deshacer/Rehacer | Devs / Agentes IA |
+| `app/src/hooks/grid/` | Sub-hooks especializados de grilla (`useGridHistory.js`, `useGridSelection.js`, `useGridClipboard.js`, `useGridNavigation.js`) | Devs / Agentes IA |
 | `app/src/components/admin/` | Subpaneles modulares de M9 Admin (`AdminRolesMatrixPanel`, `AdminMacroPanel`, `AdminAlertsCompliancePanel`, `AdminLiveKpiRadar`) | Devs / Agentes IA |
 | `app/src/components/personal/` | Subpaneles modulares de M8 Personal (`PersonalNominaPanel`, `PersonalTarifarioPanel`, `PersonalAnalisisPanel`) | Devs / Agentes IA |
 | `app/src/components/compras/` | Subpaneles y modales modulares de M4 Compras (`ComprasPedidosPanel`, `ComprasProveedoresPanel`, `ComprasOcrPanel`, `OrderFormModal`, `NewMaterialModal`, `ComprasAuxModals`) | Devs / Agentes IA |
@@ -49,6 +51,9 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | `app/src/components/terceros/` | Subcomponentes modulares de M5 Terceros & Contratistas Externos (`TercerosHeader`, `TercerosKpiRadar`, `TercerosToolbar`, `TercerosFilasPanel`, `TercerosFichasPanel`, `TercerosModals`) | Devs / Agentes IA |
 | `app/src/lib/tercerosConstants.js` | Constantes, columnas, ciclo de comprobantes DEC-017 (PRC, RMO, RPF, FCR, SDT), helpers y filtros de Terceros (`getDollarRateForDate`, `filterTercerosServices`, etc.) | Devs / Agentes IA |
 | `app/src/lib/tercerosService.js` | Capa de servicio y persistencia desacoplada para Terceros (`fetchTercerosData`, `saveServiceService`, `confirmEvolutionService`, `saveAuditService`, etc.) | Devs / Agentes IA |
+| `app/src/lib/aiPrompts.js` | Catálogo canónico de prompts de sistema GPT-4o-mini (DEC-004 a DEC-007), persistencia en Supabase, caché y bitácora de auditoría IA | Devs / Agentes IA |
+| `app/src/lib/aiTextFormatters.js` | Formateadores textuales puros, corrección ortográfica naval (RN-09), inferencia de rubros (RN-08) y parsing local determinístico | Devs / Agentes IA |
+| `app/src/services/` | Capa formal de Servicios y Clean Architecture (`personalService.js`, `comprasService.js`, `laborService.js`, `shipsService.js`, `index.js`) con fachada unificada | Devs / Agentes IA |
 | `docs/02_producto/05_auditorias/README.md` | Sistema Central de Auditorías Arquitectónicas, Línea Base (`LINEA_BASE_ARQUITECTURA.md`) y Ledger Diario (`BITACORA_DELTAS_SESION.md`) | Devs / Agentes IA |
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)
