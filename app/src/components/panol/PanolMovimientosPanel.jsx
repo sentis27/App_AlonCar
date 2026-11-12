@@ -524,7 +524,7 @@ export default function PanolMovimientosPanel({
                       const cp = getSpreadsheetCellProps(rowIndex, 'work_order_id')
                       const contractorVal = tx.contractor_name || tx.worker_name
                       const enabledShipWos = getEnabledWosForShipAndContractor(tx.ship_id, contractorVal)
-                      const otTooltip = formatWorkOrderTooltip(wo, ship)
+                      const otTooltip = typeof formatWorkOrderTooltip === 'function' ? formatWorkOrderTooltip(wo, ship, workItems, workOrders) : ''
                       const allocState = evaluateAllocationState({
                         shipId: tx.ship_id,
                         workOrderId: tx.work_order_id,

@@ -452,3 +452,233 @@ export function buildUnifiedRows(workOrders = [], itemsByWoMap = {}, thirdPartyB
   })
   return assignMonotonicFolios(rows, { dateField: 'created_at', idField: 'id' })
 }
+
+/**
+ * Obtiene el alcance consolidado de una OT reuniendo todas sus líneas/tareas (work_items).
+ * Resuelve la discrepancia de múltiples líneas bajo una misma OT (ej: desmonte, colocación de chapa, limpieza).
+ * Si hay múltiples registros work_orders que comparten (ship_id, ot_number), también consolida sus ítems
+ * para blindaje contra duplicados históricos.
+ */
+export function getWorkOrderConsolidatedScope(wo, workItems = [], allWorkOrders = [], options = {}) {
+  if (!wo) {
+    return {
+      tasks: [],
+      taskCount: 0,
+      tasksSummary: '',
+      scopeLabel: '(⚠️ Sin OT)',
+      fullDescription: '',
+      otNum: 'OT',
+      otTitle: ''
+    }
+  }
+
+  const { contractorFilter = '', maxSummaryTasks = 4 } = options
+
+  // Identificar todos los IDs de work_order pertenecientes a este mismo barco y número de OT
+  const relatedWoIds = new Set([wo.id])
+  if (Array.isArray(allWorkOrders) && allWorkOrders.length > 0 && wo.ship_id && wo.ot_number) {
+    allWorkOrders.forEach((w) => {
+      if (
+        w.ship_id === wo.ship_id &&
+        String(w.ot_number || '').trim().toUpperCase() === String(wo.ot_number || '').trim().toUpperCase()
+      ) {
+        relatedWoIds.add(w.id)
+      }
+    })
+  }
+
+  // Filtrar ítems de trabajo asociados a esta OT (excluyendo desestimados) y ordenar cronológicamente
+  const validItems = (Array.isArray(workItems) ? workItems : []).filter(
+    (wi) => relatedWoIds.has(wi.work_order_id) && wi.status !== 'Desestimado'
+  )
+
+  const sortedItems = [...validItems].sort((a, b) => {
+    const da = a.created_at ? new Date(a.created_at).getTime() : 0
+    const db = b.created_at ? new Date(b.created_at).getTime() : 0
+    if (da !== db) return da - db
+    return String(a.id || '').localeCompare(String(b.id || ''))
+  })
+
+  const tasks = sortedItems.map((wi, idx) => {
+    const rawContractors = Array.isArray(wi.contractors)
+      ? wi.contractors
+      : wi.contractor_name
+      ? [wi.contractor_name]
+      : []
+    const contractorsStr = rawContractors.join(', ') || 'Sin asignar'
+    const foremanStr = wi.foreman_name || 'Sin asignar'
+    const desc = wi.description || 'Sin descripción'
+
+    let isContractorMatch = false
+    if (contractorFilter) {
+      const normFilter = String(contractorFilter).trim().toUpperCase()
+      isContractorMatch = rawContractors.some((c) => String(c).trim().toUpperCase() === normFilter)
+    }
+
+    return {
+      index: idx + 1,
+      id: wi.id,
+      work_order_id: wi.work_order_id,
+      description: desc,
+      contractors: rawContractors,
+      contractorsStr,
+      foreman_name: foremanStr,
+      status: wi.status || 'En ejecución',
+      work_type: wi.work_type || 'HORA',
+      isContractorMatch
+    }
+  })
+
+  // Resumen de tareas para etiquetas y dropdowns
+  const taskDescriptions = tasks.map((t) => {
+    if (t.contractorsStr && t.contractorsStr !== 'Sin asignar') {
+      return `${t.description} (${t.contractorsStr})`
+    }
+    return t.description
+  })
+
+  const tasksSummary = taskDescriptions.length > 0
+    ? (taskDescriptions.length > maxSummaryTasks
+        ? `${taskDescriptions.slice(0, maxSummaryTasks).join(' • ')} (+${taskDescriptions.length - maxSummaryTasks} más)`
+        : taskDescriptions.join(' • '))
+    : (wo.description || wo.title || 'Sin tareas registradas')
+
+  const otNum = wo.ot_number || wo.order_number || (wo.id ? String(wo.id).slice(0, 4) : 'OT')
+  const otTitle = wo.title || wo.description || 'Sin título'
+  const scopeLabel = `OT #${otNum} — ${otTitle} [${tasksSummary}]`
+
+  const fullDescription = tasks.length > 0
+    ? tasks.map((t) => `#${t.index}: ${t.description} | Resp: ${t.contractorsStr} (Jefe: ${t.foreman_name}) [${t.status}]`).join('\n')
+    : (wo.description || 'Sin tareas cargadas')
+
+  return {
+    tasks,
+    taskCount: tasks.length,
+    tasksSummary,
+    scopeLabel,
+    fullDescription,
+    otNum,
+    otTitle
+  }
+}
+
+/**
+ * Genera texto con tachado horizontal Unicode (utilizando \u0336)
+ */
+export function toUnicodeStrikethrough(text = '') {
+  return String(text)
+    .split('')
+    .map((c) => c + '\u0336')
+    .join('')
+}
+
+/**
+ * Formateador Canónico de Tooltip para celdas de Orden de Trabajo en todas las planillas.
+ * Despliega la sábana técnica completa para facturación, imputación y control de obra.
+ * Aplica tachado Unicode en tareas finalizadas/facturadas preservando la etiqueta de estado sin tachar.
+ */
+export function formatWorkOrderTooltipCanonical(wo, ship, workItems = [], allWorkOrders = []) {
+  if (!wo) return '(⚠️ Sin OT)'
+  const scope = getWorkOrderConsolidatedScope(wo, workItems, allWorkOrders)
+  const shipName = ship?.name || 'Astillero'
+  const otNum = scope.otNum
+  const otTitle = scope.otTitle
+
+  let lines = [
+    `OT #${otNum}: ${otTitle}`,
+    `Buque / Destino: ${shipName}`
+  ]
+
+  if (scope.tasks.length === 0) {
+    lines.push(`Descripción: ${wo.description || 'Sin tareas cargadas'}`)
+    lines.push(`Jefe de Obra: ${wo.foreman_name || 'Sin asignar'}`)
+  } else {
+    lines.push(`Alcance de Obra (${scope.tasks.length} línea${scope.tasks.length > 1 ? 's' : ''}):`)
+    scope.tasks.forEach((t) => {
+      const isClosed = t.status === 'Finalizado' || t.status === 'Facturado' || t.status === 'Desestimado'
+      if (isClosed) {
+        const lineBody = `L${t.index}: ${t.description} — ${t.contractorsStr} (Jefe: ${t.foreman_name})`
+        lines.push(`❌ ${toUnicodeStrikethrough(lineBody)} [${t.status}]`)
+      } else {
+        lines.push(`• L${t.index}: ${t.description} — ${t.contractorsStr} (Jefe: ${t.foreman_name}) [${t.status}]`)
+      }
+    })
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * Determina si una Orden de Trabajo está activa y disponible para carga/imputación
+ * de nuevos datos (Pañol, Horas, Compras, Terceros).
+ * Una OT cerrada o con todas sus subtareas finalizadas/facturadas NO está disponible para imputar.
+ */
+export function isWorkOrderActiveForImputation(wo, workItems = [], allWorkOrders = []) {
+  if (!wo) return false
+
+  // 1. Si la cabecera de la OT está completada, facturada o tiene fecha de cierre
+  if (wo.status === 'Completada' || wo.status === 'Facturada' || Boolean(wo.closed_at)) {
+    return false
+  }
+
+  // 2. Si la cabecera está cancelada
+  if (wo.status === 'Cancelada') return false
+
+  // 3. Inspeccionar las subtareas consolidadas
+  const scope = getWorkOrderConsolidatedScope(wo, workItems, allWorkOrders)
+  if (scope.tasks.length === 0) {
+    return true
+  }
+
+  const activeTasks = scope.tasks.filter((t) => t.status !== 'Desestimado')
+  if (activeTasks.length === 0) return false
+
+  const allClosed = activeTasks.every(
+    (t) => t.status === 'Finalizado' || t.status === 'Facturado' || t.status === 'Finalizado costo final de obra'
+  )
+  if (allClosed) return false
+
+  return true
+}
+
+/**
+ * Deduplica en memoria una lista de Órdenes de Trabajo por (ship_id, ot_number),
+ * unificando bajo la primera cabecera todas las referencias de ítems y agregando su scope.
+ */
+export function deduplicateWorkOrdersWithScope(workOrders = [], workItems = []) {
+  if (!Array.isArray(workOrders) || workOrders.length === 0) return []
+  const grouped = new Map()
+
+  workOrders.forEach((wo) => {
+    const key = `${wo.ship_id || 'no_ship'}::${String(wo.ot_number || wo.id).trim().toUpperCase()}`
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        master: { ...wo },
+        allWoIds: new Set([wo.id])
+      })
+    } else {
+      grouped.get(key).allWoIds.add(wo.id)
+    }
+  })
+
+  const results = []
+  grouped.forEach(({ master, allWoIds }) => {
+    const matchedItems = (Array.isArray(workItems) ? workItems : []).filter(
+      (wi) => allWoIds.has(wi.work_order_id) && wi.status !== 'Desestimado'
+    )
+    const scope = getWorkOrderConsolidatedScope(master, matchedItems, workOrders)
+    const isActiveForImputation = isWorkOrderActiveForImputation(master, matchedItems, workOrders)
+    results.push({
+      ...master,
+      _allWoIds: Array.from(allWoIds),
+      _allWorkItems: matchedItems,
+      scopeSummary: scope.tasksSummary,
+      scopeLabel: scope.scopeLabel,
+      consolidatedTasks: scope.tasks,
+      isActiveForImputation
+    })
+  })
+
+  return results
+}
+

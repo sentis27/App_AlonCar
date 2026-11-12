@@ -90,6 +90,12 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 ---
 
 ### 🧭 Próximos Pasos Sugeridos (Backlog Priorizado)
+- [x] **0.A Órdenes de Trabajo — Regla de Imputación Naval, Cierre de Árbol en 1-Clic y Selector Canónico Estandarizado con Hover:**
+  - **Regla Naval de Imputación:** Toda OT finalizada o cerrada (`isWorkOrderActiveForImputation === false` o con todas sus subtareas en `Finalizado`/`Facturado`) queda automáticamente oculta para la carga e imputación de datos en Pañol, Horas, Compras y Terceros, a menos que el usuario active excepcionalmente el conmutador `[👁️ Ver finalizadas]`.
+  - **Cierre de Árbol en 1-Clic (`CloseWorkOrderTreeModal.jsx`):** Acción orgánica sensible disponible en la Planilla Unificada de OTs, en el Panel de OTs y en la Ficha 360°, permitiendo dar por finalizadas o facturadas y cerradas todas las subtareas (`work_items`) asociadas a una OT en una sola operación atómica, con registro en `audit_logs` y feedback visual en caso de error.
+  - **Tarjeta Canónica de Sábana Técnica (`WorkOrderScopeHoverCard.jsx`):** Módulo exportable reutilizable que presenta la ficha técnica de alcance de obra idéntica a la vista de planilla (Imagen 2): cabecera compacta `OT #{otNum}: {otTitle}`, buque, desglose cronológico de líneas con tachado horizontal Unicode (`❌ L1:... [Finalizado]`) y tareas activas en verde `[En ejecución]`.
+  - **Selector Estandarizado con Hover (`WorkOrderSelectorWithHover.jsx`):** Reemplazo de los menús desplegables nativos que mostraban cadenas horizontales concatenadas y grotescas. Presenta opciones limpias y compactas (`OT #{otNum}: {otTitle}` + badges) y, al pasar el cursor (hover) sobre cualquier opción, despliega en vivo la tarjeta canónica de sábana técnica. Estandarizado en `ShipWorkOrderPickerModal`, `MultiWithdrawalModal` (Pañol), `EditLaborModal` & `QuickLogModal` (Horas) y `TercerosModals`.
+
 - [ ] **0. Rediseño Visual y Experiencia de Usuario (UX) del Dashboard del Administrador (`/admin`):**
   - **Estado:** Pendiente de revisión por Dirección / Usuario.
   - **Detalle:** Revisar la presentación visual del Circuito Operativo Inter-Departamental y la Ficha de Puestos/Vinculaciones. La interfaz actual requiere un rediseño para mejorar la ergonomía visual, reducir la sensación de sobrecarga o dispersión de datos y presentar las funciones, tareas y vinculaciones de forma más limpia, ejecutiva e intuitiva.

@@ -172,7 +172,7 @@ export default function Panol() {
             pendingAlerts={pendingAlerts} isAdmin={isAdmin} searchQuery={searchQuery} hasActivePanolFilter={hasActivePanolFilter}
             panolTotals={panolTotals} user={user} profile={profile}
             getEnabledWorkersAndContractors={getEnabledPersonnel} getEnabledWosForShipAndContractor={getEnabledWos}
-            formatWorkOrderTooltip={(wo, ship) => formatWorkOrderTooltip(wo, ship, workItems)}
+            formatWorkOrderTooltip={(wo, ship) => formatWorkOrderTooltip(wo, ship, workItems, workOrders)}
             onClearAllFilters={() => { setSearchQuery(''); setActiveKpiFilter(null); setFilterShip('TODOS'); setFilterCategory('TODAS'); setFilterPeriod('TODOS') }}
             onOpenWithdrawalModal={(tx) => { setEditingWithdrawalRow(tx); setShowWithdrawalModal(true) }}
             onOpenQuickPurchaseModal={setQuickPurchaseModal}

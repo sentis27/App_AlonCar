@@ -1,5 +1,6 @@
 import { normalizeText } from './allocationEngine.js'
 import { matchesUniversalSearch } from './searchEngine.js'
+import { formatWorkOrderTooltipCanonical } from './workOrdersConstants.js'
 
 /**
  * panolConstants.js
@@ -255,13 +256,9 @@ export function getEnabledWorkersAndContractors(shipId, workOrderId, workItems =
   return (enabledAst.length === 0 && enabledCnt.length === 0) ? { astilleroWorkers, contractorGroups } : { astilleroWorkers: enabledAst, contractorGroups: enabledCnt }
 }
 
-// Tooltip enriquecido para celdas de Orden de Trabajo
-export function formatWorkOrderTooltip(wo, ship, workItems = []) {
-  if (!wo) return '(⚠️ Sin OT)'
-  const otItems = workItems.filter((wi) => wi.work_order_id === wo.id)
-  const fullDesc = otItems.map((i) => i.description).filter(Boolean).join(' | ') || wo.description || wo.title || 'Sin descripción técnica'
-  const foremen = Array.from(new Set(otItems.map((i) => i.foreman_name).filter(Boolean))).join(', ') || 'Sin asignar'
-  return `OT #${wo.order_number || wo.ot_number || wo.id?.slice(0, 4)}: ${wo.title || ''}\nDescripción: ${fullDesc}\nJefe: ${foremen}\nBuque: ${ship?.name || 'Astillero'}`
+// Tooltip enriquecido para celdas de Orden de Trabajo (Delega al formateador canónico multi-línea)
+export function formatWorkOrderTooltip(wo, ship, workItems = [], allWorkOrders = []) {
+  return formatWorkOrderTooltipCanonical(wo, ship, workItems, allWorkOrders)
 }
 
 export function filterPanolTransactions(inventoryTx = [], {

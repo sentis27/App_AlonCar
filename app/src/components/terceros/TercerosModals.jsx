@@ -43,6 +43,9 @@ import {
   saveInlineEditService
 } from '../../lib/tercerosService.js'
 import { getEnabledWorkersAndContractors } from '../../lib/allocationEngine.js'
+import { deduplicateWorkOrdersWithScope } from '../../lib/workOrdersConstants.js'
+import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
+import { WorkOrderScopeHoverCard } from '../workOrders/WorkOrderScopeHoverCard.jsx'
 
 // ----------------------------------------------------------------------------
 // COMPONENTE AUXILIAR: DESPLEGABLE DE CONTRATISTAS CON BÚSQUEDA REACTIVA
@@ -315,8 +318,14 @@ export function TercerosModalsContainer({
 
   const availableWorkOrdersForSelectedShip = useMemo(() => {
     if (!formData.ship_id) return []
-    return workOrders.filter((wo) => wo.ship_id === formData.ship_id)
-  }, [workOrders, formData.ship_id])
+    const dedup = deduplicateWorkOrdersWithScope(
+      workOrders.filter((wo) => String(wo.ship_id) === String(formData.ship_id)),
+      workItems
+    )
+    return dedup.filter(
+      (wo) => wo.isActiveForImputation !== false || String(wo.id) === String(formData.work_order_id)
+    )
+  }, [workOrders, workItems, formData.ship_id, formData.work_order_id])
 
   const handleContractorSelect = (contractorName) => {
     const found = contractors.find((c) => c.name.toUpperCase().trim() === contractorName.toUpperCase().trim())
@@ -502,23 +511,18 @@ export function TercerosModalsContainer({
                           <label className="block font-bold text-slate-300 text-[11px] mb-1">
                             3° Orden de Trabajo (OT)
                           </label>
-                          <select
+                          <WorkOrderSelectorWithHover
                             value={formData.work_order_id}
-                            onChange={(e) => setFormData((prev) => ({ ...prev, work_order_id: e.target.value }))}
+                            onChange={(newWoId) => setFormData((prev) => ({ ...prev, work_order_id: newWoId }))}
+                            availableWos={availableWorkOrdersForSelectedShip}
+                            ship={ships.find((s) => String(s.id) === String(formData.ship_id))}
+                            workItems={workItems}
+                            allWorkOrders={workOrders}
+                            contractorName={formData.contractor_name}
                             disabled={!formData.ship_id}
-                            className={`w-full bg-slate-950 border rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-400 text-xs disabled:opacity-50 ${
-                              formData.ship_id && !formData.work_order_id ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-slate-700 text-white'
-                            }`}
-                          >
-                            <option value="">
-                              {!formData.ship_id ? '-- 1° elija buque --' : '-- ⚠️ Dejar OT en blanco --'}
-                            </option>
-                            {availableWorkOrdersForSelectedShip.map((wo) => (
-                              <option key={wo.id} value={wo.id}>
-                                {wo.ot_number}: {wo.title}
-                              </option>
-                            ))}
-                          </select>
+                            placeholder={!formData.ship_id ? '-- 1° elija buque --' : '-- ⚠️ Dejar OT en blanco --'}
+                            showPreviewCard={true}
+                          />
                         </div>
                       </div>
 

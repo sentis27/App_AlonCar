@@ -10,7 +10,8 @@ import WorkOrdersUnificadoPanel from '../components/workOrders/WorkOrdersUnifica
 import WorkOrdersOtsPanel from '../components/workOrders/WorkOrdersOtsPanel'
 import WorkOrdersTercerosPanel from '../components/workOrders/WorkOrdersTercerosPanel'
 import { WorkOrdersModalsContainer } from '../components/workOrders/WorkOrdersModals'
-import { fetchWorkOrdersData, applyWoSinglePatchService, deleteWorkItemService, deleteWoService } from '../lib/workOrdersService.js'
+import CloseWorkOrderTreeModal from '../components/workOrders/CloseWorkOrderTreeModal'
+import { fetchWorkOrdersData, applyWoSinglePatchService, deleteWorkItemService, deleteWoService, closeEntireWorkOrderTreeService } from '../lib/workOrdersService.js'
 import { WO_GRID_COLUMNS, WORK_ITEM_CLONE_FIELDS, filterUnifiedRows, calculateWorkOrderStats, computeOtMetricsAndDates, buildContractorCatalog, buildUnifiedRows, isRowLockedDec011, hasThirdPartyPermission } from '../lib/workOrdersConstants.js'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
@@ -51,6 +52,8 @@ export default function WorkOrders() {
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
   const [templatePickerFromForm, setTemplatePickerFromForm] = useState(false)
   const [inlineWoEdit, setInlineWoEdit] = useState(null)
+  const [closingTreeWo, setClosingTreeWo] = useState(null)
+  const [submittingCloseTree, setSubmittingCloseTree] = useState(false)
 
   const showWoGridFeedback = useCallback((type, text) => {
     setStatusMessage({ type, text }); setTimeout(() => setStatusMessage(null), 3500)
@@ -100,6 +103,30 @@ export default function WorkOrders() {
   const handleOpenNewWorkModal = (preWo = null) => { setEditingWorkItem(null); setPreselectedWo(preWo); setIsWorkModalOpen(true) }
   const handleOpenEditWorkModal = (row) => { setEditingWorkItem(row.isPlaceholder ? null : row); setPreselectedWo(row.wo || null); setIsWorkModalOpen(true) }
   const handleOpenSeparateModal = (row) => { if (row && !row.isPlaceholder) setSeparatingRow(row) }
+  const handleOpenCloseTreeModal = (wo) => { if (wo) setClosingTreeWo(wo) }
+
+  const handleConfirmCloseTree = async ({ targetStatus, allowPostBillingCosts }) => {
+    if (!closingTreeWo) return
+    setSubmittingCloseTree(true)
+    try {
+      const res = await closeEntireWorkOrderTreeService({
+        wo: closingTreeWo,
+        targetStatus,
+        allowPostBillingCosts,
+        user
+      })
+      await loadData()
+      showWoGridFeedback(
+        'success',
+        `Árbol de la ${closingTreeWo.ot_number} cerrado (${res.updatedCount} subtareas a ${targetStatus}).`
+      )
+      setClosingTreeWo(null)
+    } catch (err) {
+      showWoGridFeedback('error', `Error al cerrar árbol de OT: ${err.message}`)
+    } finally {
+      setSubmittingCloseTree(false)
+    }
+  }
 
   // Mutaciones del SpreadsheetGrid
   const applyWoSinglePatch = useCallback(async (rowId, colKey, cleanVal) => {
@@ -154,7 +181,7 @@ export default function WorkOrders() {
   return (
     <div className="space-y-4 pb-10 font-sans text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
       {statusMessage && (
-        <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border text-xs font-bold ${statusMessage.type === 'error' ? 'bg-rose-950/95 border-rose-500 text-rose-200' : 'bg-emerald-950/95 border-emerald-500 text-emerald-200'}`}>
+        <div className={`fixed top-5 right-5 z-[100] px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border text-xs font-bold ${statusMessage.type === 'error' ? 'bg-rose-950/95 border-rose-500 text-rose-200' : 'bg-emerald-950/95 border-emerald-500 text-emerald-200'}`}>
           {statusMessage.type === 'error' ? <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
           <span>{statusMessage.text}</span>
           <button onClick={() => setStatusMessage(null)} className="ml-2 text-slate-400 hover:text-white">✕</button>
@@ -192,7 +219,8 @@ export default function WorkOrders() {
             isRowLockedDec011={isRowLockedDec011} hasThirdPartyPermission={checkContractor3ros}
             inlineWoEdit={inlineWoEdit} setInlineWoEdit={setInlineWoEdit} commitInlineWoEdit={commitInlineWoEdit}
             onOpenNewWorkModal={handleOpenNewWorkModal} onOpenEditWorkModal={handleOpenEditWorkModal}
-            onOpenSeparateModal={handleOpenSeparateModal} onDuplicateWorkItem={handleDuplicateWorkItem}
+            onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal}
+            onDuplicateWorkItem={handleDuplicateWorkItem}
             onDeleteWorkItem={handleDeleteWorkItem} setSelectedWoDetail={setSelectedWoDetail}
             setEditingThirdParty={setEditingThirdParty} menuTarget={menuTarget} openMenu={openMenu} closeMenu={closeMenu}
             showWoGridFeedback={showWoGridFeedback}
@@ -204,7 +232,8 @@ export default function WorkOrders() {
             workOrders={workOrders} itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap}
             thirdPartyByItemMap={thirdPartyByItemMap} selectedShipFilter={selectedShipFilter} searchQuery={searchQuery}
             onOpenNewWorkModal={handleOpenNewWorkModal} onOpenEditWorkModal={handleOpenEditWorkModal}
-            onOpenSeparateModal={handleOpenSeparateModal} setSelectedWoDetail={setSelectedWoDetail} onDeleteWo={handleDeleteWo}
+            onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal}
+            setSelectedWoDetail={setSelectedWoDetail} onDeleteWo={handleDeleteWo}
           />
         )}
 
@@ -216,6 +245,16 @@ export default function WorkOrders() {
           />
         )}
       </div>
+
+      {/* MODAL CANÓNICO DE CIERRE DE ÁRBOL */}
+      <CloseWorkOrderTreeModal
+        isOpen={Boolean(closingTreeWo)}
+        onClose={() => setClosingTreeWo(null)}
+        wo={closingTreeWo}
+        items={closingTreeWo ? (itemsByWoMap[closingTreeWo.id] || []) : []}
+        onConfirm={handleConfirmCloseTree}
+        loading={submittingCloseTree}
+      />
 
       {/* CONTENEDOR INTEGRAL DE MODALES */}
       <WorkOrdersModalsContainer

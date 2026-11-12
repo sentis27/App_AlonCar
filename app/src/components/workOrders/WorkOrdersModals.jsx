@@ -15,7 +15,8 @@ import {
   Trash2,
   Lock,
   User,
-  Info
+  Info,
+  CheckCircle2
 } from 'lucide-react'
 import {
   ESTADOS_TRABAJO,
@@ -34,6 +35,7 @@ import {
   saveThirdPartyCascadeService,
   saveThirdPartyEditService,
   closeOtWithValidationService,
+  closeEntireWorkOrderTreeService,
   submitAmpliarService,
   saveTemplateService,
   deleteTemplateService
@@ -427,7 +429,7 @@ export function WorkOrdersModalsContainer({
     if (templatePickerFromForm && isWorkModalOpen) {
       setWorkForm((p) => ({
         ...p,
-        ot_mode: 'new',
+        ot_mode: p.existing_wo_id ? p.ot_mode : 'new',
         ot_creation_type: 'tabulada',
         selected_template_id: catalogMultiSelection[0].template_id,
         ot_title: catalogMultiSelection[0].ot_title
@@ -1146,9 +1148,47 @@ export function WorkOrdersModalsContainer({
                     <button type="button" onClick={() => setIsAmpliarModalOpen(true)} className="px-3 py-1.5 bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
                       <Send className="w-3.5 h-3.5" /><span>Botón Ampliar</span>
                     </button>
-                    <div className="flex items-center gap-2">
-                      <button type="button" disabled={!computed.canClose} onClick={async () => { await closeOtWithValidationService(selectedWoDetail, false, user); await loadData(); setSelectedWoDetail(null); showWoGridFeedback('success', 'OT Facturada y Cerrada.') }} className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold cursor-pointer">Facturar y Cerrar</button>
-                      <button type="button" disabled={!computed.canClose} onClick={async () => { await closeOtWithValidationService(selectedWoDetail, true, user); await loadData(); setSelectedWoDetail(null); showWoGridFeedback('success', 'OT Facturada con permiso post-cierre.') }} className="px-3.5 py-1.5 bg-slate-800 text-purple-300 border border-purple-500/40 rounded-xl text-xs font-bold cursor-pointer">Facturar y Abierta (DEC-011)</button>
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await closeEntireWorkOrderTreeService({ wo: selectedWoDetail, targetStatus: 'Finalizado', user })
+                          await loadData()
+                          setSelectedWoDetail(null)
+                          showWoGridFeedback('success', 'Todas las subtareas dadas por Finalizadas.')
+                        }}
+                        className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1 shadow-sm"
+                        title="Pasa todas las subtareas a Finalizado sin sellar la OT aún"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Finalizar Subtareas</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await closeEntireWorkOrderTreeService({ wo: selectedWoDetail, targetStatus: 'Facturado', allowPostBillingCosts: false, user })
+                          await loadData()
+                          setSelectedWoDetail(null)
+                          showWoGridFeedback('success', 'OT Facturada y Cerrada en 1 clic.')
+                        }}
+                        className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold cursor-pointer"
+                        title="Pasa todas las subtareas a Facturado y sella la OT"
+                      >
+                        Facturar y Cerrar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await closeEntireWorkOrderTreeService({ wo: selectedWoDetail, targetStatus: 'Facturado', allowPostBillingCosts: true, user })
+                          await loadData()
+                          setSelectedWoDetail(null)
+                          showWoGridFeedback('success', 'OT Facturada con permiso post-cierre.')
+                        }}
+                        className="px-3.5 py-1.5 bg-slate-800 text-purple-300 border border-purple-500/40 rounded-xl text-xs font-bold cursor-pointer"
+                        title="Factura y cierra con permiso DEC-011 de imputaciones tardías"
+                      >
+                        Facturar y Abierta (DEC-011)
+                      </button>
                     </div>
                   </div>
                 </div>

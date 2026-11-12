@@ -1,4 +1,4 @@
-import { Ship, Eye, Trash2, GitBranch } from 'lucide-react'
+import { Ship, Eye, Trash2, GitBranch, Lock } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import {
   ESTADOS_TRABAJO,
@@ -18,6 +18,7 @@ export default function WorkOrdersOtsPanel({
   onOpenNewWorkModal,
   onOpenEditWorkModal,
   onOpenSeparateModal,
+  onOpenCloseTreeModal,
   setSelectedWoDetail,
   onDeleteWo
 }) {
@@ -66,9 +67,22 @@ export default function WorkOrdersOtsPanel({
             >
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className="font-mono text-xs font-black text-primary px-2.5 py-0.5 rounded bg-primary/10 border border-primary/30">
-                    <HighlightText text={wo.ot_number} query={searchQuery} />
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-mono text-xs font-black text-primary px-2.5 py-0.5 rounded bg-primary/10 border border-primary/30">
+                      <HighlightText text={wo.ot_number} query={searchQuery} />
+                    </span>
+                    {typeof onOpenCloseTreeModal === 'function' && !computed.isEliminada && wo.status !== 'Facturada' && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenCloseTreeModal(wo)}
+                        className="px-2 py-0.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Cerrar o dar por finalizadas todas las subtareas de esta OT en 1 clic"
+                      >
+                        <Lock className="w-2.5 h-2.5 text-purple-400" />
+                        <span>Cerrar Árbol</span>
+                      </button>
+                    )}
+                  </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${computed.color}`}>
                       {computed.label}

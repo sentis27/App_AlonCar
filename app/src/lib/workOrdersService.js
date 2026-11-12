@@ -208,25 +208,46 @@ export async function saveWorkOrderService({
   let targetShipId = workForm.ship_id
 
   if (workForm.ot_mode === 'new') {
-    const autoConsecutiveOt = getNextOtNumberForShip(workForm.ship_id, 0)
-    const woPayload = {
-      ship_id: workForm.ship_id,
-      ot_number: autoConsecutiveOt,
-      title: workForm.ot_title.trim(),
-      description: workForm.description.trim() || null,
-      status: workForm.status === 'En ejecución' ? 'En Progreso' : 'Pendiente',
-      work_type: workForm.work_type,
-      assignment_type: workForm.assignment_type,
-      budget_code: workForm.specific_budget_id.trim() || null,
-      foreman_name: workForm.foreman_name,
-      contractor_name: workForm.contractors.join(', ') || null,
-      is_tabulated: workForm.ot_creation_type === 'tabulada',
-      start_date: todayIso
+    // Blindaje defensivo contra duplicación de cabeceras en el mismo buque
+    const normTitle = (workForm.ot_title || '').trim().toUpperCase()
+    let existingWo = null
+
+    if (normTitle && workForm.ship_id) {
+      const { data: matchedWos } = await supabase
+        .from('work_orders')
+        .select('id, ot_number, title')
+        .eq('ship_id', workForm.ship_id)
+        .ilike('title', normTitle)
+        .limit(1)
+
+      if (matchedWos && matchedWos.length > 0) {
+        existingWo = matchedWos[0]
+      }
     }
 
-    const { data: newWoData, error: woErr } = await supabase.from('work_orders').insert([woPayload]).select()
-    if (woErr) throw woErr
-    targetWoId = newWoData[0].id
+    if (existingWo) {
+      targetWoId = existingWo.id
+    } else {
+      const autoConsecutiveOt = getNextOtNumberForShip(workForm.ship_id, 0)
+      const woPayload = {
+        ship_id: workForm.ship_id,
+        ot_number: autoConsecutiveOt,
+        title: workForm.ot_title.trim(),
+        description: workForm.description.trim() || null,
+        status: workForm.status === 'En ejecución' ? 'En Progreso' : 'Pendiente',
+        work_type: workForm.work_type,
+        assignment_type: workForm.assignment_type,
+        budget_code: workForm.specific_budget_id.trim() || null,
+        foreman_name: workForm.foreman_name,
+        contractor_name: workForm.contractors.join(', ') || null,
+        is_tabulated: workForm.ot_creation_type === 'tabulada',
+        start_date: todayIso
+      }
+
+      const { data: newWoData, error: woErr } = await supabase.from('work_orders').insert([woPayload]).select()
+      if (woErr) throw woErr
+      targetWoId = newWoData[0].id
+    }
   } else if (editingWorkItem && workForm.ot_title.trim()) {
     await supabase.from('work_orders').update({
       title: workForm.ot_title.trim(),
@@ -600,6 +621,87 @@ export async function closeOtWithValidationService(wo, allowPostBillingCosts = f
     sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
     user: user?.email || 'Supervisor'
   })
+}
+
+/**
+ * Cierra orgánicamente todo el árbol de tareas de una OT en 1 solo clic.
+ * Actualiza en lote todos los work_items no desestimados al estado objetivo ('Finalizado' o 'Facturado')
+ * y sella la cabecera de la OT en Supabase, registrando trazabilidad completa en audit_logs.
+ */
+export async function closeEntireWorkOrderTreeService({
+  wo,
+  targetStatus = 'Finalizado',
+  allowPostBillingCosts = false,
+  user
+}) {
+  if (!wo?.id) throw new Error('Se requiere una Orden de Trabajo válida.')
+
+  const nowIso = new Date().toISOString()
+
+  // 1. Identificar todos los IDs de work_orders que forman este árbol (blindaje contra cabeceras hermanas)
+  const targetWoIds = [wo.id]
+  if (wo.ship_id && wo.ot_number) {
+    const { data: siblings } = await supabase
+      .from('work_orders')
+      .select('id')
+      .eq('ship_id', wo.ship_id)
+      .eq('ot_number', wo.ot_number)
+    if (siblings && siblings.length > 0) {
+      siblings.forEach((s) => {
+        if (!targetWoIds.includes(s.id)) targetWoIds.push(s.id)
+      })
+    }
+  }
+
+  // 2. Actualizar todas las subtareas/ítems activos
+  const { data: updatedItems, error: itemsError } = await supabase
+    .from('work_items')
+    .update({
+      status: targetStatus,
+      updated_at: nowIso
+    })
+    .in('work_order_id', targetWoIds)
+    .neq('status', 'Desestimado')
+    .select('id, description')
+
+  if (itemsError) throw itemsError
+
+  // 3. Actualizar la cabecera de la OT (sin updated_at que no existe en el esquema de work_orders)
+  const isBilled = targetStatus === 'Facturado'
+  const woPayload = {
+    status: isBilled ? 'Facturada' : 'Completada',
+    allow_post_billing_costs: isBilled ? Boolean(allowPostBillingCosts) : false,
+    closed_at: nowIso
+  }
+
+  const { error: woError } = await supabase
+    .from('work_orders')
+    .update(woPayload)
+    .in('id', targetWoIds)
+
+  if (woError) throw woError
+
+  // 3. Estampar auditoría en audit_logs
+  await auditService.logRowAction({
+    action: isBilled ? 'CLOSE_TREE_FACTURADO' : 'CLOSE_TREE_FINALIZADO',
+    entityType: 'work_orders',
+    entityId: wo.id,
+    entityName: `Cierre de Árbol · ${wo.ot_number || 'OT'} - ${wo.title}`,
+    details: {
+      targetStatus,
+      allowPostBillingCosts: isBilled ? Boolean(allowPostBillingCosts) : false,
+      totalItemsUpdated: updatedItems?.length || 0,
+      tasks: (updatedItems || []).map((t) => t.description)
+    },
+    sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
+    user: user?.email || 'Supervisor'
+  })
+
+  return {
+    success: true,
+    targetStatus,
+    updatedCount: updatedItems?.length || 0
+  }
 }
 
 // Guardar Observaciones en Terceros

@@ -39,6 +39,7 @@ export default function WorkOrdersUnificadoPanel({
   onOpenNewWorkModal,
   onOpenEditWorkModal,
   onOpenSeparateModal,
+  onOpenCloseTreeModal,
   onDuplicateWorkItem,
   onDeleteWorkItem,
   setSelectedWoDetail,
@@ -250,6 +251,20 @@ export default function WorkOrdersUnificadoPanel({
                           >
                             <GitBranch className="w-2.5 h-2.5" />
                             <span>Separar OT</span>
+                          </button>
+                        )}
+                        {row.wo && !isLocked && typeof onOpenCloseTreeModal === 'function' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onOpenCloseTreeModal(row.wo)
+                            }}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 font-bold inline-flex items-center gap-1 cursor-pointer"
+                            title="Cerrar o dar por finalizadas todas las subtareas de esta OT en 1 clic"
+                          >
+                            <Lock className="w-2.5 h-2.5 text-purple-400" />
+                            <span>Cerrar Árbol</span>
                           </button>
                         )}
                       </div>

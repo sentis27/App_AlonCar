@@ -15,6 +15,8 @@ import {
   Flame
 } from 'lucide-react'
 import { getContractorEnabledWos, evaluateAllocationState } from '../../lib/allocationEngine'
+import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
+import { WorkOrderScopeHoverCard } from '../workOrders/WorkOrderScopeHoverCard.jsx'
 import { supabase } from '../../lib/supabase'
 import {
   saveMultiWithdrawalService,
@@ -167,6 +169,7 @@ export function MultiWithdrawalModal({
   const [contractorGroup, setContractorGroup] = useState(editingRow?.worker_name || editingRow?.contractor_name || '')
   const [workOrderId, setWorkOrderId] = useState(editingRow?.work_order_id || '')
   const [isOtEmpty, setIsOtEmpty] = useState(!editingRow?.work_order_id)
+  const [hoveredWo, setHoveredWo] = useState(null)
   const [date, setDate] = useState(
     editingRow?.transaction_date
       ? String(editingRow.transaction_date).split('T')[0]
@@ -403,12 +406,15 @@ export function MultiWithdrawalModal({
                     </label>
                   </div>
 
-                  <select
+                  <WorkOrderSelectorWithHover
                     value={workOrderId}
-                    disabled={isOtEmpty}
-                    onChange={(e) => {
-                      const newWoId = e.target.value
+                    onChange={(newWoId) => {
                       setWorkOrderId(newWoId)
+                      if (!newWoId) {
+                        setIsOtEmpty(true)
+                      } else {
+                        setIsOtEmpty(false)
+                      }
                       if (contractorGroup && typeof getEnabledWorkersAndContractors === 'function') {
                         const newEnabled = getEnabledWorkersAndContractors(shipId, newWoId)
                         const isValid =
@@ -417,20 +423,31 @@ export function MultiWithdrawalModal({
                         if (!isValid) setContractorGroup('')
                       }
                     }}
-                    required={!isOtEmpty}
-                    className={`w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 ${
-                      isOtEmpty ? 'opacity-40 cursor-not-allowed bg-slate-950' : 'font-semibold'
-                    }`}
-                  >
-                    <option value="">(⚠️ Sin OT)</option>
-                    {availableWos.map((wo) => (
-                      <option key={wo.id} value={wo.id}>
-                        OT #{wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} - {wo.title || wo.description}
-                      </option>
-                    ))}
-                  </select>
+                    onHoverChange={setHoveredWo}
+                    availableWos={availableWos}
+                    ship={ships.find((s) => s.id === shipId)}
+                    workItems={workItems}
+                    allWorkOrders={workOrders}
+                    contractorName={contractorGroup}
+                    disabled={isOtEmpty}
+                    isSinOt={isOtEmpty}
+                    placeholder="-- 3° Seleccionar OT --"
+                    showPreviewCard={false}
+                  />
                 </div>
               </div>
+
+              {/* TARJETA CANÓNICA HOVER / SELECCIONADA (IMAGEN 2) */}
+              {(hoveredWo || workOrderId) && !isOtEmpty && (
+                <WorkOrderScopeHoverCard
+                  wo={hoveredWo || availableWos.find((w) => String(w.id) === String(workOrderId)) || workOrders.find((w) => String(w.id) === String(workOrderId))}
+                  ship={ships.find((s) => s.id === shipId)}
+                  workItems={workItems}
+                  allWorkOrders={workOrders}
+                  contractorFilter={contractorGroup}
+                  isHoverPreview={Boolean(hoveredWo && hoveredWo.id !== workOrderId)}
+                />
+              )}
 
               {/* Inconsistencia OT */}
               {shipId && contractorGroup && availableWos.length === 0 && !isOtEmpty && (

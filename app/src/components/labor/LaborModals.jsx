@@ -17,6 +17,8 @@ import {
 import { supabase } from '../../lib/supabase'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
 import { buildLocalRelationsForLog, getEnabledWosForWorkerInShip } from '../../lib/laborConstants'
+import { deduplicateWorkOrdersWithScope } from '../../lib/workOrdersConstants'
+import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 
 // ==============================================================================
 // MODAL 1: EDICIÓN COMPLETA DE REGISTRO DE HORAS
@@ -29,7 +31,8 @@ export function EditLaborLogModal({
   savingEdit,
   handleSaveEdit,
   ships = [],
-  workOrders = []
+  workOrders = [],
+  workItems = []
 }) {
   if (!editingLog || !editingForm) return null
 
@@ -89,41 +92,31 @@ export function EditLaborLogModal({
                 <ClipboardList className="w-3.5 h-3.5 text-cyan-400" />
                 Orden de Trabajo (OT)
               </label>
-              <select
-                required
-                value={editingForm.work_order_id}
-                onChange={(e) => setEditingForm({ ...editingForm, work_order_id: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              >
                 {(() => {
                   const currentShipId = editingForm.ship_id || ships[0]?.id
-                  const filteredWos = workOrders.filter(w => w.ship_id === currentShipId)
-                  if (filteredWos.length === 0) {
-                    return <option value="">Sin OTs abiertas para este barco</option>
-                  }
-                  return filteredWos.map(wo => (
-                    <option key={wo.id} value={wo.id} className="bg-slate-900">
-                      {wo.title}
-                    </option>
-                  ))
+                  const filteredWos = deduplicateWorkOrdersWithScope(
+                    workOrders.filter(w => w.ship_id === currentShipId),
+                    workItems
+                  )
+                  const availableWos = filteredWos.filter(
+                    (w) => w.isActiveForImputation !== false || w.id === editingForm.work_order_id
+                  )
+                  return (
+                    <WorkOrderSelectorWithHover
+                      value={editingForm.work_order_id}
+                      onChange={(newWoId) => setEditingForm({ ...editingForm, work_order_id: newWoId })}
+                      availableWos={availableWos}
+                      ship={ships.find((s) => s.id === currentShipId)}
+                      workItems={workItems}
+                      allWorkOrders={workOrders}
+                      contractorName={editingForm.worker_name}
+                      placeholder="-- Seleccionar OT --"
+                      showPreviewCard={true}
+                    />
+                  )
                 })()}
-              </select>
-            </div>
-          </div>
-
-          {(() => {
-            const selectedWo = workOrders.find(w => w.id === editingForm.work_order_id)
-            if (!selectedWo) return null
-            return (
-              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-start gap-2 text-xs">
-                <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-slate-200">Alcance de {selectedWo.title}: </strong>
-                  <span className="text-slate-400">{selectedWo.description || 'Sin descripción detallada registrada.'}</span>
-                </div>
               </div>
-            )
-          })()}
+            </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -353,6 +346,7 @@ export function QuickLogModal({
   savingEdit,
   ships = [],
   workOrders = [],
+  workItems = [],
   auditDate = '',
   getEnabledWosForWorkerInShip
 }) {
@@ -415,30 +409,31 @@ export function QuickLogModal({
                 <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
                 2. OT (Opcional: puede dejarse en blanco)
               </label>
-              <select
-                value={quickLogWorker.work_order_id || ''}
-                onChange={(e) => setQuickLogWorker({ ...quickLogWorker, work_order_id: e.target.value })}
-                className={`w-full bg-slate-950 border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-emerald-400 ${
-                  !quickLogWorker.work_order_id ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-emerald-500/40 text-white'
-                }`}
-              >
-                <option value="" className="bg-slate-900 text-amber-300 font-bold">
-                  -- ⚠️ Dejar OT en blanco (Pendiente de apertura) --
-                </option>
                 {(() => {
                   const currentShipId = quickLogWorker.ship_id || ships[0]?.id
-                  const filteredWos = getEnabledWosForWorkerInShip
+                  const rawWos = getEnabledWosForWorkerInShip
                     ? getEnabledWosForWorkerInShip(currentShipId, quickLogWorker.name, quickLogWorker.type)
                     : workOrders.filter(w => w.ship_id === currentShipId)
-                  return filteredWos.map(wo => (
-                    <option key={wo.id} value={wo.id} className="bg-slate-900 text-white">
-                      {wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}
-                    </option>
-                  ))
+                  const filteredWos = deduplicateWorkOrdersWithScope(rawWos, workItems)
+                  const availableWos = filteredWos.filter(
+                    (w) => w.isActiveForImputation !== false || w.id === quickLogWorker.work_order_id
+                  )
+                  return (
+                    <WorkOrderSelectorWithHover
+                      value={quickLogWorker.work_order_id || ''}
+                      onChange={(newWoId) => setQuickLogWorker({ ...quickLogWorker, work_order_id: newWoId })}
+                      availableWos={availableWos}
+                      ship={ships.find((s) => s.id === currentShipId)}
+                      workItems={workItems}
+                      allWorkOrders={workOrders}
+                      contractorName={quickLogWorker.name}
+                      placeholder="-- ⚠️ Dejar OT en blanco (Pendiente) --"
+                      showPreviewCard={true}
+                    />
+                  )
                 })()}
-              </select>
+              </div>
             </div>
-          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1227,6 +1222,7 @@ export function LaborModalsContainer({
           handleSaveEdit={handleSaveEdit}
           ships={ships}
           workOrders={workOrders}
+          workItems={workItems}
         />
       )}
       {quickLogWorker && (
@@ -1237,6 +1233,7 @@ export function LaborModalsContainer({
           savingEdit={savingEdit}
           ships={ships}
           workOrders={workOrders}
+          workItems={workItems}
           auditDate={auditDate}
           getEnabledWosForWorkerInShip={(shipId, name, type) => getEnabledWosForWorkerInShip(shipId, name, type, workOrders, workItems, dbWorkers)}
         />
@@ -1273,9 +1270,11 @@ export function LaborModalsContainer({
           onClose={() => setShipPickerModal({ isOpen: false, logId: null, currentShipId: '', currentWorkOrderId: '', workerName: '' })}
           ships={ships}
           workOrders={workOrders}
+          workItems={workItems}
           currentShipId={shipPickerModal.currentShipId}
           currentWorkOrderId={shipPickerModal.currentWorkOrderId}
-          onSelect={handleSelectShipWo}
+          workerName={shipPickerModal.workerName}
+          onSave={handleSelectShipWo}
         />
       )}
     </>

@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { deduplicateWorkOrdersWithScope } from './workOrdersConstants.js'
 
 /**
  * ==============================================================================
@@ -253,18 +254,26 @@ export function getShipEnabledContractors(shipId, workOrders = [], workItems = [
 /**
  * Obtiene las OTs habilitadas en un buque para un operario o contratista seleccionado
  */
-export function getContractorEnabledWos(shipId, workerOrContractorName, workOrders = [], workItems = [], eligiblePersonnel) {
+export function getContractorEnabledWos(shipId, workerOrContractorName, workOrders = [], workItems = [], eligiblePersonnel, options = {}) {
   if (!shipId) return []
+  const { includeFinalized = false } = options
   const shipWos = workOrders.filter((w) => w.ship_id === shipId)
-  if (!workerOrContractorName) return shipWos
+  const deduplicated = deduplicateWorkOrdersWithScope(shipWos, workItems)
+
+  // Regla de Negocio Naval: Una OT finalizada no está disponible para carga/imputación de datos
+  const imputationPool = includeFinalized
+    ? deduplicated
+    : deduplicated.filter((wo) => wo.isActiveForImputation !== false)
+
+  if (!workerOrContractorName) return imputationPool
 
   const normTarget = normalizeText(workerOrContractorName)
   const isAstilleroWorker = eligiblePersonnel?.astilleroWorkers?.some(
     (w) => normalizeText(w.name) === normTarget
   )
 
-  return shipWos.filter((wo) => {
-    const items = workItems.filter((wi) => wi.work_order_id === wo.id && wi.status !== 'Desestimado')
+  return imputationPool.filter((wo) => {
+    const items = (wo._allWorkItems || []).filter((wi) => wi.status !== 'Desestimado')
     if (items.length === 0) return true
 
     const rawContractors = items.flatMap((wi) =>
