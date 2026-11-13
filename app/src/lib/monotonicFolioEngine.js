@@ -31,9 +31,11 @@ export function assignMonotonicFolios(items = [], options = {}) {
     idField = 'id'
   } = options
 
-  // Si todos los items ya tienen _rowSeq válido, devolverlos directamente
-  const allHaveSeq = items.every(it => typeof it?._rowSeq === 'number' && it._rowSeq > 0)
-  if (allHaveSeq) return items
+  // Si todos los items ya tienen _rowSeq válido (o están marcados para omitir folio), devolverlos directamente
+  const allResolved = items.every(
+    (it) => it?._skipFolio || (typeof it?._rowSeq === 'number' && it._rowSeq > 0)
+  )
+  if (allResolved) return items
 
   // Copia ordenada cronológicamente (más antiguo primero)
   const sorted = [...items].sort((a, b) => {
@@ -51,10 +53,17 @@ export function assignMonotonicFolios(items = [], options = {}) {
     return idA.localeCompare(idB)
   })
 
-  // Mapear cada ID a su folio correlativo 1...N
+  // Calcular máximo folio ya asignado para evitar colisiones (ej. al mezclar filas nuevas o placeholders)
+  const maxExistingSeq = sorted.reduce(
+    (mx, it) => (typeof it?._rowSeq === 'number' && it._rowSeq > mx ? it._rowSeq : mx),
+    0
+  )
+
+  // Mapear cada ID a su folio correlativo 1...N (o maxExistingSeq + 1 en adelante)
   const folioMap = new Map()
-  let currentSeq = 1
+  let currentSeq = maxExistingSeq > 0 ? maxExistingSeq + 1 : 1
   for (const item of sorted) {
+    if (item?._skipFolio) continue
     const key = item[idField] || item
     const existingSeq = typeof item._rowSeq === 'number' && item._rowSeq > 0 ? item._rowSeq : currentSeq++
     folioMap.set(key, existingSeq)
@@ -62,6 +71,9 @@ export function assignMonotonicFolios(items = [], options = {}) {
 
   // Devolver los items en su orden actual, asegurando la propiedad `_rowSeq`
   return items.map((item) => {
+    if (item?._skipFolio) {
+      return item._rowSeq === null ? item : { ...item, _rowSeq: null }
+    }
     const key = item[idField] || item
     const seq = folioMap.get(key) || item._rowSeq || 1
     if (item._rowSeq === seq) return item

@@ -69,6 +69,62 @@ export const TIPOS_DE_TRABAJO = [
   { value: 'CONTROL', label: 'Control (Inspección / Seguimiento)' }
 ]
 
+// Valor estandarizado cuando un trabajo Adicional / Específico aún no tiene Nº de presupuesto asignado
+export const BUDGET_PENDING_VALUE = 'PENDIENTE'
+
+// Documentación canónica para la ventanita emergente de Centro de Facturación (Presupuesto General vs Adicional)
+export const FACTURACION_CENTRO_INFO = {
+  title: 'Centro de Facturación: ¿Qué opción elegir?',
+  options: [
+    {
+      key: 'Presupuesto General',
+      badge: 'PRESUPUESTO GENERAL',
+      badgeClass: 'bg-cyan-950 text-cyan-300 border-cyan-700',
+      summary: 'Trabajos incluidos dentro del alcance base o presupuesto maestro acordado para el buque / estadía.',
+      details: 'No requiere cargar un número de presupuesto adicional independiente; todos sus costos se imputan al presupuesto general de la obra.'
+    },
+    {
+      key: 'Adicional / Específico',
+      badge: 'ADICIONAL / ESPECÍFICO',
+      badgeClass: 'bg-amber-950 text-amber-300 border-amber-600',
+      summary: 'Trabajos extra o fuera del alcance inicial que se cotizan y facturan por separado al cliente/armador.',
+      details: 'Requiere un Nº de Presupuesto numérico (ej. PRESUP. 210). Si aún no está emitido al momento de abrir el trabajo, dejalo en blanco o elegí "Pendiente": se guardará automáticamente como PENDIENTE y disparará una alerta para que María José complete el número al cotizar/facturar.'
+    }
+  ]
+}
+
+// Extrae solo dígitos numéricos para el campo numérico de presupuesto específico
+export function extractBudgetDigits(rawValue = '') {
+  return String(rawValue ?? '').replace(/\D+/g, '')
+}
+
+// Normaliza el valor persistido en specific_budget_id / budget_code
+export function normalizeSpecificBudgetId(assignmentType, rawValue = '') {
+  if (assignmentType !== 'Adicional / Específico') return null
+  const trimmed = String(rawValue ?? '').trim().toUpperCase()
+  if (!trimmed || trimmed === BUDGET_PENDING_VALUE) return BUDGET_PENDING_VALUE
+  const digits = extractBudgetDigits(trimmed)
+  return digits || BUDGET_PENDING_VALUE
+}
+
+// Formatea para UI: "PRESUP. <número>" o "PENDIENTE" (nunca "S/N" ni "PRESUP. PRESUP.")
+export function formatSpecificBudgetLabel(rawValue = '') {
+  const clean = String(rawValue ?? '').trim()
+  if (!clean || clean.toUpperCase() === BUDGET_PENDING_VALUE) return BUDGET_PENDING_VALUE
+  if (/^PRESUP\./i.test(clean)) return clean.toUpperCase()
+  const digits = extractBudgetDigits(clean)
+  if (digits) return `PRESUP. ${digits}`
+  return clean
+}
+
+// Determina si un trabajo Adicional / Específico tiene pendiente la carga de Nº Presupuesto (Alerta María José)
+export function isBudgetPendingAlert(item) {
+  if (!item || item.assignment_type !== 'Adicional / Específico') return false
+  if (item.status === 'Desestimado') return false
+  const clean = String(item.specific_budget_id ?? '').trim().toUpperCase()
+  return !clean || clean === BUDGET_PENDING_VALUE
+}
+
 // Campos clonables al duplicar un trabajo
 export const WORK_ITEM_CLONE_FIELDS = [
   'work_order_id',
@@ -217,6 +273,13 @@ export function evaluateWorkItemAlerts(item, wo) {
   const hasContractors = Array.isArray(item.contractors) && item.contractors.length > 0
   if (wo?.title?.trim() && item.status !== 'Desestimado' && item.description?.trim() && !hasContractors) {
     alerts.push({ code: 'S/CONTRATISTA', label: 'Falta asignar contratista', color: 'bg-orange-950 text-orange-300 border-orange-700' })
+  }
+  if (isBudgetPendingAlert(item)) {
+    alerts.push({
+      code: 'PTO_PENDIENTE',
+      label: 'Adicional sin Nº Presupuesto — Pendiente de completar por María José',
+      color: 'bg-amber-950 text-amber-300 border-amber-600'
+    })
   }
   return alerts
 }
@@ -416,6 +479,7 @@ export function buildContractorCatalog(workers = []) {
 }
 
 // Construcción del conjunto unificado de filas (OTs + Ítems)
+// Orden estricto cronológico descendente (último folio arriba -> #1 abajo) sin mezclar secuencias
 export function buildUnifiedRows(workOrders = [], itemsByWoMap = {}, thirdPartyByItemMap = {}, defaultForeman = 'ALE CAMADELLI', otMetricsAndDatesMap = {}) {
   const rows = []
   workOrders.forEach(wo => {
@@ -425,8 +489,11 @@ export function buildUnifiedRows(workOrders = [], itemsByWoMap = {}, thirdPartyB
     if (items.length === 0) {
       rows.push({
         isPlaceholder: true,
+        _skipFolio: true,
+        _rowSeq: null,
         id: `placeholder-${wo.id}`,
         work_order_id: wo.id,
+        created_at: wo.created_at || null,
         wo,
         computedOt,
         otDates,
@@ -435,6 +502,7 @@ export function buildUnifiedRows(workOrders = [], itemsByWoMap = {}, thirdPartyB
         foreman_name: wo.foreman_name || defaultForeman,
         work_type: wo.work_type || 'HORA',
         assignment_type: wo.assignment_type || 'Presupuesto General',
+        specific_budget_id: wo.budget_code || null,
         contractors: wo.contractor_name ? [wo.contractor_name] : []
       })
     } else {
@@ -450,7 +518,22 @@ export function buildUnifiedRows(workOrders = [], itemsByWoMap = {}, thirdPartyB
       })
     }
   })
-  return assignMonotonicFolios(rows, { dateField: 'created_at', idField: 'id' })
+
+  // Asegurar folios monótonos en ítems reales sin contaminar placeholders
+  const withFolios = assignMonotonicFolios(rows, { dateField: 'created_at', idField: 'id' })
+
+  // Ordenar estrictamente de más reciente / folio más alto hacia #1 abajo
+  return [...withFolios].sort((a, b) => {
+    const seqA = typeof a._rowSeq === 'number' ? a._rowSeq : null
+    const seqB = typeof b._rowSeq === 'number' ? b._rowSeq : null
+    if (seqA !== null && seqB !== null && seqA !== seqB) {
+      return seqB - seqA
+    }
+    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0
+    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0
+    if (timeA !== timeB) return timeB - timeA
+    return String(b.id || '').localeCompare(String(a.id || ''))
+  })
 }
 
 /**

@@ -22,6 +22,10 @@ import {
   ESTADOS_TRABAJO,
   TIPOS_DE_TRABAJO,
   GRUPOS_CATALOGO,
+  BUDGET_PENDING_VALUE,
+  FACTURACION_CENTRO_INFO,
+  extractBudgetDigits,
+  formatSpecificBudgetLabel,
   formatShortDate,
   computeOtState,
   isWorkItemEliminada,
@@ -113,6 +117,8 @@ export function WorkOrdersModalsContainer({
   const [isCreatingForemanInline, setIsCreatingForemanInline] = useState(false)
   const [newForemanForm, setNewForemanForm] = useState({ name: '', trade: 'TECNICOS' })
   const [savingNewForeman, setSavingNewForeman] = useState(false)
+  const [showFacturacionInfo, setShowFacturacionInfo] = useState(false)
+  const [budgetOptionMode, setBudgetOptionMode] = useState('PENDIENTE')
 
   // Sincronizar apertura de WorkModal
   useEffect(() => {
@@ -120,6 +126,9 @@ export function WorkOrdersModalsContainer({
     if (editingWorkItem) {
       const row = editingWorkItem
       const tp = row.thirdPartyRecord
+      const rawBudget = String(row.specific_budget_id ?? '').trim()
+      const existingDigits = rawBudget.toUpperCase() === BUDGET_PENDING_VALUE ? '' : extractBudgetDigits(rawBudget)
+      setBudgetOptionMode(existingDigits ? 'CONOCIDO' : 'PENDIENTE')
       setWorkForm({
         ship_id: row.wo?.ship_id || '',
         ot_mode: 'existing',
@@ -127,14 +136,14 @@ export function WorkOrdersModalsContainer({
         ot_creation_type: row.wo?.is_tabulated ? 'tabulada' : 'libre',
         selected_template_id: '',
         ot_number: row.wo?.ot_number || 'OT-1',
-        ot_title: row.wo?.title || '',
+        ot_title: (row.wo?.title || '').toUpperCase(),
         created_date: row.wo?.created_at ? String(row.wo.created_at).split('T')[0] : new Date().toISOString().split('T')[0],
         description: row.description || '',
         status: row.status || 'En ejecución',
         foreman_name: row.foreman_name || foremenList[0] || 'ALE CAMADELLI',
         work_type: row.work_type || 'HORA',
         assignment_type: row.assignment_type || 'Presupuesto General',
-        specific_budget_id: row.specific_budget_id || '',
+        specific_budget_id: existingDigits || '',
         contractors: Array.isArray(row.contractors) ? [...row.contractors] : [],
         comments: cleanWorkItemComment(row.comments),
         send_to_third_party_prc: Boolean(row.send_to_third_party_prc || tp),
@@ -143,6 +152,7 @@ export function WorkOrdersModalsContainer({
     } else {
       const defaultShipId = preselectedWo ? preselectedWo.ship_id : (ships[0]?.id || '')
       const shipWos = workOrders.filter((w) => w.ship_id === defaultShipId)
+      setBudgetOptionMode('PENDIENTE')
       setWorkForm({
         ship_id: defaultShipId,
         ot_mode: preselectedWo ? 'existing' : (shipWos.length > 0 ? 'existing' : 'new'),
@@ -170,6 +180,7 @@ export function WorkOrdersModalsContainer({
     setContractorSelectInput('')
     setIsContractorListOpen(false)
     setIsCreatingForemanInline(false)
+    setShowFacturacionInfo(false)
   }, [isWorkModalOpen, editingWorkItem, preselectedWo, ships, workOrders, foremenList])
 
   const hasThirdPartyPermission = (contractorName) => {
@@ -432,7 +443,7 @@ export function WorkOrdersModalsContainer({
         ot_mode: p.existing_wo_id ? p.ot_mode : 'new',
         ot_creation_type: 'tabulada',
         selected_template_id: catalogMultiSelection[0].template_id,
-        ot_title: catalogMultiSelection[0].ot_title
+        ot_title: String(catalogMultiSelection[0].ot_title || '').toUpperCase()
       }))
     } else {
       onOpenNewWorkModal(null)
@@ -441,14 +452,15 @@ export function WorkOrdersModalsContainer({
   }
 
   const handleUseSingleTemplate = (tpl) => {
-    const single = [{ template_id: tpl.id, ot_title: tpl.name, description: tpl.description || '', status: 'En ejecución' }]
+    const upperName = String(tpl.name || '').toUpperCase()
+    const single = [{ template_id: tpl.id, ot_title: upperName, description: tpl.description || '', status: 'En ejecución' }]
     setSelectedBatchTemplates(single)
     if (templatePickerFromForm && isWorkModalOpen) {
       setWorkForm((p) => ({
         ...p,
         ot_creation_type: 'tabulada',
         selected_template_id: tpl.id,
-        ot_title: tpl.name,
+        ot_title: upperName,
         description: tpl.description || p.description
       }))
     } else {
@@ -607,9 +619,10 @@ export function WorkOrdersModalsContainer({
                                 type="text"
                                 required={selectedBatchTemplates.length <= 1}
                                 value={workForm.ot_title}
-                                onChange={(e) => setWorkForm((prev) => ({ ...prev, ot_title: e.target.value }))}
-                                placeholder="Ej: REPARACIÓN DE LÍNEA DE EJES"
-                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold focus:border-sky-400 focus:outline-none"
+                                onChange={(e) => setWorkForm((prev) => ({ ...prev, ot_title: e.target.value.toUpperCase() }))}
+                                onBlur={() => setWorkForm((prev) => ({ ...prev, ot_title: (prev.ot_title || '').trim().toUpperCase() }))}
+                                placeholder="EJ: REPARACIÓN DE LÍNEA DE EJES"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold uppercase focus:border-sky-400 focus:outline-none"
                               />
                             </div>
                           </div>
@@ -693,7 +706,7 @@ export function WorkOrdersModalsContainer({
                                       setSelectedBatchTemplates((prev) =>
                                         prev.some((item) => item.template_id === tpl.id)
                                           ? prev.filter((item) => item.template_id !== tpl.id)
-                                          : [...prev, { template_id: tpl.id, ot_title: tpl.name, description: tpl.description || '', status: workForm.status || 'En ejecución' }]
+                                          : [...prev, { template_id: tpl.id, ot_title: String(tpl.name || '').toUpperCase(), description: tpl.description || '', status: workForm.status || 'En ejecución' }]
                                       )
                                     }
                                     className={`p-1.5 rounded-lg border text-[11px] flex items-center justify-between cursor-pointer ${
@@ -836,29 +849,154 @@ export function WorkOrdersModalsContainer({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">Centro de Facturación</label>
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                              <span>Centro de Facturación</span>
+                              <button
+                                type="button"
+                                onClick={() => setShowFacturacionInfo((v) => !v)}
+                                onMouseEnter={() => setShowFacturacionInfo(true)}
+                                onMouseLeave={() => setShowFacturacionInfo(false)}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-600/60 hover:bg-cyan-900 text-[10px] font-bold cursor-pointer transition-colors"
+                                title="¿Qué diferencia hay entre Presupuesto General y Adicional / Específico?"
+                              >
+                                <Info className="w-3 h-3" />
+                                <span>¿Qué es?</span>
+                              </button>
+                            </label>
+                          </div>
+
+                          {showFacturacionInfo && (
+                            <div
+                              onMouseEnter={() => setShowFacturacionInfo(true)}
+                              onMouseLeave={() => setShowFacturacionInfo(false)}
+                              className="absolute left-0 right-0 bottom-full mb-1.5 z-40 p-3 bg-slate-950/95 rounded-xl border-2 border-cyan-500/40 text-[11px] text-slate-200 space-y-2 shadow-2xl shadow-cyan-950/30 animate-in fade-in duration-100"
+                            >
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                                <span className="font-bold text-white flex items-center gap-1.5">
+                                  <Info className="w-3.5 h-3.5 text-cyan-400" />
+                                  {FACTURACION_CENTRO_INFO.title}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowFacturacionInfo(false)}
+                                  className="text-slate-400 hover:text-white cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <div className="space-y-1.5">
+                                {FACTURACION_CENTRO_INFO.options.map((opt) => (
+                                  <div key={opt.key} className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1">
+                                    <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded border ${opt.badgeClass}`}>
+                                      {opt.badge}
+                                    </span>
+                                    <p className="text-white font-semibold leading-snug">{opt.summary}</p>
+                                    <p className="text-[10px] text-slate-400 leading-snug">{opt.details}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           <select
                             value={workForm.assignment_type}
-                            onChange={(e) => setWorkForm((prev) => ({ ...prev, assignment_type: e.target.value }))}
+                            onChange={(e) => {
+                              const nextType = e.target.value
+                              setWorkForm((prev) => ({
+                                ...prev,
+                                assignment_type: nextType,
+                                specific_budget_id: nextType === 'Adicional / Específico' ? prev.specific_budget_id : ''
+                              }))
+                            }}
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold"
                           >
                             <option value="Presupuesto General">Presupuesto General</option>
                             <option value="Adicional / Específico">Adicional / Específico</option>
                           </select>
                         </div>
+
                         {workForm.assignment_type === 'Adicional / Específico' && (
-                          <div>
-                            <label className="block text-[11px] font-semibold text-amber-300 mb-1">Nº Presupuesto *</label>
-                            <input
-                              type="text"
-                              required
-                              value={workForm.specific_budget_id}
-                              onChange={(e) => setWorkForm((prev) => ({ ...prev, specific_budget_id: e.target.value }))}
-                              placeholder="Ej: PRE-2026-088"
-                              className="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono font-bold"
-                            />
+                          <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-500/40 space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-amber-300 mb-1">
+                                  Opción de Nº Presupuesto *
+                                </label>
+                                <select
+                                  value={budgetOptionMode}
+                                  onChange={(e) => {
+                                    const mode = e.target.value
+                                    setBudgetOptionMode(mode)
+                                    if (mode === 'PENDIENTE') {
+                                      setWorkForm((prev) => ({ ...prev, specific_budget_id: BUDGET_PENDING_VALUE }))
+                                    } else {
+                                      setWorkForm((prev) => ({
+                                        ...prev,
+                                        specific_budget_id: extractBudgetDigits(prev.specific_budget_id)
+                                      }))
+                                    }
+                                  }}
+                                  className="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none"
+                                >
+                                  <option value="CONOCIDO">Tengo Nº de Presupuesto (Numérico)</option>
+                                  <option value="PENDIENTE">Pendiente / A definir (Alerta María José)</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-semibold text-amber-300 mb-1">
+                                  Nº Presupuesto (Solo números — vacío = PENDIENTE)
+                                </label>
+                                {budgetOptionMode === 'CONOCIDO' ? (
+                                  <div className="flex items-center bg-slate-900 border border-amber-500/50 rounded-xl overflow-hidden focus-within:border-amber-400">
+                                    <span className="px-2.5 py-1.5 bg-amber-950/60 border-r border-amber-500/30 text-[11px] font-mono font-black text-amber-300 select-none shrink-0">
+                                      PRESUP.
+                                    </span>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      value={extractBudgetDigits(workForm.specific_budget_id)}
+                                      onChange={(e) => {
+                                        const onlyDigits = extractBudgetDigits(e.target.value)
+                                        setWorkForm((prev) => ({ ...prev, specific_budget_id: onlyDigits }))
+                                      }}
+                                      onBlur={() => {
+                                        const onlyDigits = extractBudgetDigits(workForm.specific_budget_id)
+                                        if (!onlyDigits) {
+                                          setWorkForm((prev) => ({ ...prev, specific_budget_id: '' }))
+                                        }
+                                      }}
+                                      placeholder="Ej: 210 (vacío = PENDIENTE)"
+                                      className="w-full bg-transparent px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="px-2.5 py-1.5 rounded-xl bg-amber-950/50 border border-amber-500/50 text-[11px] font-mono font-black text-amber-300">
+                                    {BUDGET_PENDING_VALUE} • Alerta a María José
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] text-amber-200/90">
+                              <span>
+                                Se guardará como:{' '}
+                                <strong className="font-mono text-white">
+                                  {formatSpecificBudgetLabel(
+                                    budgetOptionMode === 'PENDIENTE' ? BUDGET_PENDING_VALUE : workForm.specific_budget_id
+                                  )}
+                                </strong>
+                              </span>
+                              {(!extractBudgetDigits(workForm.specific_budget_id) || budgetOptionMode === 'PENDIENTE') && (
+                                <span className="text-amber-300 font-semibold">
+                                  ⚠️ Generará alerta pendiente para María José
+                                </span>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -994,7 +1132,7 @@ export function WorkOrdersModalsContainer({
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">Nombre Nueva OT *</label>
-                      <input type="text" required value={separateForm.new_ot_title} onChange={(e) => setSeparateForm((p) => ({ ...p, new_ot_title: e.target.value }))} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-bold" />
+                      <input type="text" required value={separateForm.new_ot_title} onChange={(e) => setSeparateForm((p) => ({ ...p, new_ot_title: e.target.value.toUpperCase() }))} onBlur={() => setSeparateForm((p) => ({ ...p, new_ot_title: (p.new_ot_title || '').trim().toUpperCase() }))} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-bold uppercase" />
                     </div>
                   </div>
                 </div>

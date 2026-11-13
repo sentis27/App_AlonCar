@@ -7,7 +7,188 @@
 import { supabase } from './supabase.js'
 import { auditService } from './auditService.js'
 import { assignMonotonicFolios } from './monotonicFolioEngine.js'
-import { cleanWorkItemComment } from './workOrdersConstants.js'
+import {
+  cleanWorkItemComment,
+  normalizeSpecificBudgetId,
+  formatSpecificBudgetLabel,
+  isBudgetPendingAlert
+} from './workOrdersConstants.js'
+
+let cachedBudgetRequirementId = null
+
+// Garantiza que exista el requisito canónico REQ_OT_PRESUPUESTO_ADICIONAL_MARIA_JOSE en data_requirements
+async function getBudgetPendingRequirementId() {
+  if (cachedBudgetRequirementId) return cachedBudgetRequirementId
+  const { data: existing } = await supabase
+    .from('data_requirements')
+    .select('id')
+    .eq('code', 'REQ_OT_PRESUPUESTO_ADICIONAL_MARIA_JOSE')
+    .limit(1)
+  if (existing && existing[0]?.id) {
+    cachedBudgetRequirementId = existing[0].id
+    return cachedBudgetRequirementId
+  }
+  const { data: created, error } = await supabase
+    .from('data_requirements')
+    .upsert({
+      code: 'REQ_OT_PRESUPUESTO_ADICIONAL_MARIA_JOSE',
+      module: 'ots',
+      field_key: 'specific_budget_id',
+      name: 'Nº de Presupuesto para Trabajo Adicional / Específico',
+      description: 'Completar el número de presupuesto cuando un trabajo Adicional / Específico quedó PENDIENTE hasta su cotización/facturación.',
+      trigger_event: 'ITEM_ADICIONAL_PENDIENTE',
+      trigger_condition: { assignment_type: 'Adicional / Específico', specific_budget_id: 'PENDIENTE' },
+      responsible_role: 'maria_jose',
+      default_notice_time: '09:30:00',
+      default_notice_frequency: 'CADA_48HS',
+      max_attempts: 6,
+      escalation_role: 'admin',
+      is_active: true
+    }, { onConflict: 'code' })
+    .select('id')
+  if (error) throw error
+  cachedBudgetRequirementId = created?.[0]?.id || null
+  return cachedBudgetRequirementId
+}
+
+// Sincroniza automáticamente la alerta de "Adicional sin Nº Presupuesto" para María José en compliance_alerts
+export async function syncBudgetPendingAlertForWorkItem({ workItem, wo, shipId, user }) {
+  if (!workItem?.id) return
+  try {
+    const needsAlert = isBudgetPendingAlert(workItem)
+    const { data: existing } = await supabase
+      .from('compliance_alerts')
+      .select('id, notes')
+      .eq('entity_type', 'work_items')
+      .eq('entity_id', workItem.id)
+      .eq('status', 'PENDIENTE')
+
+    if (needsAlert) {
+      const requirementId = await getBudgetPendingRequirementId()
+      if (!requirementId) return
+      const otLabel = wo?.ot_number ? `${wo.ot_number}${wo?.title ? ` (${String(wo.title).toUpperCase()})` : ''}` : 'OT'
+      const msg = `Adicional sin Nº Presupuesto · ${otLabel} — ${workItem.description || 'Sin descripción'}`.trim()
+      if (!existing || existing.length === 0) {
+        const { error: insErr } = await supabase.from('compliance_alerts').insert([{
+          requirement_id: requirementId,
+          ship_id: shipId || wo?.ship_id || null,
+          entity_type: 'work_items',
+          entity_id: workItem.id,
+          responsible_role: 'maria_jose',
+          status: 'PENDIENTE',
+          escalated_to_admin: false,
+          alert_message: msg,
+          notes: 'Responsable: María José • Completar Nº de Presupuesto (PRESUP. ...)'
+        }])
+        if (insErr) throw insErr
+      } else {
+        await supabase
+          .from('compliance_alerts')
+          .update({ ship_id: shipId || wo?.ship_id || null, alert_message: msg })
+          .eq('id', existing[0].id)
+      }
+    } else if (existing && existing.length > 0) {
+      const resolutionNote =
+        workItem.status === 'Desestimado'
+          ? 'Trabajo desestimado'
+          : workItem.assignment_type === 'Presupuesto General'
+          ? 'Reclasificado a Presupuesto General'
+          : `Nº Presupuesto cargado: ${formatSpecificBudgetLabel(workItem.specific_budget_id)}`
+      await supabase
+        .from('compliance_alerts')
+        .update({
+          status: 'COMPLETADO',
+          completed_at: new Date().toISOString(),
+          completed_by: user?.email || 'María José / Sistema',
+          notes: resolutionNote
+        })
+        .in('id', existing.map((a) => a.id))
+    }
+  } catch (err) {
+    console.warn('No se pudo sincronizar compliance_alerts para Nº Presupuesto:', err?.message)
+  }
+}
+
+// Permite a María José (Dashboard / Bandeja de Alertas) cargar el Nº numérico de presupuesto y cerrar la alerta
+export async function resolvePendingBudgetAlertService({ alertItem, budgetNumber, user, userName }) {
+  const cleanDigits = String(budgetNumber ?? '').replace(/\D+/g, '')
+  if (!cleanDigits) {
+    throw new Error('Ingresá un número de presupuesto válido (solo dígitos).')
+  }
+  const workItemId = alertItem?.work_item_id || alertItem?.entity_id
+  if (!workItemId) {
+    throw new Error('La alerta no tiene un trabajo vinculado.')
+  }
+
+  const nowIso = new Date().toISOString()
+  const { error: itemErr } = await supabase
+    .from('work_items')
+    .update({
+      specific_budget_id: cleanDigits,
+      updated_at: nowIso
+    })
+    .eq('id', workItemId)
+  if (itemErr) throw itemErr
+
+  const formatted = formatSpecificBudgetLabel(cleanDigits)
+  const resolver = userName || user?.email || 'María José'
+
+  // Cerrar toda alerta pendiente vinculada a este work_item en compliance_alerts
+  await supabase
+    .from('compliance_alerts')
+    .update({
+      status: 'COMPLETADO',
+      completed_at: nowIso,
+      completed_by: resolver,
+      notes: `${alertItem.notes ? `${alertItem.notes} — ` : ''}[${formatted} asignado por ${resolver}]`
+    })
+    .eq('entity_type', 'work_items')
+    .eq('entity_id', workItemId)
+    .eq('status', 'PENDIENTE')
+
+  await auditService.logCellChange({
+    entityType: 'work_orders',
+    entityId: workItemId,
+    entityName: alertItem.alert_message || `Trabajo ${workItemId}`,
+    field: 'specific_budget_id',
+    fieldLabel: 'Nº Presupuesto Específico',
+    oldValue: 'PENDIENTE',
+    newValue: formatted,
+    sheetName: 'Órdenes de Trabajo / Alertas María José',
+    moduleRoute: '/',
+    user: resolver
+  })
+
+  return { workItemId, budgetDigits: cleanDigits, formatted }
+}
+
+// Consulta en vivo los trabajos Adicional / Específico pendientes de Nº Presupuesto asignados a María José
+export async function fetchPendingBudgetAlertsForMariaService() {
+  const { data: items, error } = await supabase
+    .from('work_items')
+    .select('id, work_order_id, description, status, assignment_type, specific_budget_id, created_at, work_orders(id, ot_number, title, ship_id, ships(name))')
+    .eq('assignment_type', 'Adicional / Específico')
+    .neq('status', 'Desestimado')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+
+  const pendingItems = (items || []).filter((it) => isBudgetPendingAlert(it))
+  return pendingItems.map((it) => {
+    const wo = it.work_orders
+    const otLabel = wo?.ot_number ? `${wo.ot_number}${wo?.title ? ` (${String(wo.title).toUpperCase()})` : ''}` : 'OT'
+    return {
+      id: it.id,
+      work_item_id: it.id,
+      entity_type: 'work_items',
+      entity_id: it.id,
+      ship_id: wo?.ship_id || null,
+      ships: wo?.ships || null,
+      created_at: it.created_at,
+      alert_message: `Adicional sin Nº Presupuesto · ${otLabel} — ${it.description || 'Sin descripción'}`.trim(),
+      notes: 'Responsable: María José • Completar Nº de Presupuesto (PRESUP. ...)'
+    }
+  })
+}
 
 // Carga inicial y recarga completa de datos del módulo de Órdenes de Trabajo
 export async function fetchWorkOrdersData() {
@@ -72,11 +253,21 @@ export async function applyWoSinglePatchService({
   } else {
     // Actualizar work_item real
     const itemPatch = { [colKey]: cleanVal, updated_at: new Date().toISOString() }
-    const { error } = await supabase
+    const { data: updItemData, error } = await supabase
       .from('work_items')
       .update(itemPatch)
       .eq('id', rowId)
+      .select()
     if (error) throw error
+
+    if (updItemData?.[0] && (colKey === 'status' || colKey === 'specific_budget_id' || colKey === 'assignment_type')) {
+      await syncBudgetPendingAlertForWorkItem({
+        workItem: updItemData[0],
+        wo: targetRow.wo,
+        shipId: targetRow.wo?.ship_id,
+        user
+      })
+    }
 
     // Si se modificó la descripción y existe un PRC vinculado en Terceros, sincronizar direct_observations
     if (colKey === 'description' && targetRow.thirdPartyRecord) {
@@ -132,7 +323,8 @@ export async function saveWorkOrderService({
 
       const itemStatus = batchItem.status || 'En ejecución'
       const itemDesc = (batchItem.description ?? '').trim()
-      const itemTitle = (batchItem.ot_title || '').trim()
+      const itemTitle = (batchItem.ot_title || '').trim().toUpperCase()
+      const normalizedBudget = normalizeSpecificBudgetId(workForm.assignment_type, workForm.specific_budget_id)
 
       const woPayload = {
         ship_id: workForm.ship_id,
@@ -142,7 +334,7 @@ export async function saveWorkOrderService({
         status: itemStatus === 'En ejecución' ? 'En Progreso' : itemStatus === 'Desestimado' ? 'Cancelada' : 'Pendiente',
         work_type: workForm.work_type,
         assignment_type: workForm.assignment_type,
-        budget_code: workForm.specific_budget_id.trim() || null,
+        budget_code: normalizedBudget,
         foreman_name: workForm.foreman_name,
         contractor_name: workForm.contractors.join(', ') || null,
         is_tabulated: true,
@@ -160,7 +352,7 @@ export async function saveWorkOrderService({
         foreman_name: workForm.foreman_name,
         work_type: workForm.work_type,
         assignment_type: workForm.assignment_type,
-        specific_budget_id: workForm.specific_budget_id.trim() || null,
+        specific_budget_id: normalizedBudget,
         contractors: workForm.contractors,
         contractor_name: workForm.contractors.join(', ') || null,
         comments: workForm.comments.trim() || null,
@@ -171,6 +363,15 @@ export async function saveWorkOrderService({
       const { data: insItemData, error: itemErr } = await supabase.from('work_items').insert([itemPayload]).select()
       if (itemErr) throw itemErr
       const createdWorkItem = insItemData?.[0]
+
+      if (createdWorkItem) {
+        await syncBudgetPendingAlertForWorkItem({
+          workItem: createdWorkItem,
+          wo: newWoData[0],
+          shipId: workForm.ship_id,
+          user
+        })
+      }
 
       if (createdWorkItem && validFor3ros) {
         const singleContractor = workForm.contractors[0]
@@ -206,16 +407,19 @@ export async function saveWorkOrderService({
   // CASO B: GUARDADO INDIVIDUAL
   let targetWoId = workForm.existing_wo_id
   let targetShipId = workForm.ship_id
+  const normalizedBudget = normalizeSpecificBudgetId(workForm.assignment_type, workForm.specific_budget_id)
+  const normalizedOtTitle = (workForm.ot_title || '').trim().toUpperCase()
+  let targetWoRecord = null
 
   if (workForm.ot_mode === 'new') {
     // Blindaje defensivo contra duplicación de cabeceras en el mismo buque
-    const normTitle = (workForm.ot_title || '').trim().toUpperCase()
+    const normTitle = normalizedOtTitle
     let existingWo = null
 
     if (normTitle && workForm.ship_id) {
       const { data: matchedWos } = await supabase
         .from('work_orders')
-        .select('id, ot_number, title')
+        .select('id, ot_number, title, ship_id')
         .eq('ship_id', workForm.ship_id)
         .ilike('title', normTitle)
         .limit(1)
@@ -227,17 +431,18 @@ export async function saveWorkOrderService({
 
     if (existingWo) {
       targetWoId = existingWo.id
+      targetWoRecord = existingWo
     } else {
       const autoConsecutiveOt = getNextOtNumberForShip(workForm.ship_id, 0)
       const woPayload = {
         ship_id: workForm.ship_id,
         ot_number: autoConsecutiveOt,
-        title: workForm.ot_title.trim(),
+        title: normalizedOtTitle,
         description: workForm.description.trim() || null,
         status: workForm.status === 'En ejecución' ? 'En Progreso' : 'Pendiente',
         work_type: workForm.work_type,
         assignment_type: workForm.assignment_type,
-        budget_code: workForm.specific_budget_id.trim() || null,
+        budget_code: normalizedBudget,
         foreman_name: workForm.foreman_name,
         contractor_name: workForm.contractors.join(', ') || null,
         is_tabulated: workForm.ot_creation_type === 'tabulada',
@@ -247,12 +452,19 @@ export async function saveWorkOrderService({
       const { data: newWoData, error: woErr } = await supabase.from('work_orders').insert([woPayload]).select()
       if (woErr) throw woErr
       targetWoId = newWoData[0].id
+      targetWoRecord = newWoData[0]
     }
-  } else if (editingWorkItem && workForm.ot_title.trim()) {
+  } else if (editingWorkItem && normalizedOtTitle) {
     await supabase.from('work_orders').update({
-      title: workForm.ot_title.trim(),
+      title: normalizedOtTitle,
       foreman_name: workForm.foreman_name
     }).eq('id', targetWoId)
+    targetWoRecord = {
+      id: targetWoId,
+      ship_id: targetShipId,
+      ot_number: editingWorkItem.wo?.ot_number || workForm.ot_number,
+      title: normalizedOtTitle
+    }
   }
 
   const existingEliminadaTag =
@@ -268,7 +480,7 @@ export async function saveWorkOrderService({
     foreman_name: workForm.foreman_name,
     work_type: workForm.work_type,
     assignment_type: workForm.assignment_type,
-    specific_budget_id: workForm.specific_budget_id.trim() || null,
+    specific_budget_id: normalizedBudget,
     contractors: workForm.contractors,
     contractor_name: workForm.contractors.join(', ') || null,
     comments: mergedComments,
@@ -285,6 +497,23 @@ export async function saveWorkOrderService({
     const { data: insData, error: itemErr } = await supabase.from('work_items').insert([itemPayload]).select()
     if (itemErr) throw itemErr
     savedWorkItem = insData?.[0]
+  }
+
+  if (savedWorkItem) {
+    if (!targetWoRecord && targetWoId) {
+      const { data: woLookup } = await supabase
+        .from('work_orders')
+        .select('id, ot_number, title, ship_id')
+        .eq('id', targetWoId)
+        .limit(1)
+      targetWoRecord = woLookup?.[0] || { id: targetWoId, ot_number: workForm.ot_number, title: normalizedOtTitle, ship_id: targetShipId }
+    }
+    await syncBudgetPendingAlertForWorkItem({
+      workItem: savedWorkItem,
+      wo: targetWoRecord,
+      shipId: targetShipId || targetWoRecord?.ship_id,
+      user
+    })
   }
 
   if (savedWorkItem) {
@@ -413,7 +642,7 @@ export async function separateWorkItemService({
 
   if (separateForm.mode === 'new_ot') {
     const newOtNum = getNextOtNumberForShip(shipId)
-    const newTitle = separateForm.new_ot_title.trim()
+    const newTitle = (separateForm.new_ot_title || '').trim().toUpperCase()
     const originNote = `[${timestamp} - Separación de OT por ${author}]: Trabajo independizado desde ${sourceWo?.ot_number} (${sourceWo?.title}). Motivo: ${separateForm.reason.trim()}`
 
     const woPayload = {
@@ -534,6 +763,13 @@ export async function deleteWorkItemService(row, user) {
     .eq('id', row.id)
   if (error) throw error
 
+  await syncBudgetPendingAlertForWorkItem({
+    workItem: { ...row, status: 'Desestimado' },
+    wo: row.wo,
+    shipId: row.wo?.ship_id,
+    user
+  })
+
   await auditService.logRowAction({
     action: 'DELETE',
     entityType: 'work_items',
@@ -567,6 +803,12 @@ export async function deleteWoService(wo, items = [], foremenList = [], user) {
         .from('work_items')
         .update({ status: 'Desestimado', comments: nextComment, updated_at: new Date().toISOString() })
         .eq('id', item.id)
+      await syncBudgetPendingAlertForWorkItem({
+        workItem: { ...item, status: 'Desestimado' },
+        wo,
+        shipId: wo.ship_id,
+        user
+      })
     }
   } else {
     await supabase.from('work_items').insert([{
