@@ -1,7 +1,7 @@
 # Mapeo Legacy: Reconciliación de Horas vs Materiales (BD_Nuevas_Planillas & Imputación Horas vs Materiales)
 
 > [!IMPORTANT]
-> **Fuentes de información cruzadas:** Descripción del usuario (sesión 2026-08-21), extracción técnica directa vía Google Sheets API (v4) de las planillas `BD_Nuevas_Planillas` (`19akjKRBGHHVw1OwxGhJc71IYFxK5Fd6JeCRpDMaqThs`) e `Imputación horas vs materiales` (`1fpkRbhbeIpykepnRTcJGhgVPOwNhg88qkauWFBU2F3o`), y decisión de producto `DEC-013`.
+> **Fuentes de información cruzadas:** Descripción del usuario (sesión 2026-08-21), extracción técnica directa vía Google Sheets API (v4) de las planillas `BD_Nuevas_Planillas` (`19akjKRBGHHVw1OwxGhJc71IYFxK5Fd6JeCRpDMaqThs`) e `Imputación horas vs materiales` (`1fpkRbhbeIpykepnRTcJGhgVPOwNhg88qkauWFBU2F3o`), y decisión de producto `DEC-025`.
 
 ---
 
@@ -57,7 +57,7 @@ Tanto en `IMPORT.MATERIALES` como en `IMPORT.HORAS`, el sistema genera una colum
 
 #### D. Filtros Excluyentes Legacy vs Regla Integral en la App
 - **En la Planilla Legacy:** La hoja `IMPORT.MATERIALES` contenía un filtro duro manual (`FILTER(A4:D; D4:D<>"ARMADOR"; D4:D<>"LESIN S.A"; ...)`) para excluir consumibles generales o talleres sin control presencial porque no se disponía de un mecanismo limpio para cruzarlos en Google Sheets.
-- **En la App (Regla Unificada DEC-013):** Se elimina el filtro excluyente hardcodeado. Todo taller o entidad (propia, contratista o servicio externo) que retire material de pañol para un Barco/OT debe contar con un **trabajo asignado/reportado** o **horas imputadas**. Si no existe respaldo, el sistema emite una **Alerta de Retiro de Material sin Trabajo Asignado**.
+- **En la App (Regla Unificada DEC-025):** Se elimina el filtro excluyente hardcodeado. Todo taller o entidad (propia, contratista o servicio externo) que retire material de pañol para un Barco/OT debe contar con un **trabajo asignado/reportado** o **horas imputadas**. Si no existe respaldo, el sistema emite una **Alerta de Retiro de Material sin Trabajo Asignado**.
 
 ---
 
