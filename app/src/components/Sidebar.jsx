@@ -26,7 +26,7 @@ const navItems = [
   { name: 'Personal & Tarifas', path: '/personal', icon: Users },
   { name: 'Tesorería (Graciela)', path: '/tesoreria', icon: Wallet },
   { name: 'Barcos y Obras', path: '/barcos', icon: Ship },
-  { name: 'Comparador de Obras', path: '/comparador', icon: BarChart3 },
+  { name: 'Resumen Gerencial', path: '/resumen-gerencial', icon: BarChart3 },
   { name: 'Panel Administrador', path: '/admin', icon: ShieldCheck },
 ]
 

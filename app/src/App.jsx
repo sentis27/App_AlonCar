@@ -12,7 +12,7 @@ import Terceros from './pages/Terceros'
 import Compras from './pages/Compras'
 import Panol from './pages/Panol'
 import Tesoreria from './pages/Tesoreria'
-import ModulePlaceholder from './pages/ModulePlaceholder'
+import ResumenGerencial from './pages/ResumenGerencial'
 import { Loader2 } from 'lucide-react'
 
 // Guardián de rutas protegidas
@@ -81,7 +81,8 @@ export default function App() {
             <Route path="compras" element={<Compras />} />
             <Route path="personal" element={<Personal />} />
             <Route path="tesoreria" element={<Tesoreria />} />
-            <Route path="comparador" element={<ModulePlaceholder />} />
+            <Route path="resumen-gerencial" element={<ResumenGerencial />} />
+            <Route path="comparador" element={<Navigate to="/resumen-gerencial?tab=comparador" replace />} />
             <Route path="admin" element={<AdminDashboard />} />
           </Route>
 

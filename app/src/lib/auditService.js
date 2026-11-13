@@ -25,7 +25,9 @@ export const AUDIT_ENTITY_CATALOG = {
   workshops: { label: 'Terceros · Talleres y Contratistas', route: '/terceros', module: 'Servicios de Terceros' },
   system_settings: { label: 'Admin · Catálogo de Rubros y Configuración', route: '/admin', module: 'Administración' },
   user_roles: { label: 'Admin · Matriz de Puestos y Permisos', route: '/admin', module: 'Administración' },
-  macro_variables: { label: 'Admin · Variables Macroeconómicas', route: '/admin', module: 'Administración' }
+  macro_variables: { label: 'Admin · Variables Macroeconómicas', route: '/admin', module: 'Administración' },
+  remito_comercial: { label: 'Resumen Gerencial · Remito Comercial Alfa', route: '/resumen-gerencial', module: 'Resumen Gerencial' },
+  resumen_gerencial_config: { label: 'Resumen Gerencial · Tarifario y Parámetros', route: '/resumen-gerencial', module: 'Resumen Gerencial' }
 }
 
 export const AUDIT_ACTION_LABELS = {
