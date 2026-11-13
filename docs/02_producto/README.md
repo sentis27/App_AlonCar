@@ -66,6 +66,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-10-22 | DEC-021 | Módulo de Terceros (GS-005) — Ciclo de Comprobantes, Congelamiento de Dólar y Catálogo Oficial | decision |
 | 2026-11-12 | ERR-004 | Pantalla en negro al asignar Buque y OT por hook condicional en modal picker | error |
 | 2026-11-13 | DEC-022 | Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa | decision |
+| 2026-11-13 | DEC-023 | Pañol: Cascada Naval, Doble Imputación de Gases (Recambio +0) y Trazabilidad de Gaseras | decision |
 
 ---
 
@@ -95,6 +96,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | DEC-020 | Terminales de Trabajo, Documentación Técnica Naval (Anguilera/Pintado) y Gestión de Armadores | 3 | validado | 2026-10-22 |
 | DEC-021 | Módulo de Terceros (GS-005) — Ciclo de Comprobantes, Congelamiento de Dólar y Catálogo Oficial | 3 | validado | 2026-10-22 |
 | DEC-022 | Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa | 3 | validado | 2026-11-13 |
+| DEC-023 | Pañol: Cascada Naval, Doble Imputación de Gases (Recambio +0) y Trazabilidad de Gaseras | 3 | validado | 2026-11-13 |
 
 ## Errores
 

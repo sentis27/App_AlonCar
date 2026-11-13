@@ -62,9 +62,9 @@ Todos los módulos y submódulos listados a continuación son hojas de edición 
 | **4.1** | **`Compras.jsx`** | `/compras` | **1. Registro de Compras y Pedidos** (`compras`) | `purchase_orders`, `purchase_order_items` | `purchase_orders` | ✅ Estandarizado + Auditado |
 | **4.2** | **`Compras.jsx`** | `/compras` | **2. Padrón Maestro de Proveedores** (`proveedores`) | `suppliers` | `suppliers` | ✅ Estandarizado + Auditado |
 | **4.3** | **`Compras.jsx`** | `/compras` | **3. Gestor Documental de Compras** (`documentos`) | `purchase_documents` | `purchase_documents` | ✅ Estandarizado + Auditado |
-| **5.1** | **`Panol.jsx`** | `/panol` | **1. Stock, Inventario y Movimientos (Vales/Remitos)** (`planillas`) | `inventory`, `inventory_movements` | `inventory` | ✅ Estandarizado + Auditado |
+| **5.1** | **`Panol.jsx`** | `/panol` | **1. Stock, Inventario y Movimientos (Vales/Remitos)** (`planillas`) | `inventory_transactions`, `materials`, `compliance_alerts`, `worker_permission_requests` | `inventory_transactions` | ✅ Estandarizado + Auditado |
 | **5.2** | **`Panol.jsx`** | `/panol` | **2. Catálogo Maestro de Materiales** (`catalogo`) | `materials` | `materials` | ✅ Estandarizado + Auditado |
-| **5.3** | **`Panol.jsx`** | `/panol` | **3. Control de Gases Industriales** (`gases`) | `gas_cylinders`, `gas_movements` | `gas_cylinders` | ✅ Estandarizado + Auditado |
+| **5.3** | **`Panol.jsx`** | `/panol` | **3. Control de Gases Industriales & Trazabilidad Gaseras** (`gases` · `GasTraceabilityGrid`) | `gas_cylinder_movements`, `materials`, `suppliers`, `inventory_transactions` | `gas_cylinder_movements` | ✅ Estandarizado + Auditado |
 | **5.4** | **`Panol.jsx`** | `/panol` | **4. Entrega de EPP y Ropa de Trabajo** (`epp`) | `ppe_deliveries` | `ppe_deliveries` | ✅ Estandarizado + Auditado |
 | **6.1** | **`Ships.jsx`** | `/barcos` | **1. Padrón de Buques / Embarcaciones** (`buques`) | `ships` | `ships` | ✅ Estandarizado + Auditado |
 | **6.2** | **`Ships.jsx`** | `/barcos` | **2. Estadías y Movimientos de Muelle** (`movimientos`) | `ship_stays` | `ship_stays` | ✅ Estandarizado + Auditado |

@@ -1,5 +1,5 @@
 ---
-version: 1.6
+version: 1.7
 last_updated: 2026-11-13
 status: DOCUMENTO_VIVO_ACTIVO
 evolution_api_status: CONECTADO_LISTO
@@ -202,18 +202,34 @@ Cada registro en el Catálogo de Requisitos (`data_requirements`) y en la cola d
 #### Regla P-04: Solicitud de Habilitación de Operarios para Retiro de Materiales
 * **Código:** `REQ_PANOL_HABILITACION_OPERARIO`
 * **Módulo:** `panol` / `admin`
-* **Campos Clave:** `worker_permission_requests`, `workers.can_withdraw_materials`
-* **Trigger:** Un operario se presenta en la ventanilla de pañol a retirar materiales pero su usuario tiene desactivado el permiso de retiro `[P]` (`can_withdraw_materials = false`).
-* **Rol Responsable:** `admin` (Jorge Sentis).
-* **Acción Obligatoria:** El pañolero pulsa `[ ➕ ¿No aparece? Solicitar Habilitación a Jorge Sentis ]` enviando la solicitud formal. En `/admin`, Jorge Sentis aprueba el permiso en 1 clic activando `can_withdraw_materials = true`.
+* **Campos Clave:** `worker_permission_requests`, `workers.can_withdraw_materials`, `compliance_alerts`
+* **Trigger (`0038`):** `SOLICITUD_HABILITACION_PANOL` — Un operario o contratista se presenta a retirar materiales sin permiso `[P]` (`can_withdraw_materials = false`).
+* **Rol Responsable:** `admin` (**Jorge Sentis** · aviso `09:00 hs`, `DIARIO`, hasta `5` intentos).
+* **Acción Obligatoria:** El pañolero pulsa `[ Solicitar Alta ]` enviando la solicitud a `worker_permission_requests` y alerta a `compliance_alerts`. En `/admin`, Jorge Sentis aprueba el permiso en 1 clic activando `can_withdraw_materials = true`.
 
 #### Regla P-05: Pedido Directo de Reposición a Compras desde Pañol
 * **Código:** `REQ_PANOL_PEDIDO_DIRECTO_COMPRAS`
-* **Módulo:** `panol` / `compras`
+* **Módulo:** `compras` / `panol`
 * **Campos Clave:** `purchase_orders.charge_type = 'VIA_PANOL'`, `status = 'PEDIR'`, `requester_name = 'PAÑOL'`
 * **Trigger:** El pañolero pulsa el icono de carrito (`<ShoppingCart />`) en una fila de la Planilla de Retiros o selecciona materiales en el Catálogo Maestro.
 * **Rol Responsable:** `compras` (Andrés / Jorge Sentis).
 * **Acción Obligatoria:** El sistema crea la orden directamente en Compras con Buque = `ASTILLERO / STOCK`, Destino = `PAÑOL`, OT = `null` y Estado = `PEDIR`. El comprador cotiza o despacha el pedido.
+
+#### Regla P-06: Solicitud de Apertura o Asignación de OT desde Pañol
+* **Código:** `REQ_PANOL_APERTURA_OT`
+* **Módulo:** `panol` / `admin`
+* **Campos Clave:** `work_order_id`, `compliance_alerts`
+* **Trigger (`0038`):** `SOLICITUD_APERTURA_OT_PANOL` — En `MultiWithdrawalModal` (`Expandir` contratistas), un operario/contratista no está habilitado en ninguna OT activa del barco seleccionado y el pañolero pulsa `+ Solicitar OT a Admin`.
+* **Rol Responsable:** `admin` (**Jorge Sentis** · aviso `09:00 hs`, `DIARIO`, hasta `5` intentos).
+* **Acción Obligatoria:** Verificar alcance con Jefe de Obra y abrir o asignar el contratista en la OT correspondiente del buque.
+
+#### Regla P-07: Retiro de Pañol Registrado Sin OT (Provisorio)
+* **Código:** `REQ_PANOL_RETIRO_SIN_OT`
+* **Módulo:** `panol` / `admin`
+* **Campos Clave:** `inventory_transactions.work_order_id` (`NULL`), `compliance_alerts`
+* **Trigger (`0038`):** `RETIRO_PANOL_SIN_OT` — Movimiento de pañol guardado con casilla `(⚠️ Sin OT)` tildada manualmente o auto-tildada al seleccionar un contratista expandido sin OT en ese barco.
+* **Rol Responsable:** `admin` (**Jorge Sentis** · aviso `09:00 hs`, `DIARIO`, hasta `5` intentos).
+* **Acción Obligatoria:** Regularizar la imputación asignando la OT real en la Planilla de Retiros o desde `/admin` para no dejar consumos huérfanos fuera de centro de obra.
 
 ---
 
@@ -243,6 +259,7 @@ Para las próximas sesiones, conforme se sigan construyendo los módulos, se deb
 - [ ] **Módulo de Pañol / Materiales y Compras:**
   * ¿Qué alerta se dispara si un contratista retira materiales sin registrar horas imputadas a esa OT?
   * Responsable de compras cuando un ítem de pañol entra en stock crítico (< stock mínimo).
+  * **Puerta General de Desorden de Materiales, Recuperados, Devueltos y Controles de Stock:** Definir disparadores, roles autorizados y regla contable/stock para ajustes manuales de inventario físico, recuperos y materiales devueltos sin pasar por Compras.
 - [ ] **Datos de Contacto Praxair Linde:** Confirmar portal web, usuario y teléfono/contacto comercial.
 - [ ] **Endpoint y Credenciales de Evolution API:**
   * Registrar la URL base del servidor Evolution API y la API Key de la instancia para los envíos automatizados.
@@ -304,21 +321,29 @@ Por directiva de arquitectura y experiencia de usuario establecida con el usuari
   4. `Propios Astillero Alon Car` (Cilindros y garrafas propiedad de la empresa)
 - Al incorporar un nuevo proveedor en Compras, queda inmediatamente disponible en los selectores de Pañol.
 
-### 6.2. Modelo de Trazabilidad: Las 3 Operaciones de Envases
-Al seleccionar cualquier material del rubro `GASES` en el formulario de retiro de Pañol, el pañolero cuenta con 3 operaciones estandarizadas:
-1. **`Primera Entrega` (Nueva salida a obra):**
-   - Registra: Proveedor del tubo lleno entregado (`supplier_delivered_id`).
-   - Impacto: Suma `+1` tubo a la deuda del contratista; resta `-1` tubo lleno en pañol de ese proveedor.
-2. **`Recambio (1 x 1)` (Mano a mano con cruce de marcas):**
-   - Registra: Proveedor del tubo devuelto vacío (`supplier_returned_id`) y Proveedor del tubo lleno retirado (`supplier_delivered_id`).
-   - Impacto: **Saldo neto del contratista sin variación (`0`)**; el Pañol suma `+1` vacío del proveedor entrante (listo para reponer) y resta `-1` lleno del proveedor saliente.
-3. **`Devolución Final` (Desafectación de obra):**
-   - Registra: Proveedor del envase devuelto vacío (`supplier_returned_id`).
-   - Impacto: Resta `-1` de la deuda del contratista; suma `+1` tubo vacío en pañol de ese proveedor.
+### 6.2. Modelo de Trazabilidad: Las 3 Operaciones con Contratistas y Doble Imputación (`0039` · `DEC-023`)
+Al seleccionar cualquier material del rubro `GASES` en el formulario de retiro de Pañol (tanto en **Creación** como en **Modo Edición**, vía `GasDeliveryInlinePanel.jsx`), los movimientos de consumo/entrega se vinculan (`gas_cylinder_movements.inventory_transaction_id ➔ inventory_transactions.id`):
+1. **`Primera Entrega` (`PRIMERA_ENTREGA` — Nueva salida a obra):**
+   - **Doble imputación:** Registra el consumo/costo en `inventory_transactions` (descontando `materials.current_stock`) y el movimiento del cilindro en `gas_cylinder_movements`.
+   - **Impacto en patio/deuda:** Suma `+1` tubo a la deuda del contratista; resta `-1` tubo lleno en pañol del proveedor entregado.
+2. **`Recambio (1 x 1)` (`RECAMBIO_1X1` — Mano a mano con cruce de marcas, Regla Inviolable `+0`):**
+   - **Doble imputación:** Registra la recarga consumida en `inventory_transactions` (descontando `materials.current_stock`) + el cruce en `gas_cylinder_movements` (marca devuelta vacía `supplier_returned_id` y marca entregada llena `supplier_delivered_id`).
+   - **Impacto en deuda (INVIOLABLE):** **Saldo neto de deuda del contratista sin variación (`+0`)**; exhibe indicador/sub-detalle de recambios por marca sin inflar deuda. En patio suma `+1` vacío de la marca devuelta y resta `-1` lleno de la marca entregada.
+3. **`Devolución Final` (`DEVOLUCION_FINAL` — Desafectación desde Control de Gases):**
+   - **Sin gasto falso en Pañol:** Se registra exclusivamente desde **Acciones** en `Control de Gases` (`GasFinalReturnModal.jsx`), eligiendo qué cilindro(s) específico(s) devuelve el contratista. Escribe en `gas_cylinder_movements` **sin** generar fila de gasto en `inventory_transactions` ni descontar `materials.current_stock`.
+   - **Impacto en patio/deuda:** Resta `-1` de la deuda del contratista y suma `+1` tubo vacío en pañol de ese proveedor.
 
 ### 6.3. Dashboard del Pañolero (DETALLE DE TUBOS DIGITAL)
-- **Panel Superior de Reposición:** Tarjetas en tiempo real por proveedor activo (`Air Liquide: X vacíos`, `Praxair Linde: Y vacíos`, `Ferremat: Z vacíos`) con botón `[ Pedir Reposición (N) ]` para solicitar canje sin tener que salir al patio a inspeccionar.
-- **Matriz de Saldos por Contratista:** Visualización tipo Sheets con Sticky Headers (`sticky top-0 z-20 bg-slate-950`), selector de filas a tu antojo y barra inferior reactiva de totales, con apertura de bitácora histórica por contratista en 1 clic.
+- **Panel Superior de Reposición:** Tarjetas enriquecidas por gasera/proveedor activo con desglose por tipo de gas (`Llenos`, `Vacíos`, `Total Patio` + alerta `P-02`) y botón de gestión directa con gaseras.
+- **Matriz de Saldos por Contratista:** Visualización tipo Sheets con Sticky Headers (`sticky top-0 z-20 bg-slate-950`), deuda neta por contratista/gas/marca, sub-detalle de recambios `1x1` por marca y acción rápida `[ Devolución Final ]` / `[ Reclamar WhatsApp ]`.
+
+### 6.4. Flujo de Gaseras / Proveedores y Tabla Cronológica de Trazabilidad (`0040` · `DEC-023`)
+- **Operaciones con Gaseras (`GasSupplierMovementModal.jsx` · `contractor_name = NULL`):**
+  1. **`Carga Inicial de Patio` (`SALDO_INICIAL_PATIO`):** Registra saldos iniciales físicos de envases llenos/vacíos por proveedor y tipo de gas.
+  2. **`Ingreso / Pedido a Gasera` (`INGRESO_PROVEEDOR`):** Registra tubos recibidos del camión del proveedor con Nº de Remito y gas.
+  3. **`Devolución a Gasera` (`DEVOLUCION_PROVEEDOR`):** Registra envases entregados al proveedor (estado por defecto **`VACIO`**, con opción explícita **`LLENO`** / **`VACIO`** para devoluciones excepcionales y Nº de Remito).
+- **Frontera Estricta con Compras:** Estos movimientos gobiernan exclusivamente el patio de envases (`gas_cylinder_movements`) y **no alteran `materials.current_stock`** — las compras comerciales continúan ingresando siempre vía **Compras** (`purchase_orders`), mientras futuros recuperos/ajustes de desorden se canalizarán por la futura **Puerta General de Desorden / Recuperados / Stock**.
+- **Tabla Cronológica de Trazabilidad (`GasTraceabilityGrid.jsx`):** Planilla `useSpreadsheetGrid` unificada de movimientos de contratistas y gaseras con edición inline (`movement_date`, `remito_number`, `quantity`, `cylinder_condition`, `notes`) y baja/anulación trazada obligatoriamente en `audit_logs` (`panolService.js`).
 
 ---
 

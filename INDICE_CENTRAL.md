@@ -45,9 +45,9 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | `app/src/lib/laborConstants.js` | Constantes y funciones canónicas del módulo de Horas (`cleanShipName`, `NOMINA_ASTILLERO_BASE`, `calculateHoursStats`, etc.) | Devs / Agentes IA |
 | `app/src/components/ships/` | Subpaneles y modales modulares de M7 Flota Naval (`ShipsBarcosPanel`, `ShipsEstadiasPanel`, `ShipsArmadoresPanel`, `ShipsModals`) | Devs / Agentes IA |
 | `app/src/lib/shipsConstants.js` | Constantes y funciones canónicas de Flota Naval y Estadías (`cleanShipName`, `cleanLocation`, `calculateStayDays`, `calculateBerthMeters`, etc.) | Devs / Agentes IA |
-| `app/src/components/panol/` | Subpaneles y modales modulares de M4 Pañol Central & Materiales (`PanolHeader`, `PanolAlertasPanel`, `PanolToolbar`, `PanolMovimientosPanel`, `PanolStockPanel`, `PanolModals`) | Devs / Agentes IA |
-| `app/src/lib/panolConstants.js` | Constantes, columnas, helpers y filtros de Pañol Central y Stock (`calculateGasStats`, `calculatePanolKpis`, `filterPanolTransactions`, etc.) | Devs / Agentes IA |
-| `app/src/lib/panolService.js` | Capa de servicio y persistencia desacoplada para Pañol (`fetchPanolData`, `saveInlineTxService`, `saveInlineMaterialService`, etc.) | Devs / Agentes IA |
+| `app/src/components/panol/` | Subpaneles y modales modulares de M4 Pañol Central, Materiales & Control de Gases (`PanolHeader`, `PanolAlertasPanel`, `PanolToolbar`, `PanolMovimientosPanel`, `PanolStockPanel`, `PanolModals`, `MaterialAutocompleteInput`, `GasDeliveryInlinePanel`, `GasFinalReturnModal`, `GasSupplierMovementModal`, `GasTraceabilityGrid`) | Devs / Agentes IA |
+| `app/src/lib/panolConstants.js` | Constantes, columnas, helpers, regla inviolable `RECAMBIO_1X1 (+0)` y trazabilidad cronológica de Pañol y Control de Gases (`calculateGasStats`, `buildGasTraceabilityRows`, `calculatePanolKpis`, `filterPanolTransactions`, etc.) | Devs / Agentes IA |
+| `app/src/lib/panolService.js` | Capa de servicio y persistencia desacoplada para Pañol y Gases (`fetchPanolData`, `saveMultiWithdrawalService`, `registerGasFinalReturnService`, `saveSupplierGasBatchService`, `updateGasMovementInlineService`, `saveInlineTxService`, etc.) | Devs / Agentes IA |
 | `app/src/components/workOrders/` | Subcomponentes modulares de M6 Órdenes de Trabajo (`WorkOrdersHeader`, `WorkOrdersKpiRadar`, `WorkOrdersToolbar`, `WorkOrdersUnificadoPanel`, `WorkOrdersOtsPanel`, `WorkOrdersTercerosPanel`, `WorkOrdersModals`, `CloseWorkOrderTreeModal`, `WorkOrderScopeHoverCard`, `WorkOrderSelectorWithHover`) | Devs / Agentes IA |
 | `app/src/lib/workOrdersConstants.js` | Constantes, columnas, ciclo de vida de 8 estados (GS-003), helpers y filtros de Órdenes de Trabajo (`computeOtState`, `computeOtMetricsAndDates`, `filterUnifiedRows`, etc.) | Devs / Agentes IA |
 | `app/src/lib/workOrdersService.js` | Capa de servicio y persistencia desacoplada para Órdenes de Trabajo (`fetchWorkOrdersData`, `saveWorkOrderService`, `separateWorkItemService`, etc.) | Devs / Agentes IA |
@@ -273,5 +273,5 @@ Cada vez que:
 
 Responsable: El desarrollador + Antigravity (colaborativo)
 
-Última actualización: Fase 3 - Cierre Resumen Gerencial GS-004 (2026-11-13)
-Próxima revisión: Al incorporar nuevos submódulos o migraciones pendientes
+Última actualización: Fase 3 - Cierre Pañol Multi-Material, Control de Gases y Trazabilidad Gaseras (`0038`–`0040`, `DEC-023`) (2026-11-13)
+Próxima revisión: Al diseñar Puerta General de Desorden / Recuperados / Stock o validar QA en navegador

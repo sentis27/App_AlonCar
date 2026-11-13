@@ -113,3 +113,12 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | app/src/hooks/useResumenGerencialState.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/lib/managerialSummaryService.js |
 | app/src/lib/managerialSummaryService.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/lib/drydockCatalogConstants.js \| app/src/lib/workCostRules.js |
 | app/src/lib/drydockCatalogConstants.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/03_negocio/tarifario_puesta_en_seco_alfa.md |
+| docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md | decision | ninguno | cambios | fase-2+ | activo | 2026-11-13 | docs/02_producto/README.md \| docs/MATRIZ_RESPONSABILIDAD_DATOS.md |
+| app/src/components/panol/MaterialAutocompleteInput.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/lib/allocationEngine.js \| app/src/lib/panolConstants.js |
+| app/src/components/panol/GasDeliveryInlinePanel.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/lib/panolConstants.js |
+| app/src/components/panol/GasFinalReturnModal.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/lib/panolService.js |
+| app/src/components/panol/GasSupplierMovementModal.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/lib/panolConstants.js \| app/src/lib/panolService.js |
+| app/src/components/panol/GasTraceabilityGrid.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/hooks/useSpreadsheetGrid.js \| app/src/lib/panolService.js \| app/src/lib/panolConstants.js |
+| supabase/migrations/0038_panol_compliance_requirements.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/MATRIZ_RESPONSABILIDAD_DATOS.md |
+| supabase/migrations/0039_gas_tx_link_and_indexes.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md |
+| supabase/migrations/0040_gas_supplier_traceability.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md |

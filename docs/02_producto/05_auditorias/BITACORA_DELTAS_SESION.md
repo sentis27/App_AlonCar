@@ -7,6 +7,23 @@
 
 <!-- Las nuevas entradas de cierre se agregan aquí arriba -->
 
+## [2026-11-13] Sesión de Cierre — M4 Pañol: Cascada Naval, Gases (Doble Imputación & Recambio +0) y Trazabilidad Gaseras (`0038`–`0040`)
+- **Hora:** 18:35 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (Lote Pañol / Control de Gases / Alertas Admin + SQL — `17` archivos app/migrations + docs de cierre):**
+  * Modificados (`9`): `app/src/pages/Panol.jsx` (`233L` < `250L`), `app/src/components/panol/PanolHeader.jsx` (`162L`), `app/src/components/panol/PanolMovimientosPanel.jsx` (`1038L`), `app/src/components/panol/PanolStockPanel.jsx` (`834L`), `app/src/components/panol/PanolModals.jsx` (`1966L`), `app/src/lib/allocationEngine.js` (`484L`), `app/src/lib/panolConstants.js` (`837L`), `app/src/lib/panolService.js` (`1206L`), `app/src/components/admin/AdminAlertsCompliancePanel.jsx` (`389L` — filtro `responsible_role === 'maria_jose'` en bandeja María José).
+  * Nuevos (`8`): `app/src/components/panol/MaterialAutocompleteInput.jsx` (`315L`), `app/src/components/panol/GasDeliveryInlinePanel.jsx` (`119L`), `app/src/components/panol/GasFinalReturnModal.jsx` (`270L`), `app/src/components/panol/GasSupplierMovementModal.jsx` (`551L`), `app/src/components/panol/GasTraceabilityGrid.jsx` (`828L`), `supabase/migrations/0038_panol_compliance_requirements.sql` (`79L`), `supabase/migrations/0039_gas_tx_link_and_indexes.sql` (`12L`), `supabase/migrations/0040_gas_supplier_traceability.sql` (`40L`).
+- **Blast Radius:** `allocationEngine.js` consumido también por `TercerosModals.jsx` y `tercerosService.js`; `panolService.js` re-exportado vía `app/src/services/index.js` — verificados sin regresiones en compilación completa (`2097` módulos).
+- **Tracker Anti-Rot:**
+  * Candado 1 (`Panol.jsx < 250L` y Cajas Nuevas en `components/panol/`): **CUMPLE** (`233L`; toda UI nueva aislada en `components/panol/`). *(Deuda futura observada: particionar modales legacy de `PanolModals.jsx` `1966L` y fraccionar `panolService.js` `1206L`).*
+  * Candado 2 (Cero Hardcode de Maestros): **CUMPLE** (`0` arreglos estáticos maestros en JSX de Pañol).
+  * Candado 3 (`supa.from(` nuevo en JSX): **CUMPLE** (`0` llamadas `.from(` agregadas en el diff de Pañol/Admin; mutaciones canalizadas vía `panolService.js`).
+  * Candado 4 (`audit_logs`): **CUMPLE** (`15` llamadas verificadas a `logCellChange` / `logRowAction` en `panolService.js`, incluyendo edición inline en `GasTraceabilityGrid.jsx`).
+  * Candado 5 (`bareOnBlur`): **CUMPLE** (`0` `onBlur` sin arrow wrapper en `PanolMovimientosPanel.jsx`, `PanolStockPanel.jsx` y `GasTraceabilityGrid.jsx`).
+- **Verificación Runtime & Build:** `npm.cmd run lint` (`0` errores, `329` warnings en `135` files) | `npm.cmd run build` PASS (`2097` módulos en `5.96s`) | Prueba E2E en vivo contra Supabase (`0038`, `0039` y `0040` aplicadas vía `run_sql.mjs`; inserción de `3` movimientos `SALDO_INICIAL_PATIO`, `DEVOLUCION_PROVEEDOR` `VACIO` e `INGRESO_PROVEEDOR`, edición inline + `3` registros en `audit_logs`, stock `GAS OXIGENO INDUSTRIAL TUBO` intacto en `145 === 145`, y limpieza posterior completada).
+- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT**
+- **Alcance Git:** Bloque Pañol/Gases + documentación (`DEC-023`) separado atómicamente de los `2` archivos previos de Personal (`app/src/pages/Personal.jsx` y `app/src/components/personal/PersonalNominaPanel.jsx`), los cuales permanecen sin commitear en el working tree por **Opción B** acordada con el usuario.
+---
+
 ## [2026-11-13] Sesión de Cierre — Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa
 - **Hora:** 18:16 ART | **Agente:** Antigravity | **Revisor:** Usuario
 - **Superficie evaluada (Lote A — `GS-004` + documentación de cierre):**
