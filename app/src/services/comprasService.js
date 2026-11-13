@@ -210,3 +210,4 @@ export async function batchUpdatePurchaseOrdersService({
 }
 
 export * from './comprasPedidosService.js'
+export * from './comprasAuxService.js'
