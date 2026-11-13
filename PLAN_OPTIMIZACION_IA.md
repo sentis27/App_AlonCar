@@ -28,7 +28,7 @@
 | ID | Etapa | Estado | Riesgo | Commit Hash | Evidencia Verificada |
 | :--- | :--- | :---: | :---: | :---: | :--- |
 | **E1** | Cortar doble inyección de `GEMINI.md` y adelgazar Constitución | `[x]` | Bajo | `ecb88d8` | `2026-11-13` · `GEMINI.md` `73 L` / `6,643 B` (`~1,879 tok` est); `GEMINI.md`+`CLAUDE.md` v`1.4` (`2026-11-13`); 0 duplicados globales en esta PC (verificar `~/.gemini/GEMINI.md` y `Documents/GEMINI.md` en PC casa + `< 18k` tok en próximo chat) |
-| **E2** | Higiene `.antigravityignore` + eliminar código muerto (`initialPersonnel.json`) | `[ ]` | Bajo | `—` | `—` |
+| **E2** | Higiene `.antigravityignore` + eliminar código muerto (`initialPersonnel.json`) | `[x]` | Bajo | `0cd30bf` | `2026-11-13` · `.antigravityignore` actualizado (sin `docs/02_producto/`, agrega `Presentacion/`, `**/package-lock.json`, `docs/04_anexos_entendiemiento de planillas/`, `app/dist/`); `initialPersonnel.json` (`2,396 L`) eliminado; `initialPersonnel` en `app/src/` = `0` coincidencias; `npm.cmd run build` (`vite build`, `2097` módulos) `exit 0`; `npm.cmd run lint` (`oxlint`) `0` errores (`exit 0`) |
 | **E3** | Rotación histórica de `TAREAS_PENDIENTES.md` y `BITACORA_DELTAS_SESION.md` | `[ ]` | Bajo | `—` | `—` |
 | **E4** | Saneamiento de `README.md`, índices, links rotos y duplicados (`DEC-012/013/014`) | `[ ]` | Medio | `—` | `—` |
 | **E5.1** | Partir monolito `ComprasPedidosPanel.jsx` (`3,426 L`) | `[ ]` | Alto | `—` | `—` |
