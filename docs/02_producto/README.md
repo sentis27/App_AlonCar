@@ -60,7 +60,12 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-08-09 | DEC-015 | Interfaz de Grilla con Edición Inline Condicional por Permisos | decision |
 | 2026-08-09 | DEC-016 | Tooltip con Descripción de OT en Dropdown de Selección | decision |
 | 2026-08-10 | DEC-017 | Leyendas de ayuda interactiva (Tooltips) para Tipos de Comprobante | decision |
+| 2026-10-22 | DEC-018 | Tabulador Inteligente de Partes por Grupo, Gobernanza de IA y Puerta de Emergencia de Rubro | decision |
+| 2026-10-22 | DEC-019 | Módulo M1: Barcos, Ficha Técnica Naval Dinámica y Calendario de Movimientos & Estadías | decision |
+| 2026-10-22 | DEC-020 | Terminales de Trabajo, Documentación Técnica Naval (Anguilera/Pintado) y Gestión de Armadores | decision |
+| 2026-10-22 | DEC-021 | Módulo de Terceros (GS-005) — Ciclo de Comprobantes, Congelamiento de Dólar y Catálogo Oficial | decision |
 | 2026-11-12 | ERR-004 | Pantalla en negro al asignar Buque y OT por hook condicional en modal picker | error |
+| 2026-11-13 | DEC-022 | Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa | decision |
 
 ---
 
@@ -85,6 +90,11 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | DEC-015 | Interfaz de Grilla con Edición Inline Condicional por Permisos | 2 | borrador | 2026-08-09 |
 | DEC-016 | Tooltip con Descripción de OT en Dropdown de Selección | 2 | borrador | 2026-08-09 |
 | DEC-017 | Leyendas de ayuda interactiva (Tooltips) para Tipos de Comprobante | 2 | borrador | 2026-08-10 |
+| DEC-018 | Tabulador Inteligente de Partes por Grupo, Gobernanza de IA y Puerta de Emergencia de Rubro | 3 | validado | 2026-10-22 |
+| DEC-019 | Módulo M1: Barcos, Ficha Técnica Naval Dinámica y Calendario de Movimientos & Estadías | 3 | validado | 2026-10-22 |
+| DEC-020 | Terminales de Trabajo, Documentación Técnica Naval (Anguilera/Pintado) y Gestión de Armadores | 3 | validado | 2026-10-22 |
+| DEC-021 | Módulo de Terceros (GS-005) — Ciclo de Comprobantes, Congelamiento de Dólar y Catálogo Oficial | 3 | validado | 2026-10-22 |
+| DEC-022 | Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa | 3 | validado | 2026-11-13 |
 
 ## Errores
 

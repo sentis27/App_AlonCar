@@ -5,9 +5,9 @@ Para Agentes IA (Antigravity): Consultá este índice para navegación general. 
 
 
 📍 Estado Actual del Proyecto
-Fase: 3 - Implementación Frontend Web & Conexión Supabase (Sprint 1 Activo)
-Objetivo: Desarrollo de la aplicación web ERP naval (React + Supabase), reemplazando planillas legacy con interfaz ágil de control.
-Módulo Activo: M3 - Mano de Obra (Carga de Cuadrilla, Control Diario de Nómina y Sábana Quincenal).
+Fase: 3 - Implementación Frontend Web & Conexión Supabase (Módulos Activos + GS-004 Resumen Gerencial)
+Objetivo: Desarrollo de la aplicación web ERP naval (React + Supabase), reemplazando planillas legacy con interfaz ágil de control y trazabilidad.
+Módulo Activo: M6 Cierre / Resumen Gerencial (GS-004), M3 Mano de Obra, M4 Pañol/Compras, M5 Terceros, M1 Barcos y Tesorería.
 Tareas pendientes y backlog: Ver TAREAS_PENDIENTES.md
 
 📚 Índice por Sección
@@ -57,6 +57,12 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | `app/src/lib/aiPrompts.js` | Catálogo canónico de prompts de sistema GPT-4o-mini (DEC-004 a DEC-007), persistencia en Supabase, caché y bitácora de auditoría IA | Devs / Agentes IA |
 | `app/src/lib/aiTextFormatters.js` | Formateadores textuales puros, corrección ortográfica naval (RN-09), inferencia de rubros (RN-08) y parsing local determinístico | Devs / Agentes IA |
 | `app/src/services/` | Capa formal de Servicios y Clean Architecture (`personalService.js`, `comprasService.js`, `laborService.js`, `shipsService.js`, `index.js`) con fachada unificada | Devs / Agentes IA |
+| `app/src/pages/ResumenGerencial.jsx` | Orquestador del Módulo Resumen Gerencial (`GS-004` / `/resumen-gerencial` con redirección desde `/comparador`) en 3 submódulos (Resumen & Hojas Solo Lectura, Comparador Canvas y Remito Alfa) | Dirección / Devs / Agentes IA |
+| `app/src/hooks/useResumenGerencialState.js` | Hook de estado, filtros (Buque/Alcance/Año/OT), dólar y mutaciones con auditoría para `GS-004` | Devs / Agentes IA |
+| `app/src/lib/managerialSummaryService.js` | Motor contable de consolidación `GS-004`, enriquecimiento desde `workCostRules.js` (`DEC-013` y EPP Ref.), dataset Comparador y persistencia/auditoría Remito Comercial Alfa | Devs / Agentes IA |
+| `app/src/lib/drydockCatalogConstants.js` | Catálogo oficial Nivel Alfa (Tarifario Puesta en Seco, plantillas Exento/Gravado IVA 21%, enlaces 3x2 y constantes de comparador) | Devs / Agentes IA |
+| `app/src/components/resumenGerencial/` | `12` subcomponentes modulares de `GS-004` (`ResumenGerencialHeader`, `ResumenObraCostosPanel`, `ResumenMatrizOtsPanel`, `ResumenHojaMaterialesPanel`, `ResumenHojaHorasPanel`, `ResumenHojaTercerosPanel`, `CostSheetChrome`, `SvgDonutCard`, `ComparadorObrasCanvasPanel`, `ComparadorNivel2OtTable`, `RemitoComercialAlfaPanel`, `AlfaRateCardModal`) | Devs / Agentes IA |
+| `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` | Padrón canónico "Gallo o Gallina" (`CARGA_EDICION` vs `METRICAS_ANALISIS`) con tablas Supabase y `audit_logs` | Todos / Devs / Agentes IA |
 | `docs/02_producto/05_auditorias/README.md` | Sistema Central de Auditorías Arquitectónicas, Línea Base (`LINEA_BASE_ARQUITECTURA.md`) y Ledger Diario (`BITACORA_DELTAS_SESION.md`) | Devs / Agentes IA |
 
 🏗️ Sección 3: Lógica de Negocio (FASE 2+ - FUTURO)
@@ -267,5 +273,5 @@ Cada vez que:
 
 Responsable: El desarrollador + Antigravity (colaborativo)
 
-Última actualización: Fase 1 - Infraestructura (junio 2026)
-Próxima revisión: Cuando Fase 1 esté completa
+Última actualización: Fase 3 - Cierre Resumen Gerencial GS-004 (2026-11-13)
+Próxima revisión: Al incorporar nuevos submódulos o migraciones pendientes

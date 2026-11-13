@@ -1,7 +1,7 @@
 # Índice de Metadatos — App_AlonCar
 
 > **schema-version:** 1.0
-> **Última actualización:** 2026-11-12
+> **Última actualización:** 2026-11-13
 > **Propósito:** Tabla máquina para consumo exclusivo del Agente IA. Para navegación humana, usar `INDICE_CENTRAL.md`.
 
 ## Vocabularios Controlados
@@ -33,9 +33,9 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | Archivo | Tipo | Comportamiento-IA | Lectura | Fase | Estado | Última revisión | Depende de |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | README.md | portada | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
-| INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-12 | ninguno |
-| INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-12 | INDICE_CENTRAL.md |
-| TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-11-12 | INDICE_CENTRAL.md |
+| INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | ninguno |
+| INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
+| TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
 | INDICE_PLANILLAS.md | indice | consultar-siempre | completo | fase-2 | activo | 2026-06-18 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md |
 | ROADMAP_NEGOCIO.md | roadmap | auditar-avances | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | GUIA_ANTIGRAVITY.md | instrucciones-agente | auditar-reglas | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md \| ROADMAP_NEGOCIO.md |
@@ -45,7 +45,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/01_infraestructura/03_seguridad_credenciales.md | protocolo | ninguno | completo | fase-1 | activo | 2026-06-10 | ninguno |
 | docs/01_infraestructura/04_arquitectura_mcp.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-06-10 | docs/01_infraestructura/01_stack_tecnico.md |
 | docs/01_infraestructura/04_servidor_mcp.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-06-10 | docs/01_infraestructura/01_stack_tecnico.md |
-| docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-11-12 | INDICE_CENTRAL.md |
+| docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
 | docs/02_producto/registro_paso_a_paso.md | registro | auditar-decisiones | cambios | transversal | activo | 2026-06-10 | ninguno |
 | docs/02_producto/01_decisiones/DEC-003-separacion-indices.md | decision | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/02_producto/01_decisiones/DEC-004-desdoblamiento-nodo-validaciones-e4.md | decision | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
@@ -67,16 +67,16 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/04_procesos/PRO-003-alertas-humanizadas-e9a.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/05_auditorias/README.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-10 | INDICE_CENTRAL.md |
 | docs/02_producto/05_auditorias/LINEA_BASE_ARQUITECTURA.md | registro | auditar-tareas | completo | transversal | activo | 2026-11-10 | docs/02_producto/05_auditorias/README.md |
-| docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md | registro | auditar-tareas | cambios | transversal | activo | 2026-11-12 | docs/02_producto/05_auditorias/README.md |
+| docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md | registro | auditar-tareas | cambios | transversal | activo | 2026-11-13 | docs/02_producto/05_auditorias/README.md |
 | docs/03_negocio/README.md | indice | ninguno | ignorar | fase-2 | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | docs/03_negocio/tarifario_puesta_en_seco_alfa.md | catalogo-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | docs/planillas/resumen-gerencial.md |
-| docs/planillas/horas-planillas-de-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
-| docs/planillas/materiales-planillas-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
-| docs/planillas/lista-trabajos-en-progreso.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
-| docs/planillas/resumen-gerencial.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/legacy-mapping/SKILL.md |
-| docs/planillas/terceros-planilla.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/legacy-mapping/SKILL.md |
-| docs/planillas/bd-newsystemm.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/legacy-mapping/SKILL.md |
-| docs/planillas/reconciliacion-horas-materiales.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/legacy-mapping/SKILL.md |
+| docs/planillas/horas-planillas-de-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/transversal/legacy-mapping/SKILL.md |
+| docs/planillas/materiales-planillas-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/transversal/legacy-mapping/SKILL.md |
+| docs/planillas/lista-trabajos-en-progreso.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/transversal/legacy-mapping/SKILL.md |
+| docs/planillas/resumen-gerencial.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-11-13 | .agents/skills/transversal/legacy-mapping/SKILL.md |
+| docs/planillas/terceros-planilla.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/transversal/legacy-mapping/SKILL.md |
+| docs/planillas/bd-newsystemm.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/transversal/legacy-mapping/SKILL.md |
+| docs/planillas/reconciliacion-horas-materiales.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/transversal/legacy-mapping/SKILL.md |
 | workflows/legacy/Reporte_Retiros_diarioMateriales.json | codigo | ninguno | ignorar | transversal | archivado | 2026-07-23 | ninguno |
 | .agents/skills/README.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-10 | ninguno |
 | .agents/skills/transversal/automation-governance/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
@@ -98,4 +98,18 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |
 | mcp-server/package.json | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | mcp-server/index.js |
 | docs/03_negocio/proyecto_perfil_puesto_y_matriz_responsabilidades.md | documentacion-negocio | auditar-reglas | completo | fase-2 | activo | 2026-10-09 | INDICE_CENTRAL.md |
-| docs/MATRIZ_RESPONSABILIDAD_DATOS.md | documentacion-negocio | auditar-reglas | cambios | fase-2+ | activo | 2026-11-12 | INDICE_CENTRAL.md |
+| docs/MATRIZ_RESPONSABILIDAD_DATOS.md | documentacion-negocio | auditar-reglas | cambios | fase-2+ | activo | 2026-11-13 | INDICE_CENTRAL.md |
+| docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md | protocolo | consultar-siempre | completo | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
+| docs/02_producto/ESTANDARES_MODULOS_UI_UX.md | documentacion-tecnica | auditar-reglas | completo | transversal | activo | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
+| docs/02_producto/01_decisiones/DEC-015-interfaz-grilla-edicion-inline-permisos.md | decision | ninguno | cambios | fase-2+ | confirmado | 2026-08-09 | docs/02_producto/README.md |
+| docs/02_producto/01_decisiones/DEC-016-tooltip-descripcion-ot-dropdown.md | decision | ninguno | cambios | fase-2+ | confirmado | 2026-08-09 | docs/02_producto/README.md |
+| docs/02_producto/01_decisiones/DEC-017-leyendas-ayuda-comprobantes.md | decision | ninguno | cambios | fase-2+ | confirmado | 2026-08-10 | docs/02_producto/README.md |
+| docs/02_producto/01_decisiones/DEC-018-tabulador-inteligente-gobernanza-ia-rubro-emergencia.md | decision | ninguno | cambios | fase-2+ | activo | 2026-10-22 | docs/02_producto/README.md |
+| docs/02_producto/01_decisiones/DEC-019-modulo-barcos-ficha-tecnica-y-calendario-estadias.md | decision | ninguno | cambios | fase-2+ | activo | 2026-10-22 | docs/02_producto/README.md |
+| docs/02_producto/01_decisiones/DEC-020-terminales-de-trabajo-documentacion-naval-y-gestion-armadores.md | decision | ninguno | cambios | fase-2+ | activo | 2026-10-22 | docs/02_producto/README.md |
+| docs/02_producto/01_decisiones/DEC-021-modulo-terceros-ciclo-comprobantes-y-catalogos.md | decision | ninguno | cambios | fase-2+ | activo | 2026-10-22 | docs/02_producto/README.md |
+| docs/02_producto/01_decisiones/DEC-022-resumen-gerencial-gs004-comparador-y-remito-alfa.md | decision | ninguno | cambios | fase-2+ | activo | 2026-11-13 | docs/02_producto/README.md \| docs/planillas/resumen-gerencial.md |
+| app/src/pages/ResumenGerencial.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-022-resumen-gerencial-gs004-comparador-y-remito-alfa.md |
+| app/src/hooks/useResumenGerencialState.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/lib/managerialSummaryService.js |
+| app/src/lib/managerialSummaryService.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | app/src/lib/drydockCatalogConstants.js \| app/src/lib/workCostRules.js |
+| app/src/lib/drydockCatalogConstants.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/03_negocio/tarifario_puesta_en_seco_alfa.md |

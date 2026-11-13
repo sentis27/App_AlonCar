@@ -5,9 +5,10 @@ Nota: Actualízalo conforme cierres tareas. El agente IA también puede consulta
 
 ## 📌 Recordatorios Operativos y Módulos Futuros Acordados (2026-11-12)
 
-- [ ] **Resumen Gerencial (`GS-004` / `/comparador`) — Inclusión de Línea de Referencia EPP (`ELEM.SEGURIDAD`):**
-  - **Ubicación visual exacta:** Mostrar la fila **`ELEM. SEGURIDAD (REF. ASTILLERO)`** exclusivamente dentro del futuro **Resumen Gerencial**, en dos lugares: (1) bloque global del buque **`COSTO DIRECTO TOTAL US$`** inmediatamente debajo de **`HORAS PEND. APROBAR`** (encima de `HRS. GRÚA GRANDE` / `TOTAL US$`), y (2) bloque inferior **`DETALLE POR ORDEN DE TRABAJO` → `COSTO TOTAL POR O.T US$`** acotado por OT.
-  - **Regla:** Solo computa EPP de personal `ASTILLERO` o contratistas en zona gris (`safety_items = 'ASTILLERO'`), **sin sumarse nunca al `TOTAL US$`** cobrable (`workCostRules.js`).
+- [x] **Resumen Gerencial (`GS-004` / `/resumen-gerencial`, `/comparador` redirige) — Inclusión de Línea de Referencia EPP (`ELEM.SEGURIDAD`) y Módulo Completo (`DEC-022`):**
+  - Implementado el módulo completo en `ResumenGerencial.jsx` (`1. Resumen de Obra & Costos` + `RESUMEN 2` + `3` hojas de solo lectura `MATERIALES`, `HORAS`, `TERCEROS`, `2. Comparador de Obras Canvas`, `3. Remito Comercial & Tarifario Nivel Alfa`). La fila **`ELEM. SEGURIDAD (REF. ASTILLERO)`** se muestra tanto en el bloque global **`COSTO DIRECTO TOTAL US$`** debajo de **`HORAS PEND. APROBAR`** como en el detalle **`COSTO TOTAL POR O.T US$`**, computando `safety_items = 'ASTILLERO'` sin sumarse nunca al `TOTAL US$` cobrable (`workCostRules.js`).
+- [ ] **Validación QA Autenticada de Resumen Gerencial (`GS-004`) y RLS en Navegador:**
+  - En prueba Node sin login (`anon`), `fetchManagerialData()` devolvió `warnings: []` pero `labor_logs = 0` y `materials = 0`. Verificar en navegador con usuario autenticado las cifras completas de Horas, Materiales y flujo visual de los `3` submódulos y `3` hojas.
 - [ ] **Módulo Futuro de Dependientes / Vacaciones (Personal Astillero):**
   - **Reglas base acordadas:** `1 MES` = **1 día** de vacaciones; `3 MESES` = **4 días** de vacaciones; `6 MESES` = **9 días** de vacaciones; `PERMANENTE` = fórmula a definir por Dirección según **antigüedad** acumulada desde `workers.contract_start_date`.
 - [ ] **Automatización de Pañol (Extracción de Materiales Cobrables a Contratistas):**

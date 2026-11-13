@@ -7,6 +7,19 @@
 
 <!-- Las nuevas entradas de cierre se agregan aquí arriba -->
 
+## [2026-11-13] Sesión de Cierre — Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa
+- **Hora:** 18:16 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (Lote A — `GS-004` + documentación de cierre):**
+  * Modificados (4): `app/src/App.jsx`, `app/src/components/Sidebar.jsx`, `app/src/lib/auditService.js`, `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md`.
+  * Nuevos (16 archivos app): `app/src/pages/ResumenGerencial.jsx` (`180L`), `app/src/hooks/useResumenGerencialState.js` (`229L`), `app/src/lib/drydockCatalogConstants.js` (`353L`), `app/src/lib/managerialSummaryService.js` (`1015L`), y `12` componentes en `app/src/components/resumenGerencial/` (`AlfaRateCardModal.jsx`, `ComparadorNivel2OtTable.jsx`, `ComparadorObrasCanvasPanel.jsx`, `CostSheetChrome.jsx`, `RemitoComercialAlfaPanel.jsx`, `ResumenGerencialHeader.jsx`, `ResumenHojaHorasPanel.jsx`, `ResumenHojaMaterialesPanel.jsx`, `ResumenHojaTercerosPanel.jsx`, `ResumenMatrizOtsPanel.jsx`, `ResumenObraCostosPanel.jsx`, `SvgDonutCard.jsx`).
+- **Blast Radius:** `60` referencias internas `GS-004` + `100` referencias sobre core compartido (`Sidebar` / `auditService`).
+- **Tracker Anti-Rot:** Página principal en `180L` (`<250L`), `supa.from(` = `0` en JSX de página y `12` subcomponentes, `bareOnBlur` = `0` en `19` archivos JS/JSX; `ELEM. SEGURIDAD (REF. ASTILLERO)` separado sin sumar al Total US$ y exclusión de `work_type = 'PRESUPUESTO'` en Horas (`DEC-013`). *Observación opcional futura:* subpaneles ricos superan `250L` (`RemitoComercialAlfaPanel.jsx` `931L`, `ResumenObraCostosPanel.jsx` `563L`, `ComparadorObrasCanvasPanel.jsx` `527L`, `ResumenHojaMaterialesPanel.jsx` `317L`, `ResumenHojaHorasPanel.jsx` `286L`, `ResumenHojaTercerosPanel.jsx` `266L`) y `managerialSummaryService.js` (`1015L`).
+- **Trazabilidad Supabase:** Mutaciones del Remito Comercial y Tarifario Nivel Alfa canalizadas vía `managerialSummaryService.js` con registro en `audit_logs` (`auditService.js`).
+- **Verificación Runtime & Build:** `oxlint.cmd` sobre `19` archivos (`0` errores, `31` warnings en `226ms`) | `npm.cmd run build` PASS (`2095` módulos en `7.45s`) | Node live check vs Supabase (`warnings: []`, `NONO PASCUAL` `directTotalUsd: 17190.32` sobre `6` OTs; con clave `anon` sin sesión `laborLogs: 0` y `materials: 0`, pendiente validación autenticada en navegador).
+- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT**
+- **Alcance Git:** Lote A separado atómicamente del trabajo previo sin commitear (Lote B: Pañol/Gases, Personal, AdminAlerts y migraciones `0038`/`0039`).
+---
+
 ## [2026-11-13] Sesión de Cierre — OTs (Folio/Presupuestos), Contratos & Seguridad Personal, Tesorería Graciela y Alertas María José (`1331aeb`, `68e9f50`)
 - **Hora:** 00:19 ART | **Agente:** Antigravity | **Revisor:** Usuario
 - **Superficie evaluada (commits `1331aeb` y `68e9f50` + documentación de cierre):**

@@ -1,6 +1,6 @@
 ---
-version: 1.5
-last_updated: 2026-11-12
+version: 1.6
+last_updated: 2026-11-13
 status: DOCUMENTO_VIVO_ACTIVO
 evolution_api_status: CONECTADO_LISTO
 ---
@@ -395,3 +395,29 @@ Al seleccionar cualquier material del rubro `GASES` en el formulario de retiro d
   1. Emite alerta automática en `compliance_alerts` (`entity_type = 'work_items'`, `responsible_role = 'maria_jose'`, vinculada al requisito `REQ_OT_PRESUPUESTO_ADICIONAL_MARIA_JOSE` en `data_requirements`) y alerta `PTO_PENDIENTE` en la fila de Órdenes de Trabajo.
   2. Aparece en la bandeja dedicada de **Dashboard (`/`)** y **Panel Admin (`/admin` ➔ Alertas & Cumplimiento)** donde María José ingresa únicamente el número (prefijo fijo `PRESUP. `) y resuelve en 1 clic.
   3. Al cargarse el número real (desde Dashboard, Alertas o Modal de Trabajo), `work_items.specific_budget_id` se actualiza al número (`PRESUP. <N>`) y la alerta en `compliance_alerts` pasa automáticamente a `COMPLETADO` con trazabilidad en `audit_logs`.
+
+---
+
+## 9. Módulo Resumen Gerencial (`GS-004`) y Remito Comercial Nivel Alfa (`remito_comercial_por_buque`)
+
+Reglas operativas y de responsabilidad incorporadas al implementar `/resumen-gerencial` (**DEC-022**):
+
+### 9.1 Tarifario Puesta en Seco Nivel Alfa (`REQ_RESUMEN_TARIFARIO_ALFA`)
+* **Módulo / Campo:** `resumen_gerencial` (`remito`) ➔ `system_settings` clave `drydock_rate_card_alfa`.
+* **Trigger:** Actualización de tarifas base Puesta en Seco o calibración desde el modal `AlfaRateCardModal`.
+* **Responsable (`responsible_role`):** `admin` / Dirección General (Nivel Alfa).
+* **Trazabilidad:** Registro automático en `audit_logs` vía `saveAlfaRateCardWithAudit()` (`managerialSummaryService.js`).
+
+### 9.2 Inputs Operativos Ad-Hoc de Grúas y Superficie m² (`REQ_RESUMEN_INPUTS_OPERATIVOS`)
+* **Módulo / Campo:** `resumen_gerencial` (`resumen` y `comparador`) ➔ `system_settings` claves `resumen_gerencial_operational_inputs` (horas grúa grande/chica y pala por buque/OT) y `resumen_gerencial_adhoc_metrics` (superficie casco `m²` ad-hoc cuando `ships.superficie_casco_m2` es nulo).
+* **Trigger:** Cierre de estadía, comparación de obras por `m²` o preparación del Remito Comercial.
+* **Responsable (`responsible_role`):** `jefe_obra` / Dirección Operativa.
+* **Pendiente a definir con Dirección:** Establecer si la carga previa de horas grúa y `m²` será requisito bloqueante o alerta en `compliance_alerts` antes de cerrar el Remito Comercial.
+
+### 9.3 Confección de Remito Comercial Nivel Alfa (`REQ_RESUMEN_REMITO_COMERCIAL`)
+* **Módulo / Campo:** `resumen_gerencial` (`remito`) ➔ `system_settings` clave `remito_comercial_por_buque`.
+* **Trigger:** Fin de obra / preparación de cierre comercial al Armador desde autoalimentación del 95% de ítems reales + edición in-situ (Arquetipo Gallo).
+* **Responsable (`responsible_role`):** `admin` / Dirección General (Nivel Alfa).
+* **Trazabilidad:** Cada edición de celda o fila registra auditoría en `audit_logs` (`saveRemitoCellChangeWithAudit`, `saveRemitoActionWithAudit`).
+* **Pendiente a definir con Dirección:** Disparador formal de cierre/emisión de Remito Comercial hacia Tesorería (Graciela) y notificación eventual vía Evolution API.
+
