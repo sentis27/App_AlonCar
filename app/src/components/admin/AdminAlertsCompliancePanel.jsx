@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import MariaJoseBudgetAlertsCard from '../workOrders/MariaJoseBudgetAlertsCard.jsx'
+import MariaJoseContractAlertsCard from '../personal/MariaJoseContractAlertsCard.jsx'
 
 export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
   const { profile, user } = useAuth()
@@ -188,6 +190,22 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
         </div>
       </div>
 
+      {/* BANDEJA DEDICADA: PRESUPUESTOS ADICIONALES PENDIENTES (MARÍA JOSÉ) */}
+      <MariaJoseBudgetAlertsCard
+        alerts={complianceAlerts.filter((a) => a.entity_type === 'work_items')}
+        user={user}
+        userName={profile?.full_name || user?.email || 'María José'}
+        onResolved={() => loadAlertData()}
+      />
+
+      {/* BANDEJA DEDICADA: CONTRATOS ASTILLERO POR VENCER <= 7D & REGLA EPP (MARÍA JOSÉ) */}
+      <MariaJoseContractAlertsCard
+        alerts={complianceAlerts.filter((a) => a.entity_type === 'workers')}
+        user={user}
+        userName={profile?.full_name || user?.email || 'María José'}
+        onResolved={() => loadAlertData()}
+      />
+
       {/* BANDEJA DE RESOLUCIÓN: ALERTAS OPERATIVAS & SOLICITUDES DE APERTURA DE OT / PERMISOS */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -227,6 +245,7 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
                   const isOtReq = alert.entity_type === 'work_orders'
                   const isWorkerReq = alert.entity_type === 'workers'
                   const isSinOtAudit = alert.entity_type === 'inventory_transactions'
+                  const isBudgetPendingReq = alert.entity_type === 'work_items'
 
                   return (
                     <tr key={alert.id} className="hover:bg-slate-800/40 transition-colors">
@@ -247,6 +266,11 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
                         {isSinOtAudit && (
                           <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold text-[10px]">
                             ⚠️ Retiro sin OT
+                          </span>
+                        )}
+                        {isBudgetPendingReq && (
+                          <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600 font-bold text-[10px]">
+                            🧾 Nº Presupuesto (María José)
                           </span>
                         )}
                       </td>

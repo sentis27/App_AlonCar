@@ -11,6 +11,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import Terceros from './pages/Terceros'
 import Compras from './pages/Compras'
 import Panol from './pages/Panol'
+import Tesoreria from './pages/Tesoreria'
 import ModulePlaceholder from './pages/ModulePlaceholder'
 import { Loader2 } from 'lucide-react'
 
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="panol" element={<Panol />} />
             <Route path="compras" element={<Compras />} />
             <Route path="personal" element={<Personal />} />
+            <Route path="tesoreria" element={<Tesoreria />} />
             <Route path="comparador" element={<ModulePlaceholder />} />
             <Route path="admin" element={<AdminDashboard />} />
           </Route>

@@ -11,7 +11,8 @@ import {
   LogOut, 
   Anchor,
   ShieldCheck,
-  Wrench
+  Wrench,
+  Wallet
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -23,6 +24,7 @@ const navItems = [
   { name: 'Terceros y Talleres', path: '/terceros', icon: Wrench },
   { name: 'Compras', path: '/compras', icon: ShoppingCart },
   { name: 'Personal & Tarifas', path: '/personal', icon: Users },
+  { name: 'Tesorería (Graciela)', path: '/tesoreria', icon: Wallet },
   { name: 'Barcos y Obras', path: '/barcos', icon: Ship },
   { name: 'Comparador de Obras', path: '/comparador', icon: BarChart3 },
   { name: 'Panel Administrador', path: '/admin', icon: ShieldCheck },

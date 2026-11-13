@@ -20,7 +20,9 @@ import {
   CheckSquare,
   CopyPlus,
   BarChart3,
-  Save
+  Save,
+  HelpCircle,
+  Calendar
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
@@ -33,6 +35,14 @@ import { duplicateRecord, buildPasteRowHandler } from '../../lib/gridRowActions'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { auditService } from '../../lib/auditService'
 import { stampNewRecordWithFolio } from '../../lib/monotonicFolioEngine'
+import {
+  CONTRACT_TYPES,
+  SAFETY_ITEMS_OPTIONS,
+  SAFETY_ITEMS_HELP_TEXT,
+  computeContractExpiration
+} from '../../lib/workCostRules'
+import { syncContractExpiryAlertsService } from '../../lib/contractorDeductionsService'
+import { persistWorkerWithSchemaFallbackService } from '../../services/personalService'
 
 // Colores por Rubro idénticos a Google Sheets
 const getRubroBadgeColor = (rubro = '') => {
@@ -120,7 +130,9 @@ export default function PersonalNominaPanel({
     admin_center: 'ASTILLERO',
     consumables: 'CLIENTE',
     consumables_discount_pct: 0,
-    safety_items: 'CONTRATISTA',
+    safety_items: 'ASTILLERO',
+    contract_type: '',
+    contract_start_date: '',
     status: 'ACTIVO',
     hourly_rate_ars: 16365.76,
     hourly_rate_usd: 10.91,
@@ -264,13 +276,17 @@ export default function PersonalNominaPanel({
     const sinCostoContratistas = activos.filter(w => w.admin_center === 'CONTRATISTA' && (!w.hourly_rate_ars || Number(w.hourly_rate_ars) <= 0))
     const sinConsumiblesContratistas = activos.filter(w => w.admin_center === 'CONTRATISTA' && (w.consumables_discount_pct === null || w.consumables_discount_pct === undefined || w.consumables_discount_pct === '') && (!w.consumables || !w.consumables.trim()))
     const sinPermisos = activos.filter(w => !w.can_withdraw_materials && !w.can_impute_hours && !w.can_charge_third_party && !w.is_foreman)
+    const contratosPorVencer = activos.filter(w =>
+      w.admin_center === 'ASTILLERO' && computeContractExpiration(w.contract_type, w.contract_start_date).needsAttention
+    )
 
     return {
       sinTelefonoAstillero: sinTelefonoAstillero.length,
       sinCostoAstillero: sinCostoAstillero.length,
       sinCostoContratistas: sinCostoContratistas.length,
       sinConsumiblesContratistas: sinConsumiblesContratistas.length,
-      sinPermisos: sinPermisos.length
+      sinPermisos: sinPermisos.length,
+      contratosPorVencer: contratosPorVencer.length
     }
   }, [workers])
 
@@ -310,6 +326,8 @@ export default function PersonalNominaPanel({
         if (w.status !== 'ACTIVO' || w.admin_center !== 'CONTRATISTA' || (w.consumables_discount_pct !== null && w.consumables_discount_pct !== undefined && w.consumables_discount_pct !== '') || (w.consumables && w.consumables.trim())) return false
       } else if (kpiFilter === 'sin_permisos') {
         if (w.status !== 'ACTIVO' || w.can_withdraw_materials || w.can_impute_hours || w.can_charge_third_party || w.is_foreman) return false
+      } else if (kpiFilter === 'contratos_por_vencer') {
+        if (w.status !== 'ACTIVO' || w.admin_center !== 'ASTILLERO' || !computeContractExpiration(w.contract_type, w.contract_start_date).needsAttention) return false
       } else if (kpiFilter === 'categoria_OFICIAL') {
         const cat = (w.category || '').toUpperCase().trim()
         if (cat !== 'OFICIAL') return false
@@ -394,6 +412,8 @@ export default function PersonalNominaPanel({
       consumables_discount_pct: defaultDiscount,
       consumables: defaultDiscount === 100 ? 'CONTRATISTA' : (defaultDiscount === 0 ? 'CLIENTE' : `DESC. ${defaultDiscount}%`),
       safety_items: defaultSafety,
+      contract_type: newCenter === 'ASTILLERO' ? (prev.contract_type || '') : '',
+      contract_start_date: newCenter === 'ASTILLERO' ? (prev.contract_start_date || '') : '',
       hourly_rate_ars: defaultRate,
       hourly_rate_usd: dollarRate > 0 ? Number((defaultRate / dollarRate).toFixed(2)) : 0,
       can_charge_third_party: newCenter !== 'ASTILLERO'
@@ -429,6 +449,8 @@ export default function PersonalNominaPanel({
       consumables: defaultDiscount === 100 ? 'CONTRATISTA' : (defaultDiscount === 0 ? 'CLIENTE' : `DESC. ${defaultDiscount}%`),
       consumables_discount_pct: defaultDiscount,
       safety_items: defaultSafety,
+      contract_type: '',
+      contract_start_date: '',
       status: 'ACTIVO',
       hourly_rate_ars: defaultRate,
       hourly_rate_usd: dollarRate > 0 ? Number((defaultRate / dollarRate).toFixed(2)) : 0,
@@ -475,6 +497,8 @@ export default function PersonalNominaPanel({
       consumables: w.consumables || (discountPct === 0 ? 'CLIENTE' : (discountPct === 100 ? 'CONTRATISTA' : `DESC. ${discountPct}%`)),
       consumables_discount_pct: discountPct,
       safety_items: w.safety_items || (center === 'ASTILLERO' ? 'ASTILLERO' : 'CONTRATISTA'),
+      contract_type: w.contract_type || '',
+      contract_start_date: w.contract_start_date ? String(w.contract_start_date).slice(0, 10) : '',
       status: w.status || 'ACTIVO',
       hourly_rate_ars: ars,
       hourly_rate_usd: usd,
@@ -519,7 +543,9 @@ export default function PersonalNominaPanel({
         admin_center: formData.admin_center,
         consumables: consumablesLabel,
         consumables_discount_pct: discountPct,
-        safety_items: formData.safety_items,
+        safety_items: formData.admin_center === 'ASTILLERO' ? 'ASTILLERO' : (formData.safety_items || 'CONTRATISTA'),
+        contract_type: formData.admin_center === 'ASTILLERO' ? (formData.contract_type || null) : null,
+        contract_start_date: formData.admin_center === 'ASTILLERO' && formData.contract_start_date ? formData.contract_start_date : null,
         status: formData.status,
         hourly_rate_ars: ars,
         hourly_rate_usd: usd,
@@ -532,24 +558,14 @@ export default function PersonalNominaPanel({
       }
 
       if (editingWorker) {
-        const { error } = await supabase
-          .from('workers')
-          .update(payload)
-          .eq('id', editingWorker.id)
+        const { missingContractCols } = await persistWorkerWithSchemaFallbackService({
+          mode: 'update',
+          targetId: editingWorker.id,
+          payload,
+          syncGroup: finalGroup
+        })
 
-        if (error) throw error
-
-        if (finalGroup !== 'ASTILLERO') {
-          await supabase
-            .from('workers')
-            .update({
-              can_charge_third_party: payload.can_charge_third_party,
-              trade: payload.trade
-            })
-            .eq('work_group', finalGroup)
-        }
-
-        setWorkers(prev => prev.map(w => {
+        const updatedWorkersList = workers.map(w => {
           if (w.id === editingWorker.id) return { ...w, ...payload }
           if (finalGroup !== 'ASTILLERO' && w.work_group === finalGroup) {
             return {
@@ -559,7 +575,10 @@ export default function PersonalNominaPanel({
             }
           }
           return w
-        }))
+        })
+        setWorkers(updatedWorkersList)
+        syncContractExpiryAlertsService(updatedWorkersList)
+
         await auditService.logRowAction({
           action: 'MODAL_SAVE',
           entityType: 'workers',
@@ -569,19 +588,25 @@ export default function PersonalNominaPanel({
           sheetName: 'Personal · Nómina de Operarios',
           moduleRoute: '/personal'
         })
-        setStatusMessage({ type: 'success', text: `Registro de ${payload.name} (${finalGroup}) actualizado con éxito.` })
+        setStatusMessage({
+          type: missingContractCols ? 'info' : 'success',
+          text: missingContractCols
+            ? `Operario actualizado. Ejecutá la migración 0037 en Supabase para guardar Tipo de Contrato y Fecha Inicio.`
+            : `Registro de ${payload.name} (${finalGroup}) actualizado con éxito.`
+        })
         setEditingWorker(null)
       } else {
-        const { data, error } = await supabase
-          .from('workers')
-          .insert([payload])
-          .select()
-
-        if (error) throw error
+        const { data, missingContractCols } = await persistWorkerWithSchemaFallbackService({
+          mode: 'insert',
+          payload
+        })
 
         const createdObj = data && data[0] ? data[0] : { ...payload, id: Date.now().toString() }
         const newRecord = stampNewRecordWithFolio(createdObj, workers)
-        setWorkers(prev => [newRecord, ...prev])
+        const updatedWorkersList = [newRecord, ...workers]
+        setWorkers(updatedWorkersList)
+        syncContractExpiryAlertsService(updatedWorkersList)
+
         await auditService.logRowAction({
           action: 'ROW_INSERT',
           entityType: 'workers',
@@ -591,7 +616,12 @@ export default function PersonalNominaPanel({
           sheetName: 'Personal · Nómina de Operarios',
           moduleRoute: '/personal'
         })
-        setStatusMessage({ type: 'success', text: `Operario ${payload.name} agregado al Grupo ${finalGroup}.` })
+        setStatusMessage({
+          type: missingContractCols ? 'info' : 'success',
+          text: missingContractCols
+            ? `Operario ${payload.name} creado. Ejecutá la migración 0037 en Supabase para guardar Contrato.`
+            : `Operario ${payload.name} agregado al Grupo ${finalGroup}.`
+        })
         setIsNewModalOpen(false)
       }
 
@@ -755,7 +785,8 @@ export default function PersonalNominaPanel({
     { key: 'trade', label: 'Rubro' },
     { key: 'hourly_rate_ars', label: 'AR$/Hora' },
     { key: 'work_group', label: 'Grupo de Trabajo' },
-    { key: 'admin_center', label: 'Centro Admin' }
+    { key: 'admin_center', label: 'Centro Admin' },
+    { key: 'safety_items', label: 'Elem. Seg.' }
   ], [])
 
   const applyWorkerSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
@@ -776,7 +807,16 @@ export default function PersonalNominaPanel({
     } else if (colKey === 'admin_center') {
       const normalized = String(rawValue || '').trim().toUpperCase()
       const valid = ['ASTILLERO', 'CONTRATISTA', 'TALLER'].includes(normalized) ? normalized : targetWorker.admin_center
-      dbPatch = { admin_center: valid }
+      dbPatch = {
+        admin_center: valid,
+        safety_items: valid === 'ASTILLERO' ? 'ASTILLERO' : (targetWorker.safety_items || 'CONTRATISTA')
+      }
+    } else if (colKey === 'safety_items') {
+      const normalized = String(rawValue || '').trim().toUpperCase()
+      const valid = targetWorker.admin_center === 'ASTILLERO'
+        ? 'ASTILLERO'
+        : (['ASTILLERO', 'CONTRATISTA'].includes(normalized) ? normalized : 'CONTRATISTA')
+      dbPatch = { safety_items: valid }
     } else if (colKey === 'category' || colKey === 'trade' || colKey === 'work_group') {
       dbPatch = { [colKey]: String(rawValue || '').trim().toUpperCase() }
     } else if (colKey === 'name') {
@@ -978,7 +1018,7 @@ export default function PersonalNominaPanel({
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* KPI 1: Astillero sin Teléfono (Alerta Crítica / Rojo Carmín) */}
           <button
             type="button"
@@ -1102,6 +1142,32 @@ export default function PersonalNominaPanel({
               <span className="text-[10px] text-red-300/70">personal activo</span>
             </div>
             <p className="text-[9px] text-red-300/60 mt-1 truncate">Sin Pañol, Horas ni 3ros</p>
+          </button>
+
+          {/* KPI 6: Contratos Astillero próximos a vencerse <= 7 días */}
+          <button
+            type="button"
+            onClick={() => setKpiFilter(prev => prev === 'contratos_por_vencer' ? null : 'contratos_por_vencer')}
+            title="Filtra personal propio de Astillero con contrato temporal próximo a vencer (≤ 7 días) o ya vencido."
+            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+              kpiFilter === 'contratos_por_vencer'
+                ? 'bg-orange-950/70 border-orange-400 ring-2 ring-orange-400 shadow-lg shadow-orange-950/50'
+                : 'bg-orange-950/25 border-orange-500/50 hover:bg-orange-950/40 hover:border-orange-400'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-orange-300">
+                Contratos p/ Vencer
+              </span>
+              <Calendar className="w-4 h-4 text-orange-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-black font-mono text-orange-400">
+                {kpiStats.contratosPorVencer}
+              </span>
+              <span className="text-[10px] text-orange-300/70">aviso ≤ 7d</span>
+            </div>
+            <p className="text-[9px] text-orange-300/60 mt-1 truncate">Notifica a María José</p>
           </button>
         </div>
       </div>
@@ -1544,9 +1610,21 @@ export default function PersonalNominaPanel({
                   <th className="py-2.5 px-2 text-center text-emerald-400">U$/Hora</th>
                   <th className="py-2.5 px-3">Grupo de Trabajo ✎</th>
                   <th className="py-2.5 px-2.5">Centro Admin ✎</th>
+                  <th className="py-2.5 px-2.5">Contrato</th>
                   <th className="py-2.5 px-2 text-center">Estado</th>
                   <th className="py-2.5 px-2.5">Consumibles</th>
-                  <th className="py-2.5 px-2.5">Elem. Seg.</th>
+                  <th className="py-2.5 px-2.5">
+                    <div className="relative group inline-flex items-center gap-1 cursor-help">
+                      <span>Elem. Seg. ✎</span>
+                      <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
+                      <div className="opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none transition-all duration-150 absolute top-full right-0 mt-1.5 w-80 p-3 rounded-xl bg-slate-900 border border-cyan-500/40 shadow-2xl z-50 text-left font-normal normal-case tracking-normal text-[11px] leading-relaxed text-slate-200">
+                        <div className="font-black text-cyan-300 mb-1 uppercase text-[10px]">
+                          Regla Unificada: Elementos de Seguridad (EPP)
+                        </div>
+                        <p>{SAFETY_ITEMS_HELP_TEXT}</p>
+                      </div>
+                    </div>
+                  </th>
                   <th className="py-2.5 px-2 text-center">Permisos</th>
                   <th className="py-2.5 px-3 text-right">Acciones</th>
                 </tr>
@@ -1554,7 +1632,7 @@ export default function PersonalNominaPanel({
               <tbody className="divide-y divide-slate-800/60 font-medium">
                 {filteredWorkers.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="py-10 text-center text-slate-500">
+                    <td colSpan={14} className="py-10 text-center text-slate-500">
                       No se encontraron registros que coincidan con la búsqueda.
                     </td>
                   </tr>
@@ -1979,6 +2057,43 @@ export default function PersonalNominaPanel({
                           )}
                         </td>
 
+                        {/* Contrato (solo Astillero) */}
+                        <td className="py-2 px-2.5 text-[10px]">
+                          {w.admin_center === 'ASTILLERO' ? (() => {
+                            const exp = computeContractExpiration(w.contract_type, w.contract_start_date)
+                            if (!exp.hasContract) {
+                              return <span className="text-slate-500 italic">Sin definir</span>
+                            }
+                            if (exp.isPermanent) {
+                              return (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800 font-bold">
+                                  PERMANENTE
+                                </span>
+                              )
+                            }
+                            return (
+                              <div className="space-y-0.5" title={exp.expiresIso ? `Inicio: ${w.contract_start_date || '—'} · Vence: ${exp.expiresIso}` : 'Falta fecha de inicio'}>
+                                <span className={`px-1.5 py-0.5 rounded font-bold border inline-block ${
+                                  exp.isExpired
+                                    ? 'bg-rose-950 text-rose-300 border-rose-600'
+                                    : exp.isExpiringSoon
+                                    ? 'bg-orange-950 text-orange-300 border-orange-500'
+                                    : 'bg-cyan-950/70 text-cyan-300 border-cyan-800'
+                                }`}>
+                                  {exp.contractType}
+                                </span>
+                                {exp.expiresIso && (
+                                  <div className={`text-[9px] font-mono ${exp.needsAttention ? 'text-orange-300 font-bold' : 'text-slate-400'}`}>
+                                    {exp.isExpired ? 'VENCIDO' : `${exp.daysRemaining}d`} · {exp.expiresIso.slice(5)}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })() : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
+
                         {/* Estado */}
                         <td className="py-2 px-2 text-center">
                           <button
@@ -2026,10 +2141,43 @@ export default function PersonalNominaPanel({
                         </td>
 
                         {/* Elem. Seg. */}
-                        <td className="py-2 px-2.5">
-                          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-950 text-amber-300 border border-amber-800">
-                            {w.safety_items || 'CONTRATISTA'}
-                          </span>
+                        <td
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            if (w.admin_center === 'ASTILLERO') return
+                            setInlineCellEdit({ rowId: w.id, colKey: 'safety_items', value: w.safety_items || 'CONTRATISTA' })
+                          }}
+                          title={w.admin_center === 'ASTILLERO' ? 'Personal propio de Astillero: siempre ASTILLERO (solo costo de referencia).' : `Doble clic para definir si descuenta EPP (CONTRATISTA) o es excepción de zona gris (ASTILLERO).\n${SAFETY_ITEMS_HELP_TEXT}`}
+                          className={getCellClass(6, 'py-2 px-2.5')}
+                        >
+                          {isEditingCell('safety_items') ? (
+                            <select
+                              autoFocus
+                              value={inlineCellEdit.value}
+                              onChange={(e) => setInlineCellEdit(prev => ({ ...prev, value: e.target.value }))}
+                              onBlur={() => commitInlineWorkerEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Enter') commitInlineWorkerEdit()
+                                if (e.key === 'Escape') setInlineCellEdit(null)
+                              }}
+                              className="bg-slate-950 border border-emerald-400 rounded px-1.5 py-0.5 text-[10px] text-white font-bold focus:outline-none"
+                            >
+                              {SAFETY_ITEMS_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                              w.safety_items === 'ASTILLERO'
+                                ? 'bg-cyan-950 text-cyan-300 border-cyan-700'
+                                : 'bg-amber-950 text-amber-300 border-amber-800'
+                            }`}>
+                              {w.safety_items === 'ASTILLERO' && w.admin_center !== 'ASTILLERO'
+                                ? 'ASTILLERO (Z.Gris)'
+                                : (w.safety_items || 'CONTRATISTA')}
+                            </span>
+                          )}
                         </td>
 
                         {/* Permisos */}
@@ -2440,16 +2588,72 @@ export default function PersonalNominaPanel({
                       </button>
                     </div>
 
-                    {/* GRUPO DE TRABAJO */}
+                    {/* GRUPO DE TRABAJO + CONTRATO / SEGURIDAD */}
                     {formData.admin_center === 'ASTILLERO' ? (
-                      <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
-                        <span className="text-xs text-slate-300">Grupo de Trabajo Asignado:</span>
-                        <span className="px-2.5 py-1 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono font-bold text-xs">
-                          ASTILLERO (Propio)
-                        </span>
+                      <div className="space-y-2.5">
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                          <span className="text-xs text-slate-300">Grupo de Trabajo Asignado:</span>
+                          <span className="px-2.5 py-1 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono font-bold text-xs">
+                            ASTILLERO (Propio)
+                          </span>
+                        </div>
+
+                        {/* CONTRATO ASTILLERO */}
+                        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-cyan-500/30 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5" />
+                              <span>Contrato Laboral (Alerta a María José 7 días antes)</span>
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-400 mb-1">Tipo de Contrato:</label>
+                              <select
+                                value={formData.contract_type}
+                                onChange={(e) => setFormData({ ...formData, contract_type: e.target.value })}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400"
+                              >
+                                <option value="">Sin especificar...</option>
+                                {CONTRACT_TYPES.map((ct) => (
+                                  <option key={ct.value} value={ct.value}>{ct.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-400 mb-1">Fecha de Inicio (doble clic calendario):</label>
+                              <input
+                                type="date"
+                                value={formData.contract_start_date}
+                                onChange={(e) => setFormData({ ...formData, contract_start_date: e.target.value })}
+                                onDoubleClick={(e) => e.currentTarget.showPicker?.()}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
+                              />
+                            </div>
+                          </div>
+                          {formData.contract_type && (() => {
+                            const previewExp = computeContractExpiration(formData.contract_type, formData.contract_start_date)
+                            return (
+                              <div className="text-[10px] text-slate-300 flex items-center justify-between pt-1 border-t border-slate-800/80">
+                                <span>
+                                  {previewExp.isPermanent
+                                    ? 'Planta Permanente (no emite alerta de vencimiento).'
+                                    : previewExp.expiresIso
+                                    ? `Vence: ${previewExp.expiresIso} (${previewExp.daysRemaining} días restantes)`
+                                    : 'Ingresá fecha de inicio para calcular vencimiento.'}
+                                </span>
+                                {previewExp.vacationDays !== null && (
+                                  <span className="font-mono text-emerald-300 font-bold">
+                                    Ref. Vacaciones: {previewExp.vacationDays} día(s)
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </div>
                       </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         <label className="block text-[11px] font-bold text-slate-300">
                           Grupo de Trabajo / Contratista / Razón Social:
                         </label>
@@ -2492,6 +2696,31 @@ export default function PersonalNominaPanel({
                             </button>
                           </div>
                         )}
+
+                        {/* ELEMENTOS DE SEGURIDAD (ZONA GRIS) */}
+                        <div className="p-2.5 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                              <Shield className="w-3.5 h-3.5" />
+                              <span>Elementos de Seguridad (EPP)</span>
+                            </label>
+                            <span title={SAFETY_ITEMS_HELP_TEXT} className="text-[10px] text-cyan-400 cursor-help inline-flex items-center gap-1">
+                              <HelpCircle className="w-3.5 h-3.5" /> ¿Cómo computa?
+                            </span>
+                          </div>
+                          <select
+                            value={formData.safety_items}
+                            onChange={(e) => setFormData({ ...formData, safety_items: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-amber-400"
+                          >
+                            {SAFETY_ITEMS_OPTIONS.map(opt => (
+                              <option key={opt.value} value={opt.value}>{opt.label} — {opt.shortDesc}</option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-slate-400 leading-snug">
+                            Por defecto <strong>CONTRATISTA</strong> (se descuenta en Tesorería). Elegir <strong>ASTILLERO</strong> solo si está en zona gris y el astillero absorbe el EPP sin descontárselo.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>

@@ -21,6 +21,10 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { saveMacroVariables } from '../lib/macroVariablesService'
+import { fetchPendingBudgetAlertsForMariaService } from '../lib/workOrdersService'
+import { fetchPendingContractAlertsForMariaService } from '../lib/contractorDeductionsService'
+import MariaJoseBudgetAlertsCard from '../components/workOrders/MariaJoseBudgetAlertsCard'
+import MariaJoseContractAlertsCard from '../components/personal/MariaJoseContractAlertsCard'
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
@@ -47,6 +51,21 @@ export default function Dashboard() {
   })
   const [savingMacro, setSavingMacro] = useState(false)
   const [macroMessage, setMacroMessage] = useState(null)
+  const [pendingBudgetAlerts, setPendingBudgetAlerts] = useState([])
+  const [pendingContractAlerts, setPendingContractAlerts] = useState([])
+
+  async function loadPendingBudgetAlerts() {
+    try {
+      const [budgetData, contractData] = await Promise.all([
+        fetchPendingBudgetAlertsForMariaService(),
+        fetchPendingContractAlertsForMariaService({ syncFirst: true })
+      ])
+      setPendingBudgetAlerts(budgetData)
+      setPendingContractAlerts(contractData)
+    } catch (err) {
+      console.warn('Error cargando alertas operativas para María José:', err)
+    }
+  }
 
   useEffect(() => {
     async function loadStats() {
@@ -75,6 +94,7 @@ export default function Dashboard() {
 
     loadStats()
     loadMacroVariables()
+    loadPendingBudgetAlerts()
   }, [])
 
   async function loadMacroVariables() {
@@ -247,6 +267,21 @@ export default function Dashboard() {
           )
         })}
       </div>
+
+      {/* BANDEJA DE ALERTAS PENDIENTES PARA MARÍA JOSÉ (ADICIONALES SIN Nº PRESUPUESTO & CONTRATOS) */}
+      <MariaJoseBudgetAlertsCard
+        alerts={pendingBudgetAlerts}
+        user={user}
+        userName={profile?.full_name || user?.email || 'María José'}
+        onResolved={() => loadPendingBudgetAlerts()}
+      />
+
+      <MariaJoseContractAlertsCard
+        alerts={pendingContractAlerts}
+        user={user}
+        userName={profile?.full_name || user?.email || 'María José'}
+        onResolved={() => loadPendingBudgetAlerts()}
+      />
 
       {/* PANEL DE VARIABLES MACROECONÓMICAS (ADMINISTRADOR) */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
