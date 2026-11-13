@@ -7,6 +7,19 @@
 
 <!-- Las nuevas entradas de cierre se agregan aquí arriba -->
 
+## [2026-11-13] Sesión de Cierre — Fix Ancho w-full y Visibilidad de Columna Acciones en Personal y Tarifas (`ERR-005`)
+- **Hora:** 18:43 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (únicamente cambios de este chat — excluye trabajo paralelo en curso):**
+  * Modificados (2): `app/src/pages/Personal.jsx` (`152L`, cambio `max-w-7xl mx-auto` ➔ `w-full` en `L64`), `app/src/components/personal/PersonalNominaPanel.jsx` (`2953L`, compactación de padding `px-2`/`px-1.5` en `thead`/`tbody` y `whitespace-nowrap` en `Acciones` en `L1629` y `L2238`). Total diff código: `+27 / -27`.
+  * Documentación de cierre: `docs/02_producto/02_errores/ERR-005-ancho-restringido-max-w-7xl-oculta-acciones-nomina.md`, `docs/02_producto/README.md`, `INDICE_METADATOS.md`, `TAREAS_PENDIENTES.md`, `docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md`.
+- **Blast Radius:** Localizado (`Personal.jsx` referenciado solo en `App.jsx:7`; `PersonalNominaPanel.jsx` consumido solo en `Personal.jsx:5,127`).
+- **Tracker Anti-Rot:** `0` pecados introducidos en el delta (`Personal.jsx` = `152L < 250L`, `supabase.from` nuevos en delta = `0`, `bareOnBlur` = `0`, hardcodes nuevos = `0`). Deuda preexistente intacta fuera del diff en `PersonalNominaPanel.jsx` (`2953L`, `5` `supabase.from(` previos).
+- **Trazabilidad Supabase:** Sin mutaciones de esquema ni lógica SQL en este fix; prueba runtime previa de `fetchPersonalData()` devolvió `workers: 397`, `rateCards: 97`, `roles: 10`.
+- **Verificación Runtime & Build:** `oxlint.cmd src/pages/Personal.jsx src/components/personal/PersonalNominaPanel.jsx` (`0` errores, `4` warnings preexistentes en `Personal.jsx:12,59` y `PersonalNominaPanel.jsx:72,1569`) | `npm.cmd run build` PASS (`2097` módulos en `5.00s`, `0` errores). Pendiente validación visual en navegador autenticado (`<ProtectedRoute>`).
+- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT**
+- **Alcance Git:** Commits atómicos exclusivos de este chat sobre Personal (`Personal.jsx` + `PersonalNominaPanel.jsx`) y su documentación de cierre (sobre `HEAD` `ae968d2`).
+---
+
 ## [2026-11-13] Sesión de Cierre — M4 Pañol: Cascada Naval, Gases (Doble Imputación & Recambio +0) y Trazabilidad Gaseras (`0038`–`0040`)
 - **Hora:** 18:35 ART | **Agente:** Antigravity | **Revisor:** Usuario
 - **Superficie evaluada (Lote Pañol / Control de Gases / Alertas Admin + SQL — `17` archivos app/migrations + docs de cierre):**

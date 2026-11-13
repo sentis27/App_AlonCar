@@ -61,6 +61,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/01_decisiones/DEC-014-resumen-gerencial-horas-presupuestos-workspace.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-08-21 | docs/02_producto/README.md \| INDICE_PLANILLAS.md |
 | docs/02_producto/02_errores/ERR-003-service-account-permisos-sheets.md | error | ninguno | cambios | transversal | activo | 2026-06-14 | docs/02_producto/README.md |
 | docs/02_producto/02_errores/ERR-004-hooks-condicionales-pantalla-negra-picker-modal.md | error | ninguno | cambios | fase-2+ | borrador | 2026-11-12 | docs/02_producto/README.md |
+| docs/02_producto/02_errores/ERR-005-ancho-restringido-max-w-7xl-oculta-acciones-nomina.md | error | ninguno | cambios | fase-2+ | borrador | 2026-11-13 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-003-arquitectura-bitacora.md | concepto | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-004-modelo-paginacion-por-operario.md | concepto | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/planillas/horas-planillas-de-registro.md |
 | docs/02_producto/04_procesos/PRO-002-mapeo-blindado-estadisticas-log.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |

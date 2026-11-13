@@ -67,6 +67,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-11-12 | ERR-004 | Pantalla en negro al asignar Buque y OT por hook condicional en modal picker | error |
 | 2026-11-13 | DEC-022 | Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa | decision |
 | 2026-11-13 | DEC-023 | Pañol: Cascada Naval, Doble Imputación de Gases (Recambio +0) y Trazabilidad de Gaseras | decision |
+| 2026-11-13 | ERR-005 | Contenedor max-w-7xl y nuevas columnas recortan visualmente la columna Acciones en Personal y Tarifas | error |
 
 ---
 
@@ -106,6 +107,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | ERR-002 | Apps Script bloqueado por Service Account | 1 | borrador | 2026-06-10 | — |
 | ERR-003 | Google Sheets API: The caller does not have permission | 1 | borrador | 2026-06-14 | — |
 | ERR-004 | Pantalla en negro al asignar Buque y OT por hook condicional en modal picker | 3 | borrador | 2026-11-12 | — |
+| ERR-005 | Contenedor max-w-7xl y nuevas columnas recortan visualmente la columna Acciones en Personal y Tarifas | 3 | borrador | 2026-11-13 | — |
 
 ## Conceptos
 
