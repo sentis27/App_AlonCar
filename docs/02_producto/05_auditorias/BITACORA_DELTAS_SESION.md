@@ -7,6 +7,19 @@
 
 <!-- Las nuevas entradas de cierre se agregan aquí arriba -->
 
+## [2026-11-13] Sesión de Cierre — OTs (Folio/Presupuestos), Contratos & Seguridad Personal, Tesorería Graciela y Alertas María José (`1331aeb`, `68e9f50`)
+- **Hora:** 00:19 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (commits `1331aeb` y `68e9f50` + documentación de cierre):**
+  * `1331aeb`: `monotonicFolioEngine.js`, `workOrdersConstants.js`, `workOrdersService.js`, `WorkOrdersModals.jsx`, `WorkOrdersUnificadoPanel.jsx`, `MariaJoseBudgetAlertsCard.jsx` (6 archivos, `+795/-174`).
+  * `68e9f50`: `0037_workers_contracts_and_safety_cleanup.sql`, `workCostRules.js`, `contractorDeductionsService.js`, `personalService.js`, `PersonalNominaPanel.jsx`, `PersonalTarifarioPanel.jsx`, `MariaJoseContractAlertsCard.jsx`, `TesoreriaDeduccionesPanel.jsx`, `Tesoreria.jsx`, `Sidebar.jsx`, `App.jsx`, `AdminAlertsCompliancePanel.jsx`, `Dashboard.jsx` (13 archivos, `+1914/-58`).
+- **Blast Radius:** Existencial (`14` consumidores en `monotonicFolioEngine.js`, `13` en `workOrdersConstants.js` — validados sin regresiones) + Localizado en submódulos nuevos de Tesorería/Alertas.
+- **Tracker Anti-Rot:** `0` pecados nuevos en el delta tras limpieza Fast-Track (`PersonalTarifarioPanel.jsx` migrado a `useMemo`, `PersonalNominaPanel.jsx` extraído a `personalService.js`); SQL `0037` pendiente de ejecución manual en Supabase SQL Editor (cubierto con fallback defensivo `SKL-015`).
+- **Trazabilidad Supabase:** Verificado (`workOrdersService.js` x15, `contractorDeductionsService.js:338`, `PersonalNominaPanel.jsx` x6).
+- **Compilación / Build:** `npx oxlint` (`0` errors; `0/0` en los 6 archivos nuevos + `personalService.js`) | `npm run build` PASS (`1.93s`).
+- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT**
+- **Commit asociado:** `1331aeb` (OTs/Folios) + `68e9f50` (Personal/Seguridad/Tesorería) + `docs: cierre de sesion 2026-11-13 - bitacora delta SKL-017, matriz e indices`
+---
+
 ## [2026-11-12] Sesión de Cierre — Fix Pantalla en Negro Barco/OT (Terceros) & Consolidación Regla Naval OTs (`be899a3`)
 - **Hora:** 17:43 ART | **Agente:** Antigravity | **Revisor:** Usuario
 - **Superficie evaluada (commit `be899a3` + documentación de cierre):**

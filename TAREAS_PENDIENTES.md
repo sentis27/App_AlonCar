@@ -3,6 +3,20 @@
 Este archivo es tu lista de trabajo. Priorizada por fase y criticidad.
 Nota: Actualízalo conforme cierres tareas. El agente IA también puede consultar este archivo para saber qué documentar.
 
+## 📌 Recordatorios Operativos y Módulos Futuros Acordados (2026-11-12)
+
+- [ ] **Resumen Gerencial (`GS-004` / `/comparador`) — Inclusión de Línea de Referencia EPP (`ELEM.SEGURIDAD`):**
+  - **Ubicación visual exacta:** Mostrar la fila **`ELEM. SEGURIDAD (REF. ASTILLERO)`** exclusivamente dentro del futuro **Resumen Gerencial**, en dos lugares: (1) bloque global del buque **`COSTO DIRECTO TOTAL US$`** inmediatamente debajo de **`HORAS PEND. APROBAR`** (encima de `HRS. GRÚA GRANDE` / `TOTAL US$`), y (2) bloque inferior **`DETALLE POR ORDEN DE TRABAJO` → `COSTO TOTAL POR O.T US$`** acotado por OT.
+  - **Regla:** Solo computa EPP de personal `ASTILLERO` o contratistas en zona gris (`safety_items = 'ASTILLERO'`), **sin sumarse nunca al `TOTAL US$`** cobrable (`workCostRules.js`).
+- [ ] **Módulo Futuro de Dependientes / Vacaciones (Personal Astillero):**
+  - **Reglas base acordadas:** `1 MES` = **1 día** de vacaciones; `3 MESES` = **4 días** de vacaciones; `6 MESES` = **9 días** de vacaciones; `PERMANENTE` = fórmula a definir por Dirección según **antigüedad** acumulada desde `workers.contract_start_date`.
+- [ ] **Automatización de Pañol (Extracción de Materiales Cobrables a Contratistas):**
+  - **Recordatorio n8n / Pañol:** Al diseñar las automatizaciones del módulo Pañol, reutilizar `app/src/lib/workCostRules.js` y `contractorDeductionsService.js` para extraer automáticamente materiales, consumibles (`%`) y EPP cobrables al contratista alimentando directamente a Tesorería (`/tesoreria`).
+- [ ] **Expansión del Módulo Tesorería (`/tesoreria` — Rol Graciela `TESORERIA`):**
+  - Primera herramienta ya implementada: Extracción quincenal filtrada de Consumibles y Elementos de Seguridad cobrables a contratistas (respetando zona gris).
+  - **Próximas herramientas a desarrollar para Graciela:** Tablero de liquidación y pagos quincenales, gestión de adelantos a personal/contratistas y conciliación financiera de Terceros.
+- [ ] **Migración SQL `0037_workers_contracts_and_safety_cleanup.sql`:** Ejecutar el `ALTER TABLE public.workers ADD COLUMN contract_type / contract_start_date` en el SQL Editor de Supabase para persistir tipo de contrato y fecha de inicio (los valores `safety_items` y `data_requirements` ya fueron aplicados en vivo).
+
 🤖 Agentes Especializados — Instalación por Etapa
 
 [ ] Instalar y configurar database-optimizer

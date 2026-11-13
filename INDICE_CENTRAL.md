@@ -35,7 +35,10 @@ Documentación de producto, decisiones arquitectónicas, errores resueltos, conc
 | `app/src/hooks/useSpreadsheetGrid.js` | Orquestador canónico de hoja de cálculo ERP (reducido a 162L), con navegación 100% teclado, Fill-handle, selección 2D y Deshacer/Rehacer | Devs / Agentes IA |
 | `app/src/hooks/grid/` | Sub-hooks especializados de grilla (`useGridHistory.js`, `useGridSelection.js`, `useGridClipboard.js`, `useGridNavigation.js`) | Devs / Agentes IA |
 | `app/src/components/admin/` | Subpaneles modulares de M9 Admin (`AdminRolesMatrixPanel`, `AdminMacroPanel`, `AdminAlertsCompliancePanel`, `AdminLiveKpiRadar`) | Devs / Agentes IA |
-| `app/src/components/personal/` | Subpaneles modulares de M8 Personal (`PersonalNominaPanel`, `PersonalTarifarioPanel`, `PersonalAnalisisPanel`) | Devs / Agentes IA |
+| `app/src/components/personal/` | Subpaneles y alertas modulares de M8 Personal (`PersonalNominaPanel`, `PersonalTarifarioPanel`, `PersonalAnalisisPanel`, `MariaJoseContractAlertsCard`) | Devs / Agentes IA |
+| `app/src/components/tesoreria/` | Subpaneles de Tesorería — Graciela (`TesoreriaDeduccionesPanel`) | Devs / Agentes IA |
+| `app/src/lib/workCostRules.js` | Fuente única de verdad para atribución de Materiales, Consumibles, Elementos de Seguridad (`safety_items`), Resumen Gerencial (`4 + Ref.`) y vencimientos contractuales Astillero | Devs / Agentes IA |
+| `app/src/lib/contractorDeductionsService.js` | Servicio de extracción quincenal para `/tesoreria` (Graciela) y sincronización de alertas contractuales para María José | Devs / Agentes IA |
 | `app/src/components/compras/` | Subpaneles y modales modulares de M4 Compras (`ComprasPedidosPanel`, `ComprasProveedoresPanel`, `ComprasOcrPanel`, `OrderFormModal`, `NewMaterialModal`, `ComprasAuxModals`) | Devs / Agentes IA |
 | `app/src/lib/comprasConstants.js` | Constantes, helpers y funciones canónicas del módulo de Compras (`isCostAuditError`, `STATUS_OPTIONS`, `deduceUnitMeasure`, etc.) | Devs / Agentes IA |
 | `app/src/components/labor/` | Subpaneles y modales modulares de M3 Horas (`LaborCargaPanel`, `LaborControlDiarioPanel`, `LaborSabanaPanel`, `LaborModals`) | Devs / Agentes IA |

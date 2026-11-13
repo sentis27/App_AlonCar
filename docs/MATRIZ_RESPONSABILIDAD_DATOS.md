@@ -347,10 +347,29 @@ Al seleccionar cualquier material del rubro `GASES` en el formulario de retiro d
 * **Código:** `REQ_COTIZACION_DOLAR_QUINCENAL`
 * **Módulo:** `personal`
 * **Campo Clave:** `rate_cards.dollar_rate`
-* **Trigger:** Creación de nueva quincena sin valor de cotización ARS/USD fijado por Administración.
+* **Trigger:** Creación de nueva quincena sin valor de cotización ARS/USD fijado por Administración (bloqueado exclusivamente desde `/admin` ➔ `macro_variables`).
 * **Rol Responsable:** `ADMINISTRACION` / `FINANZAS`
 * **Parámetros de Alerta:**
   * Horario: `08:30 hs` | Frecuencia: `DIARIO` | Límite: `2 intentos`.
+
+### 7.4. Regla P-04: Vencimiento Próximo de Contratos Temporales de Astillero (7 días antes)
+* **Código:** `REQ_PERSONAL_CONTRATO_POR_VENCER`
+* **Módulo:** `personal` / `dashboard` / `admin`
+* **Campos Clave:** `workers.contract_type` (`1 MES` | `3 MESES` | `6 MESES` | `PERMANENTE`), `workers.contract_start_date`
+* **Trigger:** Trabajador activo con `admin_center = 'ASTILLERO'` y contrato temporal (`1`, `3` o `6` meses) cuyo vencimiento se encuentra a `<= 7 días` (o ya venció).
+* **Rol Responsable:** `maria_jose` (`LIQUIDACION_SUELDOS`)
+* **Persona Responsable:** **María José**
+* **Parámetros de Alerta:**
+  * Horario: `09:00 hs` | Frecuencia: `DIARIO` | Límite: `5 intentos` | Escala a `admin`.
+* **Comportamiento en UI:**
+  1. Emite alerta automática en `compliance_alerts` (`entity_type = 'workers'`, `responsible_role = 'maria_jose'`) y suma al KPI **"Contratos p/ Vencer"** en `/personal`.
+  2. Visible en **Dashboard (`/`)** y **Alertas Admin (`/admin`)** (`MariaJoseContractAlertsCard.jsx`) permitiendo renovar a `1/3/6 MESES` o pasar a `PERMANENTE` en 1 clic con auditoría.
+
+### 7.5. Rol Tesorería (`TESORERIA` — Graciela) & Excepciones de Seguridad (`safety_items`)
+* **Código / Referencia:** `workers.safety_items` (`CONTRATISTA` default | `ASTILLERO` zona gris/propio)
+* **Módulo:** `tesoreria` (`/tesoreria`)
+* **Responsable:** **Graciela** (`TESORERIA`)
+* **Comportamiento:** Al seleccionar la quincena en `/tesoreria`, la extracción de Consumibles (`consumables_discount_pct`) y Elementos de Seguridad (`ELEM.SEGURIDAD`) filtra automáticamente únicamente los ítems descontables al contratista, excluyendo las excepciones marcadas como `ASTILLERO` (zona gris) sin supervisión manual.
 
 ---
 
@@ -364,3 +383,15 @@ Al seleccionar cualquier material del rubro `GASES` en el formulario de retiro d
 * **Comportamiento de Gobernanza en UI:** La OT queda oculta por defecto en los selectores de carga e imputación (`ShipWorkOrderPickerModal`, `WorkOrderSelectorWithHover`) en Pañol, Horas, Compras y Terceros para impedir imputación de costos sobre obras cerradas (salvo activación explícita del conmutador `Ver finalizadas`).
 * **Rol Responsable:** `jefe_obra` / `admin` (ejecutor del cierre de árbol en `WorkOrders`, con registro automático en `audit_logs`).
 * **Dato Pendiente Asociado:** Definir con Dirección/Usuario qué disparador documental obligatorio se exigirá antes de habilitar el cierre atómico de una OT (ej. conformidad técnica firmada o rendición final de horas).
+
+### 8.2. Regla OT-02: Asignación y Completado de Nº de Presupuesto en Trabajos Adicionales
+* **Código:** `REQ_OT_PRESUPUESTO_ADICIONAL_MARIA_JOSE`
+* **Módulo:** `ots` / `dashboard` / `admin`
+* **Campos Clave:** `work_items.assignment_type = 'Adicional / Específico'`, `work_items.specific_budget_id` (numérico mostrado como `PRESUP. <N>` o estado `'PENDIENTE'`)
+* **Trigger:** Se crea o edita un trabajo como `Adicional / Específico` sin Nº de Presupuesto conocido (opción `"Pendiente / A definir"` o campo numérico en blanco ➔ se almacena automáticamente `'PENDIENTE'`).
+* **Rol Responsable:** `maria_jose` (`LIQUIDACION_SUELDOS` en `organization_roles`)
+* **Persona Responsable:** **María José**
+* **Comportamiento en UI y Cierre Automático:**
+  1. Emite alerta automática en `compliance_alerts` (`entity_type = 'work_items'`, `responsible_role = 'maria_jose'`, vinculada al requisito `REQ_OT_PRESUPUESTO_ADICIONAL_MARIA_JOSE` en `data_requirements`) y alerta `PTO_PENDIENTE` en la fila de Órdenes de Trabajo.
+  2. Aparece en la bandeja dedicada de **Dashboard (`/`)** y **Panel Admin (`/admin` ➔ Alertas & Cumplimiento)** donde María José ingresa únicamente el número (prefijo fijo `PRESUP. `) y resuelve en 1 clic.
+  3. Al cargarse el número real (desde Dashboard, Alertas o Modal de Trabajo), `work_items.specific_budget_id` se actualiza al número (`PRESUP. <N>`) y la alerta en `compliance_alerts` pasa automáticamente a `COMPLETADO` con trazabilidad en `audit_logs`.

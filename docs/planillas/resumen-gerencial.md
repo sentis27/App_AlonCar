@@ -80,6 +80,12 @@ El Resumen Gerencial es el tablero maestro del astillero. Se utiliza para monito
 #### 1. Unificación en Pantalla Única (Costo Interno Incurrido vs Remito Comercial):
 - **Eliminación del Pimpón de Idas y Vueltas:** En lugar de navegar entre la planilla de costos internos (`CALC.GENERALES`/`CALC.O.T`) y la redacción del remito comercial, la App unifica ambos aspectos en una sola vista dividida:
   - **Panel Izquierdo (Costo Interno Real):** Muestra automáticamente los costos incurridos de Materiales, Consumibles, Horas Directas, Terceros y Peso (KG) calculados para la OT.
+    - **Regla de Elementos de Seguridad (`ELEM.SEGURIDAD` / `safety_items`) — Posición Visual Exacta (solo en este módulo):**
+      - Cuando el retiro de EPP pertenece a un contratista con `safety_items = 'CONTRATISTA'`, **no va al barco** ni figura aquí (se descuenta al contratista vía **Tesorería `/tesoreria`**).
+      - Cuando el trabajador es propio (`ASTILLERO`) o contratista en **"zona gris"** (`safety_items = 'ASTILLERO'`), el costo se computa en `app/src/lib/workCostRules.js` como **`ELEM. SEGURIDAD (REF. ASTILLERO)`** y debe mostrarse **únicamente en este Resumen Gerencial**:
+        1. En el bloque global del buque (**`COSTO DIRECTO TOTAL US$`**), ubicado **inmediatamente debajo de `HORAS PEND. APROBAR`** (y por encima de `HRS. GRÚA GRANDE` / `TOTAL US$`).
+        2. En el bloque inferior por orden (**`DETALLE POR ORDEN DE TRABAJO` → `COSTO TOTAL POR O.T US$`**), acotado a cada OT individual.
+      - **Regla contable estricta:** es un **costo informativo de referencia**, por lo que **NUNCA se suma al `TOTAL US$`** cobrable de la obra ni de la OT (`Materiales + Consumibles + Terceros + Horas = Costo Final`).
   - **Panel Derecho (Redacción Comercial del Remito):** Muestra las descripciones textuales literales pre-cargadas desde la plantilla seleccionada, con sus **tarifas unitarias fijas** y los **campos cuantitativos abiertos para carga operativa**.
 
 #### 2. Tarifario Maestro Gerencial (Nivel de Acceso Nivel Alfa):
