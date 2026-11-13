@@ -59,7 +59,9 @@ export default function PanolMovimientosPanel({
   onOpenWorkerPermissionModal,
   onPreviewImage,
   showFeedback,
-  setInventoryTx
+  setInventoryTx,
+  gasMovements = [],
+  setGasMovements = null
 }) {
   const [selectedTxIds, setSelectedTxIds] = useState(new Set())
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
@@ -195,8 +197,11 @@ export default function PanolMovimientosPanel({
 
   const handlePermanentDeleteTx = async (tx) => {
     try {
-      await permanentDeleteTxService({ tx, materials, user })
+      const res = await permanentDeleteTxService({ tx, materials, gasMovements, user })
       setInventoryTx((prev) => prev.filter((t) => t.id !== tx.id))
+      if (res?.deletedGasMovementId && setGasMovements) {
+        setGasMovements((prev) => prev.filter((g) => g.id !== res.deletedGasMovementId))
+      }
       showFeedback('success', 'Fila eliminada permanentemente y stock reintegrado.')
     } catch (e) {
       showFeedback('error', 'Error: ' + e.message)

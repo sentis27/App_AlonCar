@@ -200,7 +200,7 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
 
       {/* BANDEJA DEDICADA: CONTRATOS ASTILLERO POR VENCER <= 7D & REGLA EPP (MARÍA JOSÉ) */}
       <MariaJoseContractAlertsCard
-        alerts={complianceAlerts.filter((a) => a.entity_type === 'workers')}
+        alerts={complianceAlerts.filter((a) => a.entity_type === 'workers' && a.responsible_role === 'maria_jose')}
         user={user}
         userName={profile?.full_name || user?.email || 'María José'}
         onResolved={() => loadAlertData()}

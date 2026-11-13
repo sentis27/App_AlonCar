@@ -12,12 +12,11 @@ import {
   calculateGasStats,
   calculatePanolKpis,
   calculatePanolTotals,
-  getEnabledWorkersAndContractors,
   formatWorkOrderTooltip,
   filterPanolTransactions,
   filterPanolMaterials
 } from '../lib/panolConstants'
-import { filterEligiblePersonnel, getContractorEnabledWos } from '../lib/allocationEngine'
+import { filterEligiblePersonnel, getContractorEnabledWos, getEnabledWorkersAndContractors } from '../lib/allocationEngine'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 export default function Panol() {
@@ -58,6 +57,8 @@ export default function Panol() {
   const [showNewMaterialModal, setShowNewMaterialModal] = useState(false)
   const [showStockAdjustModal, setShowStockAdjustModal] = useState({ isOpen: false, material: null })
   const [showGasModal, setShowGasModal] = useState({ isOpen: false, operationType: 'PRIMERA_ENTREGA' })
+  const [gasFinalReturnModal, setGasFinalReturnModal] = useState({ isOpen: false, contractorName: '' })
+  const [gasSupplierModal, setGasSupplierModal] = useState({ isOpen: false, supplierId: '' })
   const [quickPurchaseModal, setQuickPurchaseModal] = useState({ isOpen: false, material: null, quantity: '', urgency: 'SIN_APURO' })
   const [requestOtModal, setRequestOtModal] = useState({ isOpen: false, txId: null, shipId: '', targetWorkerOrContractor: '', reason: '' })
   const [workerPermissionModal, setWorkerPermissionModal] = useState({ isOpen: false, workerId: '', reason: '' })
@@ -97,13 +98,17 @@ export default function Panol() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  const gasStats = useMemo(() => calculateGasStats(suppliers, gasMovements), [suppliers, gasMovements])
+  const gasStats = useMemo(() => calculateGasStats(suppliers, gasMovements, materials), [suppliers, gasMovements, materials])
   const eligiblePersonnel = useMemo(() => filterEligiblePersonnel(workers, { permissionField: 'can_withdraw_materials' }), [workers])
   const { astilleroWorkers, contractorGroups, unauthorizedWorkers, allEligibleNames: availableGroups } = eligiblePersonnel
 
   const getEnabledPersonnel = useCallback(
-    (shipId, workOrderId) => getEnabledWorkersAndContractors(shipId, workOrderId, workItems, eligiblePersonnel),
-    [workItems, eligiblePersonnel]
+    (shipId, workOrderId, options = {}) =>
+      getEnabledWorkersAndContractors(shipId, workOrderId, workItems, eligiblePersonnel, {
+        workOrders,
+        ...options
+      }),
+    [workItems, workOrders, eligiblePersonnel]
   )
 
   const getEnabledWos = useCallback(
@@ -144,6 +149,7 @@ export default function Panol() {
         onOpenWithdrawalModal={() => { setEditingWithdrawalRow(null); setShowWithdrawalModal(true) }}
         onOpenNewMaterialModal={() => setShowNewMaterialModal(true)}
         onOpenGasModal={() => setShowGasModal({ isOpen: true, operationType: 'PRIMERA_ENTREGA' })}
+        onOpenGasSupplierModal={(supplierId = '') => setGasSupplierModal({ isOpen: true, supplierId })}
         navigate={navigate}
       />
 
@@ -179,18 +185,22 @@ export default function Panol() {
             onOpenRequestOtModal={({ txId, shipId, targetWorkerOrContractor }) => setRequestOtModal({ isOpen: true, txId, shipId, targetWorkerOrContractor, reason: '' })}
             onOpenWorkerPermissionModal={() => setWorkerPermissionModal({ isOpen: true, workerId: '', reason: '' })}
             onPreviewImage={setPreviewImage} showFeedback={showFeedback} setInventoryTx={setInventoryTx}
+            gasMovements={gasMovements} setGasMovements={setGasMovements}
           />
         )}
 
         {(activeTab === 'catalogo' || activeTab === 'gases' || activeTab === 'epp') && (
           <PanolStockPanel
             activeTab={activeTab} filteredMaterials={filteredMaterials} materials={materials} gasStats={gasStats}
+            gasMovements={gasMovements} setGasMovements={setGasMovements} suppliers={suppliers} ships={ships} workOrders={workOrders}
             searchQuery={searchQuery} activeKpiFilter={activeKpiFilter} filterCategory={filterCategory} filterStockOnly={filterStockOnly}
             isAdmin={isAdmin} user={user} criticalMaterialsCount={kpiStats.criticalCount}
             stockControlledCount={materials.filter((m) => m.requires_stock_control).length}
             onClearFilters={() => { setSearchQuery(''); setActiveKpiFilter(null); setFilterCategory('TODAS'); setFilterStockOnly(false) }}
             onOpenStockAdjustModal={(mat) => setShowStockAdjustModal({ isOpen: true, material: mat })}
-            onOpenWithdrawalModal={() => setShowWithdrawalModal(true)}
+            onOpenWithdrawalModal={() => { setEditingWithdrawalRow(null); setShowWithdrawalModal(true) }}
+            onOpenGasFinalReturnModal={(cName) => setGasFinalReturnModal({ isOpen: true, contractorName: cName })}
+            onOpenGasSupplierModal={(supplierId = '') => setGasSupplierModal({ isOpen: true, supplierId })}
             onPreviewImage={setPreviewImage} showFeedback={showFeedback} fetchData={loadData} setMaterials={setMaterials}
           />
         )}
@@ -203,11 +213,15 @@ export default function Panol() {
         showNewMaterialModal={showNewMaterialModal} setShowNewMaterialModal={setShowNewMaterialModal}
         showStockAdjustModal={showStockAdjustModal} setShowStockAdjustModal={setShowStockAdjustModal}
         showGasModal={showGasModal} setShowGasModal={setShowGasModal}
+        gasFinalReturnModal={gasFinalReturnModal} setGasFinalReturnModal={setGasFinalReturnModal}
+        gasSupplierModal={gasSupplierModal} setGasSupplierModal={setGasSupplierModal}
         quickPurchaseModal={quickPurchaseModal} setQuickPurchaseModal={setQuickPurchaseModal}
         requestOtModal={requestOtModal} setRequestOtModal={setRequestOtModal}
         workerPermissionModal={workerPermissionModal} setWorkerPermissionModal={setWorkerPermissionModal}
         previewImage={previewImage} setPreviewImage={setPreviewImage}
-        materials={materials} setMaterials={setMaterials} setInventoryTx={setInventoryTx} setGasMovements={setGasMovements}
+        materials={materials} setMaterials={setMaterials} setInventoryTx={setInventoryTx}
+        gasMovements={gasMovements} setGasMovements={setGasMovements}
+        gasStats={gasStats}
         ships={ships} workOrders={workOrders} workItems={workItems} astilleroWorkers={astilleroWorkers}
         contractorGroups={contractorGroups} unauthorizedWorkers={unauthorizedWorkers}
         getEnabledWorkersAndContractors={getEnabledPersonnel}

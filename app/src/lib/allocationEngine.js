@@ -167,14 +167,34 @@ export function filterEligiblePersonnel(workers = [], options = {}) {
 
   // Contratistas externos (Grupos de Trabajo)
   const contractorSet = new Set()
+  const rawUnauthorizedContractors = []
   activeWorkers.forEach((w) => {
     const isContractor = w.admin_center === 'CONTRATISTA' || w.admin_center === 'TALLER'
     const hasPermission = !permissionField || Boolean(w[permissionField])
-    if (isContractor && w.work_group && hasPermission) {
-      contractorSet.add(w.work_group.trim().toUpperCase())
+    if (isContractor) {
+      const groupKey = (w.work_group || w.name || '').trim().toUpperCase()
+      if (hasPermission && groupKey) {
+        contractorSet.add(groupKey)
+      } else if (!hasPermission) {
+        rawUnauthorizedContractors.push(w)
+      }
     }
   })
-  CONTRATISTAS_FRECUENTES.forEach((c) => contractorSet.add(c.trim().toUpperCase()))
+
+  // Solo usar fallback estático si no hay padrón en BD o si no se pidió filtro estricto de permiso
+  if (effectiveWorkers.length === 0 || !permissionField) {
+    CONTRATISTAS_FRECUENTES.forEach((c) => contractorSet.add(c.trim().toUpperCase()))
+  }
+
+  // Excluir cabeceras de grupo cuya empresa ya tiene al menos un operario habilitado
+  rawUnauthorizedContractors.forEach((w) => {
+    const groupKey = (w.work_group || '').trim().toUpperCase()
+    const nameKey = (w.name || '').trim().toUpperCase()
+    const isAlreadyAuthorizedGroupHeader = Boolean(groupKey && groupKey === nameKey && contractorSet.has(groupKey))
+    if (!isAlreadyAuthorizedGroupHeader) {
+      unauthorizedWorkers.push(w)
+    }
+  })
 
   const finalContractors = Array.from(contractorSet).sort()
 
@@ -187,9 +207,47 @@ export function filterEligiblePersonnel(workers = [], options = {}) {
 }
 
 /**
- * Obtiene los contratistas y operarios de astillero habilitados en un buque específico
+ * Evalúa si una OT activa habilita a personal de astillero o a un contratista específico.
  */
-export function getShipEnabledContractors(shipId, workOrders = [], workItems = [], eligiblePersonnel) {
+function doesWoEnableAstillero(wo) {
+  const items = (wo?._allWorkItems || []).filter((wi) => wi.status !== 'Desestimado')
+  if (items.length === 0) return true
+  const rawContractors = items.flatMap((wi) =>
+    Array.isArray(wi.contractors)
+      ? wi.contractors
+      : wi.contractor_name
+      ? [wi.contractor_name]
+      : []
+  )
+  return (
+    rawContractors.length === 0 ||
+    rawContractors.some((c) => {
+      const norm = normalizeText(c)
+      return norm === 'ASTILLERO' || norm.startsWith('ASTILLERO.') || norm === 'ALON CAR'
+    })
+  )
+}
+
+function doesWoEnableContractor(wo, contractorGroupName) {
+  const items = (wo?._allWorkItems || []).filter((wi) => wi.status !== 'Desestimado')
+  if (items.length === 0) return true
+  const normTarget = normalizeText(contractorGroupName)
+  const rawContractors = items.flatMap((wi) =>
+    Array.isArray(wi.contractors)
+      ? wi.contractors
+      : wi.contractor_name
+      ? [wi.contractor_name]
+      : []
+  )
+  return rawContractors.some((c) => normalizeText(c) === normTarget)
+}
+
+/**
+ * Obtiene los contratistas y operarios de astillero habilitados en un buque específico.
+ * Invariante: habilitado en el barco ssi posee >= 1 OT activa disponible en ese barco.
+ */
+export function getShipEnabledContractors(shipId, workOrders = [], workItems = [], eligiblePersonnel, options = {}) {
+  const { strict = false, includeFinalized = false } = options
   const baseAstillero = eligiblePersonnel?.astilleroWorkers || []
   const baseContractors = eligiblePersonnel?.contractorGroups || []
 
@@ -201,46 +259,26 @@ export function getShipEnabledContractors(shipId, workOrders = [], workItems = [
   }
 
   const shipWos = workOrders.filter((w) => w.ship_id === shipId)
-  const shipWoIds = new Set(shipWos.map((w) => w.id))
-  const shipItems = workItems.filter((wi) => shipWoIds.has(wi.work_order_id) && wi.status !== 'Desestimado')
+  const deduplicated = deduplicateWorkOrdersWithScope(shipWos, workItems)
+  const activeShipWos = includeFinalized
+    ? deduplicated
+    : deduplicated.filter((wo) => wo.isActiveForImputation !== false)
 
-  if (shipItems.length === 0) {
-    return {
-      astilleroWorkers: baseAstillero,
-      contractorGroups: baseContractors
-    }
+  if (activeShipWos.length === 0) {
+    return strict
+      ? { astilleroWorkers: [], contractorGroups: [] }
+      : { astilleroWorkers: baseAstillero, contractorGroups: baseContractors }
   }
 
-  const rawContractors = shipItems.flatMap((wi) =>
-    Array.isArray(wi.contractors)
-      ? wi.contractors
-      : wi.contractor_name
-      ? [wi.contractor_name]
-      : []
+  const astilleroEnabled = activeShipWos.some((wo) => doesWoEnableAstillero(wo))
+  let enabledAstillero = astilleroEnabled ? baseAstillero : []
+
+  let enabledContractors = baseContractors.filter((grp) =>
+    activeShipWos.some((wo) => doesWoEnableContractor(wo, grp))
   )
 
-  // Regla canónica de Horas: Si existe cualquier ítem con ASTILLERO o ASTILLERO.*, se habilita a TODO el personal propio elegible
-  const hasAstillero = rawContractors.some((c) => {
-    const norm = normalizeText(c)
-    return norm === 'ASTILLERO' || norm.startsWith('ASTILLERO.') || norm === 'ALON CAR'
-  })
-
-  let enabledAstillero = hasAstillero || rawContractors.length === 0 ? baseAstillero : []
-
-  // Contratistas externos presentes en los ítems
-  const enabledContractorSet = new Set(
-    rawContractors
-      .filter((c) => {
-        const norm = normalizeText(c)
-        return norm && !norm.startsWith('ASTILLERO') && norm !== 'ALON CAR'
-      })
-      .map((c) => c.trim().toUpperCase())
-  )
-
-  let enabledContractors = baseContractors.filter((grp) => enabledContractorSet.has(grp.toUpperCase()))
-
-  // Fallback Canónico de Seguridad: Si el filtrado deja ambos conjuntos vacíos, nunca bloquear la pantalla; devolver la base completa
-  if (enabledAstillero.length === 0 && enabledContractors.length === 0) {
+  // En modo estricto (Pañol) no se hace fallback a la nómina completa para permitir el flujo "Expandir -> Sin OT"
+  if (!strict && enabledAstillero.length === 0 && enabledContractors.length === 0) {
     enabledAstillero = baseAstillero
     enabledContractors = baseContractors
   }
@@ -362,9 +400,10 @@ export function evaluateAllocationState({
 
 /**
  * Obtiene operarios de astillero y contratistas habilitados según shipId y workOrderId.
- * Si workOrderId está vacío (!workOrderId), devuelve la nómina completa según la regla canónica de Pañol y Terceros.
+ * Si !workOrderId && shipId && options.workOrders, filtra estrictamente por las OTs activas del barco.
  */
-export function getEnabledWorkersAndContractors(shipId, workOrderId, workItems = [], eligiblePersonnel = null) {
+export function getEnabledWorkersAndContractors(shipId, workOrderId, workItems = [], eligiblePersonnel = null, options = {}) {
+  const { workOrders = null, strictShipFilter = false } = options
   let effectiveEligible = eligiblePersonnel
   if (!effectiveEligible && _globalWorkersCache && _globalWorkersCache.length > 0) {
     effectiveEligible = filterEligiblePersonnel(_globalWorkersCache, { permissionField: null })
@@ -379,13 +418,31 @@ export function getEnabledWorkersAndContractors(shipId, workOrderId, workItems =
     : CONTRATISTAS_FRECUENTES
 
   if (!workOrderId) {
+    if (shipId && Array.isArray(workOrders)) {
+      return getShipEnabledContractors(
+        shipId,
+        workOrders,
+        workItems,
+        { astilleroWorkers: baseAstillero, contractorGroups: baseContractors },
+        { strict: strictShipFilter }
+      )
+    }
     return {
       astilleroWorkers: baseAstillero,
       contractorGroups: baseContractors
     }
   }
 
-  const items = (workItems || []).filter((wi) => wi.work_order_id === workOrderId && wi.status !== 'Desestimado')
+  let targetWoIds = new Set([workOrderId])
+  if (Array.isArray(workOrders) && shipId) {
+    const deduped = deduplicateWorkOrdersWithScope(workOrders.filter((w) => w.ship_id === shipId), workItems)
+    const matched = deduped.find((w) => String(w.id) === String(workOrderId) || (w._allWoIds || []).includes(workOrderId))
+    if (matched?._allWoIds?.length) {
+      targetWoIds = new Set(matched._allWoIds)
+    }
+  }
+
+  const items = (workItems || []).filter((wi) => targetWoIds.has(wi.work_order_id) && wi.status !== 'Desestimado')
   if (items.length === 0) {
     return { astilleroWorkers: baseAstillero, contractorGroups: baseContractors }
   }

@@ -13,7 +13,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   MessageSquare,
-  Plus
+  Plus,
+  RotateCcw,
+  Truck
 } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
@@ -21,6 +23,7 @@ import { buildPasteRowHandler, duplicateRecord } from '../../lib/gridRowActions'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import HighlightText from '../HighlightText'
+import GasTraceabilityGrid from './GasTraceabilityGrid'
 import {
   getMaterialsColumns,
   getSecurityFactorBadge,
@@ -35,6 +38,11 @@ export default function PanolStockPanel({
   filteredMaterials,
   materials,
   gasStats,
+  gasMovements = [],
+  setGasMovements = null,
+  suppliers = [],
+  ships = [],
+  workOrders = [],
   searchQuery,
   activeKpiFilter,
   filterCategory,
@@ -46,6 +54,8 @@ export default function PanolStockPanel({
   onClearFilters,
   onOpenStockAdjustModal,
   onOpenWithdrawalModal,
+  onOpenGasFinalReturnModal = null,
+  onOpenGasSupplierModal = null,
   onPreviewImage,
   showFeedback,
   fetchData,
@@ -53,6 +63,8 @@ export default function PanolStockPanel({
 }) {
   const navigate = useNavigate()
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
+  const [traceSupplierFilter, setTraceSupplierFilter] = useState('TODOS')
+  const [traceMaterialFilter, setTraceMaterialFilter] = useState('TODOS')
 
   const handleSaveInlineMaterial = async (matId, field, value) => {
     try {
@@ -129,35 +141,122 @@ export default function PanolStockPanel({
   if (activeTab === 'gases') {
     return (
       <div className="space-y-4 font-sans">
-        {/* Tarjetas de Stock en Patio por Marca Proveedor */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          {Object.values(gasStats.patioStock).map(({ supplier, full, empty }) => (
-            <div
-              key={supplier.id}
-              className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-lg flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2">
-                <span className="font-black text-white text-xs truncate">{supplier.name}</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono font-bold">
-                  {supplier.is_local_supplier ? 'Local MDP' : 'Nacional'}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-center">
-                <div className="p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/40">
-                  <span className="block text-[10px] text-emerald-400 font-bold uppercase">Llenos</span>
-                  <span className="text-xl font-black text-emerald-300 font-mono">{full}</span>
+        {/* Tarjetas de Stock en Patio y Cuenta por Empresa Gasera */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          {Object.values(gasStats.patioStock).map(
+            ({ supplier, full, empty, withContractors = 0, totalCompanyCylinders, byGas = [] }) => {
+              const totalPatio = full + empty
+              const companyTotal = totalCompanyCylinders ?? (totalPatio + withContractors)
+              const isSupFiltered = traceSupplierFilter === supplier.id
+              return (
+                <div
+                  key={supplier.id}
+                  className={`p-3.5 rounded-xl bg-slate-900 border shadow-lg flex flex-col justify-between transition-all ${
+                    isSupFiltered ? 'border-cyan-400 ring-1 ring-cyan-400/50' : 'border-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1.5 border-b border-slate-800/80 pb-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTraceSupplierFilter(isSupFiltered ? 'TODOS' : supplier.id)
+                          setTraceMaterialFilter('TODOS')
+                        }}
+                        className="font-black text-white hover:text-cyan-300 text-xs truncate text-left cursor-pointer"
+                        title="Clic para filtrar la Tabla de Trazabilidad por esta empresa"
+                      >
+                        {supplier.name}
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {onOpenGasSupplierModal && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenGasSupplierModal(supplier.id)}
+                            className="px-1.5 py-0.5 rounded bg-cyan-950/90 hover:bg-cyan-800 border border-cyan-500/50 text-cyan-200 font-bold text-[10px] inline-flex items-center gap-1 cursor-pointer"
+                            title={`Cargar Remito o Saldo Inicial con ${supplier.name}`}
+                          >
+                            <Truck className="w-2.5 h-2.5 text-cyan-300" />
+                            <span>± Remito</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 text-center">
+                      <div className="p-1.5 rounded-lg bg-emerald-950/50 border border-emerald-500/40">
+                        <span className="block text-[9px] text-emerald-400 font-bold uppercase">Llenos</span>
+                        <span className="text-lg font-black text-emerald-300 font-mono">{full}</span>
+                      </div>
+                      <div className="p-1.5 rounded-lg bg-rose-950/50 border border-rose-500/40">
+                        <span className="block text-[9px] text-rose-400 font-bold uppercase">Vacíos</span>
+                        <span className="text-lg font-black text-rose-300 font-mono">{empty}</span>
+                      </div>
+                      <div className="p-1.5 rounded-lg bg-amber-950/40 border border-amber-500/35">
+                        <span className="block text-[9px] text-amber-400 font-bold uppercase">En Obra</span>
+                        <span className="text-lg font-black text-amber-300 font-mono">{withContractors}</span>
+                      </div>
+                    </div>
+
+                    {/* Desglose por Tipo de Gas */}
+                    {byGas.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-slate-800/60 space-y-1">
+                        <span className="block text-[9px] font-bold uppercase text-slate-400">
+                          Desglose por Gas:
+                        </span>
+                        {byGas.map((g) => {
+                          const isGasFiltered =
+                            traceSupplierFilter === supplier.id && traceMaterialFilter === g.materialId
+                          return (
+                            <button
+                              key={g.materialId || g.materialName}
+                              type="button"
+                              onClick={() => {
+                                if (isGasFiltered) {
+                                  setTraceSupplierFilter('TODOS')
+                                  setTraceMaterialFilter('TODOS')
+                                } else {
+                                  setTraceSupplierFilter(supplier.id)
+                                  setTraceMaterialFilter(g.materialId || 'TODOS')
+                                }
+                              }}
+                              className={`w-full flex items-center justify-between gap-1.5 px-2 py-1 rounded text-[10px] border cursor-pointer transition-colors ${
+                                isGasFiltered
+                                  ? 'bg-cyan-950/80 border-cyan-400 text-cyan-100'
+                                  : 'bg-slate-950/70 hover:bg-slate-800/80 border-slate-800 text-slate-200'
+                              }`}
+                              title="Clic para filtrar trazabilidad de este gas"
+                            >
+                              <span className="font-bold truncate">{g.materialName.replace(/^GAS\s+/i, '').replace(/\s+TUBO$/i, '')}</span>
+                              <span className="font-mono text-[10px] shrink-0">
+                                <span className="text-emerald-300">{g.full}Ll</span>
+                                {' · '}
+                                <span className="text-rose-300">{g.empty}Vc</span>
+                                {g.withContractors > 0 && (
+                                  <span className="text-amber-300"> · {g.withContractors}Ob</span>
+                                )}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-2 pt-2 border-t border-slate-800/60 space-y-0.5 text-[10px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Total en Patio:</span>
+                      <span className="font-mono font-bold text-slate-200">{totalPatio} tubos</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-cyan-300 font-bold">Total Envases Empresa:</span>
+                      <span className="font-mono font-black text-cyan-200">{companyTotal} tubos</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="p-2 rounded-lg bg-rose-950/50 border border-rose-500/40">
-                  <span className="block text-[10px] text-rose-400 font-bold uppercase">Vacíos</span>
-                  <span className="text-xl font-black text-rose-300 font-mono">{empty}</span>
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
-                <span className="text-slate-400">Total Patio:</span>
-                <span className="font-mono font-bold text-white">{full + empty} tubos</span>
-              </div>
-            </div>
-          ))}
+              )
+            }
+          )}
         </div>
 
         {/* Matriz de Deuda de Tubos por Contratista */}
@@ -178,31 +277,83 @@ export default function PanolStockPanel({
                 <tr>
                   <th className="py-2.5 px-3">Contratista / Taller</th>
                   <th className="py-2.5 px-3 text-center">Tubos en Poder</th>
+                  <th className="py-2.5 px-3">Detalle por Gas / Marca y Recambios</th>
                   <th className="py-2.5 px-3">Estado de Retención</th>
                   <th className="py-2.5 px-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {Object.entries(gasStats.contractorDebts)
-                  .filter(([cName]) => !searchQuery.trim() || matchesUniversalSearch(cName, searchQuery))
+                  .filter(([cName, data]) => {
+                    if (!searchQuery.trim()) return true
+                    const searchable = [
+                      cName,
+                      ...(data.activeHoldings || []).map((h) => `${h.materialName} ${h.supplierName}`),
+                      ...(data.exchangesByBrand || []).map((ex) => `${ex.materialName} ${ex.deliveredSupplierName} ${ex.returnedSupplierName}`)
+                    ].join(' ')
+                    return matchesUniversalSearch(searchable, searchQuery)
+                  })
                   .map(([cName, data]) => {
                     const longHeld = gasStats.longHeldContractors.find((lh) => lh.contractor === cName)
+                    const activeHoldings = data.activeHoldings || []
+                    const exchangesByBrand = data.exchangesByBrand || []
                     return (
                       <tr key={cName} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-2.5 px-3 font-bold text-white flex items-center gap-2">
-                          <Building2 className="w-4 h-4 text-cyan-400" />
-                          <span><HighlightText text={cName} query={searchQuery} /></span>
+                        <td className="py-2.5 px-3 font-bold text-white align-middle">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                            <span><HighlightText text={cName} query={searchQuery} /></span>
+                          </div>
                         </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-black text-xs ${
-                              data.totalHeld > 0 ? 'bg-amber-950 text-amber-300 border border-amber-600' : 'text-slate-500'
-                            }`}
-                          >
-                            {data.totalHeld} tubos
-                          </span>
+                        <td className="py-2.5 px-3 text-center align-middle">
+                          <div className="inline-flex flex-col items-center gap-1">
+                            <span
+                              className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-black text-xs ${
+                                data.totalHeld > 0
+                                  ? 'bg-amber-950 text-amber-300 border border-amber-600'
+                                  : 'bg-slate-800/70 text-slate-400 border border-slate-700'
+                              }`}
+                            >
+                              {data.totalHeld} tubos
+                            </span>
+                            {data.exchangesCount > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-950/80 border border-sky-700/60 text-sky-300 font-bold text-[10px]"
+                                title="Recambio 1x1 mantiene deuda neta en +0 (trajo vacío y retiró lleno)"
+                              >
+                                🔄 {data.exchangesCount} recambio{data.exchangesCount === 1 ? '' : 's'} 1x1
+                              </span>
+                            )}
+                          </div>
                         </td>
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3 align-middle">
+                          <div className="flex flex-wrap gap-1.5">
+                            {activeHoldings.map((h) => (
+                              <span
+                                key={h.key}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/60 border border-amber-600/60 text-amber-200 text-[10px] font-bold"
+                              >
+                                <span className="font-mono text-amber-300">{h.qty}x</span>
+                                <span>{h.materialName}</span>
+                                <span className="text-amber-400">· {h.supplierName}</span>
+                              </span>
+                            ))}
+                            {exchangesByBrand.map((ex) => (
+                              <span
+                                key={ex.key}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-950/50 border border-sky-700/50 text-sky-200 text-[10px]"
+                              >
+                                <span className="font-mono font-bold text-sky-300">🔄 {ex.qty}x</span>
+                                <span className="font-semibold">{ex.materialName}:</span>
+                                <span>Ent. {ex.deliveredSupplierName} / Dev. {ex.returnedSupplierName}</span>
+                              </span>
+                            ))}
+                            {activeHoldings.length === 0 && exchangesByBrand.length === 0 && (
+                              <span className="text-slate-500 text-[11px]">Sin movimientos activos</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 align-middle">
                           {longHeld ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950 border border-rose-600 text-rose-300 font-bold text-[10px]">
                               <AlertTriangle className="w-3 h-3 text-rose-400" />
@@ -215,20 +366,33 @@ export default function PanolStockPanel({
                             </span>
                           )}
                         </td>
-                        <td className="py-2.5 px-3 text-center">
-                          {longHeld && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const msg = `Hola ${cName}, desde Pañol Alon Car te recordamos que poseen cilindros de gas con más de ${longHeld.days} días de retiro. Por favor coordinar recambio o devolución final para evitar cargos de alquiler. Muchas gracias.`
-                                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-                              }}
-                              className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-800 border border-rose-600 text-rose-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <MessageSquare className="w-3 h-3" />
-                              <span>Reclamar WhatsApp</span>
-                            </button>
-                          )}
+                        <td className="py-2.5 px-3 text-center align-middle">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            {data.totalHeld > 0 && onOpenGasFinalReturnModal && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenGasFinalReturnModal(cName)}
+                                className="px-2.5 py-1 rounded bg-amber-600/20 hover:bg-amber-600/35 border border-amber-500/70 text-amber-200 text-[10px] font-black inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Elegir y devolver tubo(s) vacío(s) en poder de este contratista"
+                              >
+                                <RotateCcw className="w-3 h-3 text-amber-300" />
+                                <span>Devolución Final</span>
+                              </button>
+                            )}
+                            {longHeld && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const msg = `Hola ${cName}, desde Pañol Alon Car te recordamos que poseen cilindros de gas con más de ${longHeld.days} días de retiro. Por favor coordinar recambio o devolución final para evitar cargos de alquiler. Muchas gracias.`
+                                  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+                                }}
+                                className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-800 border border-rose-600 text-rose-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <MessageSquare className="w-3 h-3" />
+                                <span>Reclamar WhatsApp</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -237,6 +401,25 @@ export default function PanolStockPanel({
             </table>
           </div>
         </div>
+
+        {/* Tabla Cronológica Completa de Trazabilidad (Gaseras + Contratistas) */}
+        <GasTraceabilityGrid
+          gasMovements={gasMovements}
+          setGasMovements={setGasMovements}
+          suppliers={suppliers}
+          materials={materials}
+          ships={ships}
+          workOrders={workOrders}
+          searchQuery={searchQuery}
+          filterSupplierId={traceSupplierFilter}
+          setFilterSupplierId={setTraceSupplierFilter}
+          filterMaterialId={traceMaterialFilter}
+          setFilterMaterialId={setTraceMaterialFilter}
+          isAdmin={isAdmin}
+          user={user}
+          showFeedback={showFeedback}
+          onOpenSupplierModal={onOpenGasSupplierModal}
+        />
       </div>
     )
   }

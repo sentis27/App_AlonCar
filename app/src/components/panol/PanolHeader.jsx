@@ -1,4 +1,4 @@
-import { Package, Plus, ExternalLink, FileSpreadsheet, Flame, Layers, Shield } from 'lucide-react'
+import { Package, Plus, ExternalLink, FileSpreadsheet, Flame, Layers, Shield, Truck } from 'lucide-react'
 
 export default function PanolHeader({
   activeTab,
@@ -8,6 +8,7 @@ export default function PanolHeader({
   onOpenWithdrawalModal,
   onOpenNewMaterialModal,
   onOpenGasModal,
+  onOpenGasSupplierModal = null,
   navigate
 }) {
   return (
@@ -131,14 +132,28 @@ export default function PanolHeader({
             </button>
           )}
           {activeTab === 'gases' && (
-            <button
-              type="button"
-              onClick={onOpenGasModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
-            >
-              <Flame className="w-4 h-4 stroke-[2.5]" />
-              <span>Movimiento de Tubos</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {onOpenGasSupplierModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenGasSupplierModal('')}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-cyan-500/20 cursor-pointer"
+                  title="Cargar Saldo Inicial, Ingresos por Remito o Devoluciones a Empresas Gaseras"
+                >
+                  <Truck className="w-4 h-4 stroke-[2.5]" />
+                  <span>+ Remito / Empresa Gasera</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onOpenGasModal}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
+                title="Registrar movimiento manual con contratista"
+              >
+                <Flame className="w-4 h-4 stroke-[2.5]" />
+                <span>Movimiento Contratista</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

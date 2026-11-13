@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Package,
   Plus,
@@ -12,144 +12,48 @@ import {
   ShoppingCart,
   Send,
   UserCheck,
+  UserPlus,
   Flame
 } from 'lucide-react'
-import { getContractorEnabledWos, evaluateAllocationState } from '../../lib/allocationEngine'
+import { getContractorEnabledWos, evaluateAllocationState, normalizeText } from '../../lib/allocationEngine'
+import {
+  isGasMaterial,
+  stripGasTagFromNotes,
+  parseGasInfoFromNotes,
+  findLinkedGasMovement
+} from '../../lib/panolConstants'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 import { WorkOrderScopeHoverCard } from '../workOrders/WorkOrderScopeHoverCard.jsx'
+import { MaterialAutocompleteInput } from './MaterialAutocompleteInput.jsx'
+import { GasDeliveryInlinePanel } from './GasDeliveryInlinePanel.jsx'
+import { GasFinalReturnModal } from './GasFinalReturnModal.jsx'
+import { GasSupplierMovementModal } from './GasSupplierMovementModal.jsx'
 import { supabase } from '../../lib/supabase'
 import {
   saveMultiWithdrawalService,
   saveInlineMaterialService,
   createDirectPurchaseOrderService,
   submitRequestOtService,
-  submitWorkerPermissionService
+  submitWorkerPermissionService,
+  registerGasFinalReturnService,
+  saveSupplierGasBatchService,
+  createQuickGasMaterialService,
+  saveContractorGasMovementService
 } from '../../lib/panolService'
 
 // ==============================================================================
-// 1. BUSCADOR INTELIGENTE DE MATERIALES (COMBOBOX PREDICTIVO)
+// 1. BUSCADOR INTELIGENTE DE MATERIALES (RE-EXPORT MODULAR)
 // ==============================================================================
-export function MaterialSearchInput({ materials, value, onChange }) {
-  const [query, setQuery] = useState('')
-  const [isOpen, setIsOpen] = useState(false)
-  const containerRef = useRef(null)
-
-  const selectedMat = useMemo(() => materials.find((m) => m.id === value), [materials, value])
-
-  const matches = useMemo(() => {
-    if (!query.trim()) return materials.slice(0, 30)
-    const q = query.toLowerCase().trim()
-    return materials
-      .filter((m) => (m.name || '').toLowerCase().includes(q) || (m.rubro || '').toLowerCase().includes(q))
-      .slice(0, 30)
-  }, [materials, query])
-
-  useEffect(() => {
-    const handleOutsideClick = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setIsOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
-  }, [])
-
-  return (
-    <div ref={containerRef} className="relative w-full font-sans">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
-            e.preventDefault()
-            setIsOpen(true)
-          }
-        }}
-        className="w-full px-2.5 py-1.5 rounded bg-slate-950 border border-slate-700 text-white cursor-pointer flex items-center justify-between hover:border-cyan-400 focus:outline-none focus:border-cyan-400 text-left"
-      >
-        <span className="truncate font-semibold text-xs">
-          {selectedMat ? selectedMat.name : <span className="text-slate-500">Buscar material por nombre o rubro (Enter)...</span>}
-        </span>
-        {selectedMat && (
-          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-emerald-400 font-mono font-bold ml-1 shrink-0">
-            Stock: {selectedMat.current_stock}
-          </span>
-        )}
-      </button>
-
-      {isOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-56 flex flex-col">
-          <div className="p-2 border-b border-slate-800 bg-slate-950">
-            <input
-              type="text"
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && matches.length > 0) {
-                  e.preventDefault()
-                  onChange(matches[0].id)
-                  setIsOpen(false)
-                }
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  setIsOpen(false)
-                }
-              }}
-              placeholder="Escribe 'elec', 'chapa', 'disco' y presiona Enter..."
-              className="w-full px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-400"
-            />
-          </div>
-
-          <div className="overflow-y-auto divide-y divide-slate-800/60 flex-1">
-            {matches.length === 0 ? (
-              <div className="p-3 text-center text-slate-500 text-xs">No se encontraron materiales coincidentes</div>
-            ) : (
-              matches.map((m) => (
-                <div
-                  key={m.id}
-                  onClick={() => {
-                    onChange(m.id)
-                    setIsOpen(false)
-                  }}
-                  className="p-2 hover:bg-slate-800/80 cursor-pointer flex items-center justify-between gap-2 transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    {m.image_url ? (
-                      <img src={m.image_url} alt="" className="w-6 h-6 rounded object-cover shrink-0 border border-slate-700" />
-                    ) : (
-                      <div className="w-6 h-6 rounded bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 shrink-0">
-                        <Package className="w-3.5 h-3.5" />
-                      </div>
-                    )}
-                    <div className="truncate">
-                      <span className="font-bold text-white text-xs block truncate">{m.name}</span>
-                      <span className="text-[10px] text-slate-400">{m.rubro || m.category}</span>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`font-mono font-bold text-xs shrink-0 ${
-                      m.current_stock <= 0 ? 'text-rose-400' : 'text-emerald-400'
-                    }`}
-                  >
-                    {m.current_stock} {m.unit_measure || 'un.'}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+export { MaterialAutocompleteInput as MaterialSearchInput }
 
 // ==============================================================================
 // 2. MODAL DE RETIRO MULTI-MATERIAL (CASCADA CANÓNICA Y EDICIÓN)
 // ==============================================================================
 export function MultiWithdrawalModal({
   materials,
+  suppliers = [],
+  gasStats = null,
+  gasMovements = [],
   ships,
   workOrders,
   workItems,
@@ -165,44 +69,87 @@ export function MultiWithdrawalModal({
   onClose,
   onSave
 }) {
+  const linkedGasMovement = useMemo(
+    () => (editingRow ? findLinkedGasMovement(editingRow, gasMovements) : null),
+    [editingRow, gasMovements]
+  )
+  const parsedGasNotes = useMemo(
+    () => (editingRow ? parseGasInfoFromNotes(editingRow.notes, suppliers) : null),
+    [editingRow, suppliers]
+  )
+
   const [shipId, setShipId] = useState(editingRow?.ship_id || '')
   const [contractorGroup, setContractorGroup] = useState(editingRow?.worker_name || editingRow?.contractor_name || '')
   const [workOrderId, setWorkOrderId] = useState(editingRow?.work_order_id || '')
-  const [isOtEmpty, setIsOtEmpty] = useState(!editingRow?.work_order_id)
+  const [isOtEmpty, setIsOtEmpty] = useState(Boolean(editingRow && !editingRow.work_order_id))
+  const [isExpandedContractors, setIsExpandedContractors] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [hoveredWo, setHoveredWo] = useState(null)
   const [date, setDate] = useState(
     editingRow?.transaction_date
       ? String(editingRow.transaction_date).split('T')[0]
       : new Date().toISOString().split('T')[0]
   )
-  const [notes, setNotes] = useState(editingRow?.notes || '')
+  const [notes, setNotes] = useState(() => (editingRow ? stripGasTagFromNotes(editingRow.notes || '') : ''))
 
-  const [items, setItems] = useState(
-    editingRow
-      ? [
-          {
-            material_id: editingRow.material_id || '',
-            quantity: editingRow.quantity_withdrawn || 1,
-            customCostCenter: editingRow.cost_center || '',
-            notes: ''
-          }
-        ]
-      : [
-          {
-            material_id: '',
-            quantity: 1,
-            customCostCenter: '',
-            notes: ''
-          }
-        ]
+  const [items, setItems] = useState(() => {
+    if (editingRow) {
+      return [
+        {
+          material_id: editingRow.material_id || '',
+          quantity: editingRow.quantity_withdrawn || 1,
+          customCostCenter: editingRow.cost_center || '',
+          notes: '',
+          gasOperationType: linkedGasMovement?.operation_type || parsedGasNotes?.gasOperationType || 'PRIMERA_ENTREGA',
+          supplierDeliveredId: linkedGasMovement?.supplier_delivered_id || parsedGasNotes?.supplierDeliveredId || '',
+          supplierReturnedId: linkedGasMovement?.supplier_returned_id || parsedGasNotes?.supplierReturnedId || ''
+        }
+      ]
+    }
+    return [
+      {
+        material_id: '',
+        quantity: 1,
+        customCostCenter: '',
+        notes: '',
+        gasOperationType: 'PRIMERA_ENTREGA',
+        supplierDeliveredId: '',
+        supplierReturnedId: ''
+      }
+    ]
+  })
+
+  const gasSuppliers = useMemo(() => {
+    const flagged = suppliers.filter((s) => s.is_gas_supplier)
+    return flagged.length > 0 ? flagged : suppliers
+  }, [suppliers])
+
+  const shipEnabled = useMemo(() => {
+    if (!shipId) return { astilleroWorkers, contractorGroups }
+    if (typeof getEnabledWorkersAndContractors === 'function') {
+      return getEnabledWorkersAndContractors(shipId, null, { strictShipFilter: true })
+    }
+    return { astilleroWorkers, contractorGroups }
+  }, [getEnabledWorkersAndContractors, shipId, astilleroWorkers, contractorGroups])
+
+  const shipEnabledAstSet = useMemo(
+    () => new Set(shipEnabled.astilleroWorkers.map((w) => normalizeText(w.name))),
+    [shipEnabled]
+  )
+  const shipEnabledCntSet = useMemo(
+    () => new Set(shipEnabled.contractorGroups.map((g) => normalizeText(g))),
+    [shipEnabled]
   )
 
   const enabled = useMemo(() => {
-    if (typeof getEnabledWorkersAndContractors === 'function') {
-      return getEnabledWorkersAndContractors(shipId, isOtEmpty ? null : workOrderId)
+    if (isExpandedContractors) {
+      return { astilleroWorkers, contractorGroups }
     }
-    return { astilleroWorkers, contractorGroups }
-  }, [getEnabledWorkersAndContractors, shipId, workOrderId, isOtEmpty, astilleroWorkers, contractorGroups])
+    if (shipId && !isOtEmpty && workOrderId && typeof getEnabledWorkersAndContractors === 'function') {
+      return getEnabledWorkersAndContractors(shipId, workOrderId, { strictShipFilter: true })
+    }
+    return shipEnabled
+  }, [isExpandedContractors, shipId, isOtEmpty, workOrderId, getEnabledWorkersAndContractors, shipEnabled, astilleroWorkers, contractorGroups])
 
   const availableWos = useMemo(() => {
     return getContractorEnabledWos(shipId, contractorGroup, workOrders, workItems, { astilleroWorkers, contractorGroups })
@@ -219,6 +166,13 @@ export function MultiWithdrawalModal({
     })
   }, [shipId, isOtEmpty, workOrderId, contractorGroup, availableWos, pendingAlerts])
 
+  const isSelectedContractorWithoutShipOt = Boolean(
+    shipId &&
+      contractorGroup &&
+      !shipEnabledAstSet.has(normalizeText(contractorGroup)) &&
+      !shipEnabledCntSet.has(normalizeText(contractorGroup))
+  )
+
   const handleAddItem = () => {
     setItems((prev) => [
       ...prev,
@@ -226,7 +180,10 @@ export function MultiWithdrawalModal({
         material_id: '',
         quantity: 1,
         customCostCenter: '',
-        notes: ''
+        notes: '',
+        gasOperationType: 'PRIMERA_ENTREGA',
+        supplierDeliveredId: '',
+        supplierReturnedId: ''
       }
     ])
   }
@@ -239,13 +196,24 @@ export function MultiWithdrawalModal({
   const handleItemChange = (index, field, value) => {
     setItems((prev) => {
       const next = [...prev]
-      next[index] = { ...next[index], [field]: value }
+      const current = { ...next[index], [field]: value }
+      if (field === 'material_id') {
+        const selectedMat = materials.find((m) => m.id === value)
+        if (isGasMaterial(selectedMat)) {
+          current.gasOperationType = current.gasOperationType || 'PRIMERA_ENTREGA'
+          current.supplierDeliveredId = current.supplierDeliveredId || ''
+          current.supplierReturnedId = current.supplierReturnedId || ''
+          current.quantity = Math.max(1, Math.round(Number(current.quantity) || 1))
+        }
+      }
+      next[index] = current
       return next
     })
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    if (isSubmitting) return
     if (!shipId) return alert('Debes seleccionar un Barco.')
     if (!contractorGroup) return alert('Debes seleccionar un Operario o Contratista.')
     if (!isOtEmpty && !workOrderId) return alert('Debes seleccionar una OT o marcar la casilla (⚠️ Sin OT).')
@@ -255,15 +223,34 @@ export function MultiWithdrawalModal({
       return alert('Debes cargar al menos un material válido con cantidad mayor a 0.')
     }
 
-    onSave({
-      shipId,
-      workOrderId: isOtEmpty ? null : workOrderId,
-      contractorGroup,
-      notes,
-      date,
-      items: validItems,
-      editId: editingRow?.id || null
-    })
+    for (const it of validItems) {
+      const mat = materials.find((m) => m.id === it.material_id)
+      if (isGasMaterial(mat)) {
+        const op = it.gasOperationType || 'PRIMERA_ENTREGA'
+        if (!it.supplierDeliveredId) {
+          return alert(`Seleccioná la Marca / Proveedor Entregada para "${mat.name}".`)
+        }
+        if (op === 'RECAMBIO_1X1' && !it.supplierReturnedId) {
+          return alert(`En Recambio 1x1 debés seleccionar la Marca / Proveedor Devuelta para "${mat.name}".`)
+        }
+      }
+    }
+
+    try {
+      setIsSubmitting(true)
+      await onSave({
+        shipId,
+        workOrderId: isOtEmpty ? null : workOrderId,
+        contractorGroup,
+        notes,
+        date,
+        items: validItems,
+        editId: editingRow?.id || null,
+        linkedGasMovement
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -313,6 +300,15 @@ export function MultiWithdrawalModal({
                       const newShipId = e.target.value
                       setShipId(newShipId)
                       setWorkOrderId('')
+                      setIsExpandedContractors(false)
+                      setIsOtEmpty(false)
+                      if (contractorGroup && newShipId && typeof getEnabledWorkersAndContractors === 'function') {
+                        const newEnabled = getEnabledWorkersAndContractors(newShipId, null, { strictShipFilter: true })
+                        const stillValid =
+                          newEnabled.astilleroWorkers.some((w) => normalizeText(w.name) === normalizeText(contractorGroup)) ||
+                          newEnabled.contractorGroups.some((g) => normalizeText(g) === normalizeText(contractorGroup))
+                        if (!stillValid) setContractorGroup('')
+                      }
                     }}
                     required
                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
@@ -328,49 +324,125 @@ export function MultiWithdrawalModal({
 
                 {/* Paso 2: Operario / Contratista */}
                 <div>
-                  <label className="block text-slate-300 font-bold text-[11px] mb-1">
-                    2° Operario / Contratista <span className="text-rose-400">*</span>
-                  </label>
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <label className="text-slate-300 font-bold text-[11px] truncate">
+                      2° Operario / Contratista <span className="text-rose-400">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => onRequestWorkerPermission && onRequestWorkerPermission()}
+                      title={`Si el operario no figura en la lista porque no tiene permiso (P), enviá solicitud a Jorge Sentis (${unauthorizedWorkers.length} pendientes de permiso).`}
+                      className="px-1.5 py-0.5 rounded bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 font-bold text-[10px] flex items-center gap-1 cursor-pointer shrink-0 transition-colors"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      <span>Solicitar Alta</span>
+                    </button>
+                  </div>
                   <select
                     value={contractorGroup}
                     onChange={(e) => {
                       const val = e.target.value
+                      if (val === '__EXPANDIR_CONTRATISTAS__') {
+                        setIsExpandedContractors(true)
+                        return
+                      }
+                      if (val === '__CONTRAER_CONTRATISTAS__') {
+                        setIsExpandedContractors(false)
+                        return
+                      }
                       if (val === '__SOLICITAR_APERTURA_OT__') {
-                        onRequestOt && onRequestOt(shipId, contractorGroup || '')
+                        if (onRequestOt) onRequestOt(shipId, contractorGroup || '')
                         return
                       }
                       if (val === '__SOLICITAR_HABILITACION_OPERARIO__') {
-                        onRequestWorkerPermission && onRequestWorkerPermission()
+                        if (onRequestWorkerPermission) onRequestWorkerPermission()
                         return
                       }
                       setContractorGroup(val)
+                      if (!val) {
+                        setWorkOrderId('')
+                        return
+                      }
+                      if (shipId) {
+                        const wosForWorker = getContractorEnabledWos(shipId, val, workOrders, workItems, {
+                          astilleroWorkers,
+                          contractorGroups
+                        })
+                        if (wosForWorker.length === 0) {
+                          setIsOtEmpty(true)
+                          setWorkOrderId('')
+                        } else {
+                          setIsOtEmpty(false)
+                          if (workOrderId && !wosForWorker.some((w) => String(w.id) === String(workOrderId))) {
+                            setWorkOrderId('')
+                          }
+                        }
+                      }
                     }}
                     required
                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-cyan-400 font-black focus:outline-none focus:border-cyan-400"
                   >
-                    <option value="">-- Seleccionar Operario / Contratista --</option>
+                    <option value="">
+                      {shipId && !isExpandedContractors
+                        ? `-- Habilitados en Barco (${enabled.astilleroWorkers.length + enabled.contractorGroups.length}) --`
+                        : '-- Seleccionar Operario / Contratista --'}
+                    </option>
+                    {shipId && !isExpandedContractors && enabled.astilleroWorkers.length === 0 && enabled.contractorGroups.length === 0 && (
+                      <option value="" disabled className="text-amber-400 bg-slate-900">
+                        ⚠️ Sin contratistas con OT activa en este barco (usá 🔓 Expandir)
+                      </option>
+                    )}
                     {contractorGroup &&
-                      !enabled.astilleroWorkers.some((w) => w.name === contractorGroup) &&
-                      !enabled.contractorGroups.some((g) => g === contractorGroup) && (
+                      !enabled.astilleroWorkers.some((w) => normalizeText(w.name) === normalizeText(contractorGroup)) &&
+                      !enabled.contractorGroups.some((g) => normalizeText(g) === normalizeText(contractorGroup)) && (
                         <option value={contractorGroup}>{contractorGroup} (Actual)</option>
                       )}
                     {enabled.astilleroWorkers.length > 0 && (
-                      <optgroup label={`⭐ Personal Astillero (${enabled.astilleroWorkers.length})`}>
-                        {enabled.astilleroWorkers.map((w) => (
-                          <option key={`m_ast_${w.id || w.name}`} value={w.name}>
-                            {w.name}
-                          </option>
-                        ))}
+                      <optgroup
+                        label={
+                          isExpandedContractors
+                            ? `⭐ Personal Astillero Completo (${enabled.astilleroWorkers.length})`
+                            : `⭐ Personal Astillero Habilitado (${enabled.astilleroWorkers.length})`
+                        }
+                      >
+                        {enabled.astilleroWorkers.map((w) => {
+                          const hasShipOt = !shipId || shipEnabledAstSet.has(normalizeText(w.name))
+                          return (
+                            <option key={`m_ast_${w.id || w.name}`} value={w.name}>
+                              {w.name}{isExpandedContractors && !hasShipOt ? ' (Sin OT en barco)' : ''}
+                            </option>
+                          )
+                        })}
                       </optgroup>
                     )}
                     {enabled.contractorGroups.length > 0 && (
-                      <optgroup label={`🏗️ Contratistas (${enabled.contractorGroups.length})`}>
-                        {enabled.contractorGroups.map((grp) => (
-                          <option key={`m_cnt_${grp}`} value={grp}>
-                            {grp}
-                          </option>
-                        ))}
+                      <optgroup
+                        label={
+                          isExpandedContractors
+                            ? `🏗️ Todos los Contratistas (${enabled.contractorGroups.length})`
+                            : `🏗️ Contratistas Habilitados en Barco (${enabled.contractorGroups.length})`
+                        }
+                      >
+                        {enabled.contractorGroups.map((grp) => {
+                          const hasShipOt = !shipId || shipEnabledCntSet.has(normalizeText(grp))
+                          return (
+                            <option key={`m_cnt_${grp}`} value={grp}>
+                              {grp}{isExpandedContractors && !hasShipOt ? ' (Sin OT en barco)' : ''}
+                            </option>
+                          )
+                        })}
                       </optgroup>
+                    )}
+                    {shipId && !isExpandedContractors && (
+                      <option value="__EXPANDIR_CONTRATISTAS__" className="text-amber-300 font-bold bg-slate-900">
+                        🔓 Expandir (Ver totalidad de operarios y contratistas)...
+                      </option>
+                    )}
+                    {shipId && isExpandedContractors && (
+                      <option value="__CONTRAER_CONTRATISTAS__" className="text-sky-300 font-bold bg-slate-900">
+                        🔒 Contraer (Solo habilitados del barco)
+                      </option>
                     )}
                     <option
                       value="__SOLICITAR_APERTURA_OT__"
@@ -391,7 +463,10 @@ export function MultiWithdrawalModal({
                     <label className="text-slate-300 font-bold text-[11px]">
                       3° Orden de Trabajo (OT) <span className="text-rose-400">*</span>
                     </label>
-                    <label className="flex items-center gap-1 cursor-pointer text-[10px] text-amber-400">
+                    <label
+                      className="flex items-center gap-1 cursor-pointer text-[10px] text-amber-400"
+                      title="Por defecto destildada. Se tilda automáticamente si elegís un contratista expandido sin OT en este barco."
+                    >
                       <input
                         type="checkbox"
                         tabIndex={-1}
@@ -415,11 +490,11 @@ export function MultiWithdrawalModal({
                       } else {
                         setIsOtEmpty(false)
                       }
-                      if (contractorGroup && typeof getEnabledWorkersAndContractors === 'function') {
+                      if (contractorGroup && newWoId && typeof getEnabledWorkersAndContractors === 'function') {
                         const newEnabled = getEnabledWorkersAndContractors(shipId, newWoId)
                         const isValid =
-                          newEnabled.astilleroWorkers.some((w) => w.name.toUpperCase() === contractorGroup.toUpperCase()) ||
-                          newEnabled.contractorGroups.some((g) => g.toUpperCase() === contractorGroup.toUpperCase())
+                          newEnabled.astilleroWorkers.some((w) => normalizeText(w.name) === normalizeText(contractorGroup)) ||
+                          newEnabled.contractorGroups.some((g) => normalizeText(g) === normalizeText(contractorGroup))
                         if (!isValid) setContractorGroup('')
                       }
                     }}
@@ -449,7 +524,31 @@ export function MultiWithdrawalModal({
                 />
               )}
 
-              {/* Inconsistencia OT */}
+              {/* Aviso automático cuando se eligió un contratista de lista Expandida sin OT en el barco */}
+              {isSelectedContractorWithoutShipOt && isOtEmpty && (
+                <div className="p-2 rounded-xl bg-amber-950/40 border border-amber-600/60 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-amber-200 font-semibold text-[11px]">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>
+                      <strong>{contractorGroup}</strong> no está habilitado en OTs de este buque (lista expandida): se tildó{' '}
+                      <strong>(⚠️ Sin OT)</strong> automáticamente.
+                    </span>
+                  </div>
+                  {!allocState.isOtRequestPending && (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => onRequestOt && onRequestOt(shipId, contractorGroup)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-[10px] cursor-pointer flex items-center gap-1 shrink-0"
+                    >
+                      <Plus className="w-3 h-3 stroke-[3]" />
+                      <span>Solicitar OT a Admin</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Inconsistencia OT cuando destildan Sin OT sin tener OT disponible */}
               {shipId && contractorGroup && availableWos.length === 0 && !isOtEmpty && (
                 <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-800/80 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-rose-300 font-semibold text-[11px]">
@@ -498,9 +597,10 @@ export function MultiWithdrawalModal({
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[36vh] overflow-y-auto pr-1">
                 {items.map((item, idx) => {
                   const mat = materials.find((m) => m.id === item.material_id)
+                  const rowIsGas = isGasMaterial(mat)
                   let autoCostCenter = 'CLIENTE'
                   if (mat?.category === 'CONSUMIBLES' || mat?.category === 'ELEM.SEGURIDAD') {
                     autoCostCenter = 'CLIENTE'
@@ -510,67 +610,81 @@ export function MultiWithdrawalModal({
                   return (
                     <div
                       key={idx}
-                      className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-center gap-2.5"
+                      className={`p-2 rounded-lg bg-slate-900 border ${
+                        rowIsGas ? 'border-amber-500/50' : 'border-slate-800'
+                      }`}
                     >
-                      <span className="text-slate-500 font-mono text-xs w-5 shrink-0 text-center">#{idx + 1}</span>
+                      <div className="flex flex-col md:flex-row items-center gap-2.5">
+                        <span className="text-slate-500 font-mono text-xs w-5 shrink-0 text-center">#{idx + 1}</span>
 
-                      <div className="flex-1 w-full min-w-[220px]">
-                        <MaterialSearchInput
-                          materials={materials}
-                          value={item.material_id}
-                          onChange={(mId) => handleItemChange(idx, 'material_id', mId)}
-                        />
-                      </div>
+                        <div className="flex-1 w-full min-w-[240px]">
+                          <MaterialAutocompleteInput
+                            materials={materials}
+                            value={item.material_id}
+                            onChange={(mId) => handleItemChange(idx, 'material_id', mId)}
+                          />
+                        </div>
 
-                      <div className="w-28 shrink-0 flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          min="0.1"
-                          step="any"
-                          placeholder="Cant."
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                          required
-                          className="w-16 px-2 py-1.5 rounded bg-slate-950 border border-slate-700 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-400"
-                        />
-                        <span className="text-[10px] text-slate-400 font-semibold truncate">
-                          {mat?.unit_measure || 'un.'}
-                        </span>
-                      </div>
+                        <div className="w-28 shrink-0 flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={rowIsGas ? '1' : '0.1'}
+                            step={rowIsGas ? '1' : 'any'}
+                            placeholder="Cant."
+                            value={item.quantity}
+                            onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                            required
+                            className="w-16 px-2 py-1.5 rounded bg-slate-950 border border-slate-700 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-400"
+                          />
+                          <span className="text-[10px] text-slate-400 font-semibold truncate">
+                            {mat?.unit_measure || 'un.'}
+                          </span>
+                        </div>
 
-                      <div className="w-20 shrink-0 text-center font-mono text-slate-400 text-[11px]">
-                        <span className="block font-bold text-slate-200">{weightRow} kg</span>
-                        <span className="text-[9px] text-slate-500">({mat?.weight_kg || 0} c/u)</span>
-                      </div>
+                        <div className="w-20 shrink-0 text-center font-mono text-slate-400 text-[11px]">
+                          <span className="block font-bold text-slate-200">{weightRow} kg</span>
+                          <span className="text-[9px] text-slate-500">({mat?.weight_kg || 0} c/u)</span>
+                        </div>
 
-                      <div className="w-28 shrink-0">
-                        <select
-                          value={item.customCostCenter || autoCostCenter}
-                          disabled={!isAdmin}
-                          onChange={(e) => handleItemChange(idx, 'customCostCenter', e.target.value)}
-                          className={`w-full px-2 py-1.5 rounded text-[11px] font-bold border ${
-                            !isAdmin
-                              ? 'bg-slate-950 border-slate-800 text-cyan-400 opacity-90 cursor-not-allowed'
-                              : 'bg-slate-950 border-cyan-500 text-cyan-300'
+                        <div className="w-28 shrink-0">
+                          <select
+                            value={item.customCostCenter || autoCostCenter}
+                            disabled={!isAdmin}
+                            onChange={(e) => handleItemChange(idx, 'customCostCenter', e.target.value)}
+                            className={`w-full px-2 py-1.5 rounded text-[11px] font-bold border ${
+                              !isAdmin
+                                ? 'bg-slate-950 border-slate-800 text-cyan-400 opacity-90 cursor-not-allowed'
+                                : 'bg-slate-950 border-cyan-500 text-cyan-300'
+                            }`}
+                            title={!isAdmin ? 'Deducido automáticamente (Solo Admin puede modificar)' : 'Centro de Costo'}
+                          >
+                            <option value="CLIENTE">CLIENTE</option>
+                            <option value="CONTRATISTA">CONTRATISTA</option>
+                          </select>
+                        </div>
+
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          disabled={items.length <= 1}
+                          onClick={() => handleRemoveItem(idx)}
+                          className={`p-1.5 rounded hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition-colors shrink-0 ${
+                            items.length <= 1 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
                           }`}
-                          title={!isAdmin ? 'Deducido automáticamente (Solo Admin puede modificar)' : 'Centro de Costo'}
                         >
-                          <option value="CLIENTE">CLIENTE</option>
-                          <option value="CONTRATISTA">CONTRATISTA</option>
-                        </select>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
 
-                      <button
-                        type="button"
-                        tabIndex={-1}
-                        disabled={items.length <= 1}
-                        onClick={() => handleRemoveItem(idx)}
-                        className={`p-1.5 rounded hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition-colors shrink-0 ${
-                          items.length <= 1 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
-                        }`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {rowIsGas && (
+                        <GasDeliveryInlinePanel
+                          item={item}
+                          gasSuppliers={gasSuppliers}
+                          gasStats={gasStats}
+                          contractorGroup={contractorGroup}
+                          onChangeField={(field, val) => handleItemChange(idx, field, val)}
+                        />
+                      )}
                     </div>
                   )
                 })}
@@ -612,16 +726,24 @@ export function MultiWithdrawalModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer"
+              disabled={isSubmitting}
+              className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-600/30 cursor-pointer flex items-center gap-1.5"
+              disabled={isSubmitting}
+              className="px-5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-600/30 cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait"
             >
               <Check className="w-4 h-4 stroke-[3]" />
-              <span>{editingRow ? 'Guardar Cambios' : `Confirmar Retiro (${items.length} materiales)`}</span>
+              <span>
+                {isSubmitting
+                  ? 'Guardando...'
+                  : editingRow
+                  ? 'Guardar Cambios'
+                  : `Confirmar Retiro (${items.length} materiales)`}
+              </span>
             </button>
           </div>
         </form>
@@ -1367,6 +1489,19 @@ export function WorkerPermissionModal({
   onClose,
   onSubmit
 }) {
+  const [searchTerm, setSearchTerm] = useState('')
+  const filteredWorkers = useMemo(() => {
+    const q = normalizeText(searchTerm)
+    if (!q) return unauthorizedWorkers
+    return unauthorizedWorkers.filter(
+      (w) =>
+        normalizeText(w.name).includes(q) ||
+        normalizeText(w.trade).includes(q) ||
+        normalizeText(w.admin_center).includes(q) ||
+        normalizeText(w.work_group).includes(q)
+    )
+  }, [unauthorizedWorkers, searchTerm])
+
   if (!isOpen) return null
 
   return (
@@ -1387,22 +1522,31 @@ export function WorkerPermissionModal({
         </div>
 
         <p className="text-xs text-slate-300 leading-relaxed">
-          El operario seleccionado no cuenta actualmente con el permiso de retiro de materiales en Pañol (<strong>P</strong>).
-          Al enviar esta solicitud, <strong>Jorge Sentis (Administrador)</strong> podrá habilitarlo formalmente en el Padrón de Personal.
+          La persona seleccionada no cuenta con permiso de retiro de materiales en Pañol (<strong>P</strong>).
+          Al enviar esta solicitud, <strong>Jorge Sentis (Administrador)</strong> recibirá una alerta para habilitarlo en el Padrón de Personal.
         </p>
 
         <div className="space-y-3 text-xs">
           <div>
-            <label className="block text-[11px] font-bold text-slate-300 mb-1">Operario sin Permiso</label>
+            <label className="block text-[11px] font-bold text-slate-300 mb-1">
+              Buscar Operario o Contratista sin Permiso ({filteredWorkers.length} de {unauthorizedWorkers.length})
+            </label>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Filtrar por nombre, empresa o rubro..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white mb-2 focus:outline-none focus:border-cyan-400"
+            />
             <select
               value={workerId}
               onChange={(e) => onChangeWorkerId(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-cyan-400 font-bold focus:outline-none focus:border-cyan-400"
             >
-              <option value="">-- Seleccionar Operario a Habilitar --</option>
-              {unauthorizedWorkers.map((w) => (
+              <option value="">-- Seleccionar Operario / Contratista a Habilitar --</option>
+              {filteredWorkers.map((w) => (
                 <option key={`unauth_${w.id}`} value={w.id}>
-                  {w.name} ({w.trade || 'General'} - {w.admin_center || 'Astillero'})
+                  {w.name} ({w.admin_center || 'Astillero'}{w.work_group && w.work_group !== w.name ? ` · ${w.work_group}` : ''}{w.trade ? ` - ${w.trade}` : ''})
                 </option>
               ))}
             </select>
@@ -1474,6 +1618,10 @@ export function PanolModalsContainer({
   setShowStockAdjustModal,
   showGasModal,
   setShowGasModal,
+  gasFinalReturnModal,
+  setGasFinalReturnModal,
+  gasSupplierModal,
+  setGasSupplierModal,
   quickPurchaseModal,
   setQuickPurchaseModal,
   requestOtModal,
@@ -1485,7 +1633,9 @@ export function PanolModalsContainer({
   materials,
   setMaterials,
   setInventoryTx,
+  gasMovements = [],
   setGasMovements,
+  gasStats = null,
   ships,
   workOrders,
   workItems,
@@ -1504,12 +1654,42 @@ export function PanolModalsContainer({
 }) {
   const handleSaveMultiWithdrawal = async (payload) => {
     try {
-      const res = await saveMultiWithdrawalService({ ...payload, materials, astilleroWorkers, user })
+      const res = await saveMultiWithdrawalService({
+        ...payload,
+        originalTx: editingWithdrawalRow,
+        gasMovements,
+        materials,
+        suppliers,
+        ships,
+        astilleroWorkers,
+        user
+      })
       if (res.isEdit) {
         setInventoryTx((prev) => prev.map((t) => (t.id === payload.editId ? { ...t, ...res.updates } : t)))
+        if (res.matUpdates?.length > 0) {
+          setMaterials((prev) => prev.map((m) => {
+            const upd = res.matUpdates.find((u) => u.id === m.id)
+            return upd ? { ...m, current_stock: upd.newStock } : m
+          }))
+        }
+        if (setGasMovements) {
+          setGasMovements((prev) => {
+            let next = prev
+            if (res.deletedGasMovementId) {
+              next = next.filter((g) => g.id !== res.deletedGasMovementId)
+            }
+            if (res.updatedGasMovement) {
+              next = next.map((g) => (g.id === res.updatedGasMovement.id ? res.updatedGasMovement : g))
+            }
+            if (res.createdGasMovements?.length > 0) {
+              next = [...res.createdGasMovements, ...next]
+            }
+            return next
+          })
+        }
         setShowWithdrawalModal(false)
         setEditingWithdrawalRow(null)
-        showFeedback('success', 'Fila modificada con éxito.')
+        showFeedback('success', 'Fila modificada y sincronizada con éxito.')
         return
       }
       setInventoryTx((prev) => [...res.createdTxs, ...prev])
@@ -1517,7 +1697,13 @@ export function PanolModalsContainer({
         const upd = res.matUpdates.find((u) => u.id === m.id)
         return upd ? { ...m, current_stock: upd.newStock } : m
       }))
-      showFeedback('success', `Retiro confirmado: ${res.createdTxs.length} insumos registrados.`)
+      if (res.createdGasMovements?.length > 0 && setGasMovements) {
+        setGasMovements((prev) => [...res.createdGasMovements, ...prev])
+      }
+      const gasMsg = res.createdGasMovements?.length > 0
+        ? ` (+ ${res.createdGasMovements.length} mov. en Control de Gases)`
+        : ''
+      showFeedback('success', `Retiro confirmado: ${res.createdTxs.length} insumos registrados${gasMsg}.`)
       setShowWithdrawalModal(false)
     } catch (err) {
       showFeedback('error', 'Error registrando retiro: ' + err.message)
@@ -1549,13 +1735,66 @@ export function PanolModalsContainer({
 
   const handleSaveGasMovement = async (gasData) => {
     try {
-      const { data, error } = await supabase.from('gas_cylinder_movements').insert([gasData]).select().single()
-      if (error) throw error
+      const data = await saveContractorGasMovementService({ gasData, user })
       if (setGasMovements) setGasMovements((prev) => [data, ...prev])
-      showFeedback('success', 'Movimiento de gas registrado correctamente.')
+      showFeedback('success', 'Movimiento de gas registrado y auditado correctamente.')
       setShowGasModal({ isOpen: false, operationType: 'PRIMERA_ENTREGA' })
     } catch (e) {
       showFeedback('error', 'Error en movimiento de tubos: ' + e.message)
+    }
+  }
+
+  const handleConfirmGasSupplierModal = async (payload) => {
+    try {
+      const created = await saveSupplierGasBatchService({
+        ...payload,
+        suppliers,
+        materials,
+        user
+      })
+      if (created?.length > 0 && setGasMovements) {
+        setGasMovements((prev) => [...created, ...prev])
+      }
+      const supName = suppliers.find((s) => s.id === payload.supplierId)?.name || 'Gasera'
+      showFeedback(
+        'success',
+        `Remito / Movimiento registrado con ${supName}: ${created.length} renglón(es) en Trazabilidad.`
+      )
+      if (setGasSupplierModal) {
+        setGasSupplierModal({ isOpen: false, supplierId: '' })
+      }
+    } catch (e) {
+      showFeedback('error', 'Error registrando movimiento con empresa gasera: ' + e.message)
+    }
+  }
+
+  const handleCreateQuickGas = async (rawName) => {
+    try {
+      const created = await createQuickGasMaterialService({ name: rawName, user })
+      if (created?.id) {
+        setMaterials((prev) => (prev.some((m) => m.id === created.id) ? prev : [...prev, created]))
+        showFeedback('success', `Tipo de gas "${created.name}" agregado al Catálogo B.D (Stock 0).`)
+      }
+      return created
+    } catch (e) {
+      showFeedback('error', 'Error creando tipo de gas: ' + e.message)
+      return null
+    }
+  }
+
+  const handleConfirmGasFinalReturn = async (payload) => {
+    try {
+      const created = await registerGasFinalReturnService({ ...payload, user })
+      if (created?.length > 0 && setGasMovements) {
+        setGasMovements((prev) => [...created, ...prev])
+      }
+      const totalQty = (created || []).reduce((acc, row) => acc + (Number(row.quantity) || 0), 0)
+      showFeedback('success', `Devolución Final registrada: ${totalQty} tubo(s) devuelto(s) a patio.`)
+      if (setGasFinalReturnModal) {
+        setGasFinalReturnModal({ isOpen: false, contractorName: '' })
+      }
+    } catch (e) {
+      showFeedback('error', 'Error registrando devolución final: ' + e.message)
     }
   }
 
@@ -1583,9 +1822,9 @@ export function PanolModalsContainer({
 
   const handleSubmitWorkerPermission = async () => {
     try {
-      await submitWorkerPermissionService({ workerPermissionModal, workers })
+      await submitWorkerPermissionService({ workerPermissionModal, workers, user })
       setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })
-      showFeedback('success', '🔔 Solicitud enviada para habilitar operario en Pañol.')
+      showFeedback('success', '🔔 Alerta enviada a Jorge Sentis para habilitar operario en Pañol.')
       const { data: updatedAlerts } = await supabase.from('compliance_alerts').select('*').eq('status', 'PENDIENTE')
       if (updatedAlerts && setPendingAlerts) setPendingAlerts(updatedAlerts)
     } catch (e) {
@@ -1597,7 +1836,11 @@ export function PanolModalsContainer({
     <>
       {showWithdrawalModal && (
         <MultiWithdrawalModal
+          key={editingWithdrawalRow?.id || 'new-withdrawal'}
           materials={materials}
+          suppliers={suppliers}
+          gasStats={gasStats}
+          gasMovements={gasMovements}
           ships={ships}
           workOrders={workOrders}
           workItems={workItems}
@@ -1642,13 +1885,39 @@ export function PanolModalsContainer({
       {showGasModal.isOpen && (
         <GasMovementModal
           operationType={showGasModal.operationType}
-          materials={materials.filter((m) => m.rubro === 'GASES' || m.category === 'GASES' || m.name?.toUpperCase().includes('GAS') || m.name?.toUpperCase().includes('OXIGENO'))}
+          materials={materials.filter((m) => isGasMaterial(m))}
           suppliers={suppliers.filter((s) => s.is_gas_supplier)}
           ships={ships}
           workOrders={workOrders}
           workers={workers}
           onClose={() => setShowGasModal({ isOpen: false, operationType: 'PRIMERA_ENTREGA' })}
           onSave={handleSaveGasMovement}
+        />
+      )}
+
+      {gasFinalReturnModal?.isOpen && (
+        <GasFinalReturnModal
+          key={gasFinalReturnModal.contractorName}
+          isOpen={gasFinalReturnModal.isOpen}
+          contractorName={gasFinalReturnModal.contractorName}
+          contractorData={gasStats?.contractorDebts?.[gasFinalReturnModal.contractorName] || null}
+          ships={ships}
+          onClose={() => setGasFinalReturnModal({ isOpen: false, contractorName: '' })}
+          onConfirm={handleConfirmGasFinalReturn}
+        />
+      )}
+
+      {gasSupplierModal?.isOpen && (
+        <GasSupplierMovementModal
+          key={gasSupplierModal.supplierId || 'gas-supplier-new'}
+          isOpen={gasSupplierModal.isOpen}
+          initialSupplierId={gasSupplierModal.supplierId || ''}
+          suppliers={suppliers.filter((s) => s.is_gas_supplier)}
+          materials={materials.filter((m) => isGasMaterial(m))}
+          gasStats={gasStats}
+          onClose={() => setGasSupplierModal({ isOpen: false, supplierId: '' })}
+          onConfirm={handleConfirmGasSupplierModal}
+          onCreateQuickGas={handleCreateQuickGas}
         />
       )}
 
