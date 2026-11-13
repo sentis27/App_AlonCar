@@ -23,16 +23,18 @@
 Cualquier cambio que el usuario solicite aplicar a un arquetipo se define **aquí una sola vez** y se implementa en los componentes canónicos correspondientes, propagándose al 100% de los módulos y submódulos que lo heredan.
 
 ### 🐓 A. ARQUETIPO: `CARGA_EDICION` (Transaccional / Gallo)
-* **Definición:** Pantallas y submódulos de carga, modificación in-situ o por modal, pegado masivo, duplicación o eliminación de registros.
-* **Kit de Herramientas Canónicas Heredadas (Obligatorio en el 100% de las pantallas y pestañas de este tipo):**
-  1. `KpiRadar.jsx` ➔ Zona 2 (Radar cromático con filtrado instantáneo por clic).
-  2. `CrawlerSearchBar.jsx` + `searchEngine.js` ➔ Zona 3 (Buscador omnicanal con atajos `Ctrl+F` / `Esc`, pulso crawler, indexación de texto y valores numéricos/decimales).
-  3. `GridRibbon.jsx` + `exportEngine.js` ➔ Zona 4.A (Cinta con `[⚡ MODO PLANILLA]`, controles Deshacer/Rehacer `Ctrl+Z`/`Ctrl+Y`, botón `[+ Insertar Fila]`, y `[📥 Exportar CSV/Excel]`).
-  4. **Columna 0 Interactiva (`#` + Checkbox) & Thead Sticky con `✎`** ➔ Zona 4.B (Columna 0 con selector maestro en cabecera y número de fila + casilla por registro; toda columna editable DEBE llevar el glifo `✎`).
-  5. **Disparadores Modales Canónicos** ➔ `ShipWorkOrderPickerModal.jsx` (doble clic Buque/OT), `ContractorPickerModal.jsx` (doble clic Contratista), Lápiz `✏️` (modal de fila).
-  6. `GridStatusBarBottom.jsx` ➔ Zona 5 (Barra flotante fija con Badge `[⚠️ Filtro Activo (X de Y) [✕ Limpiar Todo]]` + matemática en vivo: `RECUENTO`, `Σ SUMA`, `Ø PROM`).
-  7. `useSpreadsheetGrid.js` + `GridContextMenu.jsx` ➔ Navegación por coordenadas (`Tab`, `Enter`, flechas), Pegado Matricial 2D (`Ctrl+V` desde Excel/Sheets), Selección de Filas y Menú Contextual (clic derecho) con Copiar, Pegar, Insertar, Eliminar y **"Ver Historial de Cambios"**.
-  8. **Vínculo Obligatorio con Trazabilidad (`auditService.js` ➔ `audit_logs`)** ➔ **TODA** celda editada, fila creada, pegado masivo o baja en cualquier submódulo `CARGA_EDICION` DEBE registrar automáticamente su evento en la tabla `audit_logs`.
+* **Definición:** Pantallas y submódulos de carga, modificación in-situ o por modal, pegado masivo, duplicación o eliminación de registros. Referencia canónica indiscutible: `app/src/pages/Compras.jsx`.
+* **Prohibición de Tablas Estándar:** Prohibido crear pantallas con `<table>` estándar o estilos aislados; toda planilla usa obligatoriamente `app/src/hooks/useSpreadsheetGrid.js` y modifica mejoras transversales únicamente en el motor o componente canónico.
+* **Kit de Herramientas Canónicas Heredadas (Obligatorio en el 100% de las pantallas y pestañas de este tipo; prohibido duplicar en páginas):**
+  1. `KpiRadar.jsx` ➔ **Zona 2 (`.alon-zone-kpis`, `amber-400`):** Radar cromático con bordes/fondos únicos por tarjeta (nunca bordes grises inactivos), encabezado `📊 RADAR DE KPIS Y ALERTAS OPERATIVAS • Clic en cualquier tarjeta para filtrar` y filtro por clic. Prohibido usar la palabra "Filtrar".
+  2. `CrawlerSearchBar.jsx` + `searchEngine.js` ➔ **Zona 3 (`.alon-zone-toolbar`, `cyan-400`):** Buscador omnicanal con atajos `Ctrl+F` / `Esc`, botón `[↩ Deshacer (Ctrl+Z)]`, pulso crawler e indexación de texto y valores numéricos/decimales.
+  3. `GridRibbon.jsx` + `exportEngine.js` ➔ **Zona 4 (`.alon-zone-grid`, borde superior `emerald-400`):** Cinta con coordenadas GPS (`Navigation`), `[⚡ MODO PLANILLA]`, cálculos en vivo (Suma, Promedio, Recuento), Deshacer/Rehacer (`Ctrl+Z`/`Ctrl+Y`), `[+ Insertar Fila en #N]` y `[📥 Exportar]`.
+  4. **Columna 0 Canónica (`#` + Checkbox) & Thead Sticky (`.alon-grid-thead`) con `✎`** ➔ Ancho fijo `w-8`/`w-10`: en `thead` checkbox maestro apilado sobre `#`; en `tbody` checkbox individual + botón `#` interactivo con resaltado corporativo `bg-cyan-950/30` al seleccionarse; toda columna editable lleva glifo `✎`.
+  5. **Disparadores Modales Canónicos** ➔ `ShipWorkOrderPickerModal.jsx` (doble clic Buque/Destino/OT), `ContractorPickerModal.jsx` (doble clic Contratista/Persona), Lápiz `✏️` (modal de fila).
+  6. `GridStatusBarBottom.jsx` ➔ **Zona 5:** Barra flotante con Badge `[⚠️ Filtro Activo (X de Y) [✕ Limpiar Todo]]`, agregaciones dinámicas (`RECUENTO`, `Σ SUMA`, `Ø PROM`) y acciones masivas al seleccionar filas (`selectedRowIds.size > 0`).
+  7. `useSpreadsheetGrid.js` + `GridContextMenu.jsx` ➔ Navegación direccional (`Enter`, `Shift+Enter`, `Tab`, `Shift+Tab`, flechas), selección espacial de celdas/rangos, selección canónica de filas (`selectedRowIds`, `toggleSelectRow`, `toggleSelectAll`), Paste Matrix 2D con sanitización de tipos, Fill-handle (`■`), borrado (`Supr`/`Backspace`), Undo/Redo 50 pasos (`Ctrl+Z`/`Ctrl+Y`) y menú contextual (`onContextMenu`) con Copiar celda/fila, Pegar, Insertar arriba/abajo, Duplicar, Limpiar y visor modal de `audit_logs`.
+  8. **Vínculo Obligatorio con Trazabilidad (`app/src/lib/auditService.js` ➔ `audit_logs`)** ➔ Toda edición in-situ (`logCellChange`), pegado masivo (`logBatchPaste`), alta o baja de fila (`logRowAction`) en `CARGA_EDICION` registra en `audit_logs` con blindaje anti-objeto (`typeof val === 'object'`).
+* **Arquitectura de 5 Zonas (`app/src/index.css`) y Regla de Edición Total:** Zona 1 `.alon-zone-context` (`sky-400`, badge versión, pestañas compactas y botón principal) + Zonas 2–5 arriba descritas. Toda celda visible es editable con doble clic (`Enter`/`F2`), `showPicker()` en fechas/selects y Fill-handle (`■`). Todo `onBlur` se declara como `onBlur={() => commitFn()}`. Entregar siempre con `Fit-to-Viewport` (cero scroll horizontal de ventana), `npm run build` y `npm run lint` limpios.
 
 ---
 
@@ -42,7 +44,7 @@ Cualquier cambio que el usuario solicite aplicar a un arquetipo se define **aqu�
   1. Paneles de filtros analíticos multidimensionales (Período, Obra/OT, Buque, Usuario, Módulo, Rubro).
   2. Tarjetas de KPI ejecutivas, curvas comparativas, matrices de costos y visores de diferencias (Diff Viewers).
   3. Botón de exportación de reporte ejecutivo o bitácora (Excel/CSV/PDF).
-  4. Indexación explícita de las tablas de base de datos que alimentan cada visualización (para trazabilidad técnica y consulta del Asistente de IA).
+  4. Indexación explícita de las tablas de base de datos que alimentan cada visualización (para trazabilidad técnica y consulta del Asistente de IA). Cuando una pestaña administrativa gestione catálogos consumidos por planillas, debe leer y escribir sobre un módulo exportable único en `app/src/lib/`.
 
 ---
 
