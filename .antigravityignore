@@ -1,4 +1,7 @@
 node_modules/
 dist/
+app/dist/
 *.log
-docs/02_producto/
+Presentacion/
+**/package-lock.json
+docs/04_anexos_entendiemiento de planillas/
