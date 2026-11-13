@@ -61,7 +61,7 @@ export default function Personal() {
   }, [])
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+    <div className="space-y-6 w-full pb-10">
       {/* ZONA 1 (CONTEXTO): CABECERA & NAVEGACIÓN PRINCIPAL */}
       <div className="alon-zone-context rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>

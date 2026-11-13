@@ -1603,17 +1603,17 @@ export default function PersonalNominaPanel({
                       <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
                     </div>
                   </th>
-                  <th className="py-2.5 px-3">Nombre y Apellido ✎</th>
-                  <th className="py-2.5 px-3 text-center">Categoría ✎</th>
-                  <th className="py-2.5 px-3">Rubro ✎</th>
-                  <th className="py-2.5 px-3 text-right">AR$/Hora ✎</th>
-                  <th className="py-2.5 px-2 text-center text-emerald-400">U$/Hora</th>
-                  <th className="py-2.5 px-3">Grupo de Trabajo ✎</th>
-                  <th className="py-2.5 px-2.5">Centro Admin ✎</th>
-                  <th className="py-2.5 px-2.5">Contrato</th>
-                  <th className="py-2.5 px-2 text-center">Estado</th>
-                  <th className="py-2.5 px-2.5">Consumibles</th>
-                  <th className="py-2.5 px-2.5">
+                  <th className="py-2.5 px-2">Nombre y Apellido ✎</th>
+                  <th className="py-2.5 px-1.5 text-center">Categoría ✎</th>
+                  <th className="py-2.5 px-1.5">Rubro ✎</th>
+                  <th className="py-2.5 px-2 text-right">AR$/Hora ✎</th>
+                  <th className="py-2.5 px-1.5 text-center text-emerald-400">U$/Hora</th>
+                  <th className="py-2.5 px-2">Grupo de Trabajo ✎</th>
+                  <th className="py-2.5 px-1.5">Centro Admin ✎</th>
+                  <th className="py-2.5 px-1.5">Contrato</th>
+                  <th className="py-2.5 px-1.5 text-center">Estado</th>
+                  <th className="py-2.5 px-1.5">Consumibles</th>
+                  <th className="py-2.5 px-1.5">
                     <div className="relative group inline-flex items-center gap-1 cursor-help">
                       <span>Elem. Seg. ✎</span>
                       <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
@@ -1625,8 +1625,8 @@ export default function PersonalNominaPanel({
                       </div>
                     </div>
                   </th>
-                  <th className="py-2.5 px-2 text-center">Permisos</th>
-                  <th className="py-2.5 px-3 text-right">Acciones</th>
+                  <th className="py-2.5 px-1.5 text-center">Permisos</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -1739,7 +1739,7 @@ export default function PersonalNominaPanel({
                             setInlineCellEdit({ rowId: w.id, colKey: 'name', value: w.name || '' })
                           }}
                           title="Doble clic para editar nombre"
-                          className={getCellClass(0, 'py-2 px-3')}
+                          className={getCellClass(0, 'py-2 px-2')}
                         >
                           {isEditingCell('name') ? (
                             <input
@@ -1794,7 +1794,7 @@ export default function PersonalNominaPanel({
                             setInlineCellEdit({ rowId: w.id, colKey: 'category', value: w.category || '' })
                           }}
                           title="Doble clic para editar categoría"
-                          className={getCellClass(1, 'py-2 px-3 text-center')}
+                          className={getCellClass(1, 'py-2 px-1.5 text-center')}
                         >
                           {isEditingCell('category') ? (
                             w.admin_center === 'ASTILLERO' ? (
@@ -1859,7 +1859,7 @@ export default function PersonalNominaPanel({
                             setInlineCellEdit({ rowId: w.id, colKey: 'trade', value: w.trade || '' })
                           }}
                           title="Doble clic para seleccionar o agregar rubro"
-                          className={getCellClass(2, 'py-2 px-3')}
+                          className={getCellClass(2, 'py-2 px-1.5')}
                         >
                           {isEditingCell('trade') ? (
                             <select
@@ -1930,7 +1930,7 @@ export default function PersonalNominaPanel({
                             setInlineCellEdit({ rowId: w.id, colKey: 'hourly_rate_ars', value: w.hourly_rate_ars ?? 0 })
                           }}
                           title="Doble clic para editar tarifa AR$/Hora"
-                          className={getCellClass(3, 'py-2 px-3 text-right font-mono font-bold text-white')}
+                          className={getCellClass(3, 'py-2 px-2 text-right font-mono font-bold text-white')}
                         >
                           {isEditingCell('hourly_rate_ars') ? (
                             <input
@@ -1963,7 +1963,7 @@ export default function PersonalNominaPanel({
                         </td>
 
                         {/* U$/Hora */}
-                        <td className="py-2 px-2 text-center font-mono font-extrabold text-emerald-400">
+                        <td className="py-2 px-1.5 text-center font-mono font-extrabold text-emerald-400">
                           $<HighlightText text={String(usdCalc)} query={searchTerm} />
                         </td>
 
@@ -1977,7 +1977,7 @@ export default function PersonalNominaPanel({
                             setInlineCellEdit({ rowId: w.id, colKey: 'work_group', value: w.work_group || '' })
                           }}
                           title="Doble clic para editar Grupo de Trabajo"
-                          className={getCellClass(4, 'py-2 px-3')}
+                          className={getCellClass(4, 'py-2 px-2')}
                         >
                           {isEditingCell('work_group') ? (
                             <input
@@ -2018,7 +2018,7 @@ export default function PersonalNominaPanel({
                             setInlineCellEdit({ rowId: w.id, colKey: 'admin_center', value: w.admin_center || 'ASTILLERO' })
                           }}
                           title="Doble clic para cambiar Centro Administrativo"
-                          className={getCellClass(5, 'py-2 px-2.5')}
+                          className={getCellClass(5, 'py-2 px-1.5')}
                         >
                           {isEditingCell('admin_center') ? (
                             <select
@@ -2058,7 +2058,7 @@ export default function PersonalNominaPanel({
                         </td>
 
                         {/* Contrato (solo Astillero) */}
-                        <td className="py-2 px-2.5 text-[10px]">
+                        <td className="py-2 px-1.5 text-[10px]">
                           {w.admin_center === 'ASTILLERO' ? (() => {
                             const exp = computeContractExpiration(w.contract_type, w.contract_start_date)
                             if (!exp.hasContract) {
@@ -2095,7 +2095,7 @@ export default function PersonalNominaPanel({
                         </td>
 
                         {/* Estado */}
-                        <td className="py-2 px-2 text-center">
+                        <td className="py-2 px-1.5 text-center">
                           <button
                             type="button"
                             onClick={() => toggleWorkerStatus(w)}
@@ -2111,7 +2111,7 @@ export default function PersonalNominaPanel({
                         </td>
 
                         {/* Consumibles */}
-                        <td className="py-2 px-2.5">
+                        <td className="py-2 px-1.5">
                           {w.consumables_discount_pct !== undefined && w.consumables_discount_pct !== null ? (
                             <span 
                               title={`Descuento Contratista: ${w.consumables_discount_pct}% | Imputación Obra: ${100 - Number(w.consumables_discount_pct)}%`}
@@ -2148,7 +2148,7 @@ export default function PersonalNominaPanel({
                             setInlineCellEdit({ rowId: w.id, colKey: 'safety_items', value: w.safety_items || 'CONTRATISTA' })
                           }}
                           title={w.admin_center === 'ASTILLERO' ? 'Personal propio de Astillero: siempre ASTILLERO (solo costo de referencia).' : `Doble clic para definir si descuenta EPP (CONTRATISTA) o es excepción de zona gris (ASTILLERO).\n${SAFETY_ITEMS_HELP_TEXT}`}
-                          className={getCellClass(6, 'py-2 px-2.5')}
+                          className={getCellClass(6, 'py-2 px-1.5')}
                         >
                           {isEditingCell('safety_items') ? (
                             <select
@@ -2181,7 +2181,7 @@ export default function PersonalNominaPanel({
                         </td>
 
                         {/* Permisos */}
-                        <td className="py-2 px-2 text-center">
+                        <td className="py-2 px-1.5 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button
                               type="button"
@@ -2235,7 +2235,7 @@ export default function PersonalNominaPanel({
                         </td>
 
                         {/* Acciones */}
-                        <td className="py-2 px-3 text-right">
+                        <td className="py-2 px-2 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
