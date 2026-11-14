@@ -181,3 +181,5 @@ export async function batchSaveLaborLogsService({ logs = [], changedBy = 'Operad
 
   return { ok: true, count: data?.length || cleanLogs.length, logs: data || cleanLogs }
 }
+
+export * from './laborCargaService.js'

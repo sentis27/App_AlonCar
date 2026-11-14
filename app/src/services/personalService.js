@@ -176,48 +176,4 @@ export async function saveRateCardService({ rateCard, isNew = false, changedBy =
   return { ok: true, rateCard: savedRecord }
 }
 
-/**
- * Persiste un registro en `workers` (insert/update) con degradación defensiva si la
- * migración 0037 (`contract_type`, `contract_start_date`) aún no fue aplicada en Supabase.
- * Si se pasa `syncGroup` distinto de ASTILLERO en modo update, propaga rubro y permiso 3ros al grupo.
- */
-export async function persistWorkerWithSchemaFallbackService({
-  mode = 'insert',
-  targetId = null,
-  payload,
-  syncGroup = null
-}) {
-  if (!payload || typeof payload !== 'object') {
-    throw new Error('Payload de operario requerido.')
-  }
-
-  const execQuery = async (body) => {
-    if (mode === 'update') {
-      return supabase.from('workers').update(body).eq('id', targetId).select()
-    }
-    return supabase.from('workers').insert([body]).select()
-  }
-
-  let res = await execQuery(payload)
-  let missingContractCols = false
-  if (res.error && String(res.error.message || '').includes('contract_')) {
-    missingContractCols = true
-    const { contract_type: _ct, contract_start_date: _cs, ...safePayload } = payload
-    res = await execQuery(safePayload)
-  }
-  if (res.error) throw res.error
-
-  if (mode === 'update' && syncGroup && syncGroup !== 'ASTILLERO') {
-    const { error: groupErr } = await supabase
-      .from('workers')
-      .update({
-        can_charge_third_party: payload.can_charge_third_party,
-        trade: payload.trade
-      })
-      .eq('work_group', syncGroup)
-
-    if (groupErr) throw groupErr
-  }
-
-  return { data: res.data, missingContractCols }
-}
+export * from './personalNominaService.js'

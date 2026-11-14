@@ -27,7 +27,8 @@ Antes de ejecutar la primera herramienta en cualquier turno, el agente evalúa l
 
 | Dominio / Capa Detectada | Patrón de Archivos (`globs`) / Disparador | Skills que se Activan Obligatoriamente |
 | :--- | :--- | :--- |
-| **1. Cualquier consulta o cambio que toque datos, módulos o tablas** | Toda tarea técnica (Pre-vuelo universal) | **`SKL-014`** (`schema-gatekeeper` — Cero asunciones, lectura previa de índices y esquema real). |
+| **0. Nivel 0 — Fast-Track UI Cosmético** | Ajuste visual/JSX/CSS puro (botón, texto, badge, espaciado en Zona 1 existente) **sin** tocar BD, contratos, hooks de estado ni `services/`/`lib/` | **Solo lectura acotada** (`StartLine`/`EndLine` `≤ 100 L`) + edición + `npm.cmd run build` (y `lint` si hay imports). **Exento** de leer `INDICE_PLANILLAS`, `00_INDICE` y pruebas Supabase. |
+| **1. Cualquier consulta o cambio que toque datos, módulos o tablas** | Toda tarea técnica que toque datos o esquema (Pre-vuelo universal) | **`SKL-014`** (`schema-gatekeeper` — Cero asunciones, lectura previa de índices y esquema real). |
 | **2. Pedido con múltiples tareas o cruce de varias capas** | 2+ requerimientos o impacto multi-archivo | **`SKL-008`** (`planificacion-por-etapas` — División por etapas y freno por riesgo). |
 | **3. Diseño, creación o ajuste de pantallas, formularios y flujos UI** | `**/*.jsx`, `**/*.css` (Componentes y Vistas) | **`SKL-012`** (`ergonomia-flujo-visual-senior` — Cascada Top-Down, compresión de clics y Ley de Fitts). |
 | **4. Planillas editables, grillas y tablas operativas** | Vistas de arquetipo `CARGA_EDICION` y `*Grid*` | **`SKL-013`** (`data-grid-poweruser` — Operación 100% teclado, mutación in-situ, motor canónico). |
@@ -38,4 +39,5 @@ Antes de ejecutar la primera herramienta en cualquier turno, el agente evalúa l
 ---
 
 ## 4. Freno de Auditoría Pre-Código (Protocolo de Verificación)
-1. **Declaración de Cabecera Obligatoria:** En la primera línea de cada respuesta técnica, el agente debe imprimir el bloque de gobernanza indicando el Arquetipo activo y la lista exacta de códigos `SKL-XXX` que el enrutador activó para ese turno.
+1. **Regla de Escalado desde Nivel 0:** Si al inspeccionar el fragmento (`≤ 100 L`) se detecta que el ajuste requiere nuevas props de datos, mutaciones, estado compartido o servicios, **abortar Nivel 0** y activar inmediatamente las filas `1..7` correspondientes.
+2. **Declaración de Cabecera Obligatoria:** En la primera línea de cada respuesta técnica, el agente debe imprimir el bloque de gobernanza indicando el Arquetipo activo y la lista exacta de códigos `SKL-XXX` que el enrutador activó para ese turno (en Nivel 0: `[SKL-016 Nivel 0 Fast-Track UI]`).

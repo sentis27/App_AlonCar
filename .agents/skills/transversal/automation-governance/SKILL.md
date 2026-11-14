@@ -19,3 +19,15 @@ description: Governs changes to n8n workflows in production. Activates automatic
 - Stop before any file is written.
 - Report which rule, dependency, or versioning convention is at risk, citing the SDD section.
 - Wait for explicit user confirmation before continuing.
+
+## Gobernanza operativa n8n (migrado desde GEMINI.md)
+- **Sin conexión directa:** El asistente no opera ni despliega workflows en n8n directamente; diseña y genera JSON listos para importar.
+- **Lectura previa obligatoria:** Leer siempre `workflows/_meta/INDEX.md` y el `SDD.md` del workflow afectado antes de proponer cambios sobre él.
+- **Estados válidos en `INDEX.md`:** `activo` (producción, SDD completo) / `activo-sin-SDD` (producción, SDD pendiente — deuda técnica) / `desarrollo` (no productivo). Un workflow **nunca** pasa a `activo` sin SDD completo (14 secciones obligatorias; convención completa en `workflows/_meta/PLANTILLA.md`).
+
+## Estándares de desarrollo n8n
+- Flujos organizados de izquierda a derecha en bloques funcionales separados por Sticky Notes (`Trigger`, `Normalización`, `Validación`, `Enrutamiento`, `Escritura externa`, `Log/Alertas`, `Salida`).
+- Nodos Code en JavaScript: KISS, DRY, responsabilidad única por nodo.
+- Versionado por nombre: `NombreWorkflow_v2`, `_v3` (nunca sobrescribir).
+- Referencias explícitas: `$('NodoX').first().json` (nunca `$input.first()` a ciegas).
+- Placeholders en prompts: `<<NOMBRE>>` (nunca `{{}}` que colisiona con n8n).

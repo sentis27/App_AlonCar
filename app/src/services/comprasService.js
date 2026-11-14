@@ -208,3 +208,6 @@ export async function batchUpdatePurchaseOrdersService({
 
   return { ok: true, count: targetIds.length }
 }
+
+export * from './comprasPedidosService.js'
+export * from './comprasAuxService.js'

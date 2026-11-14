@@ -1,77 +1,58 @@
-# App_AlonCar - ERP Naval e Industrial
+# App_AlonCar — ERP Naval e Industrial
 
-## FASE ACTUAL: 1 - Infraestructura y Conexiones
+## FASE ACTUAL: 3 — Aplicación Web ERP Activa (React + Supabase + n8n + IA)
 
-Este proyecto se construye bajo la metodología **Spec Driven Development (SDD)**.
+Sistema integral de gestión para astillero naval bajo arquitectura **Spec Driven Development (SDD)** y protocolo unificado de gobernanza IA.
 
 ### Stack Técnico
-- **Entrada de datos:** Google Sheets
-- **Orquestador:** n8n (instancia local/Docker)
-- **Servidor de procesamiento:** MCP (Model Context Protocol)
-- **Base de datos:** Supabase / PostgreSQL
-- **Asesor técnico:** Antigravity (Claude MCP)
+- **Frontend Web (`app/`):** React 19 + Vite + Tailwind CSS v4 + `lucide-react` (`useSpreadsheetGrid` estilo Excel/Sheets, 5 Zonas cromáticas)
+- **Base de Datos y Auth:** Supabase (PostgreSQL, migraciones SQL `0001`–`0040`, RLS, Edge Functions)
+- **Orquestador y Alertas:** n8n (`workflows/`) + Evolution API (WhatsApp)
+- **Servidor MCP Local:** `mcp-server/` (Model Context Protocol sobre Node.js)
+- **Asistencia IA:** OpenAI `gpt-4o-mini` (tabulador de partes, OCR/extracción de comprobantes y gobernanza en `/admin`)
 
 ### Estado Actual
-- ✅ Estructura de conexiones (Fase 1)
-- ✅ Servidor MCP base y dependencias locales (Fase 1)
-- ⏳ Integración de herramientas MCP (en progreso)
-- 🔜 Lógica de negocio (Fase 2 - ver [ROADMAP_NEGOCIO.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/ROADMAP_NEGOCIO.md))
-- 🔜 Módulos de datos (Fase 3)
+- ✅ Infraestructura, credenciales Zero Trust, servidor MCP y workflows n8n SDD (`docs/01_infraestructura/`, `workflows/`)
+- ✅ Módulos operativos `CARGA_EDICION` y `METRICAS_ANALISIS` activos: Flota (`/barcos`), Personal (`/personal`), Horas (`/horas`), Compras (`/compras`), Pañol y Gases (`/panol`), OTs (`/ots`), Terceros (`/terceros`), Tesorería (`/tesoreria`), Resumen Gerencial GS-004 (`/resumen-gerencial`) y Admin (`/admin`)
+- ⏳ Optimización IA y saneamiento estructural (`PLAN_OPTIMIZACION_IA.md`)
 
 ### Cómo empezar
-1. Clonar el repo.
-2. Leer el índice central del proyecto: [INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/INDICE_CENTRAL.md).
-3. Configurar el entorno local `.env` siguiendo [docs/01_infraestructura/02_configuracion_env.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/docs/01_infraestructura/02_configuracion_env.md).
+1. Clonar el repositorio e instalar dependencias del frontend: `cd app && npm install`.
+2. Configurar `.env` (raíz/MCP) y `app/.env.local` siguiendo [docs/01_infraestructura/02_configuracion_env.md](docs/01_infraestructura/02_configuracion_env.md) y [docs/01_infraestructura/03_seguridad_credenciales.md](docs/01_infraestructura/03_seguridad_credenciales.md).
+3. Levantar el entorno local: `cd app && npm run dev` (ver detalles en [app/README.md](app/README.md)).
 
 ---
 
-## 📚 Documentación
-
-La estructura completa del proyecto está distribuida de la siguiente manera:
+## 📚 Mapa de Documentación
 
 ```text
 App_AlonCar/
-├── README.md                  ← Resumen del proyecto
-├── INDICE_CENTRAL.md          ← Empieza aquí (Mapa de navegación)
-├── INDICE_METADATOS.md        ← Tabla máquina (auditorías IA)
-├── TAREAS_PENDIENTES.md       ← Backlog central y checklist
-├── ROADMAP_NEGOCIO.md         ← Visión de Fase 2+
-├── GUIA_ANTIGRAVITY.md        ← Reglas de comportamiento del agente
+├── README.md                  ← Portada del proyecto (este archivo)
+├── GEMINI.md                  ← Protocolo de Gobernanza Unificado (Fuente Única de Verdad)
+├── CLAUDE.md                  ← Puntero de compatibilidad hacia GEMINI.md
+├── INDICE_CENTRAL.md          ← Brújula humana y entry-points del repo
+├── INDICE_METADATOS.md        ← Tabla máquina (100% de archivos activos indexados)
+├── INDICE_PLANILLAS.md        ← Estado y dependencias de planillas legacy mapeadas
+├── TAREAS_PENDIENTES.md       ← Backlog activo y últimos cierres
+├── ROADMAP_NEGOCIO.md         ← Visión de módulos y reglas de negocio
+├── app/                       ← Frontend React + Vite + Tailwind + servicios Supabase
+├── supabase/                  ← Migraciones SQL y Edge Functions
+├── workflows/                 ← Workflows n8n gobernados por SDD (_meta/INDEX.md)
+├── mcp-server/                ← Servidor MCP local
+├── .agents/skills/            ← Skills transversales y por módulo (SKILLS_REGISTRY.md)
 └── docs/
-    ├── 01_infraestructura/    ← FASE 1 (Actual)
-    │   ├── README.md          ← Índice de infraestructura
-    │   ├── 01_stack_tecnico.md
-    │   ├── 02_configuracion_env.md
-    │   ├── 03_seguridad_credenciales.md
-    │   └── 04_servidor_mcp.md
-    │
-    ├── 02_producto/           ← Referencia educativa/comercial
-    │   ├── README.md          ← Índice de producto
-    │   └── registro_paso_a_paso.md
-    │
-    └── 03_negocio/            ← FASE 2+ (Futuro)
-        └── README.md          ← Esqueleto de lógica de negocio
+    ├── 01_infraestructura/    ← Stack, .env, Zero Trust, MCP y n8n
+    ├── 02_producto/           ← Decisiones (DEC), Errores (ERR), Estándares y Auditorías
+    ├── 03_negocio/            ← Reglas de negocio, RACI, Tarifario Alfa y Spec v7
+    ├── modulos/               ← Especificaciones funcionales por módulo
+    ├── planillas/             ← Mapeos de Google Sheets legacy
+    └── archivo/               ← Históricos rotados de tareas, bitácora y estándares
 ```
 
 ---
 
-## 👥 Para Agentes IA (Antigravity)
+## 🤖 Para Agentes IA
 
-Antes de procesar cualquier solicitud, debes leer y cumplir estrictamente las siguientes instrucciones:
-1. **Consulta del Índice:** Revisa de manera obligatoria [INDICE_CENTRAL.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/INDICE_CENTRAL.md) antes de procesar tareas complejas.
-2. **Metadatos para Auditoría:** Para auditorías de cierre de sesión, consulta [INDICE_METADATOS.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/INDICE_METADATOS.md) — tabla máquina con tipos, comportamientos y dependencias.
-3. **Optimización de Contexto:** No leas documentos completos si no están listados en el índice central o si están fuera de tu ámbito técnico.
-4. **Control del Backlog:** Si necesitas verificar tareas o archivos faltantes, consulta [TAREAS_PENDIENTES.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/TAREAS_PENDIENTES.md).
-5. **Rol de Asesor:** Tu rol es de **asesor técnico crítico** durante la Fase 1; posteriormente serás colaborador en el diseño lógico de negocio durante las Fases 2 y 3. Debes actuar con criterio analítico desafiando supuestos incorrectos. Ver normas detalladas en [GUIA_ANTIGRAVITY.md](file:///c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/GUIA_ANTIGRAVITY.md).
-
----
-
-## 📖 Visión a Futuro (Fase 2+)
-
-El proyecto implementará progresivamente 6 módulos funcionales centrales:
-* **Módulo de Activos y Clientes:** Gestión unificada de Barcos y razones sociales.
-* **Módulo de Recursos:** Tarifarios de operarios internos/externos y talleres.
-* **Módulo de Operaciones y Control de Costos:** Órdenes de Trabajo y asistencia.
-* **Módulo de Logística y Suministros:** Inventario y compras imputadas a OTs.
-* **Módulo Comercial:** Presupuestos dinámicos y facturación estructurada.
-* **Módulo de Cierre y Auditoría:** Cierre contable y archivo histórico bloqueado.
+1. **Constitución:** Leer y cumplir [GEMINI.md](GEMINI.md) en cada turno (incluye Router `SKL-016`, Pipeline F1–F4 y Regla de Oro de Disco).
+2. **Navegación:** Consultar [INDICE_CENTRAL.md](INDICE_CENTRAL.md) y [docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md](docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md) antes de asumir módulos o tablas.
+3. **Auditorías e Inventario:** Usar [INDICE_METADATOS.md](INDICE_METADATOS.md), [TAREAS_PENDIENTES.md](TAREAS_PENDIENTES.md) y [.agents/skills/SKILLS_REGISTRY.md](.agents/skills/SKILLS_REGISTRY.md).

@@ -49,7 +49,7 @@ Para integrar este servidor en tu entorno de desarrollo, debés añadir la confi
   "mcpServers": {
     "local-mcp-server": {
       "command": "node",
-      "args": ["c:/Users/senti/.gemini/antigravity/scratch/App_AlonCar/mcp-server/index.js"],
+      "args": ["<RUTA_AL_REPO>/mcp-server/index.js"],
       "env": {
         "NODE_ENV": "development"
       }

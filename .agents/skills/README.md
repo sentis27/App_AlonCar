@@ -1,47 +1,21 @@
-# Agent Skills Manual
+# Manual de Skills de Agente — App_AlonCar
 
-Skills are an open standard for extending agent capabilities. A skill is a folder containing a SKILL.md file with instructions that the agent can follow when working on specific tasks.
+Las Skills son un estándar abierto para extender las capacidades del agente mediante carpetas con un archivo `SKILL.md` e instrucciones accionables.
 
-## Rule for Creation in App_AlonCar
-**Skills must be drafted and polished in Spanish with the user first. Once approved, the final `SKILL.md` must be written exclusively in English to maximize LLM logical reasoning and performance.**
+## Convención de Idioma en App_AlonCar
+- **Skills transversales y de negocio del proyecto (`SKL-001`, `SKL-003`, `SKL-004`, `SKL-006`..`SKL-017`):** Se redactan en **español técnico claro** para alinear terminología ERP naval con `GEMINI.md`, estándares y bitácora de producto.
+- **Skills genéricas de terceros o tooling (`caveman`, `rtk`):** Pueden mantenerse en **inglés** original.
 
-## What are skills?
-Skills are reusable packages of knowledge that extend what the agent can do. Each skill contains:
-- Instructions for how to approach a specific type of task
-- Best practices and conventions to follow
-- Optional scripts and resources the agent can use
+## Dónde viven las Skills
+- `<workspace-root>/.agents/skills/<carpeta-o-division>/<skill>/SKILL.md` (específicas del proyecto; catálogo maestro en [SKILLS_REGISTRY.md](SKILLS_REGISTRY.md))
+- `~/.gemini/antigravity/skills/` (globales del usuario, si aplica)
 
-When you start a conversation, the agent sees a list of available skills with their names and descriptions. If a skill looks relevant to your task, the agent reads the full instructions and follows them.
+## Estructura mínima de una Skill
+1. Crear la carpeta dentro de `.agents/skills/transversal/` o `.agents/skills/M{1..6}-*/`.
+2. Agregar `SKILL.md` con frontmatter YAML (`name`, `code`, `description`) y reglas verificables.
+3. Registrar la Skill en [SKILLS_REGISTRY.md](SKILLS_REGISTRY.md) e indexarla en [INDICE_METADATOS.md](../../INDICE_METADATOS.md).
 
-## Where skills live
-Antigravity supports two types of skills:
-- `<workspace-root>/.agents/skills/<skill-folder>/` (Workspace-specific)
-- `~/.gemini/config/skills/<skill-folder>/` (Global)
-
-Workspace skills are great for project-specific workflows, like your team's deployment process or testing conventions.
-
-## Creating a skill
-To create a skill:
-1. Create a folder for your skill in `.agents/skills/`
-2. Add a `SKILL.md` file inside that folder
-
-```yaml
----
-name: my-skill
-description: Helps with a specific task. Use when you need to do X or Y.
----
-```
-
-# My Skill
-Detailed instructions for the agent go here.
-
-## How the agent uses skills
-Skills follow a progressive disclosure pattern:
-- **Discovery**: When a conversation starts, the agent sees a list of available skills with their names and descriptions.
-- **Activation**: If a skill looks relevant to your task, the agent reads the full `SKILL.md` content.
-- **Execution**: The agent follows the skill's instructions while working on your task.
-
-## Best practices
-- Keep skills focused: Do one thing well.
-- Write clear descriptions: Third person, clear keywords.
-- Include decision trees for complex skills.
+## Patrón de Carga Progresiva
+1. **Descubrimiento:** El agente ve la lista de Skills o consulta el Router `SKL-016` en `GEMINI.md`.
+2. **Activación:** Si la Skill aplica a la capa/archivo de la tarea, lee su `SKILL.md` completo.
+3. **Ejecución:** Aplica las reglas de la Skill y valida la condición de cierre.

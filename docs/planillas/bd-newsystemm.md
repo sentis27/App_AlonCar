@@ -1,7 +1,7 @@
 # Mapeo Legacy: B.D.NewSystemm (Base de Datos de Personal, Clasificación y Costos)
 
 > [!IMPORTANT]
-> **Fuentes de información cruzadas:** Descripción del usuario (sesiones 2026-08-20 / 2026-08-21), inspección técnica directa vía Google Sheets API (v4), auditoría de fórmulas de celda y cruce con decisiones de producto (`DEC-009` y `DEC-012`).
+> **Fuentes de información cruzadas:** Descripción del usuario (sesiones 2026-08-20 / 2026-08-21), inspección técnica directa vía Google Sheets API (v4), auditoría de fórmulas de celda y cruce con decisiones de producto (`DEC-009` y `DEC-024`).
 
 ---
 

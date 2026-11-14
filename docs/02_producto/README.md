@@ -68,6 +68,9 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-11-13 | DEC-022 | Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa | decision |
 | 2026-11-13 | DEC-023 | Pañol: Cascada Naval, Doble Imputación de Gases (Recambio +0) y Trazabilidad de Gaseras | decision |
 | 2026-11-13 | ERR-005 | Contenedor max-w-7xl y nuevas columnas recortan visualmente la columna Acciones en Personal y Tarifas | error |
+| 2026-08-21 | DEC-024 | Imputación Horas vs Materiales, PRC vs RMO y Dólar Quincenal (renumerado desde DEC-012) | decision |
+| 2026-08-21 | DEC-025 | Módulo de Reconciliación Automática Horas ↔ Materiales e In-Place Editing (renumerado desde DEC-013) | decision |
+| 2026-08-21 | DEC-026 | Resumen Gerencial, Tarifario Nivel Alfa, Remitos de Cobro y RBAC (renumerado desde DEC-014) | decision |
 
 ---
 
@@ -98,6 +101,9 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | DEC-021 | Módulo de Terceros (GS-005) — Ciclo de Comprobantes, Congelamiento de Dólar y Catálogo Oficial | 3 | validado | 2026-10-22 |
 | DEC-022 | Módulo Resumen Gerencial (GS-004), Comparador Canvas y Remito Comercial Nivel Alfa | 3 | validado | 2026-11-13 |
 | DEC-023 | Pañol: Cascada Naval, Doble Imputación de Gases (Recambio +0) y Trazabilidad de Gaseras | 3 | validado | 2026-11-13 |
+| DEC-024 | Imputación Horas vs Materiales, PRC vs RMO y Dólar Quincenal | 2 | validado | 2026-08-21 |
+| DEC-025 | Módulo de Reconciliación Automática Horas ↔ Materiales e In-Place Editing | 2 | validado | 2026-08-21 |
+| DEC-026 | Resumen Gerencial, Tarifario Nivel Alfa, Remitos de Cobro y RBAC | 2 | validado | 2026-08-21 |
 
 ## Errores
 

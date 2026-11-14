@@ -277,11 +277,11 @@ El sistema gestiona 5 estados con comportamientos y reglas de evolución especí
   1. Ingresar a [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
   2. Revocar / eliminar la clave antigua (`sk-proj-Qn0h...`).
   3. Generar una nueva clave secreta con nombre `AlonCar-Produccion`.
-  4. Guardar la nueva clave en [`app/.env.local`](file:///C:/Users/Vanoli/.gemini/antigravity/scratch/App_AlonCar/app/.env.local) o en el panel de **Gobernanza IA** en `/admin`.
+  4. Guardar la nueva clave en `app/.env.local` o en el panel de **Gobernanza IA** en `/admin`.
   5. En [platform.openai.com/settings/organization/limits](https://platform.openai.com/settings/organization/limits), fijar un **Monthly Budget** de \$5 o \$10 USD para tener control financiero total sin riesgo de cargos inesperados.
 
 ### 🟡 Tarea 2: Despliegue de la Edge Function en Supabase (Opcional para Producción)
-- **Estado:** Código generado en [`supabase/functions/parse-crew-message/index.ts`](file:///C:/Users/Vanoli/.gemini/antigravity/scratch/App_AlonCar/supabase/functions/parse-crew-message/index.ts).
+- **Estado:** Código generado en [`supabase/functions/parse-crew-message/index.ts`](../supabase/functions/parse-crew-message/index.ts).
 - **Instrucción de despliegue:**
   ```powershell
   npx supabase secrets set OPENAI_API_KEY="tu-nueva-api-key"
