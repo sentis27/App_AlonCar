@@ -1,8 +1,21 @@
-# ⏱️ Archivo Histórico de Bitácora de Auditorías Delta (Hasta 2026-11-11)
+# ⏱️ Archivo Histórico de Bitácora de Auditorías Delta (Hasta 2026-11-12)
 
 > **Origen:** Rotado desde [BITACORA_DELTAS_SESION.md](../BITACORA_DELTAS_SESION.md) según Etapa E3 (PLAN_OPTIMIZACION_IA.md).
-> **Cobertura:** Entradas anteriores a las últimas 5 sesiones activas (2026-11-10 a 2026-11-11).
+> **Cobertura:** Entradas anteriores a las últimas 5 sesiones activas (2026-11-10 a 2026-11-12).
 
+---
+
+## [2026-11-12] Sesión de Cierre — Fix Pantalla en Negro Barco/OT (Terceros) & Consolidación Regla Naval OTs (`be899a3`)
+- **Hora:** 17:43 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (commit `be899a3` + docs):**
+  * `app/src/components/ShipWorkOrderPickerModal.jsx`: Reubicación de `useMemo` (`selectedWo`, `previewScope`) sobre `if (!isOpen) return null`, eliminando crash `rules-of-hooks` en Terceros, más regla naval y preview hover.
+  * `app/src/components/terceros/TercerosModals.jsx`: Comparación `String(wo.ship_id) === String(formData.ship_id)` e integración de `WorkOrderSelectorWithHover` y `WorkOrderScopeHoverCard`.
+  * OTs consolidados en `be899a3`: `CloseWorkOrderTreeModal.jsx`, `WorkOrderScopeHoverCard.jsx`, `WorkOrderSelectorWithHover.jsx`, `workOrdersConstants.js`, `workOrdersService.js`, `PanolModals.jsx`, `LaborModals.jsx`.
+- **Blast Radius:** Sistémico controlado (`ShipWorkOrderPickerModal` compartido por Terceros, Horas, Pañol y Compras).
+- **Tracker Anti-Rot:** `0` pecados (`oxlint --deny=rules-of-hooks`: `0` errores).
+- **Trazabilidad Supabase:** `auditService` en `tercerosService.js` (`saveShipWoPickerService`) y `workOrdersService.js`.
+- **Verificación Runtime & Build:** `npm run build` PASS en `3.32s` (`2069` módulos, `0` errores).
+- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT** | **Commit:** `be899a3` + cierre docs `2026-11-12` (`ERR-004`).
 ---
 
 ## [2026-11-11] Ejecución /goal — Sub-Ola 4.3 de Refactorización Completada (Hallazgos B-03 & D-01: Capa Formal de Servicios / Clean Architecture — 100% Ola 4 CERRADA)

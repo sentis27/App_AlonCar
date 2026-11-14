@@ -7,6 +7,16 @@
 
 <!-- Las nuevas entradas de cierre se agregan aquí arriba -->
 
+## [2026-11-13] Sesión de Cierre — Plan Optimización IA, Rotación Documental y Partición Modular (`E1–E7`, `16d58e7`)
+- **Hora:** 21:52 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (merge `refactor/optimizacion-ia` ➔ `main`):**
+  * Gobernanza & Docs (`E1–E4`, `E6–E7`): `GEMINI.md` (`186 L / 22,209 B` ➔ `75 L / 7,089 B`, `v1.4`), `CLAUDE.md` (`15 L / 529 B`, `v1.4`), `.antigravityignore`, `README.md`, `INDICE_CENTRAL.md` (`56 L`), `INDICE_METADATOS.md` (`125/125` `.md`), `SKILLS_REGISTRY.md` (`17/17`), `DEC-012..014` ➔ `DEC-024..026`, rotación de `TAREAS_PENDIENTES.md` (`8,972 B`) y `BITACORA_DELTAS_SESION.md`, y `app/scripts/repo-hygiene.mjs` (`npm.cmd run check:hygiene`).
+  * Código `app/src/` (`E2`, `E5.1–E5.4`): eliminado `initialPersonnel.json` (`2,396 L`, `0` refs); particionados `ComprasPedidosPanel.jsx` (`3,219 L ➔ 177 L`), `PersonalNominaPanel.jsx` (`2,793 L ➔ 291 L`), `ComprasAuxModals.jsx` (`1,980 L ➔ 11 L`) y `LaborCargaPanel.jsx` (`2,025 L ➔ 191 L`); `63/63` archivos `AM` en `app/src/` `≤ 292 L`.
+- **Tracker Anti-Rot:** Candados 1–5 **CUMPLE** (`0` `supabase.from(` en vistas/hooks modificados, inyección única `GEMINI.md`, `0` rutas absolutas de usuario).
+- **Verificación Runtime & Build:** `npm.cmd run check:hygiene` (`exit 0`, `125` `.md`, `INDICE_METADATOS: OK`, `IDs DEC/ERR: OK`, `oxlint: 0 errors / 320 warnings` en `192` archivos, `vite build: 2,152` módulos).
+- **Veredicto Final:** 🟢 **MERGEADO Y VERIFICADO EN `main`** | **Commit:** `16d58e7` (origen `90dd535`).
+---
+
 ## [2026-11-13] Sesión de Cierre — Fix Ancho w-full y Visibilidad de Columna Acciones en Personal y Tarifas (`ERR-005`)
 - **Hora:** 18:43 ART | **Agente:** Antigravity | **Revisor:** Usuario
 - **Superficie evaluada (delta exclusivo del chat):**
@@ -52,17 +62,4 @@
 - **Trazabilidad Supabase:** Verificada (`workOrdersService.js` x15, `contractorDeductionsService.js:338`, `PersonalNominaPanel.jsx` x6).
 - **Verificación Runtime & Build:** `npx oxlint` (`0` errores) | `npm run build` PASS (`1.93s`).
 - **Veredicto Final:** 🟢 **APROBADO PARA COMMIT** | **Commits:** `1331aeb`, `68e9f50` + cierre docs `2026-11-13`.
----
-
-## [2026-11-12] Sesión de Cierre — Fix Pantalla en Negro Barco/OT (Terceros) & Consolidación Regla Naval OTs (`be899a3`)
-- **Hora:** 17:43 ART | **Agente:** Antigravity | **Revisor:** Usuario
-- **Superficie evaluada (commit `be899a3` + docs):**
-  * `app/src/components/ShipWorkOrderPickerModal.jsx`: Reubicación de `useMemo` (`selectedWo`, `previewScope`) sobre `if (!isOpen) return null`, eliminando crash `rules-of-hooks` en Terceros, más regla naval y preview hover.
-  * `app/src/components/terceros/TercerosModals.jsx`: Comparación `String(wo.ship_id) === String(formData.ship_id)` e integración de `WorkOrderSelectorWithHover` y `WorkOrderScopeHoverCard`.
-  * OTs consolidados en `be899a3`: `CloseWorkOrderTreeModal.jsx`, `WorkOrderScopeHoverCard.jsx`, `WorkOrderSelectorWithHover.jsx`, `workOrdersConstants.js`, `workOrdersService.js`, `PanolModals.jsx`, `LaborModals.jsx`.
-- **Blast Radius:** Sistémico controlado (`ShipWorkOrderPickerModal` compartido por Terceros, Horas, Pañol y Compras).
-- **Tracker Anti-Rot:** `0` pecados (`oxlint --deny=rules-of-hooks`: `0` errores).
-- **Trazabilidad Supabase:** `auditService` en `tercerosService.js` (`saveShipWoPickerService`) y `workOrdersService.js`.
-- **Verificación Runtime & Build:** `npm run build` PASS en `3.32s` (`2069` módulos, `0` errores).
-- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT** | **Commit:** `be899a3` + cierre docs `2026-11-12` (`ERR-004`).
 ---
