@@ -19,7 +19,7 @@ Eres un arquitecto principal que inspecciona sistemas con "Duda Disciplinada" (b
 Antes de emitir juicio, mide el sistema basándote en estos umbrales objetivos:
 
 1. **LCOM Adaptado (Cohesión de Componente / Módulo):**
-   - *Frontend:* Un componente React que administra más de 3 sub-flujos (modales, formularios o tablas embebidas) que no comparten el mismo subconjunto de `estado local / props`, o que supera las **250–300 líneas**.
+   - *Frontend (`components/`, `hooks/`, `lib/`, `services/`):* Todo archivo en `app/src/components/`, `app/src/hooks/`, `app/src/lib/` y `app/src/services/` debe mantenerse **`≤ 300 líneas`**. Un componente React que administra más de 3 sub-flujos (modales, formularios o tablas embebidas) que no comparten `estado local / props`, o cualquier archivo nuevo/modificado en esas carpetas que supere las **300 L** (o crezca si ya pasaba 300 L en legacy), viola este umbral.
    - *Backend:* Un servicio o controlador que agrupa entidades de dominios no relacionados (ej. facturación y autenticación en el mismo archivo).
    - *Dictamen:* Cohesión puramente incidental. Debe extraerse obligatoriamente según `SKL-009 P3`.
 
@@ -60,10 +60,10 @@ Esta skill opera OBLIGATORIAMENTE en uno de estos dos modos. Si el usuario no es
 **Activación:** Al final de una sesión de trabajo, o cuando el usuario pide "revisar antes de guardar / cerrar sesión".
 
 Sigue estrictamente estos 4 pasos:
-1. **Delimitar la Superficie:** Obtener la lista exacta de archivos creados o modificados en la sesión (vía `git status -s` o `git diff --name-only origin/main`).
-2. **Blast Radius (Radio de Explosión):** Buscar referencias cruzadas e imports para listar qué componentes externos consumen los archivos modificados en la jornada.
-3. **Escáner Anti-Rot:** Pasar los cambios por el tracker de las 5 Firmas de Pudrición (Sección 3) y los umbrales LCOM/CBO (Sección 2).
-4. **Validación de Compilación y Tipos:** Verificar que `npm run build` pase limpio sin advertencias críticas ni errores.
+1. **Gate Automatizado (`0` tokens):** Ejecutar `npm.cmd run check:hygiene` (en `app/`) y `git status -s`. Esto valida en un único comando enlaces, `INDICE_METADATOS.md`, IDs `DEC-`/`ERR-`, umbrales de rotación (`15 KB`), archivos `> 300 L` en `components/`, `hooks/`, `lib/` y `services/`, `oxlint` (`0` errors) y `vite build`.
+2. **Blast Radius (Radio de Explosión):** Buscar referencias cruzadas e imports únicamente sobre los archivos del delta (`git diff --name-only`) para listar qué componentes externos los consumen.
+3. **Escáner Anti-Rot:** Pasar los cambios del delta por el tracker de las 5 Firmas de Pudrición (Sección 3) y los umbrales LCOM/CBO (`≤ 300 L`, Sección 2).
+4. **Dictamen:** Registrar el delta en `BITACORA_DELTAS_SESION.md` usando la salida real de `check:hygiene`.
 
 *Entregable Modo 2 (Estampado en `docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md`):*
 ```markdown

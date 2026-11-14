@@ -12,12 +12,14 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 ## 1. Sesión, Regla de Oro y Seguridad
 - **Inicio obligatorio:** correr `git pull`; verificar que `version` del frontmatter coincida con `main` (si difiere, frenar); reportar estado de `INDICE_PLANILLAS.md` y `workflows/_meta/INDEX.md` si aplica.
 - **Regla de Oro de Disco:** prohibido crear o modificar archivos en disco de forma unilateral; mostrar propuesta en el chat y esperar aprobación explícita del usuario.
+- **Higiene de sesión:** correr `npm.cmd run check:hygiene` (`app/`) antes de cerrar; sugerir abrir un **chat nuevo** después de cada `push` importante o al superar `~130k` tokens de contexto.
 - **Seguridad:** nunca credenciales, tokens o API keys en texto plano (usar placeholders; ver `docs/01_infraestructura/03_seguridad_credenciales.md`).
 
 ## 2. Router (`SKL-016`) y Pipeline Mecánico (4 Fases)
 
 | Pedido / Capa | Skill Obligatoria | Primer Tool Call | Condición de Cierre |
 | :--- | :--- | :--- | :--- |
+| UI cosmético/JSX (sin BD ni servicios) | **Nivel 0** (`SKL-016` Fast-Track) | `read_file` acotado (`≤ 100 L`) | Edición puntual + `npm.cmd run build` (sin índices ni Supabase). |
 | Datos, tablas o columnas | `SKL-014` | `read_file` / `run_command` (F1) | Cero asunciones; esquema verificado citado. |
 | 2+ tareas o varias capas | `SKL-008` | `read_file` / `run_command` | Tabla de etapas (*Fast-Track* o *Freno por Riesgo*). |
 | UI, formularios y flujos | `SKL-012` | `read_file` | Vector Único, Top-Down y compresión dimensional. |
@@ -55,7 +57,7 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 - **Bloqueo de nuevo módulo/pantalla:** prohibido programar sin preguntar si es `CARGA_EDICION` (Gallo, vinculado a `audit_logs`) o `METRICAS_ANALISIS` (Gallina) e indexarlo en `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md`.
 - **Estándares y Catálogo:** `CARGA_EDICION` (`useSpreadsheetGrid.js`, 5 Zonas `index.css`, ref. `Compras.jsx`) y `METRICAS_ANALISIS` viven en `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` y `estandares/01..07`; n8n en `SKL-001`; Docker/Backend en `SKL-010`/`SKL-011`; skills en `.agents/skills/SKILLS_REGISTRY.md`; agentes: `automation-governance-architect`, `database-optimizer`, `graphify`.
 - **Commits y Push:** `tipo: descripción corta` (`feat`, `fix`, `docs`, `refactor`), un commit por tarea atómica; **push solo con confirmación explícita en el chat**.
-- **Cierre de sesión (`SKL-006`):** actualizar `workflows/_meta/INDEX.md`, `TAREAS_PENDIENTES.md`, `docs/MATRIZ_RESPONSABILIDAD_DATOS.md` e `INDICE_CENTRAL.md`.
+- **Cierre de sesión (`SKL-006`):** correr `npm.cmd run check:hygiene` (`app/`) y actualizar solo el delta en `INDICE_METADATOS.md`, `workflows/_meta/INDEX.md`, `TAREAS_PENDIENTES.md` o `docs/MATRIZ_RESPONSABILIDAD_DATOS.md`.
 
 ## 5. Formato Obligatorio de Respuesta
 **Inicio de cada turno:**
