@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
   Building2,
   Pencil,
@@ -12,12 +12,9 @@ import {
   ClipboardList,
   Phone,
   Mail,
-  Ship,
   X
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
-import { logCellChange, logRowAction } from '../../lib/auditService'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -30,11 +27,14 @@ import {
   cleanShipName,
   OWNER_CLONE_FIELDS
 } from '../../lib/shipsConstants'
+import { buildOwnerFieldPatch, updateGridEntityRowsService } from '../../lib/shipsService'
+import { buildGridCellMeta, executeGridBatchUpdate, resolveShipsAuditUser } from '../../lib/shipsGridHelpers'
 
 export default function ShipsArmadoresPanel({
   owners = [],
   setOwners,
   ships = [],
+  setShips,
   user,
   activeRolePerspective = 'admin',
   onOpenNewOwner,
@@ -43,32 +43,15 @@ export default function ShipsArmadoresPanel({
   setStatusMessage,
   loadInitialData
 }) {
-  // Vista local: 'tabla' | 'tarjetas'
   const [viewModeOwners, setViewModeOwners] = useState('tabla')
-
-  // Filtro de búsqueda local
   const [searchTerm, setSearchTerm] = useState('')
-
-  // Inline edit state
   const [inlineOwnerEdit, setInlineOwnerEdit] = useState(null)
+  const searchInputRef = useRef(null)
+  const ownersPasteRef = useRef(null)
+  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
+  const showFeedback = useCallback((type, text) => setStatusMessage?.({ type, text }), [setStatusMessage])
 
-  // Context menu canónico
-  const {
-    menuState,
-    openMenu,
-    closeMenu,
-    handleCopy,
-    handlePaste,
-    handleInsertAbove,
-    handleInsertBelow,
-    handleDuplicate,
-    handleDelete,
-    showAuditModal,
-    auditModalInfo,
-    closeAuditModal
-  } = useGridContextMenu()
-
-  // Columnas para spreadsheet grid
+  // Columnas visibles editables para spreadsheet grid (1:1 con <td>)
   const ownersGridColumns = useMemo(() => [
     {
       key: 'name',
@@ -93,12 +76,6 @@ export default function ShipsArmadoresPanel({
       label: 'Email Principal',
       getValue: (o) => o.email_principal || '',
       formatDisplay: (val) => val || '—'
-    },
-    {
-      key: 'cuit',
-      label: 'CUIT',
-      getValue: (o) => o.cuit || '',
-      formatDisplay: (val) => val || '—'
     }
   ], [])
 
@@ -118,184 +95,149 @@ export default function ShipsArmadoresPanel({
     })
   }, [owners, searchTerm])
 
-  // Mutación atómica en DB con auditoría
-  const applyOwnerSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
-    const targetOwner = owners.find(o => o.id === rowId)
-    if (!targetOwner) return null
+  const syncShipsNestedOwners = useCallback((ids, localPatch) => {
+    setShips?.((prev) =>
+      prev.map((s) => (ids.includes(s.owner_id) && s.owners ? { ...s, owners: { ...s.owners, ...localPatch } } : s))
+    )
+  }, [setShips])
 
-    let dbPatch = {}
-    let localPatch = {}
-    let returnedVal = rawValue
+  // Mutación atómica en DB con sincronización de flota y auditoría
+  const applyOwnerSinglePatch = useCallback(async (rowId, colKey, rawValue, { skipAudit = true } = {}) => {
+    const targetOwner = owners.find((o) => o.id === rowId)
+    const built = buildOwnerFieldPatch(colKey, rawValue)
+    if (!built) return null
 
-    if (colKey === 'name') {
-      const name = String(rawValue || '').trim()
-      if (!name) return null
-      dbPatch = { name }
-      localPatch = { name }
-      returnedVal = name
-    } else if (['armador_name', 'armador_phone', 'email_principal', 'email_secundario', 'cuit'].includes(colKey)) {
-      const val = String(rawValue || '').trim() || null
-      dbPatch = { [colKey]: val }
-      localPatch = { [colKey]: val }
-      returnedVal = val || ''
-    } else {
-      return null
-    }
+    setOwners((prev) => prev.map((o) => (o.id === rowId ? { ...o, ...built.localPatch } : o)))
+    syncShipsNestedOwners([rowId], built.localPatch)
 
-    setOwners(prev => prev.map(o => (o.id === rowId ? { ...o, ...localPatch } : o)))
-    const { error } = await supabase.from('owners').update(dbPatch).eq('id', rowId)
-    if (error) throw error
-
-    logCellChange({
-      entityType: 'owners',
-      entityId: rowId,
-      entityName: targetOwner?.name || rowId,
-      field: colKey,
-      fieldLabel: colKey,
-      oldValue: targetOwner ? targetOwner[colKey] : null,
-      newValue: returnedVal,
-      sheetName: 'Barcos · Padrón de Armadores',
-      moduleRoute: '/barcos',
-      changeOrigin: 'INLINE_CELL',
-      user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
-    })
-
-    return returnedVal
-  }, [owners, setOwners, activeRolePerspective])
-
-  // Batch update para fill-handle
-  const handleOwnersBatchUpdate = useCallback(async ({ colKey, newValue, targetIds }) => {
-    if (!targetIds || targetIds.length === 0) return
-    const ids = Array.from(targetIds)
-
-    let dbPatch = {}
-    let localPatch = {}
-
-    if (colKey === 'name') {
-      const name = String(newValue || '').trim()
-      if (!name) return
-      dbPatch = { name }
-      localPatch = { name }
-    } else if (['armador_name', 'armador_phone', 'email_principal', 'email_secundario', 'cuit'].includes(colKey)) {
-      const val = String(newValue || '').trim() || null
-      dbPatch = { [colKey]: val }
-      localPatch = { [colKey]: val }
-    } else {
-      return
-    }
-
-    setOwners(prev => prev.map(o => (ids.includes(o.id) ? { ...o, ...localPatch } : o)))
-    const { error } = await supabase.from('owners').update(dbPatch).in('id', ids)
-    if (error) {
-      console.error('Error en batch update de armadores:', error)
-      await loadInitialData?.()
-      throw error
-    }
-
-    logRowAction({
-      action: 'BATCH_FILL',
-      entityType: 'owners',
-      entityId: `batch_${ids.length}`,
-      entityName: `${ids.length} armadores`,
-      changes: { colKey, newValue, affectedCount: ids.length },
-      sheetName: 'Barcos · Padrón de Armadores',
-      moduleRoute: '/barcos',
-      changeOrigin: 'DRAG_FILL',
-      user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
-    })
-  }, [setOwners, loadInitialData, activeRolePerspective])
-
-  // Paste handler 2D
-  const handlePasteOwnerRows = useMemo(() => {
-    return buildPasteRowHandler({
+    await updateGridEntityRowsService({
       table: 'owners',
-      columns: ['name', 'armador_name', 'armador_phone', 'email_principal'],
-      transformRow: (cells) => {
-        const name = (cells[0] || '').trim()
-        if (!name) return null
-        return {
-          name,
-          armador_name: (cells[1] || '').trim() || null,
-          armador_phone: (cells[2] || '').trim() || null,
-          email_principal: (cells[3] || '').trim() || null,
-          is_active: true
-        }
-      },
-      onSuccess: async () => {
-        if (loadInitialData) await loadInitialData()
-      },
-      onError: (err) => {
-        if (setStatusMessage) setStatusMessage({ type: 'error', text: 'Error al pegar armadores: ' + err.message })
-      },
-      user: user?.email
+      entityType: 'owners',
+      sheetName: 'Barcos · Padrón de Armadores',
+      ids: [rowId],
+      dbPatch: built.dbPatch,
+      auditMeta: skipAudit
+        ? null
+        : {
+            mode: 'cell',
+            entityName: targetOwner?.name || rowId,
+            field: colKey,
+            oldValue: targetOwner?.[colKey] ?? null,
+            newValue: built.normalizedValue,
+            changeOrigin: 'PASTE_OR_UNDO'
+          },
+      user: resolveShipsAuditUser(user, activeRolePerspective)
     })
-  }, [loadInitialData, setStatusMessage, user])
+    return built.normalizedValue
+  }, [owners, setOwners, syncShipsNestedOwners, user, activeRolePerspective])
+
+  // Batch update canónico (Fill Down, Paste Matrix 2D y Undo/Redo)
+  const handleOwnersBatchUpdate = useCallback(async (args) => {
+    await executeGridBatchUpdate({
+      ...args,
+      applySingle: applyOwnerSinglePatch,
+      applyBatch: async (ids, colKey, newValue) => {
+        const built = buildOwnerFieldPatch(colKey, newValue)
+        if (!built) return
+        setOwners((prev) => prev.map((o) => (ids.includes(o.id) ? { ...o, ...built.localPatch } : o)))
+        syncShipsNestedOwners(ids, built.localPatch)
+        await updateGridEntityRowsService({
+          table: 'owners',
+          entityType: 'owners',
+          sheetName: 'Barcos · Padrón de Armadores',
+          ids,
+          dbPatch: built.dbPatch,
+          auditMeta: {
+            mode: 'batch',
+            entityName: `${ids.length} armadores`,
+            changes: { colKey, newValue: built.normalizedValue, affectedCount: ids.length }
+          },
+          user: resolveShipsAuditUser(user, activeRolePerspective)
+        })
+      },
+      onReload: loadInitialData
+    })
+  }, [applyOwnerSinglePatch, setOwners, syncShipsNestedOwners, user, activeRolePerspective, loadInitialData])
 
   // Hook canónico spreadsheet grid
   const ownersGrid = useSpreadsheetGrid({
-    data: filteredOwners,
+    rows: filteredOwners,
     columns: ownersGridColumns,
+    getRowId: (o) => o.id,
     onBatchUpdate: handleOwnersBatchUpdate,
-    onPasteRows: handlePasteOwnerRows,
-    storageKey: 'aloncar_grid_owners'
+    onPasteRow: (args) => ownersPasteRef.current?.(args),
+    onFocusSearch: () => searchInputRef.current?.focus(),
+    onCellActivate: (row, colDef, rowIndex) => {
+      setInlineOwnerEdit({
+        rowIndex,
+        colKey: colDef.key,
+        rowId: row.id,
+        value: colDef.getValue ? colDef.getValue(row) : (row[colDef.key] ?? '')
+      })
+    },
+    storageKey: 'aloncar_grid_owners',
+    showFeedback
   })
 
-  // Props de celda para navegación espacial
-  const getOwnersCellProps = (rowIndex, colKey) => {
-    const isFocused = ownersGrid.focusedCell?.rowIndex === rowIndex && ownersGrid.focusedCell?.colKey === colKey
-    const isSelected = ownersGrid.isCellSelected(rowIndex, colKey)
-    const isEditing = inlineOwnerEdit?.rowIndex === rowIndex && inlineOwnerEdit?.colKey === colKey
-    const isFillHandleSource = ownersGrid.isFillHandleSource(rowIndex, colKey)
+  useEffect(() => {
+    ownersPasteRef.current = buildPasteRowHandler({
+      table: 'owners',
+      entityType: 'owners',
+      fields: OWNER_CLONE_FIELDS,
+      grid: ownersGrid,
+      setList: setOwners,
+      nameOf: (r) => r.name,
+      showFeedback,
+      user: user?.email
+    })
+  }, [ownersGrid, setOwners, showFeedback, user])
 
-    return {
-      tabIndex: -1,
-      'data-row': rowIndex,
-      'data-col': colKey,
-      className: `relative px-3 py-2 cursor-pointer transition-colors border-r border-b border-slate-800/80 outline-none select-none ${
-        isEditing
-          ? 'bg-slate-900 ring-2 ring-primary ring-inset z-20'
-          : isFocused
-          ? 'bg-cyan-950/60 ring-2 ring-cyan-400 ring-inset z-10'
-          : isSelected
-          ? 'bg-cyan-950/30'
-          : 'hover:bg-slate-800/40'
-      }`,
-      onClick: (e) => ownersGrid.handleCellClick(rowIndex, colKey, e),
-      onDoubleClick: () => {
-        const owner = filteredOwners[rowIndex]
+  const getOwnersCellProps = (rowIndex, colKey) =>
+    buildGridCellMeta({
+      grid: ownersGrid,
+      columns: ownersGridColumns,
+      rowIndex,
+      colKey,
+      inlineEdit: inlineOwnerEdit,
+      onStartEdit: (rIdx, key) => {
+        const owner = filteredOwners[rIdx]
         if (!owner) return
+        const colDef = ownersGridColumns.find((c) => c.key === key)
         setInlineOwnerEdit({
-          rowIndex,
-          colKey,
+          rowIndex: rIdx,
+          colKey: key,
           rowId: owner.id,
-          value: owner[colKey] !== undefined && owner[colKey] !== null ? owner[colKey] : ''
+          value: colDef?.getValue ? colDef.getValue(owner) : (owner[key] ?? '')
         })
-      },
-      onMouseDown: (e) => ownersGrid.handleMouseDown(rowIndex, colKey, e),
-      onMouseEnter: () => ownersGrid.handleMouseEnter(rowIndex, colKey),
-      childrenFillHandle: isFillHandleSource ? (
-        <div
-          {...ownersGrid.fillHandleProps}
-          title="Arrastrar para rellenar celdas (■)"
-          className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-950 rounded-xs cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-        />
-      ) : null
-    }
-  }
+      }
+    })
 
   // Guardado de edición inline
   const commitInlineOwnerEdit = async (overrideValue = undefined) => {
     if (!inlineOwnerEdit) return
     const { rowId, colKey } = inlineOwnerEdit
     const nextRaw = overrideValue !== undefined ? overrideValue : inlineOwnerEdit.value
-    const owner = owners.find(o => o.id === rowId)
+    const owner = owners.find((o) => o.id === rowId)
     setInlineOwnerEdit(null)
     if (!owner) return
 
+    const colDef = ownersGridColumns.find((c) => c.key === colKey)
+    const prevValue = colDef?.getValue ? colDef.getValue(owner) : (owner[colKey] ?? '')
     try {
-      await applyOwnerSinglePatch(rowId, colKey, nextRaw)
+      const normalized = await applyOwnerSinglePatch(rowId, colKey, nextRaw, { skipAudit: true })
+      if (normalized !== null && String(prevValue ?? '') !== String(normalized ?? '')) {
+        ownersGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Edición de ${colDef?.label || colKey}`,
+          previousValues: { [rowId]: prevValue },
+          newValue: normalized,
+          timestamp: Date.now()
+        })
+      }
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: 'Error guardando celda: ' + err.message })
+      showFeedback('error', 'Error guardando celda: ' + err.message)
+      await loadInitialData?.()
     }
   }
 
@@ -318,11 +260,24 @@ export default function ShipsArmadoresPanel({
     }
   }
 
+  const isAllOwnersSelected = filteredOwners.length > 0 && filteredOwners.every((o) => ownersGrid.selectedRowIds.has(o.id))
+  const hasActiveFilter = Boolean(searchTerm)
+  const renderFillHandle = (cp) =>
+    cp.renderHandle ? (
+      <div
+        onMouseDown={ownersGrid.handleFillHandleMouseDown}
+        onDoubleClick={ownersGrid.handleFillHandleDoubleClick}
+        title="Arrastrar para rellenar celdas (■)"
+        className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-950 rounded-xs cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+      />
+    ) : null
+
   return (
     <div className="space-y-4">
       {/* ZONA 3: TOOLBAR CORPORATIVA CON BUSCADOR Y CAMBIO DE VISTA */}
       <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg flex flex-col gap-2.5">
         <CrawlerSearchBar
+          inputRef={searchInputRef}
           value={searchTerm}
           onChange={setSearchTerm}
           placeholder="Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)"
@@ -405,12 +360,13 @@ export default function ShipsArmadoresPanel({
           ref={ownersGrid.gridContainerRef}
           tabIndex={0}
           onKeyDown={ownersGrid.handleKeyDown}
+          onPaste={ownersGrid.handlePaste}
           className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
         >
           <GridRibbon
-            activeCellBadge={ownersGrid.activeCellBadge || 'PLANILLA ARMADORES'}
+            activeCellBadge={ownersGrid.activeCellBadge}
             onInsertRow={onOpenNewOwner}
-            insertRowLabel="+ Nueva Empresa Armadora"
+            insertRowLabel="Nueva Empresa Armadora"
             undoCount={ownersGrid.undoStack?.length || 0}
             totalRows={filteredOwners.length}
             entityName="armadores"
@@ -426,11 +382,11 @@ export default function ShipsArmadoresPanel({
                     <div className="flex flex-col items-center justify-center gap-0.5">
                       <button
                         type="button"
-                        onClick={ownersGrid.toggleSelectAll}
+                        onClick={() => ownersGrid.toggleSelectAll(filteredOwners.map((o) => o.id))}
                         className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
                         title="Seleccionar o deseleccionar todas las empresas armadoras visibles"
                       >
-                        {ownersGrid.isAllSelected ? (
+                        {isAllOwnersSelected ? (
                           <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
                         ) : (
                           <Square className="w-3.5 h-3.5" />
@@ -490,26 +446,28 @@ export default function ShipsArmadoresPanel({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                openMenu(e, owner, rowIndex, { entityType: 'owners', recordId: owner.id, recordLabel: owner.name }, ownersGrid)
+                                openMenu(e, owner, rowIndex, { entityType: 'owners', recordId: owner.id, recordLabel: owner.name, isRowHeader: true }, ownersGrid)
                               }}
                               className="font-mono text-[9px] text-slate-500 hover:text-cyan-300 cursor-pointer font-bold"
                               title="Menú contextual"
                             >
-                              {owner.folio ? `#${owner.folio}` : `${rowIndex + 1}`}
+                              #{owner._rowSeq || (rowIndex + 1)}
                             </button>
                           </div>
                         </td>
 
                         {/* 1. Razón Social (Editable) */}
-                        <td {...cpName}>
-                          {inlineOwnerEdit?.rowIndex === rowIndex && inlineOwnerEdit?.colKey === 'name' ? (
+                        <td {...cpName.domProps}>
+                          {cpName.isEditing ? (
                             <input
                               type="text"
                               autoFocus
                               value={inlineOwnerEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setInlineOwnerEdit({ ...inlineOwnerEdit, value: e.target.value })}
                               onBlur={() => commitInlineOwnerEdit()}
                               onKeyDown={(e) => {
+                                e.stopPropagation()
                                 if (e.key === 'Enter') commitInlineOwnerEdit()
                                 if (e.key === 'Escape') setInlineOwnerEdit(null)
                               }}
@@ -525,19 +483,21 @@ export default function ShipsArmadoresPanel({
                               )}
                             </div>
                           )}
-                          {cpName.childrenFillHandle}
+                          {renderFillHandle(cpName)}
                         </td>
 
                         {/* 2. Nombre del Armador (Editable) */}
-                        <td {...cpArmador}>
-                          {inlineOwnerEdit?.rowIndex === rowIndex && inlineOwnerEdit?.colKey === 'armador_name' ? (
+                        <td {...cpArmador.domProps}>
+                          {cpArmador.isEditing ? (
                             <input
                               type="text"
                               autoFocus
                               value={inlineOwnerEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setInlineOwnerEdit({ ...inlineOwnerEdit, value: e.target.value })}
                               onBlur={() => commitInlineOwnerEdit()}
                               onKeyDown={(e) => {
+                                e.stopPropagation()
                                 if (e.key === 'Enter') commitInlineOwnerEdit()
                                 if (e.key === 'Escape') setInlineOwnerEdit(null)
                               }}
@@ -548,19 +508,21 @@ export default function ShipsArmadoresPanel({
                               <HighlightText text={owner.armador_name || '—'} query={searchTerm} />
                             </span>
                           )}
-                          {cpArmador.childrenFillHandle}
+                          {renderFillHandle(cpArmador)}
                         </td>
 
                         {/* 3. Teléfono (Editable) */}
-                        <td {...cpPhone}>
-                          {inlineOwnerEdit?.rowIndex === rowIndex && inlineOwnerEdit?.colKey === 'armador_phone' ? (
+                        <td {...cpPhone.domProps}>
+                          {cpPhone.isEditing ? (
                             <input
                               type="text"
                               autoFocus
                               value={inlineOwnerEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setInlineOwnerEdit({ ...inlineOwnerEdit, value: e.target.value })}
                               onBlur={() => commitInlineOwnerEdit()}
                               onKeyDown={(e) => {
+                                e.stopPropagation()
                                 if (e.key === 'Enter') commitInlineOwnerEdit()
                                 if (e.key === 'Escape') setInlineOwnerEdit(null)
                               }}
@@ -571,19 +533,21 @@ export default function ShipsArmadoresPanel({
                               <HighlightText text={owner.armador_phone || '—'} query={searchTerm} />
                             </span>
                           )}
-                          {cpPhone.childrenFillHandle}
+                          {renderFillHandle(cpPhone)}
                         </td>
 
                         {/* 4. Correos (Principal y Secundario) */}
-                        <td {...cpEmail}>
-                          {inlineOwnerEdit?.rowIndex === rowIndex && inlineOwnerEdit?.colKey === 'email_principal' ? (
+                        <td {...cpEmail.domProps}>
+                          {cpEmail.isEditing ? (
                             <input
                               type="email"
                               autoFocus
                               value={inlineOwnerEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setInlineOwnerEdit({ ...inlineOwnerEdit, value: e.target.value })}
                               onBlur={() => commitInlineOwnerEdit()}
                               onKeyDown={(e) => {
+                                e.stopPropagation()
                                 if (e.key === 'Enter') commitInlineOwnerEdit()
                                 if (e.key === 'Escape') setInlineOwnerEdit(null)
                               }}
@@ -605,7 +569,7 @@ export default function ShipsArmadoresPanel({
                               )}
                             </div>
                           )}
-                          {cpEmail.childrenFillHandle}
+                          {renderFillHandle(cpEmail)}
                         </td>
 
                         {/* 5. Flota Vinculada */}
@@ -663,18 +627,23 @@ export default function ShipsArmadoresPanel({
             </table>
           </div>
 
-          {/* Menú Contextual */}
-          <GridContextMenu
-            menuState={menuState}
-            onClose={closeMenu}
-            onCopy={handleCopy}
-            onPaste={handlePaste}
-            onInsertAbove={handleInsertAbove}
-            onInsertBelow={handleInsertBelow}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
-            onViewHistory={showAuditModal}
-          />
+          {/* Menú Contextual Canónico */}
+          {menuTarget && (
+            <GridContextMenu
+              target={menuTarget}
+              onClose={closeMenu}
+              onCopyCell={ownersGrid.copyActiveCell}
+              onCopyRow={ownersGrid.copyRow}
+              onPaste={ownersGrid.pasteToActiveOrRange}
+              onDeleteCell={ownersGrid.deleteActiveCellOrRange}
+              onInsertRowAbove={onOpenNewOwner}
+              onDuplicateRow={(row) => handleDuplicateOwner(row)}
+              onDeleteRow={(row) => onOpenDeleteOwner(row)}
+              entityType="owners"
+              recordId={menuTarget.recordId}
+              recordLabel={menuTarget.recordLabel}
+            />
+          )}
         </div>
       )}
 
@@ -788,11 +757,22 @@ export default function ShipsArmadoresPanel({
 
       {/* ZONA 5: BARRA DE ESTADO INFERIOR */}
       <GridStatusBarBottom
-        selectedCount={ownersGrid.selectedRowIds.size}
-        totalCount={filteredOwners.length}
-        activeFilterLabel={null}
-        onClearSelection={ownersGrid.clearRowSelection}
-        entityLabel="armadores"
+        filteredCount={filteredOwners.length}
+        totalCount={owners.length}
+        entityName="armadores"
+        hasActiveFilter={hasActiveFilter}
+        onClearFilters={() => setSearchTerm('')}
+        selectionStats={ownersGrid.selectionStats}
+        onClearSelection={() => ownersGrid.setSelectionRange(null)}
+        customSelection={
+          ownersGrid.selectedRowIds.size > 0
+            ? {
+                count: ownersGrid.selectedRowIds.size,
+                label: 'armadores seleccionados',
+                onClear: ownersGrid.clearSelectedRows
+              }
+            : null
+        }
       />
     </div>
   )

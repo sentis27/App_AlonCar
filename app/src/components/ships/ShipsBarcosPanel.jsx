@@ -1,7 +1,6 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react'
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import {
   Ship,
-  Plus,
   Pencil,
   Trash2,
   CopyPlus,
@@ -15,13 +14,9 @@ import {
   AlertTriangle,
   BellRing,
   CheckCircle,
-  Building2,
-  Anchor,
   X
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
-import { logCellChange, logRowAction } from '../../lib/auditService'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -37,6 +32,8 @@ import {
   PREDEFINED_VESSEL_TYPES,
   SHIP_CLONE_FIELDS
 } from '../../lib/shipsConstants'
+import { buildShipFieldPatch, updateGridEntityRowsService } from '../../lib/shipsService'
+import { buildGridCellMeta, executeGridBatchUpdate, resolveShipsAuditUser } from '../../lib/shipsGridHelpers'
 
 export default function ShipsBarcosPanel({
   ships = [],
@@ -46,6 +43,12 @@ export default function ShipsBarcosPanel({
   getShipOtMetrics = {},
   user,
   activeRolePerspective = 'admin',
+  locationFilter: propLocationFilter,
+  setLocationFilter: propSetLocationFilter,
+  requestFilter: propRequestFilter,
+  setRequestFilter: propSetRequestFilter,
+  roleQuickFilter: propRoleQuickFilter,
+  setRoleQuickFilter: propSetRoleQuickFilter,
   onOpenNewShip,
   onOpenEditShip,
   onOpenShip360,
@@ -58,33 +61,23 @@ export default function ShipsBarcosPanel({
   setStatusMessage,
   loadInitialData
 }) {
-  // Vista local: 'tabla' | 'tarjetas'
   const [viewModeShips, setViewModeShips] = useState('tabla')
-
-  // Filtros locales
   const [searchTerm, setSearchTerm] = useState('')
-  const [locationFilter, setLocationFilter] = useState('todos')
-  const [requestFilter, setRequestFilter] = useState('todos')
-  const [roleQuickFilter, setRoleQuickFilter] = useState('todos')
+  const [localLocationFilter, setLocalLocationFilter] = useState('todos')
+  const [localRequestFilter, setLocalRequestFilter] = useState('todos')
+  const [localRoleQuickFilter, setLocalRoleQuickFilter] = useState('todos')
+  const locationFilter = propLocationFilter ?? localLocationFilter
+  const setLocationFilter = propSetLocationFilter ?? setLocalLocationFilter
+  const requestFilter = propRequestFilter ?? localRequestFilter
+  const setRequestFilter = propSetRequestFilter ?? setLocalRequestFilter
+  const roleQuickFilter = propRoleQuickFilter ?? localRoleQuickFilter
+  const setRoleQuickFilter = propSetRoleQuickFilter ?? setLocalRoleQuickFilter
 
-  // Inline edit state
   const [inlineShipEdit, setInlineShipEdit] = useState(null)
-
-  // Context menu canónico
-  const {
-    menuState,
-    openMenu,
-    closeMenu,
-    handleCopy,
-    handlePaste,
-    handleInsertAbove,
-    handleInsertBelow,
-    handleDuplicate,
-    handleDelete,
-    showAuditModal,
-    auditModalInfo,
-    closeAuditModal
-  } = useGridContextMenu()
+  const searchInputRef = useRef(null)
+  const shipsPasteRef = useRef(null)
+  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
+  const showFeedback = useCallback((type, text) => setStatusMessage?.({ type, text }), [setStatusMessage])
 
   // Columnas para spreadsheet grid
   const shipsGridColumns = useMemo(() => [
@@ -145,8 +138,10 @@ export default function ShipsBarcosPanel({
         if (ship.info_request_status && ship.info_request_status !== 'completo') return false
       }
 
-      // 4. Filtro por rol / perspectiva
-      if (roleQuickFilter === 'mis_tareas') {
+      // 4. Filtro por rol / perspectiva / alertas
+      if (roleQuickFilter === 'sin_ot') {
+        if ((getShipOtMetrics[ship.id]?.orphanTotal || 0) <= 0) return false
+      } else if (roleQuickFilter === 'mis_tareas') {
         if (activeRolePerspective === 'jefe_obra') {
           const isPendingMe = ship.info_request_status === 'pendiente_jefe_obra' || ship.info_request_status === 'pendiente_ambos'
           const lacksSpecs = !ship.eslora_mts || !ship.manga_mts || !ship.superficie_casco_m2
@@ -160,217 +155,148 @@ export default function ShipsBarcosPanel({
 
       return true
     })
-  }, [ships, owners, searchTerm, locationFilter, requestFilter, roleQuickFilter, activeRolePerspective])
+  }, [ships, owners, searchTerm, locationFilter, requestFilter, roleQuickFilter, activeRolePerspective, getShipOtMetrics])
 
   // Mutación atómica en DB con auditoría
-  const applyShipSinglePatch = useCallback(async (rowId, colKey, rawValue) => {
-    const targetShip = ships.find(s => s.id === rowId)
-    if (!targetShip) return null
+  const applyShipSinglePatch = useCallback(async (rowId, colKey, rawValue, { skipAudit = true } = {}) => {
+    const targetShip = ships.find((s) => s.id === rowId)
+    const built = buildShipFieldPatch(colKey, rawValue, owners)
+    if (!built) return null
 
-    let dbPatch = {}
-    let localPatch = {}
-    let returnedVal = rawValue
-
-    if (colKey === 'name') {
-      const cleaned = cleanShipName(rawValue).toUpperCase().trim()
-      if (!cleaned) return null
-      dbPatch = { name: cleaned }
-      localPatch = { name: cleaned }
-      returnedVal = cleaned
-    } else if (colKey === 'vessel_type') {
-      const vt = String(rawValue || '').trim() || 'Pesquero'
-      dbPatch = { vessel_type: vt }
-      localPatch = { vessel_type: vt }
-      returnedVal = vt
-    } else if (colKey === 'current_location') {
-      const loc = cleanLocation(rawValue).toUpperCase()
-      dbPatch = { current_location: loc }
-      localPatch = { current_location: loc }
-      returnedVal = loc
-    } else if (colKey === 'owner_id') {
-      const nextOwnerId = rawValue ? String(rawValue).trim() : null
-      const nextOwnerObj = nextOwnerId ? (owners.find(o => o.id === nextOwnerId) || null) : null
-      dbPatch = {
-        owner_id: nextOwnerId,
-        ...(nextOwnerId ? { orphan_owner_alert: false, orphan_owner_previous_name: null } : {})
-      }
-      localPatch = {
-        ...dbPatch,
-        owners: nextOwnerObj
-      }
-      returnedVal = nextOwnerId || ''
-    } else {
-      return null
-    }
-
-    setShips(prev => prev.map(s => (s.id === rowId ? { ...s, ...localPatch } : s)))
-    const { error } = await supabase.from('ships').update(dbPatch).eq('id', rowId)
-    if (error) throw error
-
-    logCellChange({
-      entityType: 'ships',
-      entityId: rowId,
-      entityName: targetShip?.name || rowId,
-      field: colKey,
-      fieldLabel: colKey,
-      oldValue: targetShip ? targetShip[colKey] : null,
-      newValue: returnedVal,
-      sheetName: 'Barcos · Padrón de Buques',
-      moduleRoute: '/barcos',
-      changeOrigin: 'INLINE_CELL',
-      user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
-    })
-
-    return returnedVal
-  }, [ships, owners, setShips, activeRolePerspective])
-
-  // Batch update para fill-handle
-  const handleShipsBatchUpdate = useCallback(async ({ colKey, newValue, targetIds, sourceRowId }) => {
-    if (!targetIds || targetIds.length === 0) return
-    const ids = Array.from(targetIds)
-
-    let dbPatch = {}
-    let localPatch = {}
-
-    if (colKey === 'name') {
-      const cleaned = cleanShipName(newValue).toUpperCase().trim()
-      if (!cleaned) return
-      dbPatch = { name: cleaned }
-      localPatch = { name: cleaned }
-    } else if (colKey === 'vessel_type') {
-      const vt = String(newValue || '').trim() || 'Pesquero'
-      dbPatch = { vessel_type: vt }
-      localPatch = { vessel_type: vt }
-    } else if (colKey === 'current_location') {
-      const loc = cleanLocation(newValue).toUpperCase()
-      dbPatch = { current_location: loc }
-      localPatch = { current_location: loc }
-    } else if (colKey === 'owner_id') {
-      const nextOwnerId = newValue ? String(newValue).trim() : null
-      const nextOwnerObj = nextOwnerId ? (owners.find(o => o.id === nextOwnerId) || null) : null
-      dbPatch = {
-        owner_id: nextOwnerId,
-        ...(nextOwnerId ? { orphan_owner_alert: false, orphan_owner_previous_name: null } : {})
-      }
-      localPatch = {
-        ...dbPatch,
-        owners: nextOwnerObj
-      }
-    } else {
-      return
-    }
-
-    setShips(prev => prev.map(s => (ids.includes(s.id) ? { ...s, ...localPatch } : s)))
-    const { error } = await supabase.from('ships').update(dbPatch).in('id', ids)
-    if (error) {
-      console.error('Error en batch update de buques:', error)
-      await loadInitialData?.()
-      throw error
-    }
-
-    logRowAction({
-      action: 'BATCH_FILL',
-      entityType: 'ships',
-      entityId: `batch_${ids.length}`,
-      entityName: `${ids.length} buques`,
-      changes: { colKey, newValue, affectedCount: ids.length },
-      sheetName: 'Barcos · Padrón de Buques',
-      moduleRoute: '/barcos',
-      changeOrigin: 'DRAG_FILL',
-      user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
-    })
-  }, [owners, setShips, loadInitialData, activeRolePerspective])
-
-  // Paste handler 2D
-  const handlePasteShipRows = useMemo(() => {
-    return buildPasteRowHandler({
+    setShips((prev) => prev.map((s) => (s.id === rowId ? { ...s, ...built.localPatch } : s)))
+    await updateGridEntityRowsService({
       table: 'ships',
-      columns: ['name', 'vessel_type', 'current_location'],
-      transformRow: (cells) => {
-        const name = (cells[0] || '').trim().toUpperCase()
-        if (!name) return null
-        return {
-          name,
-          vessel_type: (cells[1] || '').trim() || 'Pesquero',
-          current_location: cleanLocation(cells[2] || 'VARADERO'),
-          is_active: true
-        }
-      },
-      onSuccess: async () => {
-        if (loadInitialData) await loadInitialData()
-      },
-      onError: (err) => {
-        if (setStatusMessage) setStatusMessage({ type: 'error', text: 'Error al pegar buques: ' + err.message })
-      },
-      user: user?.email
+      entityType: 'ships',
+      sheetName: 'Barcos · Padrón de Buques',
+      ids: [rowId],
+      dbPatch: built.dbPatch,
+      auditMeta: skipAudit
+        ? null
+        : {
+            mode: 'cell',
+            entityName: targetShip?.name || rowId,
+            field: colKey,
+            oldValue: targetShip?.[colKey] ?? null,
+            newValue: built.normalizedValue,
+            changeOrigin: 'PASTE_OR_UNDO'
+          },
+      user: resolveShipsAuditUser(user, activeRolePerspective)
     })
-  }, [loadInitialData, setStatusMessage, user])
+    return built.normalizedValue
+  }, [ships, owners, setShips, user, activeRolePerspective])
+
+  // Batch update canónico (Fill Down, Paste Matrix 2D y Undo/Redo)
+  const handleShipsBatchUpdate = useCallback(async (args) => {
+    await executeGridBatchUpdate({
+      ...args,
+      applySingle: applyShipSinglePatch,
+      applyBatch: async (ids, colKey, newValue) => {
+        const built = buildShipFieldPatch(colKey, newValue, owners)
+        if (!built) return
+        setShips((prev) => prev.map((s) => (ids.includes(s.id) ? { ...s, ...built.localPatch } : s)))
+        await updateGridEntityRowsService({
+          table: 'ships',
+          entityType: 'ships',
+          sheetName: 'Barcos · Padrón de Buques',
+          ids,
+          dbPatch: built.dbPatch,
+          auditMeta: {
+            mode: 'batch',
+            entityName: `${ids.length} buques`,
+            changes: { colKey, newValue: built.normalizedValue, affectedCount: ids.length }
+          },
+          user: resolveShipsAuditUser(user, activeRolePerspective)
+        })
+      },
+      onReload: loadInitialData
+    })
+  }, [applyShipSinglePatch, owners, setShips, user, activeRolePerspective, loadInitialData])
 
   // Hook canónico spreadsheet grid
   const shipsGrid = useSpreadsheetGrid({
-    data: filteredShips,
+    rows: filteredShips,
     columns: shipsGridColumns,
+    getRowId: (s) => s.id,
     onBatchUpdate: handleShipsBatchUpdate,
-    onPasteRows: handlePasteShipRows,
-    storageKey: 'aloncar_grid_ships'
+    onPasteRow: (args) => shipsPasteRef.current?.(args),
+    onFocusSearch: () => searchInputRef.current?.focus(),
+    onCellActivate: (row, colDef, rowIndex) => {
+      setInlineShipEdit({
+        rowIndex,
+        colKey: colDef.key,
+        rowId: row.id,
+        value: colDef.getValue ? colDef.getValue(row) : (row[colDef.key] ?? '')
+      })
+    },
+    storageKey: 'aloncar_grid_ships',
+    showFeedback
   })
 
-  // Props de celda para navegación espacial
-  const getShipsCellProps = (rowIndex, colKey) => {
-    const isFocused = shipsGrid.focusedCell?.rowIndex === rowIndex && shipsGrid.focusedCell?.colKey === colKey
-    const isSelected = shipsGrid.isCellSelected(rowIndex, colKey)
-    const isEditing = inlineShipEdit?.rowIndex === rowIndex && inlineShipEdit?.colKey === colKey
-    const isFillHandleSource = shipsGrid.isFillHandleSource(rowIndex, colKey)
-
-    return {
-      tabIndex: -1,
-      'data-row': rowIndex,
-      'data-col': colKey,
-      className: `relative px-3 py-2 cursor-pointer transition-colors border-r border-b border-slate-800/80 outline-none select-none ${
-        isEditing
-          ? 'bg-slate-900 ring-2 ring-primary ring-inset z-20'
-          : isFocused
-          ? 'bg-cyan-950/60 ring-2 ring-cyan-400 ring-inset z-10'
-          : isSelected
-          ? 'bg-cyan-950/30'
-          : 'hover:bg-slate-800/40'
-      }`,
-      onClick: (e) => shipsGrid.handleCellClick(rowIndex, colKey, e),
-      onDoubleClick: () => {
-        const ship = filteredShips[rowIndex]
-        if (!ship) return
-        setInlineShipEdit({
-          rowIndex,
-          colKey,
-          rowId: ship.id,
-          value: ship[colKey] !== undefined && ship[colKey] !== null ? ship[colKey] : ''
-        })
+  useEffect(() => {
+    shipsPasteRef.current = buildPasteRowHandler({
+      table: 'ships',
+      entityType: 'ships',
+      fields: SHIP_CLONE_FIELDS,
+      grid: shipsGrid,
+      setList: setShips,
+      mergeLocal: (row, patch) => {
+        const nextOwner = patch.owner_id !== undefined
+          ? (patch.owner_id ? (owners.find((o) => o.id === patch.owner_id) || null) : null)
+          : row.owners
+        return { ...row, ...patch, owners: nextOwner }
       },
-      onMouseDown: (e) => shipsGrid.handleMouseDown(rowIndex, colKey, e),
-      onMouseEnter: () => shipsGrid.handleMouseEnter(rowIndex, colKey),
-      childrenFillHandle: isFillHandleSource ? (
-        <div
-          {...shipsGrid.fillHandleProps}
-          title="Arrastrar para rellenar celdas (■)"
-          className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-950 rounded-xs cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-        />
-      ) : null
-    }
-  }
+      nameOf: (r) => cleanShipName(r.name),
+      showFeedback,
+      user: user?.email
+    })
+  }, [shipsGrid, setShips, owners, showFeedback, user])
+
+  const getShipsCellProps = (rowIndex, colKey) =>
+    buildGridCellMeta({
+      grid: shipsGrid,
+      columns: shipsGridColumns,
+      rowIndex,
+      colKey,
+      inlineEdit: inlineShipEdit,
+      onStartEdit: (rIdx, key) => {
+        const ship = filteredShips[rIdx]
+        if (!ship) return
+        const colDef = shipsGridColumns.find((c) => c.key === key)
+        setInlineShipEdit({
+          rowIndex: rIdx,
+          colKey: key,
+          rowId: ship.id,
+          value: colDef?.getValue ? colDef.getValue(ship) : (ship[key] ?? '')
+        })
+      }
+    })
 
   // Guardado de edición inline
   const commitInlineShipEdit = async (overrideValue = undefined) => {
     if (!inlineShipEdit) return
     const { rowId, colKey } = inlineShipEdit
     const nextRaw = overrideValue !== undefined ? overrideValue : inlineShipEdit.value
-    const ship = ships.find(s => s.id === rowId)
+    const ship = ships.find((s) => s.id === rowId)
     setInlineShipEdit(null)
     if (!ship) return
 
+    const colDef = shipsGridColumns.find((c) => c.key === colKey)
+    const prevValue = colDef?.getValue ? colDef.getValue(ship) : (ship[colKey] ?? '')
     try {
-      await applyShipSinglePatch(rowId, colKey, nextRaw)
+      const normalized = await applyShipSinglePatch(rowId, colKey, nextRaw, { skipAudit: true })
+      if (normalized !== null && String(prevValue ?? '') !== String(normalized ?? '')) {
+        shipsGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Edición de ${colDef?.label || colKey}`,
+          previousValues: { [rowId]: prevValue },
+          newValue: normalized,
+          timestamp: Date.now()
+        })
+      }
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: 'Error guardando celda: ' + err.message })
+      showFeedback('error', 'Error guardando celda: ' + err.message)
+      await loadInitialData?.()
     }
   }
 
@@ -393,11 +319,25 @@ export default function ShipsBarcosPanel({
     }
   }
 
+  const isAllShipsSelected = filteredShips.length > 0 && filteredShips.every((s) => shipsGrid.selectedRowIds.has(s.id))
+  const hasActiveFilter = Boolean(searchTerm || locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos')
+  const clearAllFilters = () => { setLocationFilter('todos'); setRequestFilter('todos'); setRoleQuickFilter('todos'); setSearchTerm('') }
+  const renderFillHandle = (cp) =>
+    cp.renderHandle ? (
+      <div
+        onMouseDown={shipsGrid.handleFillHandleMouseDown}
+        onDoubleClick={shipsGrid.handleFillHandleDoubleClick}
+        title="Arrastrar para rellenar celdas (■)"
+        className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-950 rounded-xs cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+      />
+    ) : null
+
   return (
     <div className="space-y-4">
       {/* ZONA 3 (TOOLBAR CORPORATIVA): BUSCADOR, FILTROS Y CAMBIO DE VISTA */}
       <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg flex flex-col gap-2.5">
         <CrawlerSearchBar
+          inputRef={searchInputRef}
           value={searchTerm}
           onChange={setSearchTerm}
           placeholder="Buscar por nombre de buque, matrícula, tipo, locación o empresa armadora... (Ctrl+F | Esc limpia todo)"
@@ -426,26 +366,22 @@ export default function ShipsBarcosPanel({
               <option value="completos">✅ Datos Completos</option>
             </select>
 
-            {activeRolePerspective !== 'admin' && (
+            {(activeRolePerspective !== 'admin' || roleQuickFilter !== 'todos') && (
               <select
                 value={roleQuickFilter}
                 onChange={(e) => setRoleQuickFilter(e.target.value)}
                 className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 focus:outline-none focus:border-amber-400 font-bold cursor-pointer"
               >
                 <option value="todos">Todos los Buques</option>
-                <option value="mis_tareas">⚡ Mis Tareas Pendientes</option>
+                {activeRolePerspective !== 'admin' && <option value="mis_tareas">⚡ Mis Tareas Pendientes</option>}
+                <option value="sin_ot">⚠️ Costos sin OT</option>
               </select>
             )}
 
-            {(locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos' || searchTerm) && (
+            {hasActiveFilter && (
               <button
                 type="button"
-                onClick={() => {
-                  setLocationFilter('todos')
-                  setRequestFilter('todos')
-                  setRoleQuickFilter('todos')
-                  setSearchTerm('')
-                }}
+                onClick={clearAllFilters}
                 className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
                 title="Limpiar filtros"
               >
@@ -517,12 +453,13 @@ export default function ShipsBarcosPanel({
           ref={shipsGrid.gridContainerRef}
           tabIndex={0}
           onKeyDown={shipsGrid.handleKeyDown}
+          onPaste={shipsGrid.handlePaste}
           className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
         >
           <GridRibbon
-            activeCellBadge={shipsGrid.activeCellBadge || 'FLOTA NAVAL'}
+            activeCellBadge={shipsGrid.activeCellBadge}
             onInsertRow={onOpenNewShip}
-            insertRowLabel="+ Nuevo Buque"
+            insertRowLabel="Nuevo Buque"
             undoCount={shipsGrid.undoStack?.length || 0}
             totalRows={filteredShips.length}
             entityName="buques"
@@ -538,11 +475,11 @@ export default function ShipsBarcosPanel({
                     <div className="flex flex-col items-center justify-center gap-0.5">
                       <button
                         type="button"
-                        onClick={shipsGrid.toggleSelectAll}
+                        onClick={() => shipsGrid.toggleSelectAll(filteredShips.map((s) => s.id))}
                         className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
                         title="Seleccionar o deseleccionar todos los buques visibles"
                       >
-                        {shipsGrid.isAllSelected ? (
+                        {isAllShipsSelected ? (
                           <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
                         ) : (
                           <Square className="w-3.5 h-3.5" />
@@ -614,26 +551,28 @@ export default function ShipsBarcosPanel({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                openMenu(e, ship, rowIndex, { entityType: 'ships', recordId: ship.id, recordLabel: cleanName }, shipsGrid)
+                                openMenu(e, ship, rowIndex, { entityType: 'ships', recordId: ship.id, recordLabel: cleanName, isRowHeader: true }, shipsGrid)
                               }}
                               className="font-mono text-[9px] text-slate-500 hover:text-cyan-300 cursor-pointer font-bold"
                               title="Menú contextual"
                             >
-                              {ship.folio ? `#${ship.folio}` : `${rowIndex + 1}`}
+                              #{ship._rowSeq || (rowIndex + 1)}
                             </button>
                           </div>
                         </td>
 
                         {/* 1. Nombre de Buque + Matrícula (Editable) */}
-                        <td {...cpName}>
-                          {inlineShipEdit?.rowIndex === rowIndex && inlineShipEdit?.colKey === 'name' ? (
+                        <td {...cpName.domProps}>
+                          {cpName.isEditing ? (
                             <input
                               type="text"
                               autoFocus
                               value={inlineShipEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setInlineShipEdit({ ...inlineShipEdit, value: e.target.value })}
                               onBlur={() => commitInlineShipEdit()}
                               onKeyDown={(e) => {
+                                e.stopPropagation()
                                 if (e.key === 'Enter') commitInlineShipEdit()
                                 if (e.key === 'Escape') setInlineShipEdit(null)
                               }}
@@ -643,7 +582,10 @@ export default function ShipsBarcosPanel({
                             <div className="min-w-[130px]">
                               <button
                                 type="button"
-                                onClick={() => onOpenShip360(ship)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onOpenShip360(ship)
+                                }}
                                 className="font-extrabold text-white text-xs hover:text-primary hover:underline text-left block truncate cursor-pointer"
                                 title="Ver Ficha Técnica 360°"
                               >
@@ -654,20 +596,25 @@ export default function ShipsBarcosPanel({
                               </span>
                             </div>
                           )}
-                          {cpName.childrenFillHandle}
+                          {renderFillHandle(cpName)}
                         </td>
 
                         {/* 2. Tipo de Embarcación (Editable) */}
-                        <td {...cpType}>
-                          {inlineShipEdit?.rowIndex === rowIndex && inlineShipEdit?.colKey === 'vessel_type' ? (
+                        <td {...cpType.domProps}>
+                          {cpType.isEditing ? (
                             <select
                               autoFocus
                               value={inlineShipEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => {
                                 setInlineShipEdit({ ...inlineShipEdit, value: e.target.value })
                                 commitInlineShipEdit(e.target.value)
                               }}
                               onBlur={() => commitInlineShipEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Escape') setInlineShipEdit(null)
+                              }}
                               className="w-full bg-slate-950 border border-primary rounded px-1.5 py-1 text-xs text-white font-medium focus:outline-none cursor-pointer"
                             >
                               {PREDEFINED_VESSEL_TYPES.map(vt => (
@@ -679,20 +626,25 @@ export default function ShipsBarcosPanel({
                               <HighlightText text={ship.vessel_type || 'Pesquero'} query={searchTerm} />
                             </span>
                           )}
-                          {cpType.childrenFillHandle}
+                          {renderFillHandle(cpType)}
                         </td>
 
                         {/* 3. Locación Actual en Astillero (Editable) */}
-                        <td {...cpLoc}>
-                          {inlineShipEdit?.rowIndex === rowIndex && inlineShipEdit?.colKey === 'current_location' ? (
+                        <td {...cpLoc.domProps}>
+                          {cpLoc.isEditing ? (
                             <select
                               autoFocus
                               value={cleanLocation(inlineShipEdit.value)}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => {
                                 setInlineShipEdit({ ...inlineShipEdit, value: e.target.value })
                                 commitInlineShipEdit(e.target.value)
                               }}
                               onBlur={() => commitInlineShipEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Escape') setInlineShipEdit(null)
+                              }}
                               className="w-full bg-slate-950 border border-primary rounded px-1.5 py-1 text-xs text-white font-bold focus:outline-none cursor-pointer"
                             >
                               {STANDARD_LOCATIONS.map(loc => (
@@ -711,7 +663,7 @@ export default function ShipsBarcosPanel({
                               <HighlightText text={locClean} query={searchTerm} />
                             </span>
                           )}
-                          {cpLoc.childrenFillHandle}
+                          {renderFillHandle(cpLoc)}
                         </td>
 
                         {/* 4. Dimensiones (Eslora x Manga) */}
@@ -749,16 +701,21 @@ export default function ShipsBarcosPanel({
                         </td>
 
                         {/* 6. Armador / Empresa Propietaria (Editable) */}
-                        <td {...cpOwner}>
-                          {inlineShipEdit?.rowIndex === rowIndex && inlineShipEdit?.colKey === 'owner_id' ? (
+                        <td {...cpOwner.domProps}>
+                          {cpOwner.isEditing ? (
                             <select
                               autoFocus
                               value={inlineShipEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => {
                                 setInlineShipEdit({ ...inlineShipEdit, value: e.target.value })
                                 commitInlineShipEdit(e.target.value)
                               }}
                               onBlur={() => commitInlineShipEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Escape') setInlineShipEdit(null)
+                              }}
                               className="w-full bg-slate-950 border border-primary rounded px-1.5 py-1 text-xs text-white focus:outline-none cursor-pointer"
                             >
                               <option value="">-- Sin asignar --</option>
@@ -769,15 +726,25 @@ export default function ShipsBarcosPanel({
                           ) : (
                             <div className="min-w-[120px]">
                               {ship.orphan_owner_alert ? (
-                                <button
-                                  type="button"
-                                  onClick={() => onAssignOrphan(ship)}
-                                  className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold flex items-center gap-1 hover:bg-rose-500/30 cursor-pointer"
-                                  title="Empresa eliminada. Clic para reasignar"
-                                >
-                                  <AlertTriangle className="w-3 h-3" />
-                                  <span>Asignar Armador</span>
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onAssignOrphan(ship) }}
+                                    className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold flex items-center gap-1 hover:bg-rose-500/30 cursor-pointer"
+                                    title="Empresa eliminada. Clic para reasignar"
+                                  >
+                                    <AlertTriangle className="w-3 h-3" />
+                                    <span>Asignar Armador</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onDismissOrphanAlert?.(ship) }}
+                                    className="p-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
+                                    title="Apagar alerta de huérfano"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
                               ) : ship.owners ? (
                                 <div>
                                   <span className="font-bold text-white text-xs block truncate max-w-[180px]">
@@ -794,7 +761,7 @@ export default function ShipsBarcosPanel({
                               )}
                             </div>
                           )}
-                          {cpOwner.childrenFillHandle}
+                          {renderFillHandle(cpOwner)}
                         </td>
 
                         {/* 7. Estado / Solicitud de Información */}
@@ -823,10 +790,22 @@ export default function ShipsBarcosPanel({
                               )}
                             </div>
                           ) : (
-                            <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-bold">
-                              <CheckCircle className="w-3 h-3" />
-                              <span>Completo</span>
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-bold">
+                                <CheckCircle className="w-3 h-3" />
+                                <span>Completo</span>
+                              </span>
+                              {activeRolePerspective === 'admin' && onOpenRequestInfo && (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenRequestInfo(ship)}
+                                  className="p-1 rounded bg-slate-800/80 hover:bg-amber-500/20 text-slate-400 hover:text-amber-300 cursor-pointer"
+                                  title="Solicitar información técnica / armador"
+                                >
+                                  <BellRing className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
 
@@ -879,18 +858,24 @@ export default function ShipsBarcosPanel({
             </table>
           </div>
 
-          {/* Menú Contextual */}
-          <GridContextMenu
-            menuState={menuState}
-            onClose={closeMenu}
-            onCopy={handleCopy}
-            onPaste={handlePaste}
-            onInsertAbove={handleInsertAbove}
-            onInsertBelow={handleInsertBelow}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
-            onViewHistory={showAuditModal}
-          />
+          {/* Menú Contextual Canónico */}
+          {menuTarget && (
+            <GridContextMenu
+              target={menuTarget}
+              onClose={closeMenu}
+              onCopyCell={shipsGrid.copyActiveCell}
+              onCopyRow={shipsGrid.copyRow}
+              onPaste={shipsGrid.pasteToActiveOrRange}
+              onDeleteCell={shipsGrid.deleteActiveCellOrRange}
+              onInsertRowAbove={onOpenNewShip}
+              onInsertRowBelow={onOpenNewStay ? (row) => onOpenNewStay(row?.id) : undefined}
+              onDuplicateRow={(row) => handleDuplicateShip(row)}
+              onDeleteRow={(row) => onToggleShipActive(row)}
+              entityType="ships"
+              recordId={menuTarget.recordId}
+              recordLabel={menuTarget.recordLabel}
+            />
+          )}
         </div>
       )}
 
@@ -991,11 +976,22 @@ export default function ShipsBarcosPanel({
 
       {/* ZONA 5: BARRA DE ESTADO INFERIOR CANÓNICA */}
       <GridStatusBarBottom
-        selectedCount={shipsGrid.selectedRowIds.size}
-        totalCount={filteredShips.length}
-        activeFilterLabel={locationFilter !== 'todos' ? `Locación: ${locationFilter}` : null}
-        onClearSelection={shipsGrid.clearRowSelection}
-        entityLabel="buques"
+        filteredCount={filteredShips.length}
+        totalCount={ships.length}
+        entityName="buques"
+        hasActiveFilter={hasActiveFilter}
+        onClearFilters={clearAllFilters}
+        selectionStats={shipsGrid.selectionStats}
+        onClearSelection={() => shipsGrid.setSelectionRange(null)}
+        customSelection={
+          shipsGrid.selectedRowIds.size > 0
+            ? {
+                count: shipsGrid.selectedRowIds.size,
+                label: 'buques seleccionados',
+                onClear: shipsGrid.clearSelectedRows
+              }
+            : null
+        }
       />
     </div>
   )

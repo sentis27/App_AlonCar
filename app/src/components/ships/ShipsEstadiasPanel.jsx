@@ -1,8 +1,6 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
-  Calendar,
   Pencil,
-  Trash2,
   CopyPlus,
   CheckSquare,
   Square,
@@ -15,9 +13,7 @@ import {
   CheckCircle,
   X
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
-import { logCellChange, logRowAction } from '../../lib/auditService'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -34,6 +30,13 @@ import {
   STAY_CLONE_FIELDS,
   calculateBerthMeters
 } from '../../lib/shipsConstants'
+import {
+  buildStayFieldPatch,
+  updateGridEntityRowsService,
+  syncShipLocationFromStayService,
+  closeStayQuickService
+} from '../../lib/shipsService'
+import { buildGridCellMeta, executeGridBatchUpdate, resolveShipsAuditUser } from '../../lib/shipsGridHelpers'
 
 export default function ShipsEstadiasPanel({
   stays = [],
@@ -47,31 +50,14 @@ export default function ShipsEstadiasPanel({
   setStatusMessage,
   loadInitialData
 }) {
-  // Vista local: 'tabla' | 'tarjetas'
   const [viewModeStays, setViewModeStays] = useState('tabla')
-
-  // Filtros locales
   const [searchTerm, setSearchTerm] = useState('')
   const [locationFilter, setLocationFilter] = useState('todos')
-
-  // Inline edit state
   const [inlineStayEdit, setInlineStayEdit] = useState(null)
-
-  // Context menu canónico
-  const {
-    menuState,
-    openMenu,
-    closeMenu,
-    handleCopy,
-    handlePaste,
-    handleInsertAbove,
-    handleInsertBelow,
-    handleDuplicate,
-    handleDelete,
-    showAuditModal,
-    auditModalInfo,
-    closeAuditModal
-  } = useGridContextMenu()
+  const searchInputRef = useRef(null)
+  const staysPasteRef = useRef(null)
+  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
+  const showFeedback = useCallback((type, text) => setStatusMessage?.({ type, text }), [setStatusMessage])
 
   // Cálculo de metros lineales de muelle ocupados
   const berthOccupancy = useMemo(() => {
@@ -130,191 +116,161 @@ export default function ShipsEstadiasPanel({
     })
   }, [stays, ships, searchTerm, locationFilter])
 
-  // Mutación atómica en DB con auditoría
-  const applyStaySinglePatch = useCallback(async (rowId, colKey, rawValue) => {
-    const targetStay = stays.find(s => s.id === rowId)
-    if (!targetStay) return null
+  // Mutación atómica en DB con sincronización de locación de buque activo y auditoría
+  const applyStaySinglePatch = useCallback(async (rowId, colKey, rawValue, { skipAudit = true } = {}) => {
+    const targetStay = stays.find((s) => s.id === rowId)
+    const built = buildStayFieldPatch(colKey, rawValue, ships)
+    if (!built) return null
 
-    let dbPatch = {}
-    let localPatch = {}
-    let returnedVal = rawValue
-
-    if (colKey === 'location') {
-      const loc = cleanLocation(rawValue).toUpperCase()
-      dbPatch = { location: loc }
-      localPatch = { location: loc }
-      returnedVal = loc
-    } else if (colKey === 'ship_id') {
-      const nextShipId = rawValue ? String(rawValue).trim() : null
-      const nextShipObj = nextShipId ? (ships.find(s => s.id === nextShipId) || null) : null
-      dbPatch = { ship_id: nextShipId }
-      localPatch = { ship_id: nextShipId, ships: nextShipObj }
-      returnedVal = nextShipId || ''
-    } else if (colKey === 'start_date') {
-      dbPatch = { start_date: rawValue || null }
-      localPatch = { start_date: rawValue || null }
-      returnedVal = rawValue || ''
-    } else if (colKey === 'end_date') {
-      dbPatch = { end_date: rawValue || null }
-      localPatch = { end_date: rawValue || null }
-      returnedVal = rawValue || ''
-    } else {
-      return null
-    }
-
-    setStays(prev => prev.map(s => (s.id === rowId ? { ...s, ...localPatch } : s)))
-    const { error } = await supabase.from('ship_stays').update(dbPatch).eq('id', rowId)
-    if (error) throw error
-
-    logCellChange({
-      entityType: 'ship_stays',
-      entityId: rowId,
-      entityName: `Estadía ${rowId}`,
-      field: colKey,
-      fieldLabel: colKey,
-      oldValue: targetStay ? targetStay[colKey] : null,
-      newValue: returnedVal,
-      sheetName: 'Barcos · Estadías y Movimientos',
-      moduleRoute: '/barcos',
-      changeOrigin: 'INLINE_CELL',
-      user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
-    })
-
-    return returnedVal
-  }, [stays, ships, setStays, activeRolePerspective])
-
-  // Batch update para fill-handle
-  const handleStaysBatchUpdate = useCallback(async ({ colKey, newValue, targetIds }) => {
-    if (!targetIds || targetIds.length === 0) return
-    const ids = Array.from(targetIds)
-
-    let dbPatch = {}
-    let localPatch = {}
-
-    if (colKey === 'location') {
-      const loc = cleanLocation(newValue).toUpperCase()
-      dbPatch = { location: loc }
-      localPatch = { location: loc }
-    } else if (colKey === 'ship_id') {
-      const nextShipId = newValue ? String(newValue).trim() : null
-      const nextShipObj = nextShipId ? (ships.find(s => s.id === nextShipId) || null) : null
-      dbPatch = { ship_id: nextShipId }
-      localPatch = { ship_id: nextShipId, ships: nextShipObj }
-    } else if (colKey === 'start_date' || colKey === 'end_date') {
-      dbPatch = { [colKey]: newValue || null }
-      localPatch = { [colKey]: newValue || null }
-    } else {
-      return
-    }
-
-    setStays(prev => prev.map(s => (ids.includes(s.id) ? { ...s, ...localPatch } : s)))
-    const { error } = await supabase.from('ship_stays').update(dbPatch).in('id', ids)
-    if (error) {
-      console.error('Error en batch update de estadías:', error)
-      await loadInitialData?.()
-      throw error
-    }
-
-    logRowAction({
-      action: 'BATCH_FILL',
-      entityType: 'ship_stays',
-      entityId: `batch_${ids.length}`,
-      entityName: `${ids.length} estadías`,
-      changes: { colKey, newValue, affectedCount: ids.length },
-      sheetName: 'Barcos · Estadías y Movimientos',
-      moduleRoute: '/barcos',
-      changeOrigin: 'DRAG_FILL',
-      user: activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE'
-    })
-  }, [ships, setStays, loadInitialData, activeRolePerspective])
-
-  // Paste handler 2D
-  const handlePasteStayRows = useMemo(() => {
-    return buildPasteRowHandler({
+    setStays((prev) => prev.map((s) => (s.id === rowId ? { ...s, ...built.localPatch } : s)))
+    await updateGridEntityRowsService({
       table: 'ship_stays',
-      columns: ['location', 'start_date', 'end_date'],
-      transformRow: (cells) => {
-        return {
-          location: cleanLocation(cells[0] || 'VARADERO'),
-          start_date: cells[1] || new Date().toISOString().split('T')[0],
-          end_date: cells[2] || null
+      entityType: 'ship_stays',
+      sheetName: 'Barcos · Estadías y Movimientos',
+      ids: [rowId],
+      dbPatch: built.dbPatch,
+      auditMeta: skipAudit
+        ? null
+        : {
+            mode: 'cell',
+            entityName: `Estadía ${cleanShipName(targetStay?.ships?.name) || rowId}`,
+            field: colKey,
+            oldValue: targetStay?.[colKey] ?? null,
+            newValue: built.normalizedValue,
+            changeOrigin: 'PASTE_OR_UNDO'
+          },
+      user: resolveShipsAuditUser(user, activeRolePerspective)
+    })
+
+    if (colKey === 'location' && targetStay && !targetStay.end_date && targetStay.ship_id) {
+      await syncShipLocationFromStayService({ shipId: targetStay.ship_id, location: built.normalizedValue })
+      setShips?.((prev) => prev.map((shp) => (shp.id === targetStay.ship_id ? { ...shp, current_location: built.normalizedValue } : shp)))
+    }
+    return built.normalizedValue
+  }, [stays, ships, setStays, setShips, user, activeRolePerspective])
+
+  // Batch update canónico (Fill Down, Paste Matrix 2D y Undo/Redo)
+  const handleStaysBatchUpdate = useCallback(async (args) => {
+    await executeGridBatchUpdate({
+      ...args,
+      applySingle: applyStaySinglePatch,
+      applyBatch: async (ids, colKey, newValue) => {
+        const built = buildStayFieldPatch(colKey, newValue, ships)
+        if (!built) return
+        setStays((prev) => prev.map((s) => (ids.includes(s.id) ? { ...s, ...built.localPatch } : s)))
+        await updateGridEntityRowsService({
+          table: 'ship_stays',
+          entityType: 'ship_stays',
+          sheetName: 'Barcos · Estadías y Movimientos',
+          ids,
+          dbPatch: built.dbPatch,
+          auditMeta: {
+            mode: 'batch',
+            entityName: `${ids.length} estadías`,
+            changes: { colKey, newValue: built.normalizedValue, affectedCount: ids.length }
+          },
+          user: resolveShipsAuditUser(user, activeRolePerspective)
+        })
+        if (colKey === 'location') {
+          const activeShipIds = [...new Set(stays.filter((s) => ids.includes(s.id) && !s.end_date && s.ship_id).map((s) => s.ship_id))]
+          for (const shipId of activeShipIds) {
+            await syncShipLocationFromStayService({ shipId, location: built.normalizedValue })
+          }
+          if (activeShipIds.length > 0) {
+            setShips?.((prev) => prev.map((shp) => (activeShipIds.includes(shp.id) ? { ...shp, current_location: built.normalizedValue } : shp)))
+          }
         }
       },
-      onSuccess: async () => {
-        if (loadInitialData) await loadInitialData()
-      },
-      onError: (err) => {
-        if (setStatusMessage) setStatusMessage({ type: 'error', text: 'Error al pegar estadías: ' + err.message })
-      },
-      user: user?.email
+      onReload: loadInitialData
     })
-  }, [loadInitialData, setStatusMessage, user])
+  }, [applyStaySinglePatch, ships, stays, setStays, setShips, user, activeRolePerspective, loadInitialData])
 
   // Hook canónico spreadsheet grid
   const staysGrid = useSpreadsheetGrid({
-    data: filteredStays,
+    rows: filteredStays,
     columns: staysGridColumns,
+    getRowId: (st) => st.id,
     onBatchUpdate: handleStaysBatchUpdate,
-    onPasteRows: handlePasteStayRows,
-    storageKey: 'aloncar_grid_ship_stays'
+    onPasteRow: (args) => staysPasteRef.current?.(args),
+    onFocusSearch: () => searchInputRef.current?.focus(),
+    onCellActivate: (row, colDef, rowIndex) => {
+      setInlineStayEdit({
+        rowIndex,
+        colKey: colDef.key,
+        rowId: row.id,
+        value: colDef.getValue ? colDef.getValue(row) : (row[colDef.key] ?? '')
+      })
+    },
+    storageKey: 'aloncar_grid_ship_stays',
+    showFeedback
   })
 
-  // Props de celda para navegación espacial
-  const getStaysCellProps = (rowIndex, colKey) => {
-    const isFocused = staysGrid.focusedCell?.rowIndex === rowIndex && staysGrid.focusedCell?.colKey === colKey
-    const isSelected = staysGrid.isCellSelected(rowIndex, colKey)
-    const isEditing = inlineStayEdit?.rowIndex === rowIndex && inlineStayEdit?.colKey === colKey
-    const isFillHandleSource = staysGrid.isFillHandleSource(rowIndex, colKey)
-
-    return {
-      tabIndex: -1,
-      'data-row': rowIndex,
-      'data-col': colKey,
-      className: `relative px-3 py-2 cursor-pointer transition-colors border-r border-b border-slate-800/80 outline-none select-none ${
-        isEditing
-          ? 'bg-slate-900 ring-2 ring-primary ring-inset z-20'
-          : isFocused
-          ? 'bg-cyan-950/60 ring-2 ring-cyan-400 ring-inset z-10'
-          : isSelected
-          ? 'bg-cyan-950/30'
-          : 'hover:bg-slate-800/40'
-      }`,
-      onClick: (e) => staysGrid.handleCellClick(rowIndex, colKey, e),
-      onDoubleClick: () => {
-        const stay = filteredStays[rowIndex]
-        if (!stay) return
-        setInlineStayEdit({
-          rowIndex,
-          colKey,
-          rowId: stay.id,
-          value: stay[colKey] !== undefined && stay[colKey] !== null ? stay[colKey] : ''
-        })
+  useEffect(() => {
+    staysPasteRef.current = buildPasteRowHandler({
+      table: 'ship_stays',
+      entityType: 'ship_stays',
+      fields: STAY_CLONE_FIELDS,
+      grid: staysGrid,
+      setList: setStays,
+      mergeLocal: (row, patch) => {
+        const nextShip = patch.ship_id !== undefined
+          ? (patch.ship_id ? (ships.find((s) => s.id === patch.ship_id) || null) : null)
+          : row.ships
+        return { ...row, ...patch, ships: nextShip }
       },
-      onMouseDown: (e) => staysGrid.handleMouseDown(rowIndex, colKey, e),
-      onMouseEnter: () => staysGrid.handleMouseEnter(rowIndex, colKey),
-      childrenFillHandle: isFillHandleSource ? (
-        <div
-          {...staysGrid.fillHandleProps}
-          title="Arrastrar para rellenar celdas (■)"
-          className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-950 rounded-xs cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-        />
-      ) : null
-    }
-  }
+      nameOf: (r) => cleanShipName(r.ships?.name) || r.id,
+      showFeedback,
+      user: user?.email
+    })
+  }, [staysGrid, setStays, ships, showFeedback, user])
+
+  const getStaysCellProps = (rowIndex, colKey) =>
+    buildGridCellMeta({
+      grid: staysGrid,
+      columns: staysGridColumns,
+      rowIndex,
+      colKey,
+      inlineEdit: inlineStayEdit,
+      extraClass: colKey === 'start_date' || colKey === 'end_date' ? 'text-center' : '',
+      onStartEdit: (rIdx, key) => {
+        const stay = filteredStays[rIdx]
+        if (!stay) return
+        const colDef = staysGridColumns.find((c) => c.key === key)
+        setInlineStayEdit({
+          rowIndex: rIdx,
+          colKey: key,
+          rowId: stay.id,
+          value: colDef?.getValue ? colDef.getValue(stay) : (stay[key] ?? '')
+        })
+      }
+    })
 
   // Guardado de edición inline
   const commitInlineStayEdit = async (overrideValue = undefined) => {
     if (!inlineStayEdit) return
     const { rowId, colKey } = inlineStayEdit
     const nextRaw = overrideValue !== undefined ? overrideValue : inlineStayEdit.value
-    const stay = stays.find(s => s.id === rowId)
+    const stay = stays.find((s) => s.id === rowId)
     setInlineStayEdit(null)
     if (!stay) return
 
+    const colDef = staysGridColumns.find((c) => c.key === colKey)
+    const prevValue = colDef?.getValue ? colDef.getValue(stay) : (stay[colKey] ?? '')
     try {
-      await applyStaySinglePatch(rowId, colKey, nextRaw)
+      const normalized = await applyStaySinglePatch(rowId, colKey, nextRaw, { skipAudit: true })
+      if (normalized !== null && String(prevValue ?? '') !== String(normalized ?? '')) {
+        staysGrid.pushUndoAction({
+          colKey,
+          colLabel: colDef?.label || colKey,
+          actionLabel: `Edición de ${colDef?.label || colKey}`,
+          previousValues: { [rowId]: prevValue },
+          newValue: normalized,
+          timestamp: Date.now()
+        })
+      }
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: 'Error guardando celda: ' + err.message })
+      showFeedback('error', 'Error guardando celda: ' + err.message)
+      await loadInitialData?.()
     }
   }
 
@@ -322,29 +278,11 @@ export default function ShipsEstadiasPanel({
   const handleCloseStayQuick = async (stay) => {
     const today = new Date().toISOString().split('T')[0]
     try {
-      const { error } = await supabase
-        .from('ship_stays')
-        .update({ end_date: today })
-        .eq('id', stay.id)
-
-      if (error) throw error
-
-      logRowAction({
-        action: 'STATUS_CHANGE',
-        entityType: 'ship_stays',
-        entityId: stay.id,
-        entityName: `Cierre estadía ${stay.id}`,
-        changes: { end_date: today },
-        sheetName: 'Barcos · Estadías y Movimientos',
-        moduleRoute: '/barcos',
-        changeOrigin: 'QUICK_ACTION',
-        user: user?.email || (activeRolePerspective === 'admin' ? 'JORGE SENTIS' : 'MARIA JOSE')
-      })
-
-      if (setStatusMessage) setStatusMessage({ type: 'success', text: `Cierre de estadía registrado al día ${today}.` })
+      await closeStayQuickService({ stay, today, user: resolveShipsAuditUser(user, activeRolePerspective) })
+      showFeedback('success', `Cierre de estadía registrado al día ${today}.`)
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      showFeedback('error', err.message)
     }
   }
 
@@ -365,6 +303,19 @@ export default function ShipsEstadiasPanel({
       if (setStatusMessage) setStatusMessage({ type: 'error', text: `Error al duplicar estadía: ${err.message}` })
     }
   }
+
+  const isAllStaysSelected = filteredStays.length > 0 && filteredStays.every((s) => staysGrid.selectedRowIds.has(s.id))
+  const hasActiveFilter = Boolean(searchTerm || locationFilter !== 'todos')
+  const clearAllFilters = () => { setLocationFilter('todos'); setSearchTerm('') }
+  const renderFillHandle = (cp) =>
+    cp.renderHandle ? (
+      <div
+        onMouseDown={staysGrid.handleFillHandleMouseDown}
+        onDoubleClick={staysGrid.handleFillHandleDoubleClick}
+        title="Arrastrar para rellenar celdas (■)"
+        className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-950 rounded-xs cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+      />
+    ) : null
 
   return (
     <div className="space-y-4">
@@ -406,6 +357,7 @@ export default function ShipsEstadiasPanel({
       {/* ZONA 3: TOOLBAR CORPORATIVA CON BUSCADOR Y FILTROS */}
       <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg flex flex-col gap-2.5">
         <CrawlerSearchBar
+          inputRef={searchInputRef}
           value={searchTerm}
           onChange={setSearchTerm}
           placeholder="Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)"
@@ -502,12 +454,13 @@ export default function ShipsEstadiasPanel({
           ref={staysGrid.gridContainerRef}
           tabIndex={0}
           onKeyDown={staysGrid.handleKeyDown}
+          onPaste={staysGrid.handlePaste}
           className="alon-zone-grid rounded-2xl overflow-hidden shadow-xl focus:outline-none"
         >
           <GridRibbon
-            activeCellBadge={staysGrid.activeCellBadge || 'PLANILLA ESTADÍAS'}
+            activeCellBadge={staysGrid.activeCellBadge}
             onInsertRow={() => onOpenNewStay()}
-            insertRowLabel="+ Registrar Movimiento"
+            insertRowLabel="Registrar Movimiento"
             undoCount={staysGrid.undoStack?.length || 0}
             totalRows={filteredStays.length}
             entityName="estadías"
@@ -523,11 +476,11 @@ export default function ShipsEstadiasPanel({
                     <div className="flex flex-col items-center justify-center gap-0.5">
                       <button
                         type="button"
-                        onClick={staysGrid.toggleSelectAll}
+                        onClick={() => staysGrid.toggleSelectAll(filteredStays.map((s) => s.id))}
                         className="text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
                         title="Seleccionar o deseleccionar todas las estadías visibles"
                       >
-                        {staysGrid.isAllSelected ? (
+                        {isAllStaysSelected ? (
                           <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
                         ) : (
                           <Square className="w-3.5 h-3.5" />
@@ -589,27 +542,32 @@ export default function ShipsEstadiasPanel({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                openMenu(e, stay, rowIndex, { entityType: 'ship_stays', recordId: stay.id, recordLabel: cleanShipName(stay.ships?.name) }, staysGrid)
+                                openMenu(e, stay, rowIndex, { entityType: 'ship_stays', recordId: stay.id, recordLabel: cleanShipName(stay.ships?.name), isRowHeader: true }, staysGrid)
                               }}
                               className="font-mono text-[9px] text-slate-500 hover:text-cyan-300 cursor-pointer font-bold"
                               title="Menú contextual"
                             >
-                              {stay.folio ? `#${stay.folio}` : `${rowIndex + 1}`}
+                              #{stay._rowSeq || (rowIndex + 1)}
                             </button>
                           </div>
                         </td>
 
                         {/* 1. Locación (Editable) */}
-                        <td {...cpLoc}>
-                          {inlineStayEdit?.rowIndex === rowIndex && inlineStayEdit?.colKey === 'location' ? (
+                        <td {...cpLoc.domProps}>
+                          {cpLoc.isEditing ? (
                             <select
                               autoFocus
                               value={cleanLocation(inlineStayEdit.value)}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => {
                                 setInlineStayEdit({ ...inlineStayEdit, value: e.target.value })
                                 commitInlineStayEdit(e.target.value)
                               }}
                               onBlur={() => commitInlineStayEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Escape') setInlineStayEdit(null)
+                              }}
                               className="w-full bg-slate-950 border border-primary rounded px-1.5 py-1 text-xs text-white font-bold focus:outline-none cursor-pointer"
                             >
                               {STANDARD_LOCATIONS.map(loc => (
@@ -628,20 +586,25 @@ export default function ShipsEstadiasPanel({
                               <HighlightText text={locClean} query={searchTerm} />
                             </span>
                           )}
-                          {cpLoc.childrenFillHandle}
+                          {renderFillHandle(cpLoc)}
                         </td>
 
                         {/* 2. Buque (Editable) */}
-                        <td {...cpShip}>
-                          {inlineStayEdit?.rowIndex === rowIndex && inlineStayEdit?.colKey === 'ship_id' ? (
+                        <td {...cpShip.domProps}>
+                          {cpShip.isEditing ? (
                             <select
                               autoFocus
                               value={inlineStayEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => {
                                 setInlineStayEdit({ ...inlineStayEdit, value: e.target.value })
                                 commitInlineStayEdit(e.target.value)
                               }}
                               onBlur={() => commitInlineStayEdit()}
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === 'Escape') setInlineStayEdit(null)
+                              }}
                               className="w-full bg-slate-950 border border-primary rounded px-1.5 py-1 text-xs text-white focus:outline-none cursor-pointer"
                             >
                               <option value="">-- Seleccionar Buque --</option>
@@ -659,19 +622,21 @@ export default function ShipsEstadiasPanel({
                               )}
                             </div>
                           )}
-                          {cpShip.childrenFillHandle}
+                          {renderFillHandle(cpShip)}
                         </td>
 
                         {/* 3. Fecha Comienzo (Editable) */}
-                        <td {...cpStart} className={`${cpStart.className} text-center`}>
-                          {inlineStayEdit?.rowIndex === rowIndex && inlineStayEdit?.colKey === 'start_date' ? (
+                        <td {...cpStart.domProps}>
+                          {cpStart.isEditing ? (
                             <input
                               type="date"
                               autoFocus
                               value={inlineStayEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setInlineStayEdit({ ...inlineStayEdit, value: e.target.value })}
                               onBlur={() => commitInlineStayEdit()}
                               onKeyDown={(e) => {
+                                e.stopPropagation()
                                 if (e.key === 'Enter') commitInlineStayEdit()
                                 if (e.key === 'Escape') setInlineStayEdit(null)
                               }}
@@ -682,19 +647,21 @@ export default function ShipsEstadiasPanel({
                               <HighlightText text={stay.start_date || '—'} query={searchTerm} />
                             </span>
                           )}
-                          {cpStart.childrenFillHandle}
+                          {renderFillHandle(cpStart)}
                         </td>
 
                         {/* 4. Fecha Fin (Editable) */}
-                        <td {...cpEnd} className={`${cpEnd.className} text-center`}>
-                          {inlineStayEdit?.rowIndex === rowIndex && inlineStayEdit?.colKey === 'end_date' ? (
+                        <td {...cpEnd.domProps}>
+                          {cpEnd.isEditing ? (
                             <input
                               type="date"
                               autoFocus
                               value={inlineStayEdit.value}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setInlineStayEdit({ ...inlineStayEdit, value: e.target.value })}
                               onBlur={() => commitInlineStayEdit()}
                               onKeyDown={(e) => {
+                                e.stopPropagation()
                                 if (e.key === 'Enter') commitInlineStayEdit()
                                 if (e.key === 'Escape') setInlineStayEdit(null)
                               }}
@@ -710,7 +677,7 @@ export default function ShipsEstadiasPanel({
                               <HighlightText text={stay.end_date} query={searchTerm} />
                             </span>
                           )}
-                          {cpEnd.childrenFillHandle}
+                          {renderFillHandle(cpEnd)}
                         </td>
 
                         {/* 5. Días de Estadía */}
@@ -762,18 +729,22 @@ export default function ShipsEstadiasPanel({
             </table>
           </div>
 
-          {/* Menú Contextual */}
-          <GridContextMenu
-            menuState={menuState}
-            onClose={closeMenu}
-            onCopy={handleCopy}
-            onPaste={handlePaste}
-            onInsertAbove={handleInsertAbove}
-            onInsertBelow={handleInsertBelow}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
-            onViewHistory={showAuditModal}
-          />
+          {/* Menú Contextual Canónico */}
+          {menuTarget && (
+            <GridContextMenu
+              target={menuTarget}
+              onClose={closeMenu}
+              onCopyCell={staysGrid.copyActiveCell}
+              onCopyRow={staysGrid.copyRow}
+              onPaste={staysGrid.pasteToActiveOrRange}
+              onDeleteCell={staysGrid.deleteActiveCellOrRange}
+              onInsertRowAbove={() => onOpenNewStay()}
+              onDuplicateRow={(row) => handleDuplicateStay(row)}
+              entityType="ship_stays"
+              recordId={menuTarget.recordId}
+              recordLabel={menuTarget.recordLabel}
+            />
+          )}
         </div>
       )}
 
@@ -858,11 +829,22 @@ export default function ShipsEstadiasPanel({
 
       {/* ZONA 5: BARRA DE ESTADO INFERIOR */}
       <GridStatusBarBottom
-        selectedCount={staysGrid.selectedRowIds.size}
-        totalCount={filteredStays.length}
-        activeFilterLabel={locationFilter !== 'todos' ? `Locación: ${locationFilter}` : null}
-        onClearSelection={staysGrid.clearRowSelection}
-        entityLabel="estadías"
+        filteredCount={filteredStays.length}
+        totalCount={stays.length}
+        entityName="estadías"
+        hasActiveFilter={hasActiveFilter}
+        onClearFilters={clearAllFilters}
+        selectionStats={staysGrid.selectionStats}
+        onClearSelection={() => staysGrid.setSelectionRange(null)}
+        customSelection={
+          staysGrid.selectedRowIds.size > 0
+            ? {
+                count: staysGrid.selectedRowIds.size,
+                label: 'estadías seleccionadas',
+                onClear: staysGrid.clearSelectedRows
+              }
+            : null
+        }
       />
     </div>
   )

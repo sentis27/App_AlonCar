@@ -20,8 +20,16 @@ import {
   AlertTriangle,
   MessageSquare
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
-import { logRowAction } from '../../lib/auditService'
+import {
+  saveShipService,
+  saveStayService,
+  saveOwnerService,
+  deleteOwnerWithAuditService,
+  assignOrphanOwnerService,
+  sendShipInfoRequestService,
+  uploadShipNavalDocService,
+  deleteShipNavalDocService
+} from '../../lib/shipsModalService'
 import {
   DEFAULT_TECH_COMPONENTS,
   PREDEFINED_VESSEL_TYPES,
@@ -1409,7 +1417,6 @@ export function RequestInfoModal({
 // CONTENEDOR INTEGRAL DE TODOS LOS MODALES DE SHIPS
 // ==============================================================================
 export function ShipsModalsContainer({
-  // Estados y Setters de Modales
   selectedShip360,
   setSelectedShip360,
   subTab360,
@@ -1426,23 +1433,19 @@ export function ShipsModalsContainer({
   setModalAssignOrphan,
   modalRequestInfo,
   setModalRequestInfo,
-  // Listas de datos
   ships = [],
   setShips,
   owners = [],
-  setOwners,
   stays = [],
-  setStays,
   workOrders = [],
   workItems = [],
   getShipOtMetrics = {},
-  // Contexto y callbacks
   user,
-  activeRolePerspective = 'admin',
   setStatusMessage,
   loadInitialData,
   handleOpenEditShip,
-  handleOpenNewStay
+  handleOpenNewStay,
+  handleDismissOrphanAlert
 }) {
   const [submitting, setSubmitting] = useState(false)
   const [uploadingDoc, setUploadingDoc] = useState(false)
@@ -1452,42 +1455,17 @@ export function ShipsModalsContainer({
     e.preventDefault()
     setSubmitting(true)
     try {
-      const cleanName = cleanShipName(modalShip.ship.name).toUpperCase()
-      if (!cleanName) throw new Error('El nombre del barco es obligatorio')
-      const finalVesselType = modalShip.isCustomVesselType
-        ? (modalShip.customVesselTypeVal?.trim() || 'Pesquero')
-        : (modalShip.ship.vessel_type || 'Pesquero')
-
-      const payload = {
-        name: cleanName,
-        owner_id: modalShip.ship.owner_id || null,
-        matricula: modalShip.ship.matricula || null,
-        vessel_type: finalVesselType,
-        eslora_mts: modalShip.ship.eslora_mts ? parseFloat(modalShip.ship.eslora_mts) : null,
-        manga_mts: modalShip.ship.manga_mts ? parseFloat(modalShip.ship.manga_mts) : null,
-        puntal_mts: modalShip.ship.puntal_mts ? parseFloat(modalShip.ship.puntal_mts) : null,
-        superficie_casco_m2: modalShip.ship.superficie_casco_m2 ? parseFloat(modalShip.ship.superficie_casco_m2) : null,
-        current_location: cleanLocation(modalShip.ship.current_location),
-        notes: modalShip.ship.notes || null,
-        technical_specs: modalShip.ship.technical_specs || {},
-        info_request_status: modalShip.ship.info_request_status || 'completo',
-        is_active: true
-      }
-
-      if (modalShip.ship.id) {
-        const { error } = await supabase.from('ships').update(payload).eq('id', modalShip.ship.id)
-        if (error) throw error
-        logRowAction({ action: 'MODAL_SAVE', entityType: 'ships', entityId: modalShip.ship.id, entityName: cleanName, changes: payload, sheetName: 'Barcos', moduleRoute: '/barcos', changeOrigin: 'MODAL_FORM', user: user?.email })
-      } else {
-        const { error } = await supabase.from('ships').insert([payload])
-        if (error) throw error
-      }
-
+      const { cleanName } = await saveShipService({
+        ship: modalShip.ship,
+        isCustomVesselType: modalShip.isCustomVesselType,
+        customVesselTypeVal: modalShip.customVesselTypeVal,
+        user: user?.email
+      })
       setModalShip({ isOpen: false, ship: null, isCustomVesselType: false, customVesselTypeVal: '' })
-      if (setStatusMessage) setStatusMessage({ type: 'success', text: `Buque "${cleanName}" guardado correctamente.` })
+      setStatusMessage?.({ type: 'success', text: `Buque "${cleanName}" guardado correctamente.` })
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      setStatusMessage?.({ type: 'error', text: err.message })
     } finally {
       setSubmitting(false)
     }
@@ -1498,32 +1476,12 @@ export function ShipsModalsContainer({
     e.preventDefault()
     setSubmitting(true)
     try {
-      const cleanLoc = cleanLocation(modalStay.stay.location)
-      const payload = {
-        ship_id: modalStay.stay.ship_id,
-        location: cleanLoc,
-        start_date: modalStay.stay.start_date,
-        end_date: modalStay.stay.end_date || null,
-        notes: modalStay.stay.notes || null
-      }
-
-      if (modalStay.stay.id) {
-        const { error } = await supabase.from('ship_stays').update(payload).eq('id', modalStay.stay.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('ship_stays').insert([payload])
-        if (error) throw error
-      }
-
-      if (!modalStay.stay.end_date) {
-        await supabase.from('ships').update({ current_location: cleanLoc }).eq('id', payload.ship_id)
-      }
-
+      await saveStayService({ stay: modalStay.stay, user: user?.email })
       setModalStay({ isOpen: false, stay: null, defaultShipId: '' })
-      if (setStatusMessage) setStatusMessage({ type: 'success', text: 'Movimiento asentado en el Calendario de Estadías.' })
+      setStatusMessage?.({ type: 'success', text: 'Movimiento asentado en el Calendario de Estadías.' })
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      setStatusMessage?.({ type: 'error', text: err.message })
     } finally {
       setSubmitting(false)
     }
@@ -1534,64 +1492,36 @@ export function ShipsModalsContainer({
     e.preventDefault()
     setSubmitting(true)
     try {
-      if (!modalOwner.owner.name.trim()) throw new Error('La Razón Social o Empresa es obligatoria')
-      const payload = {
-        name: modalOwner.owner.name.trim(),
-        armador_name: modalOwner.owner.armador_name?.trim() || null,
-        armador_phone: modalOwner.owner.armador_phone?.trim() || null,
-        email_principal: modalOwner.owner.email_principal?.trim() || null,
-        email_secundario: modalOwner.owner.email_secundario?.trim() || null,
-        cuit: modalOwner.owner.cuit?.trim() || null,
-        notes: modalOwner.owner.notes?.trim() || null,
-        is_active: true
-      }
-
-      if (modalOwner.owner.id) {
-        const { error } = await supabase.from('owners').update(payload).eq('id', modalOwner.owner.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('owners').insert([payload])
-        if (error) throw error
-      }
-
+      await saveOwnerService({ owner: modalOwner.owner, user: user?.email })
       setModalOwner({ isOpen: false, owner: null })
-      if (setStatusMessage) setStatusMessage({ type: 'success', text: 'Datos de la empresa armadora guardados exitosamente.' })
+      setStatusMessage?.({ type: 'success', text: 'Datos de la empresa armadora guardados exitosamente.' })
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      setStatusMessage?.({ type: 'error', text: err.message })
     } finally {
       setSubmitting(false)
     }
   }
 
-  // Confirmar eliminación definitiva de armador
+  // Confirmar eliminación definitiva de armador (auditada en audit_logs + alerta huérfano)
   const handleConfirmDeleteOwner = async () => {
     const owner = modalDeleteOwner.owner
     if (!owner) return
     setSubmitting(true)
     try {
-      const linked = modalDeleteOwner.linkedShips || []
-      if (linked.length > 0) {
-        for (const s of linked) {
-          await supabase.from('ships').update({
-            owner_id: null,
-            orphan_owner_alert: true,
-            orphan_owner_previous_name: owner.name
-          }).eq('id', s.id)
-        }
-      }
-
-      const { error } = await supabase.from('owners').delete().eq('id', owner.id)
-      if (error) throw error
-
+      await deleteOwnerWithAuditService({
+        owner,
+        linkedShips: modalDeleteOwner.linkedShips || [],
+        user: user?.email
+      })
       setModalDeleteOwner({ isOpen: false, owner: null, linkedShips: [] })
-      if (setStatusMessage) setStatusMessage({
+      setStatusMessage?.({
         type: 'info',
         text: `Empresa "${owner.name}" eliminada definitivamente. Se activó la alerta de buques huérfanos.`
       })
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      setStatusMessage?.({ type: 'error', text: err.message })
     } finally {
       setSubmitting(false)
     }
@@ -1603,36 +1533,27 @@ export function ShipsModalsContainer({
     if (!modalAssignOrphan.ship || !modalAssignOrphan.selectedOwnerId) return
     setSubmitting(true)
     try {
-      const { error } = await supabase.from('ships').update({
-        owner_id: modalAssignOrphan.selectedOwnerId,
-        orphan_owner_alert: false,
-        orphan_owner_previous_name: null
-      }).eq('id', modalAssignOrphan.ship.id)
-      if (error) throw error
-
+      const targetShip = modalAssignOrphan.ship
+      const patch = await assignOrphanOwnerService({
+        ship: targetShip,
+        selectedOwnerId: modalAssignOrphan.selectedOwnerId,
+        owners,
+        user: user?.email
+      })
+      setShips?.((prev) => prev.map((s) => (s.id === targetShip.id ? { ...s, ...patch } : s)))
+      if (selectedShip360?.id === targetShip.id) {
+        setSelectedShip360((prev) => ({ ...prev, ...patch }))
+      }
       setModalAssignOrphan({ isOpen: false, ship: null, selectedOwnerId: '' })
-      if (setStatusMessage) setStatusMessage({
+      setStatusMessage?.({
         type: 'success',
-        text: `Se asignó correctamente el armador al buque "${cleanShipName(modalAssignOrphan.ship.name)}".`
+        text: `Se asignó correctamente el armador al buque "${cleanShipName(targetShip.name)}".`
       })
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      setStatusMessage?.({ type: 'error', text: err.message })
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  // Apagar alerta de huérfano
-  const handleDismissOrphanAlert = async (ship) => {
-    if (!window.confirm(`¿Apagar la alerta de buque huérfano para "${cleanShipName(ship.name)}"?`)) return
-    try {
-      const { error } = await supabase.from('ships').update({ orphan_owner_alert: false }).eq('id', ship.id)
-      if (error) throw error
-      if (setStatusMessage) setStatusMessage({ type: 'info', text: 'Alerta de buque huérfano apagada.' })
-      if (loadInitialData) await loadInitialData()
-    } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
     }
   }
 
@@ -1641,19 +1562,17 @@ export function ShipsModalsContainer({
     e.preventDefault()
     if (!modalRequestInfo.ship) return
     try {
-      const { error } = await supabase.from('ships').update({
-        info_request_status: modalRequestInfo.requestType,
-        info_request_notes: modalRequestInfo.notes?.trim() || null,
-        info_requested_at: new Date().toISOString(),
-        info_requested_by: user?.email || 'Jorge Sentis (Admin)'
-      }).eq('id', modalRequestInfo.ship.id)
-      if (error) throw error
-
+      await sendShipInfoRequestService({
+        ship: modalRequestInfo.ship,
+        requestType: modalRequestInfo.requestType,
+        notes: modalRequestInfo.notes,
+        user: user?.email
+      })
       setModalRequestInfo({ isOpen: false, ship: null, requestType: 'pendiente_jefe_obra', notes: '' })
-      if (setStatusMessage) setStatusMessage({ type: 'success', text: 'Solicitud enviada con instrucciones claras.' })
+      setStatusMessage?.({ type: 'success', text: 'Solicitud enviada con instrucciones claras.' })
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      setStatusMessage?.({ type: 'error', text: err.message })
     }
   }
 
@@ -1662,24 +1581,15 @@ export function ShipsModalsContainer({
     if (!file) return
     setUploadingDoc(true)
     try {
-      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const filePath = `${shipId}/${docType}_${Date.now()}_${cleanFileName}`
-      const { error: uploadError } = await supabase.storage.from('ship-documents').upload(filePath, file, { upsert: true })
-      if (uploadError) throw uploadError
-
-      const { data: urlData } = supabase.storage.from('ship-documents').getPublicUrl(filePath)
-      const nowIso = new Date().toISOString()
-      const updateFields = docType === 'plano_anguilera'
-        ? { plan_anguilera_url: urlData?.publicUrl, plan_anguilera_name: file.name, plan_anguilera_uploaded_at: nowIso }
-        : { informe_pintado_url: urlData?.publicUrl, informe_pintado_name: file.name, informe_pintado_uploaded_at: nowIso }
-
-      const { error: dbErr } = await supabase.from('ships').update(updateFields).eq('id', shipId)
-      if (dbErr) throw dbErr
-
-      if (setStatusMessage) setStatusMessage({ type: 'success', text: `Archivo "${file.name}" cargado con éxito.` })
+      const updateFields = await uploadShipNavalDocService({ shipId, docType, file, user: user?.email })
+      setShips?.((prev) => prev.map((s) => (s.id === shipId ? { ...s, ...updateFields } : s)))
+      if (selectedShip360?.id === shipId) {
+        setSelectedShip360((prev) => ({ ...prev, ...updateFields }))
+      }
+      setStatusMessage?.({ type: 'success', text: `Archivo "${file.name}" cargado con éxito.` })
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      setStatusMessage?.({ type: 'error', text: err.message })
     } finally {
       setUploadingDoc(false)
     }
@@ -1689,17 +1599,15 @@ export function ShipsModalsContainer({
   const handleDeleteNavalFile = async (shipId, docType) => {
     if (!window.confirm('¿Confirmás quitar este documento de la Ficha Técnica Naval?')) return
     try {
-      const updateFields = docType === 'plano_anguilera'
-        ? { plan_anguilera_url: null, plan_anguilera_name: null, plan_anguilera_uploaded_at: null }
-        : { informe_pintado_url: null, informe_pintado_name: null, informe_pintado_uploaded_at: null }
-
-      const { error: dbErr } = await supabase.from('ships').update(updateFields).eq('id', shipId)
-      if (dbErr) throw dbErr
-
-      if (setStatusMessage) setStatusMessage({ type: 'info', text: 'Documento técnico removido de la Ficha Técnica.' })
+      const updateFields = await deleteShipNavalDocService({ shipId, docType })
+      setShips?.((prev) => prev.map((s) => (s.id === shipId ? { ...s, ...updateFields } : s)))
+      if (selectedShip360?.id === shipId) {
+        setSelectedShip360((prev) => ({ ...prev, ...updateFields }))
+      }
+      setStatusMessage?.({ type: 'info', text: 'Documento técnico removido de la Ficha Técnica.' })
       if (loadInitialData) await loadInitialData()
     } catch (err) {
-      if (setStatusMessage) setStatusMessage({ type: 'error', text: err.message })
+      setStatusMessage?.({ type: 'error', text: err.message })
     }
   }
 
