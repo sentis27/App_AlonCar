@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   FileText,
   Plus,
-  Info,
   CheckCircle,
   Search,
   Check
@@ -17,6 +16,7 @@ import {
 import { supabase } from '../../lib/supabase'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
 import { buildLocalRelationsForLog, getEnabledWosForWorkerInShip } from '../../lib/laborConstants'
+import { updateLaborShipWoService } from '../../services/laborCargaService'
 import { deduplicateWorkOrdersWithScope } from '../../lib/workOrdersConstants'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 
@@ -1194,20 +1194,13 @@ export function LaborModalsContainer({
 
   const handleSelectShipWo = async ({ shipId, workOrderId }) => {
     if (!shipPickerModal.logId) return
+    const targetLog = recentLogs.find(l => l.id === shipPickerModal.logId) || {}
     try {
-      const payload = {
-        ship_id: shipId || null,
-        work_order_id: workOrderId || null,
-        ...(workOrderId ? { approval_status: 'Aprobado', review_reason: null } : { approval_status: 'R', review_reason: 'Falta Cargar OT' })
-      }
-      const { error } = await supabase.from('labor_logs').update(payload).eq('id', shipPickerModal.logId)
-      if (error) throw error
+      const payload = await updateLaborShipWoService({ logId: shipPickerModal.logId, shipId, workOrderId, targetLog })
       setRecentLogs(prev => prev.map(l => l.id === shipPickerModal.logId ? { ...l, ...payload, ...buildLocalRelationsForLog(shipId, workOrderId, ships, workOrders) } : l))
       setShipPickerModal({ isOpen: false, logId: null, currentShipId: '', currentWorkOrderId: '', workerName: '' })
       showFeedbackMsg?.('success', 'Buque y OT vinculados.')
-    } catch (err) {
-      showFeedbackMsg?.('error', 'Error al asignar Buque/OT: ' + err.message)
-    }
+    } catch (err) { showFeedbackMsg?.('error', 'Error al asignar Buque/OT: ' + err.message) }
   }
 
   return (

@@ -1,13 +1,16 @@
 import React from 'react'
 import { RotateCcw, RotateCw, X } from 'lucide-react'
 import CrawlerSearchBar from '../CrawlerSearchBar.jsx'
+import { cleanShipName } from '../../lib/laborConstants.js'
 
 export default function LaborLogsToolbar({
+  ships = [],
   filterWorker,
   setFilterWorker,
   filterDate,
   setFilterDate,
   filterShip,
+  setFilterShip,
   activeKpiFilter,
   onClearAllFilters,
   logSearchInputRef,
@@ -27,7 +30,7 @@ export default function LaborLogsToolbar({
         onChange={setFilterWorker}
         onClear={onClearAllFilters}
         inputRef={logSearchInputRef}
-        placeholder="Buscar operario, buque, OT, rubro... (Ctrl+F | Esc limpia todo)"
+        placeholder="Buscar operario, buque, OT, rubro, tarea... (Ctrl+F | Esc limpia todo)"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
@@ -37,7 +40,24 @@ export default function LaborLogsToolbar({
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
             className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+            title="Acotar planilla por fecha exacta"
           />
+
+          {setFilterShip && (
+            <select
+              value={filterShip}
+              onChange={(e) => setFilterShip(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 max-w-[200px]"
+              title="Acotar planilla por buque"
+            >
+              <option value="" className="bg-slate-900">Todos los buques</option>
+              {ships.map((s) => (
+                <option key={s.id} value={s.name} className="bg-slate-900">
+                  {cleanShipName(s.name)}
+                </option>
+              ))}
+            </select>
+          )}
 
           {hasFilters && (
             <button

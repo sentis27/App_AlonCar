@@ -12,14 +12,15 @@ import { assignMonotonicFolios, stampNewRecordWithFolio } from '../lib/monotonic
  * Carga completa de imputaciones de mano de obra, buques, OTs y personal habilitado.
  */
 export async function fetchLaborData() {
-  const [logsRes, shipsRes, woRes, workItemsRes, workersRes] = await Promise.all([
+  const [logsRes, shipsRes, staysRes, woRes, workItemsRes, workersRes] = await Promise.all([
     supabase
       .from('labor_logs')
       .select('*, ships(id, name), work_orders(id, ot_number, title, ship_id)')
       .order('date_logged', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(2000),
-    supabase.from('ships').select('id, name, status').order('name'),
+    supabase.from('ships').select('id, name, status, current_location, is_active').order('name'),
+    supabase.from('ship_stays').select('id, ship_id, location, start_date, end_date').order('start_date', { ascending: false }),
     supabase.from('work_orders').select('id, ot_number, title, ship_id, status').order('ot_number'),
     supabase.from('work_items').select('id, work_order_id, contractors, description, status, work_type'),
     supabase.from('workers').select('id, name, category, trade, work_group, admin_center, status, can_impute_hours').order('name')
@@ -36,6 +37,7 @@ export async function fetchLaborData() {
   return {
     laborLogs,
     ships: shipsRes.data || [],
+    shipStays: staysRes.data || [],
     workOrders: woRes.data || [],
     workItems: workItemsRes.data || [],
     workers: workersRes.data || []
@@ -69,13 +71,15 @@ export async function saveLaborLogService({ log, isNew = false, changedBy = 'Ope
 
   const savedRecord = data?.[0] || payload
 
-  logRowAction({
-    action: isNew ? 'CREATE' : 'UPDATE',
-    entityType: 'labor_logs',
+  await logRowAction({
+    action: isNew ? 'ROW_INSERT' : 'MODAL_SAVE',
+    entityType: 'daily_labor_logs',
     entityId: savedRecord.id,
     entityName: `${savedRecord.worker_name || 'Operario'} · ${savedRecord.date_logged || savedRecord.date || 'S/F'}`,
-    performedBy: changedBy,
-    details: {
+    sheetName: 'Carga e Imputación de Horas',
+    moduleRoute: '/horas',
+    user: changedBy,
+    changes: {
       ship_id: savedRecord.ship_id,
       work_order_id: savedRecord.work_order_id,
       hours_normal: savedRecord.hours_normal,
@@ -104,22 +108,24 @@ export async function deleteLaborLogService({ logId, workerName = 'Operario', sh
     throw error
   }
 
-  logRowAction({
-    action: 'DELETE',
-    entityType: 'labor_logs',
+  await logRowAction({
+    action: 'ROW_DELETE',
+    entityType: 'daily_labor_logs',
     entityId: logId,
     entityName: `${workerName} (${shipName})`,
-    performedBy: changedBy,
-    details: { deletedAt: new Date().toISOString() }
+    sheetName: 'Carga e Imputación de Horas',
+    moduleRoute: '/horas',
+    user: changedBy,
+    changes: { deletedAt: new Date().toISOString() }
   })
 
   return { ok: true }
 }
 
 /**
- * Actualiza el estado de aprobación de una imputación (PENDIENTE / APROBADO / OBSERVADO).
+ * Actualiza el estado de aprobación de una imputación (S / R / RR / RRR).
  */
-export async function updateLaborApprovalStatusService({ logId, approvalStatus, workerName = 'Operario', changedBy = 'Operador Web' }) {
+export async function updateLaborApprovalStatusService({ logId, approvalStatus, oldStatus = '', workerName = 'Operario', changedBy = 'Operador Web' }) {
   if (!logId) throw new Error('ID requerido.')
 
   const { error } = await supabase
@@ -132,16 +138,18 @@ export async function updateLaborApprovalStatusService({ logId, approvalStatus, 
     throw error
   }
 
-  logCellChange({
-    entityType: 'labor_logs',
+  await logCellChange({
+    entityType: 'daily_labor_logs',
     entityId: logId,
     entityName: workerName,
     field: 'approval_status',
     fieldLabel: 'Estado de Aprobación',
-    oldValue: 'PENDIENTE',
-    newValue: approvalStatus,
+    oldValue: oldStatus || '-',
+    newValue: approvalStatus || '-',
+    sheetName: 'Carga e Imputación de Horas',
+    moduleRoute: '/horas',
     changeOrigin: 'APPROVAL_ACTION',
-    performedBy: changedBy
+    user: changedBy
   })
 
   return { ok: true }

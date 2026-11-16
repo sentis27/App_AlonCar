@@ -5,6 +5,7 @@
 
 import { matchesUniversalSearch } from './searchEngine.js'
 import { cleanShipName, buildLocalRelationsForLog } from './laborConstants.js'
+import { normalizeText } from './tradesCatalog.js'
 
 export const LOG_PASTE_FIELDS = [
   'ship_id',
@@ -40,7 +41,8 @@ export function buildHorasSpreadsheetColumns() {
     { key: 'hours_normal', label: 'Norm', readOnly: false },
     { key: 'hours_extra_50', label: '50%', readOnly: false },
     { key: 'hours_extra_100', label: '100%', readOnly: false },
-    { key: 'approval_status', label: 'Estado', readOnly: false }
+    { key: 'approval_status', label: 'Estado', readOnly: false },
+    { key: 'notes', label: 'Obs / Tarea', readOnly: false }
   ]
 }
 
@@ -131,18 +133,21 @@ export function applyLocalHorasBatchUpdate(logs = [], {
   })
 }
 
-export function prepareInlineLogPatch(targetLog, field, newValue) {
+export function prepareInlineLogPatch(targetLog, field, newValue, { eligibleCatalog = null } = {}) {
   if (!targetLog) return { shouldSkip: true }
   let cleanedVal = newValue
   if (HOUR_NUMERIC_FIELDS.includes(field)) {
     cleanedVal = Math.max(0, parseFloat(newValue) || 0)
+  } else if (field === 'notes') {
+    cleanedVal = typeof newValue === 'string' ? (newValue.trim() || null) : null
+    if ((targetLog.notes || null) === cleanedVal) return { shouldSkip: true }
   } else if (typeof newValue === 'string') {
     cleanedVal = newValue.trim()
     if (!cleanedVal && ['worker_name', 'rubro', 'date_logged'].includes(field)) {
       return { shouldSkip: true }
     }
   }
-  if (targetLog[field] === cleanedVal) return { shouldSkip: true }
+  if (field !== 'notes' && targetLog[field] === cleanedVal) return { shouldSkip: true }
 
   const extraPayload = {}
   if (HOUR_NUMERIC_FIELDS.includes(field)) {
@@ -150,6 +155,25 @@ export function prepareInlineLogPatch(targetLog, field, newValue) {
     const h50 = field === 'hours_extra_50' ? cleanedVal : (parseFloat(targetLog.hours_extra_50) || 0)
     const h100 = field === 'hours_extra_100' ? cleanedVal : (parseFloat(targetLog.hours_extra_100) || 0)
     extraPayload.hours_worked = n + h50 + h100
+  }
+
+  if (field === 'worker_name' && cleanedVal && eligibleCatalog?.byNameMap) {
+    const entry = eligibleCatalog.byNameMap.get(normalizeText(cleanedVal))
+    if (entry) {
+      extraPayload.worker_type = entry.workerType
+      if (!(targetLog.rubro || '').trim() && entry.defaultRubro) {
+        extraPayload.rubro = entry.defaultRubro
+      }
+      const curN = parseFloat(targetLog.hours_normal) || 0
+      const cur50 = parseFloat(targetLog.hours_extra_50) || 0
+      const cur100 = parseFloat(targetLog.hours_extra_100) || 0
+      if (curN === 0 && cur50 === 0 && cur100 === 0) {
+        const effRubro = (extraPayload.rubro || targetLog.rubro || '').toLowerCase()
+        const defH = entry.workerType === 'Astillero' ? (effRubro.includes('feriado') ? 8 : 9) : 8
+        extraPayload.hours_normal = defH
+        extraPayload.hours_worked = defH
+      }
+    }
   }
 
   return { shouldSkip: false, cleanedVal, extraPayload }

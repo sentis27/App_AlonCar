@@ -35,26 +35,6 @@ export default function LaborLogsTable({
   setActiveTab,
   setDailyFilterType
 }) {
-  if (filteredLogs.length === 0) {
-    return (
-      <div className="alon-zone-grid text-center py-10 text-slate-400 text-xs space-y-2">
-        <p>No hay imputaciones que coincidan con los filtros seleccionados.</p>
-        {activeKpiFilter === 'incompleta' && (
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('control_diario')
-              setDailyFilterType('incompleta')
-            }}
-            className="px-3 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/50 text-orange-300 font-bold cursor-pointer"
-          >
-            Ir a Control Diario de Nómina (Operarios con jornada incompleta hoy) &rarr;
-          </button>
-        )}
-      </div>
-    )
-  }
-
   const handleOpenReviewReason = (log, shipDisplayName, otTitle) => {
     setReviewReasonModal({
       isOpen: true,
@@ -73,7 +53,7 @@ export default function LaborLogsTable({
       <GridRibbon
         activeCellBadge={horasGrid.activeCellBadge}
         onInsertRow={handleInsertRow}
-        insertRowLabel="Nueva Fila en Blanco"
+        insertRowLabel="Fila en Blanco"
         undoCount={horasGrid.undoStack?.length || 0}
         totalRows={filteredLogs.length}
         entityName="imputaciones"
@@ -81,65 +61,84 @@ export default function LaborLogsTable({
         exportFilename={`horas_imputaciones_${new Date().toISOString().split('T')[0]}`}
       />
 
-      <div
-        tabIndex={0}
-        onKeyDown={horasGrid.handleKeyDown}
-        ref={horasGrid.gridContainerRef}
-        className="alon-grid-scroll"
-      >
-        <table className="w-full text-left text-xs text-slate-300 border-collapse">
-          <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
-            <tr>
-              <th className="py-2.5 px-2 text-center w-8">
-                <input
-                  type="checkbox"
-                  checked={filteredLogs.length > 0 && filteredLogs.every(l => selectedLogIds.has(l.id))}
-                  onChange={() => toggleSelectAllLogs(filteredLogs.map(l => l.id))}
-                  className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                  title="Seleccionar todas las imputaciones visibles"
+      {filteredLogs.length === 0 ? (
+        <div className="text-center py-10 text-slate-400 text-xs space-y-2">
+          <p>No hay imputaciones que coincidan con los filtros seleccionados.</p>
+          {activeKpiFilter === 'incompleta' && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('control_diario')
+                setDailyFilterType('incompleta')
+              }}
+              className="px-3 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/50 text-orange-300 font-bold cursor-pointer"
+            >
+              Ir a Control Diario de Nómina (Operarios con jornada incompleta hoy) &rarr;
+            </button>
+          )}
+        </div>
+      ) : (
+        <div
+          tabIndex={0}
+          onKeyDown={horasGrid.handleKeyDown}
+          ref={horasGrid.gridContainerRef}
+          className="alon-grid-scroll"
+        >
+          <table className="w-full text-left text-xs text-slate-300 border-collapse">
+            <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
+              <tr>
+                <th className="py-2.5 px-2 text-center w-8">
+                  <input
+                    type="checkbox"
+                    checked={filteredLogs.length > 0 && filteredLogs.every(l => selectedLogIds.has(l.id))}
+                    onChange={() => toggleSelectAllLogs(filteredLogs.map(l => l.id))}
+                    className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
+                    title="Seleccionar todas las imputaciones visibles"
+                  />
+                </th>
+                <th className="py-2.5 px-2.5">Fecha ✎</th>
+                <th className="py-2.5 px-2.5">Barco / OT ✎</th>
+                <th className="py-2.5 px-2.5">Operario / Tipo ✎</th>
+                <th className="py-2.5 px-2.5">Rubro ✎</th>
+                <th className="py-2.5 px-2 text-center">Norm ✎</th>
+                <th className="py-2.5 px-2 text-center text-cyan-400">50% ✎</th>
+                <th className="py-2.5 px-2 text-center text-amber-400">100% ✎</th>
+                <th className="py-2.5 px-2.5 text-center text-primary font-bold">Total</th>
+                <th className="py-2.5 px-2 text-center">Estado ✎</th>
+                <th className="py-2.5 px-2.5">Obs / Tarea ✎</th>
+                <th className="py-2.5 px-2.5 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {filteredLogs.map((log, rowIndex) => (
+                <LaborLogsTableRow
+                  key={log.id}
+                  log={log}
+                  rowIndex={rowIndex}
+                  isSelected={selectedLogIds.has(log.id)}
+                  filterWorker={filterWorker}
+                  inlineLogEdit={inlineLogEdit}
+                  setInlineLogEdit={setInlineLogEdit}
+                  getHorasCellProps={getHorasCellProps}
+                  activateHorasCell={activateHorasCell}
+                  saveInlineLogEdit={saveInlineLogEdit}
+                  onToggleSelectLog={toggleSelectLog}
+                  onUpdateApprovalStatus={handleUpdateApprovalStatus}
+                  onOpenReviewReason={handleOpenReviewReason}
+                  onEditFromDaily={handleEditFromDaily}
+                  onDuplicateLog={handleDuplicateLog}
+                  onDeleteLog={handleDeleteLog}
+                  onOpenContextMenu={(e, targetLog, rIdx) =>
+                    openMenu(e, targetLog, rIdx, { entityType: 'daily_labor_logs', recordId: targetLog.id, recordLabel: targetLog.worker_name }, horasGrid)
+                  }
+                  onFillHandleMouseDown={horasGrid.handleFillHandleMouseDown}
+                  onFillHandleDoubleClick={horasGrid.handleFillHandleDoubleClick}
                 />
-              </th>
-              <th className="py-2.5 px-3">Fecha ✎</th>
-              <th className="py-2.5 px-3">Barco / OT ✎</th>
-              <th className="py-2.5 px-3">Operario / Tipo ✎</th>
-              <th className="py-2.5 px-3">Rubro ✎</th>
-              <th className="py-2.5 px-2 text-center">Norm ✎</th>
-              <th className="py-2.5 px-2 text-center text-cyan-400">50% ✎</th>
-              <th className="py-2.5 px-2 text-center text-amber-400">100% ✎</th>
-              <th className="py-2.5 px-3 text-center text-primary font-bold">Total</th>
-              <th className="py-2.5 px-2 text-center">Estado ✎</th>
-              <th className="py-2.5 px-3 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60">
-            {filteredLogs.map((log, rowIndex) => (
-              <LaborLogsTableRow
-                key={log.id}
-                log={log}
-                rowIndex={rowIndex}
-                isSelected={selectedLogIds.has(log.id)}
-                filterWorker={filterWorker}
-                inlineLogEdit={inlineLogEdit}
-                setInlineLogEdit={setInlineLogEdit}
-                getHorasCellProps={getHorasCellProps}
-                activateHorasCell={activateHorasCell}
-                saveInlineLogEdit={saveInlineLogEdit}
-                onToggleSelectLog={toggleSelectLog}
-                onUpdateApprovalStatus={handleUpdateApprovalStatus}
-                onOpenReviewReason={handleOpenReviewReason}
-                onEditFromDaily={handleEditFromDaily}
-                onDuplicateLog={handleDuplicateLog}
-                onDeleteLog={handleDeleteLog}
-                onOpenContextMenu={(e, targetLog, rIdx) =>
-                  openMenu(e, targetLog, rIdx, { entityType: 'daily_labor_logs', recordId: targetLog.id, recordLabel: targetLog.worker_name }, horasGrid)
-                }
-                onFillHandleMouseDown={horasGrid.handleFillHandleMouseDown}
-                onFillHandleDoubleClick={horasGrid.handleFillHandleDoubleClick}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {menuTarget && (
         <GridContextMenu

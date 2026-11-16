@@ -24,6 +24,8 @@ export default function LaborCrewGridSection({
   submitting,
   statusMessage,
   onClearStatusMessage,
+  hideFooterSubmit = false,
+  compact = false,
   onAddOperarioRow,
   onUpdateRow,
   onSelectWorker,
@@ -32,7 +34,7 @@ export default function LaborCrewGridSection({
   onResolveHomonym
 }) {
   return (
-    <div className="alon-zone-entry p-5 md:p-6 space-y-4">
+    <div className={compact ? 'space-y-3' : 'alon-zone-entry p-5 md:p-6 space-y-4'}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
         <div>
           <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
@@ -199,39 +201,41 @@ export default function LaborCrewGridSection({
         </div>
       )}
 
-      <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3 text-xs">
-          <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-            <span className="text-slate-400">Cuadrilla: </span>
-            <strong className="text-white font-mono">{operariosRows.length} filas</strong>
+      {!hideFooterSubmit && (
+        <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+              <span className="text-slate-400">Cuadrilla: </span>
+              <strong className="text-white font-mono">{operariosRows.length} filas</strong>
+            </div>
+            <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+              <span className="text-slate-400">Normales: </span>
+              <strong className="text-slate-200 font-mono">{totalHorasNormales} hs</strong>
+            </div>
+            <div className="bg-cyan-950/60 border border-cyan-800/40 px-3 py-1.5 rounded-lg text-cyan-300">
+              <span>Ext. 50%: </span>
+              <strong className="font-mono">{totalHoras50} hs</strong>
+            </div>
+            <div className="bg-amber-950/60 border border-amber-800/40 px-3 py-1.5 rounded-lg text-amber-300">
+              <span>Ext. 100%: </span>
+              <strong className="font-mono">{totalHoras100} hs</strong>
+            </div>
+            <div className="bg-cyan-500/20 border border-cyan-500/40 px-3 py-1.5 rounded-lg text-primary">
+              <span className="font-bold">Total General: </span>
+              <strong className="font-mono text-sm">{totalHorasGenerales} hs</strong>
+            </div>
           </div>
-          <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-            <span className="text-slate-400">Normales: </span>
-            <strong className="text-slate-200 font-mono">{totalHorasNormales} hs</strong>
-          </div>
-          <div className="bg-cyan-950/60 border border-cyan-800/40 px-3 py-1.5 rounded-lg text-cyan-300">
-            <span>Ext. 50%: </span>
-            <strong className="font-mono">{totalHoras50} hs</strong>
-          </div>
-          <div className="bg-amber-950/60 border border-amber-800/40 px-3 py-1.5 rounded-lg text-amber-300">
-            <span>Ext. 100%: </span>
-            <strong className="font-mono">{totalHoras100} hs</strong>
-          </div>
-          <div className="bg-cyan-500/20 border border-cyan-500/40 px-3 py-1.5 rounded-lg text-primary">
-            <span className="font-bold">Total General: </span>
-            <strong className="font-mono text-sm">{totalHorasGenerales} hs</strong>
-          </div>
-        </div>
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="px-6 py-2.5 bg-gradient-to-r from-primary to-blue-500 text-slate-950 font-bold rounded-lg text-sm shadow-[0_0_20px_rgba(0,242,254,0.3)] hover:shadow-[0_0_30px_rgba(0,242,254,0.5)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-        >
-          <Save className="w-4 h-4" />
-          <span>{submitting ? 'Guardando en Supabase...' : 'Confirmar Registro Grupal'}</span>
-        </button>
-      </div>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="px-6 py-2.5 bg-gradient-to-r from-primary to-blue-500 text-slate-950 font-bold rounded-lg text-sm shadow-[0_0_20px_rgba(0,242,254,0.3)] hover:shadow-[0_0_30px_rgba(0,242,254,0.5)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
+            <Save className="w-4 h-4" />
+            <span>{submitting ? 'Guardando en Supabase...' : 'Confirmar Registro Grupal'}</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }

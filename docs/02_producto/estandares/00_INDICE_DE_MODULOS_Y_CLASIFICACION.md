@@ -59,8 +59,9 @@ Todos los módulos y submódulos listados a continuación son hojas de edición 
 | **2.1** | **`Personal.jsx`** | `/personal` | **1. Nómina / Padrón de Operarios** (`nomina`) | `workers` | `workers` | ✅ Estandarizado + Auditado |
 | **2.2** | **`Personal.jsx`** | `/personal` | **2. Tarifario Quincenal** (`tarifario`) | `rate_cards` | `rate_cards` | ✅ Estandarizado + Auditado |
 | **2.3** | **`Personal.jsx`** | `/personal` | **3. Grupos de Trabajo / Cuadrillas** (modal/asignación) | `work_groups` | `work_groups` | ✅ Estandarizado + Auditado |
-| **3.1** | **`LaborLogs.jsx`** | `/horas` | **1. Carga Diaria de Horas / Partes** (`carga`) | `labor_logs` | `labor_logs` (`daily_labor_logs` histórico) | ✅ Estandarizado + Auditado |
+| **3.1** | **`LaborLogs.jsx`** | `/horas` | **1. Carga Diaria de Horas / Partes** (`carga`, Zona 1: Texto, Cuadrilla y Planilla a Mano) | `labor_logs` | `labor_logs` (`daily_labor_logs` histórico) | ✅ Estandarizado + Auditado |
 | **3.2** | **`LaborLogs.jsx`** | `/horas` | **2. Control Diario de Imputaciones** (`control_diario`) | `labor_logs` | `labor_logs` (`daily_labor_logs` histórico) | ✅ Estandarizado + Auditado |
+| **3.3** | **`LaborLogs.jsx`** + **`LaborFacialClockModal.jsx`** | `/horas` | **3. Carga Interactiva por Reloj de Alerta** (`.csv` Lector Facial, Estadías y Dictado por Voz) | `labor_logs`, `workers`, `ships`, `ship_stays`, `work_orders` | `daily_labor_logs` | ✅ Estandarizado + Auditado |
 | **4.1** | **`Compras.jsx`** | `/compras` | **1. Registro de Compras y Pedidos** (`compras`) | `purchase_orders`, `purchase_order_items` | `purchase_orders` | ✅ Estandarizado + Auditado |
 | **4.2** | **`Compras.jsx`** | `/compras` | **2. Padrón Maestro de Proveedores** (`proveedores`) | `suppliers` | `suppliers` | ✅ Estandarizado + Auditado |
 | **4.3** | **`Compras.jsx`** | `/compras` | **3. Gestor Documental de Compras** (`documentos`) | `purchase_documents` | `purchase_documents` | ✅ Estandarizado + Auditado |

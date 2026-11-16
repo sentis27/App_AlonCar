@@ -117,7 +117,7 @@ export function useLaborCargaActions({
   }
 
   const handleSubmitBatch = async (e) => {
-    e.preventDefault()
+    e?.preventDefault?.()
     setStatusMessage?.(null)
     const { errorMsg, payload } = buildLaborBatchPayload(crew.operariosRows, {
       selectedShipId: crew.selectedShipId,
@@ -129,7 +129,7 @@ export function useLaborCargaActions({
     })
     if (errorMsg) {
       setStatusMessage?.({ type: 'error', text: errorMsg })
-      return
+      return false
     }
     setSubmitting(true)
     try {
@@ -146,9 +146,11 @@ export function useLaborCargaActions({
       crew.setOperariosRows([createEmptyOperarioRow({ id: Date.now() })])
       setTabulatorSummary(null)
       fetchData?.()
+      return true
     } catch (err) {
       console.error('Error al guardar horas:', err)
       setStatusMessage?.({ type: 'error', text: `Error al guardar en Supabase: ${err.message || 'Verifique conexión'}` })
+      return false
     } finally {
       setSubmitting(false)
     }

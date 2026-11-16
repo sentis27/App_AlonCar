@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Clock, AlertCircle, AlertTriangle, FileText, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import {
@@ -7,6 +6,8 @@ import {
   deleteLaborLogService,
   updateLaborApprovalStatusService
 } from '../services/laborService'
+import LaborLogsHeader from '../components/labor/LaborLogsHeader'
+import LaborKpiRadar from '../components/labor/LaborKpiRadar'
 import LaborCargaPanel from '../components/labor/LaborCargaPanel'
 import LaborControlDiarioPanel from '../components/labor/LaborControlDiarioPanel'
 import LaborSabanaPanel from '../components/labor/LaborSabanaPanel'
@@ -15,15 +16,17 @@ import LaborSharedDatalists from '../components/labor/LaborSharedDatalists'
 import { buildQuincenaWorkersList } from '../lib/laborWorkerCatalog'
 import { buildQuincenaDays, FALLBACK_SHIPS, FALLBACK_WOS } from '../lib/laborConstants'
 
-const LABOR_REALTIME_TABLES = ['labor_logs', 'ships', 'work_orders', 'work_items', 'workers', 'rate_cards']
+const LABOR_REALTIME_TABLES = ['labor_logs', 'ships', 'ship_stays', 'work_orders', 'work_items', 'workers', 'rate_cards']
 
 export default function LaborLogs() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState('carga')
+  const [activeLoadModal, setActiveLoadModal] = useState(null) // null | 'texto' | 'reloj' | 'cuadrilla'
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
   const [recentLogs, setRecentLogs] = useState([])
   const [ships, setShips] = useState([])
+  const [shipStays, setShipStays] = useState([])
   const [workOrders, setWorkOrders] = useState([])
   const [workItems, setWorkItems] = useState([])
   const [dbWorkers, setDbWorkers] = useState([])
@@ -57,6 +60,7 @@ export default function LaborLogs() {
       const d = await fetchLaborData()
       setRecentLogs(d.laborLogs || [])
       setShips(d.ships?.length ? d.ships : FALLBACK_SHIPS)
+      setShipStays(d.shipStays || [])
       setWorkOrders(d.workOrders?.length ? d.workOrders : FALLBACK_WOS)
       setWorkItems(d.workItems || [])
       setDbWorkers(d.workers || [])
@@ -71,7 +75,7 @@ export default function LaborLogs() {
     channelName: 'labor_logs_live',
     tables: LABOR_REALTIME_TABLES,
     onSync: () => fetchData({ silent: true }),
-    pauseWhen: Boolean(editingLog || quickLogWorker || showReviewModal || reviewReasonModal.isOpen || shipPickerModal.isOpen)
+    pauseWhen: Boolean(activeLoadModal || editingLog || quickLogWorker || showReviewModal || reviewReasonModal.isOpen || shipPickerModal.isOpen)
   })
 
   useEffect(() => { fetchData({ silent: false }) }, [fetchData])
@@ -105,6 +109,7 @@ export default function LaborLogs() {
       await updateLaborApprovalStatusService({
         logId,
         approvalStatus: status,
+        oldStatus: target?.approval_status || '',
         workerName: target?.worker_name || 'Operario',
         changedBy: user?.email || 'Operador Web'
       })
@@ -140,70 +145,75 @@ export default function LaborLogs() {
   }, [allQuincenaWorkers, sabanaSearch])
   const filteredReviewLogs = useMemo(() => recentLogs.filter(l => l.approval_status === 'R' || l.approval_status === 'RR'), [recentLogs])
 
+  const handleOpenLoadModal = useCallback((mode) => {
+    setActiveTab('carga')
+    setActiveLoadModal(mode)
+  }, [])
+
   return (
-    <div className="space-y-4 pb-12">
-      <div className="alon-zone-context flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-slate-950">
-            <Clock className="w-5 h-5 stroke-[2.5]" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-white tracking-wide flex items-center gap-2">
-              CONTROL DE HORAS Y CUADRILLAS
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-400 uppercase">M3b Canónico</span>
-            </h1>
-            <p className="text-xs text-slate-400">Imputación de mano de obra naval, tabulador IA WhatsApp y control diario/quincenal de nómina.</p>
-          </div>
-        </div>
-        <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex items-center text-xs">
-          <button onClick={() => setActiveTab('carga')} className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${activeTab === 'carga' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'}`}>⚡ Carga & Cuadrillas</button>
-          <button onClick={() => setActiveTab('control_diario')} className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${activeTab === 'control_diario' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'}`}>📋 Control Diario ({recentLogs.filter(l => l.date_logged === auditDate).length})</button>
-          <button onClick={() => setActiveTab('sabana_quincenal')} className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${activeTab === 'sabana_quincenal' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'}`}>📊 Sábana Quincenal</button>
-        </div>
-      </div>
+    <div className="space-y-4 pb-10">
+      <LaborLogsHeader
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        dailyCount={recentLogs.filter(l => l.date_logged === auditDate).length}
+        totalLogsCount={recentLogs.length}
+        onOpenTextModal={() => handleOpenLoadModal('texto')}
+        onOpenClockModal={() => handleOpenLoadModal('reloj')}
+        onOpenCrewModal={() => handleOpenLoadModal('cuadrilla')}
+      />
 
       {statusMessage && (
-        <div className={`p-3 rounded-lg border text-xs font-semibold flex items-center justify-between ${statusMessage.type === 'success' ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300' : 'bg-rose-950/80 border-rose-500/50 text-rose-300'}`}>
+        <div className={`p-3 rounded-lg border text-xs font-semibold flex items-center justify-between ${statusMessage.type === 'success' ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300' : statusMessage.type === 'info' ? 'bg-cyan-950/80 border-cyan-500/50 text-cyan-300' : 'bg-rose-950/80 border-rose-500/50 text-rose-300'}`}>
           <span>{statusMessage.text}</span>
           <button onClick={() => setStatusMessage(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
         </div>
       )}
 
-      <div className="alon-zone-kpis p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-black uppercase tracking-wider text-amber-400">📊 RADAR DE KPIS Y ALERTAS OPERATIVAS</span>
-          {activeKpiFilter !== 'todos' && (
-            <button type="button" onClick={() => setActiveKpiFilter('todos')} className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer">
-              <X className="w-3.5 h-3.5" /> Quitar Filtro KPI
-            </button>
-          )}
+      <LaborKpiRadar
+        countSinOt={countSinOt}
+        countR={countR}
+        countRR={countRR}
+        incompleteCount={incompleteCount}
+        countSinPrc={countSinPrc}
+        activeKpiFilter={activeKpiFilter}
+        onToggleKpiFilter={setActiveKpiFilter}
+      />
+
+      {loading && recentLogs.length === 0 && (
+        <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800 text-xs text-cyan-300 font-semibold">
+          Sincronizando planilla de horas y padrón...
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <button type="button" onClick={() => setActiveKpiFilter(activeKpiFilter === 'sin_ot' ? 'todos' : 'sin_ot')} className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${activeKpiFilter === 'sin_ot' ? 'bg-amber-950/80 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40'}`}>
-            <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5"><AlertCircle className="w-4 h-4" /> Falta Cargar OT</span>
-            <div className="flex items-baseline gap-2 mt-2"><span className="text-2xl font-black text-amber-300 font-mono">{countSinOt}</span><span className="text-xs text-slate-400">sin OT</span></div>
-          </button>
-          <button type="button" onClick={() => setActiveKpiFilter(activeKpiFilter === 'revision_R' ? 'todos' : 'revision_R')} className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${activeKpiFilter === 'revision_R' ? 'bg-rose-950/80 border-rose-400 ring-2 ring-rose-400' : 'bg-slate-900/80 border-slate-800 hover:border-rose-500/40'}`}>
-            <span className="text-xs font-bold text-rose-400 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Requiere Revisión (R)</span>
-            <div className="flex items-baseline gap-2 mt-2"><span className="text-2xl font-black text-rose-300 font-mono">{countR}</span><span className="text-xs text-slate-400">alertas</span></div>
-          </button>
-          <button type="button" onClick={() => setActiveKpiFilter(activeKpiFilter === 'corregidas_RR' ? 'todos' : 'corregidas_RR')} className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${activeKpiFilter === 'corregidas_RR' ? 'bg-amber-950/80 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-900/80 border-slate-800 hover:border-amber-500/40'}`}>
-            <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5"><Clock className="w-4 h-4" /> Horas Corregidas (RR)</span>
-            <div className="flex items-baseline gap-2 mt-2"><span className="text-2xl font-black text-amber-300 font-mono">{countRR}</span><span className="text-xs text-slate-400">revisadas</span></div>
-          </button>
-          <button type="button" onClick={() => setActiveKpiFilter(activeKpiFilter === 'incompleta' ? 'todos' : 'incompleta')} className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${activeKpiFilter === 'incompleta' ? 'bg-orange-950/80 border-orange-400 ring-2 ring-orange-400' : 'bg-slate-900/80 border-slate-800 hover:border-orange-500/40'}`}>
-            <span className="text-xs font-bold text-orange-400 flex items-center gap-1.5"><Clock className="w-4 h-4" /> Jornada Incompleta</span>
-            <div className="flex items-baseline gap-2 mt-2"><span className="text-2xl font-black text-orange-300 font-mono">{incompleteCount}</span><span className="text-xs text-slate-400">&lt;9hs</span></div>
-          </button>
-          <button type="button" onClick={() => setActiveKpiFilter(activeKpiFilter === 'sin_prc' ? 'todos' : 'sin_prc')} className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${activeKpiFilter === 'sin_prc' ? 'bg-purple-950/80 border-purple-400 ring-2 ring-purple-400' : 'bg-slate-900/80 border-slate-800 hover:border-purple-500/40'}`}>
-            <span className="text-xs font-bold text-purple-400 flex items-center gap-1.5"><FileText className="w-4 h-4" /> Sin PRC Vinculado</span>
-            <div className="flex items-baseline gap-2 mt-2"><span className="text-2xl font-black text-purple-300 font-mono">{countSinPrc}</span><span className="text-xs text-slate-400">sin PRC</span></div>
-          </button>
-        </div>
-      </div>
+      )}
 
       {activeTab === 'carga' && (
-        <LaborCargaPanel ships={ships} workOrders={workOrders} workItems={workItems} dbWorkers={dbWorkers} recentLogs={recentLogs} setRecentLogs={setRecentLogs} fetchData={fetchData} selectedLogIds={selectedLogIds} setSelectedLogIds={setSelectedLogIds} toggleSelectLog={toggleSelectLog} toggleSelectAllLogs={toggleSelectAllLogs} activeKpiFilter={activeKpiFilter} setActiveKpiFilter={setActiveKpiFilter} handleEditFromDaily={(log) => setEditingLog(log)} handleDeleteLog={handleDeleteLog} handleUpdateApprovalStatus={handleUpdateApprovalStatus} setReviewReasonModal={setReviewReasonModal} setShipPickerModal={setShipPickerModal} setActiveTab={setActiveTab} setDailyFilterType={setDailyFilterType} setStatusMessage={setStatusMessage} user={user} />
+        <LaborCargaPanel
+          ships={ships}
+          shipStays={shipStays}
+          workOrders={workOrders}
+          workItems={workItems}
+          dbWorkers={dbWorkers}
+          recentLogs={recentLogs}
+          setRecentLogs={setRecentLogs}
+          fetchData={fetchData}
+          selectedLogIds={selectedLogIds}
+          setSelectedLogIds={setSelectedLogIds}
+          toggleSelectLog={toggleSelectLog}
+          toggleSelectAllLogs={toggleSelectAllLogs}
+          activeKpiFilter={activeKpiFilter}
+          setActiveKpiFilter={setActiveKpiFilter}
+          handleEditFromDaily={(log) => setEditingLog(log)}
+          handleDeleteLog={handleDeleteLog}
+          handleUpdateApprovalStatus={handleUpdateApprovalStatus}
+          setReviewReasonModal={setReviewReasonModal}
+          setShipPickerModal={setShipPickerModal}
+          setActiveTab={setActiveTab}
+          setDailyFilterType={setDailyFilterType}
+          statusMessage={statusMessage}
+          setStatusMessage={setStatusMessage}
+          activeLoadModal={activeLoadModal}
+          setActiveLoadModal={setActiveLoadModal}
+          user={user}
+        />
       )}
       {activeTab === 'control_diario' && (
         <LaborControlDiarioPanel auditDate={auditDate} setAuditDate={setAuditDate} recentLogs={recentLogs} setRecentLogs={setRecentLogs} dbWorkers={dbWorkers} selectedLogIds={selectedLogIds} toggleSelectLog={toggleSelectLog} toggleSelectAllLogs={toggleSelectAllLogs} handleUpdateApprovalStatus={handleUpdateApprovalStatus} setShipPickerModal={setShipPickerModal} openQuickLogModal={(w) => setQuickLogWorker({ worker_name: w.name, worker_type: w.type, default_rubro: w.defaultRubro, allowed_trades: [w.defaultRubro], rubro: w.defaultRubro, ship_id: '', work_order_id: '', hours_normal: w.type === 'Astillero' ? 9 : 8, hours_extra_50: 0, hours_extra_100: 0, notes: '' })} handleEditFromDaily={(log) => setEditingLog(log)} handleDeleteLog={handleDeleteLog} />

@@ -1,8 +1,10 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSpreadsheetGrid } from './useSpreadsheetGrid.js'
 import { useGridContextMenu } from './useGridContextMenu.js'
-import { buildPasteRowHandler } from '../lib/gridRowActions.js'
+import { buildPasteRowHandler, duplicateRecord } from '../lib/gridRowActions.js'
 import { calculateHoursStats, buildLocalRelationsForLog } from '../lib/laborConstants.js'
+import { buildLaborEligibleCatalog } from '../lib/laborWorkerCatalog.js'
+import { getEnabledWorkersAndContractors } from '../lib/allocationEngine.js'
 import {
   LOG_PASTE_FIELDS,
   buildHorasSpreadsheetColumns,
@@ -22,6 +24,8 @@ import {
 export function useLaborCargaGridState({
   ships = [],
   workOrders = [],
+  workItems = [],
+  dbWorkers = [],
   recentLogs = [],
   setRecentLogs,
   fetchData,
@@ -36,9 +40,21 @@ export function useLaborCargaGridState({
   const [filterDate, setFilterDate] = useState('')
   const [filterShip, setFilterShip] = useState('')
   const [inlineLogEdit, setInlineLogEdit] = useState({ id: null, field: null, value: '' })
+  const [contractorPickerModal, setContractorPickerModal] = useState({
+    isOpen: false,
+    logId: null,
+    currentValue: '',
+    shipId: '',
+    shipName: '',
+    workOrderId: '',
+    workOrderTitle: '',
+    isOtBlank: true
+  })
   const logSearchInputRef = useRef(null)
   const horasPasteRef = useRef(null)
   const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
+
+  const eligibleCatalog = useMemo(() => buildLaborEligibleCatalog(dbWorkers), [dbWorkers])
 
   const incompleteWorkerDateKeys = useMemo(
     () => computeIncompleteWorkerDateKeys(recentLogs),
@@ -99,8 +115,24 @@ export function useLaborCargaGridState({
       })
       return
     }
+    if (colKey === 'worker_name') {
+      const effShipId = log.ship_id || log.work_orders?.ship_id || ''
+      const effShip = ships.find(s => String(s.id) === String(effShipId))
+      const effWo = workOrders.find(w => String(w.id) === String(log.work_order_id))
+      setContractorPickerModal({
+        isOpen: true,
+        logId: log.id,
+        currentValue: log.worker_name || '',
+        shipId: effShipId,
+        shipName: effShip?.name || log.ships?.name || 'Astillero',
+        workOrderId: log.work_order_id || '',
+        workOrderTitle: effWo ? `${effWo.ot_number ? `#${effWo.ot_number} ` : ''}${effWo.title}` : '',
+        isOtBlank: !log.work_order_id
+      })
+      return
+    }
     setInlineLogEdit({ id: log.id, field: colKey, value: log[colKey] ?? '' })
-  }, [setShipPickerModal])
+  }, [setShipPickerModal, ships, workOrders])
 
   const horasGrid = useSpreadsheetGrid({
     rows: filteredLogs,
@@ -145,7 +177,7 @@ export function useLaborCargaGridState({
   const saveInlineLogEdit = async (logId, field, newValue) => {
     setInlineLogEdit({ id: null, field: null, value: '' })
     const targetLog = recentLogs.find(l => l.id === logId)
-    const { shouldSkip, cleanedVal, extraPayload } = prepareInlineLogPatch(targetLog, field, newValue)
+    const { shouldSkip, cleanedVal, extraPayload } = prepareInlineLogPatch(targetLog, field, newValue, { eligibleCatalog })
     if (shouldSkip) return
 
     setRecentLogs(prev => prev.map(l => (l.id === logId ? { ...l, [field]: cleanedVal, ...extraPayload } : l)))
@@ -165,6 +197,37 @@ export function useLaborCargaGridState({
       setRecentLogs(prev => prev.map(l => (l.id === logId ? targetLog : l)))
     }
   }
+
+  const handleDuplicateRow = async (sourceLog) => {
+    if (!sourceLog) return
+    try {
+      const created = await duplicateRecord({
+        table: 'labor_logs',
+        entityType: 'daily_labor_logs',
+        source: sourceLog,
+        fields: ['date_logged', 'worker_name', 'worker_type', 'cost_center', ...LOG_PASTE_FIELDS],
+        nameOf: (r) => `${r.worker_name || 'Operario'} ${r.date_logged || ''}`.trim(),
+        user: user?.email
+      })
+      const hydrated = { ...created, ...buildLocalRelationsForLog(created.ship_id, created.work_order_id, ships, workOrders) }
+      setRecentLogs(prev => [hydrated, ...prev])
+      showGridFeedback('success', 'Fila duplicada correctamente.')
+    } catch (err) {
+      console.error(err)
+      showGridFeedback('error', 'Error al duplicar: ' + err.message)
+    }
+  }
+
+  const contractorPickerOptions = useMemo(() => {
+    if (!contractorPickerModal.isOpen) return { astilleroWorkers: [], contractorGroups: [] }
+    return getEnabledWorkersAndContractors(
+      contractorPickerModal.shipId || null,
+      contractorPickerModal.workOrderId || null,
+      workItems,
+      eligibleCatalog.rawEligible,
+      { workOrders, strictShipFilter: Boolean(contractorPickerModal.shipId) }
+    )
+  }, [contractorPickerModal, workItems, eligibleCatalog.rawEligible, workOrders])
 
   const handleInsertRow = async () => {
     try {
@@ -209,6 +272,10 @@ export function useLaborCargaGridState({
     activateHorasCell,
     saveInlineLogEdit,
     handleInsertRow,
+    handleDuplicateRow,
+    contractorPickerModal,
+    setContractorPickerModal,
+    contractorPickerOptions,
     clearAllFilters,
     hoursStats
   }

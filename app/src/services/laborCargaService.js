@@ -14,7 +14,12 @@ const MODULE_ROUTE = '/horas'
 /**
  * Inserta un lote de imputaciones de cuadrilla y registra auditoría.
  */
-export async function insertLaborBatchService({ payload = [], totalHorasGenerales = 0, userEmail = null }) {
+export async function insertLaborBatchService({
+  payload = [],
+  totalHorasGenerales = 0,
+  changeOrigin = 'BATCH_CREW_FORM',
+  userEmail = null
+}) {
   if (!Array.isArray(payload) || payload.length === 0) {
     throw new Error('El lote de imputaciones está vacío.')
   }
@@ -30,7 +35,7 @@ export async function insertLaborBatchService({ payload = [], totalHorasGenerale
     changes: { total_filas: payload.length, total_horas: totalHorasGenerales },
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
-    changeOrigin: 'BATCH_CREW_FORM',
+    changeOrigin,
     user: userEmail
   })
 
@@ -201,4 +206,42 @@ export async function quickCreateShipAndWoService({
   })
 
   return { targetShip, woData, otNumber }
+}
+
+/**
+ * Actualiza Buque y OT desde ShipWorkOrderPickerModal con registro en audit_logs.
+ */
+export async function updateLaborShipWoService({
+  logId,
+  shipId,
+  workOrderId,
+  targetLog = {},
+  userEmail = null
+}) {
+  const payload = {
+    ship_id: shipId || null,
+    work_order_id: workOrderId || null,
+    ...(workOrderId
+      ? { approval_status: 'Aprobado', review_reason: null }
+      : { approval_status: 'R', review_reason: 'Falta Cargar OT' })
+  }
+  const { error } = await supabase.from('labor_logs').update(payload).eq('id', logId)
+  if (error) throw error
+
+  await auditService.logRowAction({
+    action: 'CELL_EDIT',
+    entityType: 'daily_labor_logs',
+    entityId: logId,
+    entityName: `${targetLog.worker_name || 'Operario'} ${targetLog.date_logged || ''}`.trim(),
+    changes: {
+      ship_id: { from: targetLog.ship_id || null, to: payload.ship_id },
+      work_order_id: { from: targetLog.work_order_id || null, to: payload.work_order_id }
+    },
+    sheetName: SHEET_NAME,
+    moduleRoute: MODULE_ROUTE,
+    changeOrigin: 'SHIP_WO_PICKER',
+    user: userEmail
+  })
+
+  return payload
 }

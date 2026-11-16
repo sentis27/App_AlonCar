@@ -1,8 +1,8 @@
 import React from 'react'
-import { AlertCircle, Pencil, CopyPlus, Trash2 } from 'lucide-react'
 import HighlightText from '../HighlightText.jsx'
 import { cleanShipName } from '../../lib/laborConstants.js'
 import LaborInlineCell from './LaborInlineCell.jsx'
+import LaborRowTrailingCells from './LaborRowTrailingCells.jsx'
 
 const NUMERIC_HOUR_CELLS = [
   {
@@ -136,32 +136,29 @@ export default function LaborLogsTableRow({
       <LaborInlineCell
         cellProps={getHorasCellProps(rowIndex, 'worker_name')}
         onDoubleClick={() => activateHorasCell(log, 'worker_name')}
-        className="py-2 px-3 cursor-pointer"
-        title="Doble clic para cambiar Operario"
-        isEditing={isEditingField('worker_name')}
-        editInput={renderInlineInput('worker_name', {
-          type: 'text',
-          list: 'all-workers-datalist',
-          className: 'w-full min-w-[140px] bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none'
-        })}
+        className="py-2 px-2.5 cursor-pointer"
+        title="Doble clic para elegir Operario o Contratista habilitado"
+        isEditing={false}
         onFillHandleMouseDown={onFillHandleMouseDown}
         onFillHandleDoubleClick={onFillHandleDoubleClick}
       >
         <div className="flex items-center gap-1.5">
-          <span className="font-medium text-slate-200">
-            <HighlightText text={log.worker_name} query={filterWorker} />
+          <span className={`font-medium ${log.worker_name ? 'text-slate-200' : 'text-amber-400 italic'}`}>
+            <HighlightText text={log.worker_name || '⚠️ Sin operario'} query={filterWorker} />
           </span>
-          <span
-            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-              log.worker_type === 'Astillero'
-                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
-                : log.worker_type === 'Taller'
-                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
-                : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
-            }`}
-          >
-            <HighlightText text={log.worker_type || 'Astillero'} query={filterWorker} />
-          </span>
+          {log.worker_type && (
+            <span
+              className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
+                log.worker_type === 'Astillero'
+                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
+                  : log.worker_type === 'Taller'
+                  ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                  : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+              }`}
+            >
+              <HighlightText text={log.worker_type} query={filterWorker} />
+            </span>
+          )}
         </div>
       </LaborInlineCell>
 
@@ -216,77 +213,27 @@ export default function LaborLogsTableRow({
         <HighlightText text={`${log.hours_worked} hs`} query={filterWorker} />
       </td>
 
-      <LaborInlineCell
-        cellProps={getHorasCellProps(rowIndex, 'approval_status')}
-        className="py-2 px-2 text-center"
-        isEditing={false}
+      <LaborRowTrailingCells
+        log={log}
+        rowIndex={rowIndex}
+        shipDisplayName={shipDisplayName}
+        otTitle={otTitle}
+        filterWorker={filterWorker}
+        isEditingNotes={isEditingField('notes')}
+        notesEditInput={renderInlineInput('notes', {
+          type: 'text',
+          className: 'w-36 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none'
+        })}
+        getHorasCellProps={getHorasCellProps}
+        activateHorasCell={activateHorasCell}
+        onUpdateApprovalStatus={onUpdateApprovalStatus}
+        onOpenReviewReason={onOpenReviewReason}
+        onEditFromDaily={onEditFromDaily}
+        onDuplicateLog={onDuplicateLog}
+        onDeleteLog={onDeleteLog}
         onFillHandleMouseDown={onFillHandleMouseDown}
         onFillHandleDoubleClick={onFillHandleDoubleClick}
-      >
-        <div className="flex items-center justify-center gap-1">
-          <select
-            value={log.approval_status || ''}
-            onChange={(e) => onUpdateApprovalStatus(log.id, e.target.value)}
-            className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none bg-slate-950 ${
-              log.approval_status === 'S' || log.approval_status === 'Aprobado'
-                ? 'text-emerald-400 border-emerald-700/60'
-                : log.approval_status === 'R'
-                ? 'text-rose-400 border-rose-500/70'
-                : log.approval_status === 'RR'
-                ? 'text-amber-400 border-amber-500/70'
-                : log.approval_status === 'RRR'
-                ? 'text-cyan-400 border-cyan-500/70'
-                : 'text-slate-400 border-slate-700'
-            }`}
-            title={`Estado de revisión de ${log.worker_name}`}
-          >
-            <option value="">-</option>
-            <option value="S">S (Aprobado)</option>
-            <option value="R">R (Revisión)</option>
-            <option value="RR">RR (Corregido)</option>
-            <option value="RRR">RRR (Aprobado Fin)</option>
-          </select>
-          {log.review_reason && (
-            <button
-              type="button"
-              onClick={() => onOpenReviewReason(log, shipDisplayName, otTitle)}
-              className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-900/40 transition-colors"
-              title={`Motivo de observación (R): ${log.review_reason}`}
-            >
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            </button>
-          )}
-        </div>
-      </LaborInlineCell>
-
-      <td className="py-2 px-3 text-right">
-        <div className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => onEditFromDaily(log)}
-            className="p-1 text-slate-400 hover:text-primary rounded hover:bg-slate-800"
-            title="Editar en ventana"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onDuplicateLog(log)}
-            className="p-1 text-amber-400 hover:text-amber-300 rounded hover:bg-amber-500/10"
-            title="Duplicar fila"
-          >
-            <CopyPlus className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onDeleteLog(log.id, log.worker_name)}
-            className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10"
-            title="Eliminar"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </td>
+      />
     </tr>
   )
 }

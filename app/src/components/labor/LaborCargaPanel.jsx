@@ -2,15 +2,16 @@ import React from 'react'
 import { useLaborCargaCrewState } from '../../hooks/useLaborCargaCrewState.js'
 import { useLaborCargaActions } from '../../hooks/useLaborCargaActions.js'
 import { useLaborCargaGridState } from '../../hooks/useLaborCargaGridState.js'
-import LaborCargaTopActions from './LaborCargaTopActions.jsx'
-import LaborTabulatorPanel from './LaborTabulatorPanel.jsx'
-import LaborCascadeHeader from './LaborCascadeHeader.jsx'
-import LaborCrewGridSection from './LaborCrewGridSection.jsx'
 import LaborLogsToolbar from './LaborLogsToolbar.jsx'
 import LaborLogsTable from './LaborLogsTable.jsx'
+import LaborTextMessageModal from './LaborTextMessageModal.jsx'
+import LaborCrewBatchModal from './LaborCrewBatchModal.jsx'
+import LaborFacialClockModal from './LaborFacialClockModal.jsx'
+import ContractorPickerModal from '../ContractorPickerModal.jsx'
 
 export default function LaborCargaPanel({
   ships = [],
+  shipStays = [],
   workOrders = [],
   workItems = [],
   dbWorkers = [],
@@ -24,14 +25,16 @@ export default function LaborCargaPanel({
   activeKpiFilter,
   setActiveKpiFilter,
   handleEditFromDaily,
-  handleDuplicateLog,
   handleDeleteLog,
   handleUpdateApprovalStatus,
   setReviewReasonModal,
   setShipPickerModal,
   setActiveTab,
   setDailyFilterType,
+  statusMessage,
   setStatusMessage,
+  activeLoadModal = null,
+  setActiveLoadModal,
   user
 }) {
   const crew = useLaborCargaCrewState({
@@ -55,6 +58,8 @@ export default function LaborCargaPanel({
   const gridState = useLaborCargaGridState({
     ships,
     workOrders,
+    workItems,
+    dbWorkers,
     recentLogs,
     setRecentLogs,
     fetchData,
@@ -66,91 +71,20 @@ export default function LaborCargaPanel({
     user
   })
 
+  const cModal = gridState.contractorPickerModal
+
   return (
-    <div className="space-y-6">
-      <LaborCargaTopActions
-        isTabulatorOpen={actions.isTabulatorOpen}
-        onToggleTabulator={() => actions.setIsTabulatorOpen(prev => !prev)}
-        isMultiOtMode={actions.isMultiOtMode}
-        onToggleMultiOtMode={() => actions.setIsMultiOtMode(prev => !prev)}
-        onReplicateYesterday={actions.replicateYesterday}
-      />
-
-      {actions.isTabulatorOpen && (
-        <LaborTabulatorPanel
-          rawReportText={actions.rawReportText}
-          setRawReportText={actions.setRawReportText}
-          isTabulating={actions.isTabulating}
-          tabulatorSummary={actions.tabulatorSummary}
-          setTabulatorSummary={actions.setTabulatorSummary}
-          operariosCount={crew.operariosRows.length}
-          onConsolidateSameOtRows={actions.handleConsolidateSameOtRows}
-          onTabulateMessage={actions.handleTabulateMessage}
-        />
-      )}
-
-      <form onSubmit={actions.handleSubmitBatch} className="space-y-6">
-        <LaborCascadeHeader
-          ships={ships}
-          selectedShipId={crew.selectedShipId}
-          setSelectedShipId={crew.setSelectedShipId}
-          selectedContractorGroup={crew.selectedContractorGroup}
-          onContractorGroupChange={crew.handleContractorGroupChange}
-          enabledContractorsForShip={crew.enabledContractorsForShip}
-          isHeaderContractorsExpanded={crew.isHeaderContractorsExpanded}
-          selectedWorkOrderId={crew.selectedWorkOrderId}
-          setSelectedWorkOrderId={crew.setSelectedWorkOrderId}
-          availableWorkOrders={crew.availableWorkOrders}
-          selectedWorkItemId={crew.selectedWorkItemId}
-          setSelectedWorkItemId={crew.setSelectedWorkItemId}
-          activeItemsForSelectedWo={crew.activeItemsForSelectedWo}
-          dateLogged={crew.dateLogged}
-          setDateLogged={crew.setDateLogged}
-          workType={crew.workType}
-          setWorkType={crew.setWorkType}
-          blockedWorkItemsForShip={crew.blockedWorkItemsForShip}
-          currentWorkOrder={crew.currentWorkOrder}
-          currentWorkItem={crew.currentWorkItem}
-        />
-
-        <LaborCrewGridSection
-          isMultiOtMode={actions.isMultiOtMode}
-          isSelectedGroupAstillero={crew.isSelectedGroupAstillero}
-          selectedContractorGroup={crew.selectedContractorGroup}
-          operariosRows={crew.operariosRows}
-          openRubroEmergencyIds={crew.openRubroEmergencyIds}
-          draftWorkerSummary={crew.draftWorkerSummary}
-          ships={ships}
-          workOrders={workOrders}
-          workItems={workItems}
-          eligibleCatalog={crew.eligibleCatalog}
-          isWorkersExpanded={crew.isWorkersExpanded}
-          onToggleWorkersExpanded={crew.setIsWorkersExpanded}
-          selectedShipId={crew.selectedShipId}
-          selectedWorkOrderId={crew.selectedWorkOrderId}
-          totalHorasNormales={crew.totalHorasNormales}
-          totalHoras50={crew.totalHoras50}
-          totalHoras100={crew.totalHoras100}
-          totalHorasGenerales={crew.totalHorasGenerales}
-          submitting={actions.submitting}
-          statusMessage={statusMessage}
-          onClearStatusMessage={() => setStatusMessage?.(null)}
-          onAddOperarioRow={crew.addOperarioRow}
-          onUpdateRow={crew.updateOperarioRow}
-          onSelectWorker={crew.selectOperarioForRow}
-          onRemoveRow={crew.removeOperarioRow}
-          onToggleRubroEmergency={crew.toggleRubroEmergency}
-          onResolveHomonym={crew.resolveHomonymCandidate}
-        />
-      </form>
-
+    <div className="space-y-3">
+      {/* ZONA 3 + ZONA 4 UNIFICADAS (Estilo Google Sheets al tope de la pantalla) */}
       <div className="alon-workspace-block">
         <LaborLogsToolbar
+          ships={ships}
           filterWorker={gridState.filterWorker}
           setFilterWorker={gridState.setFilterWorker}
           filterDate={gridState.filterDate}
           setFilterDate={gridState.setFilterDate}
           filterShip={gridState.filterShip}
+          setFilterShip={gridState.setFilterShip}
           activeKpiFilter={activeKpiFilter}
           onClearAllFilters={gridState.clearAllFilters}
           logSearchInputRef={gridState.logSearchInputRef}
@@ -186,7 +120,7 @@ export default function LaborCargaPanel({
           openMenu={gridState.openMenu}
           closeMenu={gridState.closeMenu}
           handleEditFromDaily={handleEditFromDaily}
-          handleDuplicateLog={handleDuplicateLog}
+          handleDuplicateLog={gridState.handleDuplicateRow}
           handleDeleteLog={handleDeleteLog}
           handleUpdateApprovalStatus={handleUpdateApprovalStatus}
           setReviewReasonModal={setReviewReasonModal}
@@ -194,6 +128,63 @@ export default function LaborCargaPanel({
           setDailyFilterType={setDailyFilterType}
         />
       </div>
+
+      {/* MODALES DE CARGA DESDE ZONA 1 */}
+      <LaborTextMessageModal
+        isOpen={activeLoadModal === 'texto'}
+        onClose={() => setActiveLoadModal?.(null)}
+        crew={crew}
+        actions={actions}
+        ships={ships}
+        workOrders={workOrders}
+        workItems={workItems}
+        statusMessage={statusMessage}
+        onClearStatusMessage={() => setStatusMessage?.(null)}
+      />
+
+      <LaborCrewBatchModal
+        isOpen={activeLoadModal === 'cuadrilla'}
+        onClose={() => setActiveLoadModal?.(null)}
+        crew={crew}
+        actions={actions}
+        ships={ships}
+        workOrders={workOrders}
+        workItems={workItems}
+        statusMessage={statusMessage}
+        onClearStatusMessage={() => setStatusMessage?.(null)}
+      />
+
+      <LaborFacialClockModal
+        isOpen={activeLoadModal === 'reloj'}
+        onClose={() => setActiveLoadModal?.(null)}
+        ships={ships}
+        shipStays={shipStays}
+        workOrders={workOrders}
+        dbWorkers={dbWorkers}
+        recentLogs={recentLogs}
+        fetchData={fetchData}
+        setStatusMessage={setStatusMessage}
+        user={user}
+      />
+
+      {/* DISPARADOR CANÓNICO 2: PICKER DE OPERARIO / CONTRATISTA POR BUQUE Y OT */}
+      <ContractorPickerModal
+        isOpen={cModal.isOpen}
+        onClose={() => gridState.setContractorPickerModal({
+          isOpen: false, logId: null, currentValue: '', shipId: '', shipName: '', workOrderId: '', workOrderTitle: '', isOtBlank: true
+        })}
+        currentValue={cModal.currentValue}
+        shipName={cModal.shipName}
+        workOrderTitle={cModal.workOrderTitle}
+        isOtBlank={cModal.isOtBlank}
+        astilleroWorkers={gridState.contractorPickerOptions.astilleroWorkers}
+        contractorGroups={gridState.contractorPickerOptions.contractorGroups}
+        onSelect={(selectedName) => {
+          if (cModal.logId) {
+            gridState.saveInlineLogEdit(cModal.logId, 'worker_name', selectedName)
+          }
+        }}
+      />
     </div>
   )
 }
