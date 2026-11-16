@@ -18,13 +18,20 @@ export default function ComprasKpiRadar({
           </span>
         </div>
         {activeKpiFilter && (
-          <button
-            type="button"
-            onClick={onClearKpiFilter}
-            className="text-[10px] font-bold text-amber-300 hover:text-white bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded cursor-pointer"
-          >
-            ✕ Quitar Filtro KPI
-          </button>
+          <div className="flex items-center gap-2">
+            {activeKpiFilter === 'sin_precio' && (
+              <span className="text-[10px] font-bold text-rose-200 bg-rose-500/20 border border-rose-400/50 px-2 py-0.5 rounded">
+                Filtrado: Compras Directas a Obra Sin Precio ($0)
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onClearKpiFilter}
+              className="text-[10px] font-bold text-amber-300 hover:text-white bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded cursor-pointer"
+            >
+              ✕ Quitar Filtro KPI
+            </button>
+          </div>
         )}
       </div>
 

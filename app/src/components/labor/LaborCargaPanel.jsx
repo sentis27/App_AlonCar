@@ -133,6 +133,8 @@ export default function LaborCargaPanel({
           totalHoras100={crew.totalHoras100}
           totalHorasGenerales={crew.totalHorasGenerales}
           submitting={actions.submitting}
+          statusMessage={statusMessage}
+          onClearStatusMessage={() => setStatusMessage?.(null)}
           onAddOperarioRow={crew.addOperarioRow}
           onUpdateRow={crew.updateOperarioRow}
           onSelectWorker={crew.selectOperarioForRow}

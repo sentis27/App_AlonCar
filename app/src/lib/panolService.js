@@ -832,6 +832,93 @@ export async function registerGasFinalReturnService({
 }
 
 /**
+ * Da de alta un nuevo material en el Catálogo Maestro B.D de Pañol con validación defensiva y auditoría.
+ */
+export async function createMaterialService({ formData, existingMaterials = [], user }) {
+  const cleanName = String(formData?.name || '').trim().toUpperCase()
+  if (!cleanName) {
+    throw new Error('El nombre técnico del material es obligatorio.')
+  }
+
+  const localDup = (existingMaterials || []).find(
+    (m) => normalizeText(m.name) === normalizeText(cleanName)
+  )
+  if (localDup) {
+    throw new Error(`Ya existe el material "${localDup.name}" en el Catálogo B.D.`)
+  }
+
+  const { data: remoteDup } = await supabase
+    .from('materials')
+    .select('id, name')
+    .ilike('name', cleanName)
+    .limit(1)
+  if (remoteDup && remoteDup.length > 0) {
+    throw new Error(`Ya existe el material "${remoteDup[0].name}" en la base de datos.`)
+  }
+
+  const currentStockNum =
+    formData?.current_stock === '' || formData?.current_stock == null ? 0 : Number(formData.current_stock)
+  const minimumStockNum =
+    formData?.minimum_stock === '' || formData?.minimum_stock == null ? 0 : Number(formData.minimum_stock)
+  const weightKgNum =
+    formData?.weight_kg === '' || formData?.weight_kg == null ? 0 : Number(formData.weight_kg)
+
+  if (!Number.isFinite(currentStockNum) || currentStockNum < 0) {
+    throw new Error('El stock inicial actual debe ser un número mayor o igual a 0.')
+  }
+  if (!Number.isFinite(minimumStockNum) || minimumStockNum < 0) {
+    throw new Error('El stock mínimo debe ser un número mayor o igual a 0.')
+  }
+  if (!Number.isFinite(weightKgNum) || weightKgNum < 0) {
+    throw new Error('El peso unitario debe ser un número mayor o igual a 0.')
+  }
+
+  const payload = {
+    name: cleanName,
+    rubro: String(formData?.rubro || '').trim().toUpperCase() || 'VARIOS Y GENERAL',
+    rubro_status: 'APROBADO',
+    category: ['MATERIALES', 'CONSUMIBLES', 'ELEM.SEGURIDAD'].includes(formData?.category)
+      ? formData.category
+      : 'CONSUMIBLES',
+    unit_measure: String(formData?.unit_measure || 'Unidad').trim() || 'Unidad',
+    weight_kg: weightKgNum,
+    requires_stock_control: Boolean(formData?.requires_stock_control ?? true),
+    current_stock: currentStockNum,
+    minimum_stock: minimumStockNum,
+    security_factor: Number(formData?.security_factor) || 1.06
+  }
+
+  const { data, error } = await supabase.from('materials').insert([payload]).select().single()
+  if (error) {
+    if (error.code === '42501' || /row-level security/i.test(error.message || '')) {
+      throw new Error(
+        'Permiso bloqueado por RLS en tabla "materials". Iniciá sesión con cuenta de Supabase Auth o ejecutá la migración 0041 en el SQL Editor de Supabase.'
+      )
+    }
+    if (error.code === '22P02' || /invalid input syntax for type integer/i.test(error.message || '')) {
+      throw new Error(
+        'La base de datos actual solo admite números enteros en Stock Inicial y Stock Mínimo (ejecutá la migración 0041 en Supabase para habilitar decimales).'
+      )
+    }
+    throw error
+  }
+
+  await logRowAction({
+    action: 'ROW_INSERT',
+    entityType: 'materials',
+    entityId: data.id,
+    entityName: data.name,
+    rowData: data,
+    sheetName: 'Pañol · Catálogo Maestro de Materiales',
+    moduleRoute: '/panol',
+    changeOrigin: 'MODAL_NEW_MATERIAL',
+    user: user?.email
+  })
+
+  return data
+}
+
+/**
  * Crea un nuevo tipo de gas en el Catálogo Maestro con stock inicial 0 (el stock físico se ingresa por Compras).
  */
 export async function createQuickGasMaterialService({ name, user }) {

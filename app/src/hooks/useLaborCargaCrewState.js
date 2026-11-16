@@ -26,7 +26,7 @@ export function useLaborCargaCrewState({
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState('')
   const [selectedWorkItemId, setSelectedWorkItemId] = useState('')
   const [dateLogged, setDateLogged] = useState(() => new Date().toISOString().split('T')[0])
-  const [workType, setWorkType] = useState('MONTAJE')
+  const [workType, setWorkType] = useState('HORA')
   const [openRubroEmergencyIds, setOpenRubroEmergencyIds] = useState(() => new Set())
   const [isHeaderContractorsExpanded, setIsHeaderContractorsExpanded] = useState(false)
   const [isWorkersExpanded, setIsWorkersExpanded] = useState(false)

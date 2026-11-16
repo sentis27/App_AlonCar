@@ -39,7 +39,10 @@ export default function ComprasPedidosPanel(props) {
         kpis={state.kpis}
         activeKpiFilter={filters.activeKpiFilter}
         onToggleKpiFilter={filters.toggleKpiFilter}
-        onClearKpiFilter={() => filters.setActiveKpiFilter(null)}
+        onClearKpiFilter={() => {
+          filters.setActiveKpiFilter(null)
+          if (props.onClearUrlKpi) props.onClearUrlKpi()
+        }}
       />
 
       <div className="alon-workspace-block">

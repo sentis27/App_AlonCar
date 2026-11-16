@@ -282,7 +282,8 @@ export function parseOrderQueryParams(searchParams, materials = []) {
     }
   }
 
-  return { viewMode, newOrderPayload }
+  const kpiFilter = searchParams.get('kpi') || null
+  return { viewMode, newOrderPayload, kpiFilter }
 }
 
 export function computeContractorGroups(workItems = [], suppliers = []) {

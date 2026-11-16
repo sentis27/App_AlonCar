@@ -1,5 +1,5 @@
 import React from 'react'
-import { Users, Plus, Briefcase, Save } from 'lucide-react'
+import { Users, Plus, Briefcase, Save, CheckCircle2, AlertCircle } from 'lucide-react'
 import LaborCrewRow from './LaborCrewRow.jsx'
 
 export default function LaborCrewGridSection({
@@ -22,6 +22,8 @@ export default function LaborCrewGridSection({
   totalHoras100,
   totalHorasGenerales,
   submitting,
+  statusMessage,
+  onClearStatusMessage,
   onAddOperarioRow,
   onUpdateRow,
   onSelectWorker,
@@ -167,6 +169,35 @@ export default function LaborCrewGridSection({
           ))}
         </div>
       </div>
+
+      {statusMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`p-3 rounded-lg border text-xs font-semibold flex items-center justify-between transition-all ${
+            statusMessage.type === 'success'
+              ? 'bg-emerald-950/90 border-emerald-500/70 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+              : 'bg-rose-950/90 border-rose-500/70 text-rose-300 shadow-[0_0_15px_rgba(244,63,94,0.2)]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {statusMessage.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{statusMessage.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => onClearStatusMessage?.()}
+            className="text-slate-400 hover:text-white cursor-pointer ml-3 px-1 py-0.5"
+            aria-label="Cerrar mensaje"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 text-xs">

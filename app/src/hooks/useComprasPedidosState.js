@@ -16,7 +16,7 @@ export function useComprasPedidosState(props) {
   const {
     purchaseOrders, setPurchaseOrders, suppliers, materials, setMaterials,
     ships, workOrders, macroVariables, documents, currentFortnight,
-    viewMode, user, profile, showFeedbackMsg, fetchData
+    viewMode, user, profile, showFeedbackMsg, fetchData, initialKpiFilter = null, onClearUrlKpi
   } = props
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -27,8 +27,12 @@ export function useComprasPedidosState(props) {
   const [filterChargeType, setFilterChargeType] = useState('TODOS')
   const [filterNewOnly, setFilterNewOnly] = useState(false)
   const [hideReconciled, setHideReconciled] = useState(false)
-  const [activeKpiFilter, setActiveKpiFilter] = useState(null)
+  const [activeKpiFilter, setActiveKpiFilter] = useState(initialKpiFilter)
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set())
+
+  useEffect(() => {
+    if (initialKpiFilter) setActiveKpiFilter(initialKpiFilter)
+  }, [initialKpiFilter])
 
   const [shipPickerModal, setShipPickerModal] = useState({ isOpen: false, orderId: null, shipId: '', workOrderId: '', chargeType: 'DIRECT', contractorName: '' })
   const [contractorPickerModal, setContractorPickerModal] = useState({ isOpen: false, orderId: null, currentValue: '', shipName: '', workOrderTitle: '', isOtBlank: true })
@@ -85,7 +89,8 @@ export function useComprasPedidosState(props) {
     setFilterNewOnly(false)
     setHideReconciled(false)
     setActiveKpiFilter(null)
-  }, [])
+    if (onClearUrlKpi) onClearUrlKpi()
+  }, [onClearUrlKpi])
 
   const toggleKpiFilter = useCallback((filterKey) => {
     if (activeKpiFilter === filterKey) {

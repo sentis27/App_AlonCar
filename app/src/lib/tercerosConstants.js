@@ -5,6 +5,7 @@
  */
 
 import { matchesUniversalSearch } from './searchEngine.js'
+import { isThirdPartyZeroCost } from './zeroCostAlertsRules.js'
 
 // Tipos de Comprobante y Reglas de Negocio (DEC-017)
 export const VOUCHER_TYPES = [
@@ -129,7 +130,7 @@ export function calculateTercerosKpis(services = []) {
   let fcr = 0
 
   services.forEach((s) => {
-    if (!s.amount_ars || Number(s.amount_ars) === 0) sinPrecio++
+    if (isThirdPartyZeroCost(s)) sinPrecio++
     if (!s.work_order_id) sinOt++
     if (s.voucher_type === 'RPF') rpf++
     if (s.voucher_type === 'FCR') fcr++
@@ -188,7 +189,7 @@ export function filterTercerosServices(services = [], {
       if (kpiFilter === 'RPF' && srv.voucher_type !== 'RPF') return false
       if (kpiFilter === 'FCR' && srv.voucher_type !== 'FCR') return false
       if (kpiFilter === 'SDT' && srv.voucher_type !== 'SDT') return false
-      if (kpiFilter === 'sin_precio' && Number(srv.amount_ars) > 0) return false
+      if (kpiFilter === 'sin_precio' && !isThirdPartyZeroCost(srv)) return false
       if (kpiFilter === 'sin_ot' && srv.work_order_id) return false
     }
 

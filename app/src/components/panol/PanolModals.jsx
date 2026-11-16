@@ -32,6 +32,7 @@ import { supabase } from '../../lib/supabase'
 import {
   saveMultiWithdrawalService,
   saveInlineMaterialService,
+  createMaterialService,
   createDirectPurchaseOrderService,
   submitRequestOtService,
   submitWorkerPermissionService,
@@ -864,7 +865,7 @@ export function QuickPurchaseModal({ material, initialQuantity, initialUrgency =
 // ==============================================================================
 // 4. MODAL ALTA FORMAL DE MATERIAL
 // ==============================================================================
-export function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
+export function NewMaterialModal({ rubros = [], isAdmin, onClose, onSave }) {
   const [name, setName] = useState('')
   const [rubro, setRubro] = useState('')
   const [category, setCategory] = useState('CONSUMIBLES')
@@ -874,22 +875,37 @@ export function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
   const [currentStock, setCurrentStock] = useState(0)
   const [minimumStock, setMinimumStock] = useState(0)
   const [securityFactor, setSecurityFactor] = useState(1.06)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState('')
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!name.trim()) return alert('El nombre del material es obligatorio.')
+    if (isSubmitting) return
+    setFormError('')
 
-    onSave({
-      name: name.trim().toUpperCase(),
-      rubro: rubro || 'GENERAL',
-      category,
-      unit_measure: unitMeasure,
-      weight_kg: Number(weightKg) || 0,
-      requires_stock_control: requiresStockControl,
-      current_stock: Number(currentStock) || 0,
-      minimum_stock: Number(minimumStock) || 0,
-      security_factor: Number(securityFactor) || 1.06
-    })
+    if (!name.trim()) {
+      setFormError('El nombre técnico oficial del material es obligatorio.')
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+      await onSave({
+        name: name.trim().toUpperCase(),
+        rubro: rubro || 'VARIOS Y GENERAL',
+        category,
+        unit_measure: unitMeasure,
+        weight_kg: Number(weightKg) || 0,
+        requires_stock_control: requiresStockControl,
+        current_stock: Number(currentStock) || 0,
+        minimum_stock: Number(minimumStock) || 0,
+        security_factor: Number(securityFactor) || 1.06
+      })
+    } catch (err) {
+      setFormError(err?.message || 'Error al guardar el material en el catálogo.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -910,8 +926,27 @@ export function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
-          <div className="alon-modal-body">
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div className="alon-modal-body space-y-3">
+            {formError && (
+              <div className="p-3 rounded-xl bg-rose-950/90 border border-rose-500/70 text-rose-200 font-bold flex items-start gap-2.5 shadow-lg">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <span className="block text-[11px] uppercase tracking-wider text-rose-300 font-black">
+                    No se pudo guardar el material
+                  </span>
+                  <span className="block text-xs font-semibold text-rose-100 mt-0.5">{formError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormError('')}
+                  className="text-rose-300 hover:text-white cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
               {/* COLUMNA IZQUIERDA */}
               <div className="space-y-3">
@@ -929,10 +964,12 @@ export function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
                     </label>
                     <input
                       type="text"
-                      required
                       autoFocus
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={(e) => {
+                        setName(e.target.value)
+                        if (formError) setFormError('')
+                      }}
                       placeholder="Ej: CHAPA NAVAL GRADO A 1/2' x 1500 x 6000..."
                       className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold uppercase focus:outline-none focus:border-cyan-400 text-xs"
                     />
@@ -961,12 +998,11 @@ export function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
                       <select
                         value={rubro}
                         onChange={(e) => setRubro(e.target.value)}
-                        required
                         className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 text-xs"
                       >
-                        <option value="">Seleccionar Rubro...</option>
+                        <option value="">VARIOS Y GENERAL (Por defecto)</option>
                         {rubros.map((r) => (
-                          <option key={r.id} value={r.name}>
+                          <option key={r.id || r.name} value={r.name}>
                             {r.name}
                           </option>
                         ))}
@@ -1101,16 +1137,18 @@ export function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
           <div className="alon-modal-footer">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={onClose}
-              className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer text-xs"
+              className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-bold cursor-pointer text-xs"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-emerald-600/30 transition-all"
+              disabled={isSubmitting}
+              className="px-5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-emerald-600/30 transition-all"
             >
-              Guardar Material
+              {isSubmitting ? 'Guardando...' : 'Guardar Material'}
             </button>
           </div>
         </form>
@@ -1124,11 +1162,17 @@ export function NewMaterialModal({ rubros, isAdmin, onClose, onSave }) {
 // ==============================================================================
 export function StockAdjustModal({ material, onClose, onSave }) {
   const [newStock, setNewStock] = useState(material?.current_stock || 0)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    onSave(material.id, 'current_stock', newStock)
-    onClose()
+    if (isSubmitting) return
+    try {
+      setIsSubmitting(true)
+      await onSave(material.id, 'current_stock', newStock)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -1712,13 +1756,17 @@ export function PanolModalsContainer({
 
   const handleSaveNewMaterial = async (formData) => {
     try {
-      const { data, error } = await supabase.from('materials').insert([formData]).select().single()
-      if (error) throw error
+      const data = await createMaterialService({
+        formData,
+        existingMaterials: materials,
+        user
+      })
       setMaterials((prev) => [data, ...prev])
-      showFeedback('success', `Material "${data.name}" agregado con éxito.`)
+      showFeedback('success', `Material "${data.name}" agregado con éxito al Catálogo B.D.`)
       setShowNewMaterialModal(false)
     } catch (e) {
       showFeedback('error', 'Error creando material: ' + e.message)
+      throw e
     }
   }
 

@@ -5,6 +5,7 @@ import {
 } from './allocationEngine.js'
 import { matchesUniversalSearch } from './searchEngine.js'
 import { formatWorkOrderTooltipCanonical } from './workOrdersConstants.js'
+import { isPanolTxZeroCost, isBillableShip } from './zeroCostAlertsRules.js'
 
 export { getEnabledWorkersAndContractors, getShipEnabledContractors }
 
@@ -781,6 +782,7 @@ export function formatWorkOrderTooltip(wo, ship, workItems = [], allWorkOrders =
 
 export function filterPanolTransactions(inventoryTx = [], {
   activeKpiFilter,
+  onlyWithShip = false,
   filterPeriod,
   filterShip,
   filterCategory,
@@ -789,13 +791,24 @@ export function filterPanolTransactions(inventoryTx = [], {
   ships = [],
   workOrders = []
 }) {
+  const shipMap = new Map(ships.map((s) => [s.id, s]))
+  const woMap = new Map(workOrders.map((w) => [w.id, w]))
+
   return inventoryTx.filter((t) => {
+    const mat = materials.find((m) => m.id === t.material_id)
     if (activeKpiFilter === 'sin_ot' && t.work_order_id) return false
     if (activeKpiFilter === 'hoy' && String(t.transaction_date).split('T')[0] !== new Date().toISOString().split('T')[0]) return false
     if (activeKpiFilter === 'bajas_pendientes' && !t.is_deletion_requested) return false
+    if (activeKpiFilter === 'sin_precio') {
+      if (!isPanolTxZeroCost(t, mat)) return false
+      if (onlyWithShip) {
+        const wo = woMap.get(t.work_order_id)
+        const resolvedShipId = t.ship_id || wo?.ship_id || null
+        if (!isBillableShip(resolvedShipId, shipMap, { excludeAstillero: true })) return false
+      }
+    }
     if (!isDateInFilterPeriod(t.transaction_date, filterPeriod)) return false
     if (filterShip !== 'TODOS' && t.ship_id !== filterShip) return false
-    const mat = materials.find((m) => m.id === t.material_id)
     if (filterCategory !== 'TODAS') {
       if (!mat) return false
       if (filterCategory === 'GASES') {
@@ -803,8 +816,8 @@ export function filterPanolTransactions(inventoryTx = [], {
       } else if (mat.category !== filterCategory) return false
     }
     if (searchQuery && searchQuery.trim()) {
-      const ship = ships.find((s) => s.id === t.ship_id)
-      const wo = workOrders.find((w) => w.id === t.work_order_id)
+      const ship = shipMap.get(t.ship_id)
+      const wo = woMap.get(t.work_order_id)
       return matchesUniversalSearch(t, searchQuery, {
         ship_name: ship?.name || '', work_order_title: wo?.title || '', work_order_description: wo?.description || '',
         ot_number: wo?.ot_number || '', material_name: mat?.name || '', worker_name: t.worker_name || '', contractor_name: t.contractor_name || ''

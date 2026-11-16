@@ -5,6 +5,7 @@
 
 import { isCostAuditError } from './comprasConstants.js'
 import { normalizeSearchText, buildUniversalSearchCorpus } from './searchEngine.js'
+import { isDirectPurchaseZeroCost, isBillableShip } from './zeroCostAlertsRules.js'
 
 export const URGENCY_CYCLE = {
   SIN_APURO: 'URGENTE',
@@ -201,6 +202,13 @@ export function filterPurchaseOrders(
     }
 
     if (activeKpiFilter === 'sin_ot' && po.work_order_id) return false
+    if (activeKpiFilter === 'sin_precio') {
+      if (!isDirectPurchaseZeroCost(po)) return false
+      const shipMap = new Map(ships.map((s) => [s.id, s]))
+      const wo = workOrders.find((w) => w.id === po.work_order_id)
+      const resolvedShipId = po.ship_id || wo?.ship_id || null
+      if (!isBillableShip(resolvedShipId, shipMap, { excludeAstillero: true })) return false
+    }
     if (activeKpiFilter === 'sin_ot_obras' && (po.work_order_id || po.charge_type !== 'DIRECT')) return false
     if (activeKpiFilter === 'sin_ot_stock' && (po.work_order_id || po.charge_type === 'DIRECT')) return false
     if (activeKpiFilter === 'por_emitir' && !['PEDIR', 'SOLICITUD'].includes(po.status)) return false
