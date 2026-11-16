@@ -210,6 +210,85 @@ function runLocalBin(binName, binArgs) {
   })
 }
 
+function checkDatalistIntegrity() {
+  const srcRoot = path.join(APP_DIR, 'src')
+  if (!fs.existsSync(srcRoot)) return []
+  const definedIds = new Set()
+  const refs = []
+  const stack = [srcRoot]
+  while (stack.length > 0) {
+    const dir = stack.pop()
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name)
+      if (ent.isDirectory()) { stack.push(full); continue }
+      if (!CODE_EXT_RE.test(ent.name)) continue
+      const content = fs.readFileSync(full, 'utf8')
+      for (const m of content.matchAll(/<datalist\b[^>]*\bid=["']([^"']+)["']/g)) definedIds.add(m[1])
+      for (const m of content.matchAll(/(?:\blist=["']([^"']+)["']|\blist:\s*["']([^"']+)["'])/g)) {
+        const target = m[1] || m[2]
+        if (target) refs.push({ rel: toPosix(path.relative(ROOT_DIR, full)), target })
+      }
+    }
+  }
+  const errors = []
+  for (const r of refs) {
+    if (!definedIds.has(r.target)) {
+      errors.push(`Datalist huérfano en ${r.rel}: referencia list="${r.target}" sin <datalist id="${r.target}"> en app/src`)
+    }
+  }
+  return errors
+}
+
+const ERR_VALID_STATES = new Set(['borrador', 'validado', 'superado'])
+
+function parseFrontmatter(content) {
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (!m) return null
+  const fields = {}
+  for (const line of m[1].split(/\r?\n/)) {
+    const cleanLine = line.trim()
+    if (!cleanLine || cleanLine.startsWith('#')) continue
+    const kv = cleanLine.match(/^([a-z_]+)\s*:\s*(.+?)\s*$/i)
+    if (kv) fields[kv[1].toLowerCase()] = kv[2].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '')
+  }
+  return fields
+}
+
+function checkErrorDocsFormat() {
+  const relDir = 'docs/02_producto/02_errores'
+  const fullDir = path.join(ROOT_DIR, relDir)
+  if (!fs.existsSync(fullDir)) return []
+  const errors = []
+
+  for (const name of fs.readdirSync(fullDir).sort()) {
+    const m = name.match(/^(ERR-(\d+)).*\.md$/i)
+    if (!m) continue
+    const expectedId = m[1].toUpperCase()
+    const idNum = Number(m[2])
+    const rel = `${relDir}/${name}`
+    const content = fs.readFileSync(path.join(fullDir, name), 'utf8')
+    const fm = parseFrontmatter(content)
+
+    if (!fm) {
+      errors.push(`${rel}: falta bloque YAML frontmatter (--- ... ---)`)
+      continue
+    }
+    if ((fm.id || '').toUpperCase() !== expectedId) errors.push(`${rel}: frontmatter id="${fm.id || ''}" debe ser "${expectedId}"`)
+    if (fm.tipo !== 'error') errors.push(`${rel}: frontmatter tipo="${fm.tipo || ''}" debe ser "error"`)
+    if (!ERR_VALID_STATES.has(fm.estado)) errors.push(`${rel}: estado="${fm.estado || ''}" inválido (usar borrador|validado|superado)`)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fm.fecha || '')) errors.push(`${rel}: fecha="${fm.fecha || ''}" debe tener formato YYYY-MM-DD`)
+    if (!/^#\s+\S/m.test(content)) errors.push(`${rel}: falta título H1 (# ...)`)
+
+    const requiredSections = idNum >= 6
+      ? [/^## Qué pasó \/ Dónde \/ Por qué(?:\s|$)/m, /^## Solución aplicada(?:\s|$)/m, /^## Regla anti-regresión(?:\s|\(|$)/m]
+      : [/^## Qué pasó(?:\s|$)/m, /^## Por qué falló(?:\s|$)/m, /^## Solución (?:validada|aplicada)(?:\s|$)/m]
+    for (const re of requiredSections) {
+      if (!re.test(content)) errors.push(`${rel}: falta sección obligatoria ${re.source}`)
+    }
+  }
+  return errors
+}
+
 function main() {
   const t0 = performance.now()
   const mdFiles = walkMarkdown(ROOT_DIR)
@@ -217,7 +296,9 @@ function main() {
   const docErrors = checkDocsAndLinks(mdFiles)
   const indexErrors = checkMetadataIndex(mdFiles)
   const idErrors = checkDuplicateIds()
-  const errors = [...docErrors, ...indexErrors, ...idErrors]
+  const errFormatErrors = checkErrorDocsFormat()
+  const datalistErrors = checkDatalistIntegrity()
+  const errors = [...docErrors, ...indexErrors, ...idErrors, ...errFormatErrors, ...datalistErrors]
   const alerts = [
     ...checkLiveDocSizes(),
     ...checkGitDiffLineLimits(),
@@ -246,7 +327,7 @@ function main() {
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
   console.log(
-    `[check:hygiene] .md activos: ${mdFiles.length} | docs/links: ${docErrors.length === 0 ? 'OK' : `FAIL (${docErrors.length})`} | INDICE_METADATOS: ${indexErrors.length === 0 ? 'OK' : `FAIL (${indexErrors.length})`} | IDs DEC/ERR: ${idErrors.length === 0 ? 'OK' : `FAIL (${idErrors.length})`}`
+    `[check:hygiene] .md activos: ${mdFiles.length} | docs/links: ${docErrors.length === 0 ? 'OK' : `FAIL (${docErrors.length})`} | INDICE_METADATOS: ${indexErrors.length === 0 ? 'OK' : `FAIL (${indexErrors.length})`} | IDs DEC/ERR: ${idErrors.length === 0 ? 'OK' : `FAIL (${idErrors.length})`} | ERR formato: ${errFormatErrors.length === 0 ? 'OK' : `FAIL (${errFormatErrors.length})`} | datalists: ${datalistErrors.length === 0 ? 'OK' : `FAIL (${datalistErrors.length})`}`
   )
   console.log(`[check:hygiene] oxlint: ${lintSummary}`)
   console.log(`[check:hygiene] vite build: ${buildSummary}`)

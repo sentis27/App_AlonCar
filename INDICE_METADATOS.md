@@ -1,7 +1,7 @@
 # Índice de Metadatos — App_AlonCar
 
 > **schema-version:** 1.1
-> **Última actualización:** 2026-11-13
+> **Última actualización:** 2026-11-15
 > **Propósito:** Tabla máquina para consumo exclusivo del Agente IA. Para navegación humana, usar `INDICE_CENTRAL.md`.
 
 ## Vocabularios Controlados
@@ -51,7 +51,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/01_infraestructura/04_arquitectura_mcp.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-06-10 | docs/01_infraestructura/01_stack_tecnico.md |
 | docs/01_infraestructura/04_servidor_mcp.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-11-13 | docs/01_infraestructura/01_stack_tecnico.md |
 | docs/01_infraestructura/05_integraciones_n8n.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-07-19 | workflows/_meta/INDEX.md |
-| docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
+| docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-11-15 | INDICE_CENTRAL.md |
 | docs/02_producto/registro_paso_a_paso.md | registro | auditar-decisiones | cambios | transversal | activo | 2026-06-10 | ninguno |
 | docs/02_producto/ESTANDARES_MODULOS_UI_UX.md | documentacion-tecnica | ninguno | ignorar | transversal | deprecado | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md | protocolo | consultar-siempre | completo | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
@@ -89,14 +89,16 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/02_errores/ERR-003-service-account-permisos-sheets.md | error | ninguno | cambios | transversal | activo | 2026-06-14 | docs/02_producto/README.md |
 | docs/02_producto/02_errores/ERR-004-hooks-condicionales-pantalla-negra-picker-modal.md | error | ninguno | cambios | fase-2+ | borrador | 2026-11-12 | docs/02_producto/README.md |
 | docs/02_producto/02_errores/ERR-005-ancho-restringido-max-w-7xl-oculta-acciones-nomina.md | error | ninguno | cambios | fase-2+ | borrador | 2026-11-13 | docs/02_producto/README.md |
+| docs/02_producto/02_errores/ERR-006-auditoria-borro-listas-y-logica-operarios-horas.md | error | auditar-reglas | completo | fase-2+ | borrador | 2026-11-15 | docs/02_producto/README.md \| docs/02_producto/05_auditorias/planes/PLAN-001-blindaje-anti-regresiones-auditoria-skl017.md |
+| docs/02_producto/05_auditorias/planes/PLAN-001-blindaje-anti-regresiones-auditoria-skl017.md | protocolo | auditar-reglas \| auditar-decisiones | completo | transversal | activo | 2026-11-15 | docs/02_producto/05_auditorias/README.md \| docs/02_producto/02_errores/ERR-006-auditoria-borro-listas-y-logica-operarios-horas.md |
 | docs/02_producto/03_conceptos/CON-003-arquitectura-bitacora.md | concepto | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/02_producto/03_conceptos/CON-004-modelo-paginacion-por-operario.md | concepto | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/planillas/horas-planillas-de-registro.md |
 | docs/02_producto/04_procesos/PRO-002-mapeo-blindado-estadisticas-log.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/04_procesos/PRO-003-alertas-humanizadas-e9a.md | proceso | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/05_auditorias/README.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-10 | INDICE_CENTRAL.md |
 | docs/02_producto/05_auditorias/LINEA_BASE_ARQUITECTURA.md | registro | auditar-tareas | completo | transversal | activo | 2026-11-10 | docs/02_producto/05_auditorias/README.md |
-| docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md | registro | auditar-tareas | cambios | transversal | activo | 2026-11-13 | docs/02_producto/05_auditorias/README.md |
-| docs/02_producto/05_auditorias/archivo/BITACORA_2026-11.md | registro | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-13 | docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md |
+| docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md | registro | auditar-tareas | cambios | transversal | activo | 2026-11-15 | docs/02_producto/05_auditorias/README.md |
+| docs/02_producto/05_auditorias/archivo/BITACORA_2026-11.md | registro | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-15 | docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md |
 | docs/archivo/TAREAS_COMPLETADAS_2026-11.md | registro | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-13 | TAREAS_PENDIENTES.md |
 | docs/archivo/GUIA_ANTIGRAVITY_HISTORICO.md | registro | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-13 | GUIA_ANTIGRAVITY.md |
 | docs/archivo/ESTANDARES_MODULOS_UI_UX_DETALLE_HISTORICO.md | documentacion-tecnica | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-13 | docs/02_producto/ESTANDARES_MODULOS_UI_UX.md |
@@ -144,7 +146,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | .agents/skills/transversal/caveman/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/legacy-mapping/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-18 | .agents/skills/transversal/legacy-mapping/SKILL.md |
-| .agents/skills/transversal/product-collector/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/product-collector/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/rtk/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/session-audit/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/control-calidad-entrega/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
@@ -156,8 +158,8 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | .agents/skills/transversal/data-grid-poweruser/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/schema-gatekeeper/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/defensive-erp-contracts/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
-| .agents/skills/transversal/context-aware-skill-router/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
-| .agents/skills/transversal/architectural-modularity-auditor/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
+| .agents/skills/transversal/context-aware-skill-router/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | .agents/skills/SKILLS_REGISTRY.md |
+| .agents/skills/transversal/architectural-modularity-auditor/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | .agents/skills/SKILLS_REGISTRY.md |
 | mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |
 | mcp-server/package.json | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | mcp-server/index.js |
 | app/src/pages/ResumenGerencial.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-022-resumen-gerencial-gs004-comparador-y-remito-alfa.md |
@@ -172,4 +174,4 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | supabase/migrations/0038_panol_compliance_requirements.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/MATRIZ_RESPONSABILIDAD_DATOS.md |
 | supabase/migrations/0039_gas_tx_link_and_indexes.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md |
 | supabase/migrations/0040_gas_supplier_traceability.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md |
-| app/scripts/repo-hygiene.mjs | codigo | ninguno | ignorar | transversal | activo | 2026-11-13 | INDICE_METADATOS.md |
+| app/scripts/repo-hygiene.mjs | codigo | ninguno | ignorar | transversal | activo | 2026-11-15 | INDICE_METADATOS.md |

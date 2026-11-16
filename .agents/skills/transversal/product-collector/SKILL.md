@@ -323,23 +323,39 @@ corrige_a: ERR-003
 ```
 
 **Para errores (ERR-):**
+> Formato estandarizado obligatorio (optimizado para lectura de 15–30 segundos y prevención anti-regresiones). El YAML acepta campos opcionales `modulo`, `corrige_a: ERR-XXX` y `plan: PLAN-XXX`.
+
+```yaml
+---
+id: ERR-NNN
+tipo: error
+fase: 3
+estado: borrador   # borrador | validado | superado
+fecha: YYYY-MM-DD
+modulo: /ruta-o-modulo
+# corrige_a: ERR-XXX
+# plan: PLAN-XXX
+---
+```
+
 ```markdown
-# [Título que describe el error, no la solución]
+# [Título que describe el error y dónde impacta]
 
-## Qué pasó
-[Descripción del error. Qué se intentó, qué falló.]
+> **Lectura rápida (15 seg):** Qué pasó · Dónde (`commit`/archivo) · Por qué.  
+> **Ampliar diagnóstico y plan completo:** [PLAN-XXX](...)  <!-- obligatorio si se creó plan en 05_auditorias/planes/ -->
 
-## Tiempo perdido
-[Estimación honesta: "~2 horas", "~30 minutos".]
+## Qué pasó / Dónde / Por qué
+- **Error (qué):** [Síntoma concreto que vio el usuario o sistema.]
+- **Dónde ocurrió:** [Commit / archivos / tabla exacta.]
+- **Por qué ocurrió (causa raíz):** [Qué falló estructuralmente; aclarar si es falla de código, esquema, n8n o auditoría.]
 
-## Por qué falló
-[Causa raíz, no síntoma.]
+## Solución aplicada
+- [Cambios exactos por archivo y qué quedó reutilizable o blindado.]
+- **Verificación:** [Prueba runtime/build/linter observada.]
 
-## Solución validada
-[Exactamente qué se hizo para resolverlo.]
-
-## Cómo detectarlo rápido
-[Síntomas que indican que alguien está en el mismo error.]
+## Regla anti-regresión (Cómo detectarlo / Evitar loop)
+- [Regla operativa breve para el desarrollador o auditor (`SKL-017`).]
+- [Guardia automático en código/CI o síntoma rápido para detectarlo.]
 ```
 
 **Para conceptos (CON-):**

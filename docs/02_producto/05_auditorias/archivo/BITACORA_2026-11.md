@@ -1,8 +1,20 @@
-# ⏱️ Archivo Histórico de Bitácora de Auditorías Delta (Hasta 2026-11-12)
+# ⏱️ Archivo Histórico de Bitácora de Auditorías Delta (Hasta 2026-11-13)
 
 > **Origen:** Rotado desde [BITACORA_DELTAS_SESION.md](../BITACORA_DELTAS_SESION.md) según Etapa E3 (PLAN_OPTIMIZACION_IA.md).
-> **Cobertura:** Entradas anteriores a las últimas 5 sesiones activas (2026-11-10 a 2026-11-12).
+> **Cobertura:** Entradas anteriores a las últimas 5 sesiones activas (2026-11-10 a 2026-11-13).
 
+---
+
+## [2026-11-13] Sesión de Cierre — OTs (Folio/Presupuestos), Contratos & Seguridad Personal, Tesorería Graciela y Alertas María José (`1331aeb`, `68e9f50`)
+- **Hora:** 00:19 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (commits `1331aeb`, `68e9f50` + docs):**
+  * `1331aeb`: `monotonicFolioEngine.js`, `workOrdersConstants.js`, `workOrdersService.js`, `WorkOrdersModals.jsx`, `WorkOrdersUnificadoPanel.jsx`, `MariaJoseBudgetAlertsCard.jsx` (6 archivos, `+795/-174`).
+  * `68e9f50`: `0037_workers_contracts_and_safety_cleanup.sql`, `workCostRules.js`, `contractorDeductionsService.js`, `personalService.js`, `PersonalNominaPanel.jsx`, `PersonalTarifarioPanel.jsx`, `MariaJoseContractAlertsCard.jsx`, `TesoreriaDeduccionesPanel.jsx`, `Tesoreria.jsx`, `Sidebar.jsx`, `App.jsx`, `AdminAlertsCompliancePanel.jsx`, `Dashboard.jsx` (13 archivos, `+1914/-58`).
+- **Blast Radius:** Existencial (`14` consumidores `monotonicFolioEngine.js`, `13` `workOrdersConstants.js`, sin regresiones) + Localizado en Tesorería/Alertas.
+- **Tracker Anti-Rot:** `0` pecados nuevos tras limpieza Fast-Track (`PersonalTarifarioPanel` con `useMemo`, `PersonalNominaPanel` extraído a `personalService.js`); SQL `0037` pendiente en SQL Editor (con fallback defensivo `SKL-015`).
+- **Trazabilidad Supabase:** Verificada (`workOrdersService.js` x15, `contractorDeductionsService.js:338`, `PersonalNominaPanel.jsx` x6).
+- **Verificación Runtime & Build:** `npx oxlint` (`0` errores) | `npm run build` PASS (`1.93s`).
+- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT** | **Commits:** `1331aeb`, `68e9f50` + cierre docs `2026-11-13`.
 ---
 
 ## [2026-11-12] Sesión de Cierre — Fix Pantalla en Negro Barco/OT (Terceros) & Consolidación Regla Naval OTs (`be899a3`)

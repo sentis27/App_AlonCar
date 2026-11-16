@@ -7,6 +7,18 @@
 
 <!-- Las nuevas entradas de cierre se agregan aquí arriba -->
 
+## [2026-11-15] Sesión de Cierre — Restauración Listas Operarios `/horas` (Lógica Pañol `[H]`) y Blindaje Anti-Regresión (`ERR-006`, `PLAN-001`)
+- **Hora:** 22:05 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (Lote `/horas` + Protocolo `ERR-` + Auditoría/Higiene, sin incluir trabajo previo ajeno sin commitear):**
+  * `/horas` (`11` archivos): `laborWorkerCatalog.js` (`208 L`), `laborRowOptions.js` (`197 L`), `LaborSearchableSelect.jsx` (`270 L`), `LaborSharedDatalists.jsx` (`41 L`), `useLaborCargaCrewState.js` (`232 L`), `LaborCascadeHeader.jsx` (`237 L`), `LaborCargaPanel.jsx` (`197 L`), `LaborCrewGridSection.jsx` (`206 L`), `LaborCrewRow.jsx` (`261 L`), `LaborLogs.jsx` (`201 L`), `LaborModals.jsx` (datalists adjuntos en edición rápida/modal).
+  * Anti-Loop `SKL-017` & Estándar `ERR-` (`8` archivos): [ERR-006](../02_errores/ERR-006-auditoria-borro-listas-y-logica-operarios-horas.md), [PLAN-001](planes/PLAN-001-blindaje-anti-regresiones-auditoria-skl017.md), `app/scripts/repo-hygiene.mjs` (`checkDatalistIntegrity`, `checkErrorDocsFormat`), `SKILL.md` de `SKL-004` (plantilla rápida unificada), `SKL-016` (trigger bug/regresión) y `SKL-017` (Pecado #6 + Blast Radius/Paridad), `docs/02_producto/README.md`, `INDICE_METADATOS.md`.
+- **Blast Radius:** En `/horas` se restauró la lógica real de elegibilidad `[H]` (`allocationEngine.filterEligiblePersonnel` con `can_impute_hours` + `getEnabledWorkersAndContractors`), listas buscables Portal (`Operario / Prestador` y `Rubro` con `🔓 Expandir / 🔒 Contraer`), inicialización de `selectedShipId` y contratos `{ name, type }` en Sábana. En gobernanza se estandarizó el registro de `ERR-*.md` con validación automática por script.
+- **Tracker Anti-Rot:** Candados 1–5 **CUMPLE** (`10/10` archivos nuevos/reestructurados en `app/src/` `≤ 270 L`; cero SQL directo en vistas; reuso total de `allocationEngine.js`). Pendiente único no introducido por este lote: alertas preexistentes del `--strict` en trabajo previo sin commitear (`PanolModals`, `Dashboard`, etc.).
+- **Verificación Runtime & Build:** Node live vs Supabase + parser `ERR-` + `oxlint` (`0` errores) + `npm.cmd run build` (`PASS`) + `npm.cmd run check:hygiene` (`ERR formato: OK | datalists: OK`).
+- **Veredicto Final:** 🟢 **LISTO PARA COMMIT SELECTIVO** (`/horas` + docs/guardia; excluyendo trabajo previo sin commitear).
+
+---
+
 ## [2026-11-13] Sesión de Cierre — Plan Optimización IA, Rotación Documental y Partición Modular (`E1–E7`, `16d58e7`)
 - **Hora:** 21:52 ART | **Agente:** Antigravity | **Revisor:** Usuario
 - **Superficie evaluada (merge `refactor/optimizacion-ia` ➔ `main`):**
@@ -50,16 +62,4 @@
 - **Trazabilidad Supabase:** Mutaciones vía `managerialSummaryService.js` con registro en `audit_logs`.
 - **Verificación Runtime & Build:** `oxlint.cmd` en `19` archivos (`0` errores, `31` warnings) | `npm.cmd run build` PASS (`2095` módulos en `7.45s`) | Node live vs Supabase (`NONO PASCUAL` `directTotalUsd: 17190.32` en `6` OTs; `anon` sin sesión `laborLogs: 0` y `materials: 0`, pendiente QA autenticado).
 - **Veredicto Final:** 🟢 **APROBADO PARA COMMIT** | **Alcance Git:** Lote A separado del trabajo previo sin commitear (Lote B).
----
-
-## [2026-11-13] Sesión de Cierre — OTs (Folio/Presupuestos), Contratos & Seguridad Personal, Tesorería Graciela y Alertas María José (`1331aeb`, `68e9f50`)
-- **Hora:** 00:19 ART | **Agente:** Antigravity | **Revisor:** Usuario
-- **Superficie evaluada (commits `1331aeb`, `68e9f50` + docs):**
-  * `1331aeb`: `monotonicFolioEngine.js`, `workOrdersConstants.js`, `workOrdersService.js`, `WorkOrdersModals.jsx`, `WorkOrdersUnificadoPanel.jsx`, `MariaJoseBudgetAlertsCard.jsx` (6 archivos, `+795/-174`).
-  * `68e9f50`: `0037_workers_contracts_and_safety_cleanup.sql`, `workCostRules.js`, `contractorDeductionsService.js`, `personalService.js`, `PersonalNominaPanel.jsx`, `PersonalTarifarioPanel.jsx`, `MariaJoseContractAlertsCard.jsx`, `TesoreriaDeduccionesPanel.jsx`, `Tesoreria.jsx`, `Sidebar.jsx`, `App.jsx`, `AdminAlertsCompliancePanel.jsx`, `Dashboard.jsx` (13 archivos, `+1914/-58`).
-- **Blast Radius:** Existencial (`14` consumidores `monotonicFolioEngine.js`, `13` `workOrdersConstants.js`, sin regresiones) + Localizado en Tesorería/Alertas.
-- **Tracker Anti-Rot:** `0` pecados nuevos tras limpieza Fast-Track (`PersonalTarifarioPanel` con `useMemo`, `PersonalNominaPanel` extraído a `personalService.js`); SQL `0037` pendiente en SQL Editor (con fallback defensivo `SKL-015`).
-- **Trazabilidad Supabase:** Verificada (`workOrdersService.js` x15, `contractorDeductionsService.js:338`, `PersonalNominaPanel.jsx` x6).
-- **Verificación Runtime & Build:** `npx oxlint` (`0` errores) | `npm run build` PASS (`1.93s`).
-- **Veredicto Final:** 🟢 **APROBADO PARA COMMIT** | **Commits:** `1331aeb`, `68e9f50` + cierre docs `2026-11-13`.
 ---

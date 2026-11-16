@@ -37,6 +37,7 @@ Rastrea activamente los siguientes 5 "Pecados Capitales" en la generación de c�
 3. **Domain Leaks & Catálogos Duplicados:** Mezclar llamadas a red crudas dentro de vistas `.jsx` o recrear listas/arrays estáticos que ya existen en `app/src/lib/`.
 4. **Falso Blindaje Nulo (Silent Swallow):** Bloques `try/catch` vacíos, o el abuso de `data?.map() || []` que enmascara fallas de red o caídas del esquema de Supabase (`SKL-015`).
 5. **Bypass de Trazabilidad:** Transacciones CRUD en módulos operativos que omiten el registro obligatorio en `auditService` (`audit_logs`).
+6. **Amputación por Refactor (Anti-Loop `ERR-006`):** Partir un archivo para cumplir `< 300 L` simplificando `<select>`/`<datalist>`/cascadas a `<input>` vacíos, omitiendo inicializadores (`selectedShipId`) o rompiendo contracts/shapes sin verificar paridad con módulos hermanos (**Pañol** ⇄ **Horas**, `allocationEngine.js`). Ver [ERR-006](../../../../docs/02_producto/02_errores/ERR-006-auditoria-borro-listas-y-logica-operarios-horas.md) y [PLAN-001](../../../../docs/02_producto/05_auditorias/planes/PLAN-001-blindaje-anti-regresiones-auditoria-skl017.md).
 
 ---
 
@@ -60,8 +61,8 @@ Esta skill opera OBLIGATORIAMENTE en uno de estos dos modos. Si el usuario no es
 **Activación:** Al final de una sesión de trabajo, o cuando el usuario pide "revisar antes de guardar / cerrar sesión".
 
 Sigue estrictamente estos 4 pasos:
-1. **Gate Automatizado (`0` tokens):** Ejecutar `npm.cmd run check:hygiene` (en `app/`) y `git status -s`. Esto valida en un único comando enlaces, `INDICE_METADATOS.md`, IDs `DEC-`/`ERR-`, umbrales de rotación (`15 KB`), archivos `> 300 L` en `components/`, `hooks/`, `lib/` y `services/`, `oxlint` (`0` errors) y `vite build`.
-2. **Blast Radius (Radio de Explosión):** Buscar referencias cruzadas e imports únicamente sobre los archivos del delta (`git diff --name-only`) para listar qué componentes externos los consumen.
+1. **Gate Automatizado (`0` tokens):** Ejecutar `npm.cmd run check:hygiene` (en `app/`) y `git status -s`. Esto valida en un único comando enlaces, `INDICE_METADATOS.md`, IDs `DEC-`/`ERR-`, umbrales de rotación (`15 KB`), archivos `> 300 L` en `components/`, `hooks/`, `lib/` y `services/`, **datalists huérfanos (`list="..."`)**, `oxlint` (`0` errors) y `vite build`.
+2. **Blast Radius y Paridad Funcional (`ERR-006`):** Buscar referencias cruzadas sobre el delta (`git diff --name-only`). Si la intervención toca un módulo dividido o por dividir, **comprobar explícitamente** que conserva selectores, datalists, inicialización de estado y motores compartidos (`allocationEngine.js`) antes de asumir que un bloque era código redundante.
 3. **Escáner Anti-Rot:** Pasar los cambios del delta por el tracker de las 5 Firmas de Pudrición (Sección 3) y los umbrales LCOM/CBO (`≤ 300 L`, Sección 2).
 4. **Dictamen:** Registrar el delta en `BITACORA_DELTAS_SESION.md` usando la salida real de `check:hygiene`.
 

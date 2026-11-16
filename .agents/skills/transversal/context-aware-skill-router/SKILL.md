@@ -34,7 +34,8 @@ Antes de ejecutar la primera herramienta en cualquier turno, el agente evalúa l
 | **4. Planillas editables, grillas y tablas operativas** | Vistas de arquetipo `CARGA_EDICION` y `*Grid*` | **`SKL-013`** (`data-grid-poweruser` — Operación 100% teclado, mutación in-situ, motor canónico). |
 | **5. Escritura de lógica, servicios, mutaciones de BD y auditoría** | `**/lib/**`, `**/services/**`, `**/hooks/**`, mutaciones | **`SKL-009`** (`ingenieria-codigo-senior`) + **`SKL-015`** (`defensive-erp-contracts` — Atomicidad, sanitización y trazabilidad). |
 | **6. Contenedores, despliegue o servicios Backend dedicados** | `Dockerfile`, `docker-compose*`, `backend/**` | **`SKL-010`** (`chasis-docker-multiapp`) + **`SKL-011`** (`motor-backend-capas`). |
-| **7. Cierre de cualquier implementación o modificación** | Antes de dar por terminada la tarea o hacer commit | **`SKL-007`** (`control-calidad-entrega` — Prueba real en caliente y matriz de evidencia). |
+| **7. Reporte o corrección de bug, falla o regresión** | Incidente funcional en módulo o regresión post-refactor | **`SKL-004`** (`product-collector` — ficha estandarizada en `docs/02_producto/02_errores/ERR-NNN-...md` + índices; y `SKL-017` si proviene de refactor/auditoría). |
+| **8. Cierre de cualquier implementación o modificación** | Antes de dar por terminada la tarea o hacer commit | **`SKL-007`** (`control-calidad-entrega` — Prueba real en caliente y matriz de evidencia). |
 
 ---
 

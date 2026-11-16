@@ -71,6 +71,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-08-21 | DEC-024 | Imputación Horas vs Materiales, PRC vs RMO y Dólar Quincenal (renumerado desde DEC-012) | decision |
 | 2026-08-21 | DEC-025 | Módulo de Reconciliación Automática Horas ↔ Materiales e In-Place Editing (renumerado desde DEC-013) | decision |
 | 2026-08-21 | DEC-026 | Resumen Gerencial, Tarifario Nivel Alfa, Remitos de Cobro y RBAC (renumerado desde DEC-014) | decision |
+| 2026-11-15 | ERR-006 | Auditoría SKL-017 eliminó `<datalist>` y lógica de selección de operarios en `/horas` | error |
 
 ---
 
@@ -114,6 +115,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | ERR-003 | Google Sheets API: The caller does not have permission | 1 | borrador | 2026-06-14 | — |
 | ERR-004 | Pantalla en negro al asignar Buque y OT por hook condicional en modal picker | 3 | borrador | 2026-11-12 | — |
 | ERR-005 | Contenedor max-w-7xl y nuevas columnas recortan visualmente la columna Acciones en Personal y Tarifas | 3 | borrador | 2026-11-13 | — |
+| ERR-006 | Auditoría SKL-017 eliminó `<datalist>` y lógica de selección de operarios en `/horas` | 3 | borrador | 2026-11-15 | `be2614f` / `7387729` |
 
 ## Conceptos
 
