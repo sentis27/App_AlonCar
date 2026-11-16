@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import PanolHeader from '../components/panol/PanolHeader'
 import PanolAlertasPanel from '../components/panol/PanolAlertasPanel'
 import PanolToolbar from '../components/panol/PanolToolbar'
@@ -9,15 +10,13 @@ import PanolStockPanel from '../components/panol/PanolStockPanel'
 import { PanolModalsContainer } from '../components/panol/PanolModals'
 import { fetchPanolData } from '../lib/panolService'
 import {
-  calculateGasStats,
-  calculatePanolKpis,
-  calculatePanolTotals,
-  formatWorkOrderTooltip,
-  filterPanolTransactions,
-  filterPanolMaterials
+  calculateGasStats, calculatePanolKpis, calculatePanolTotals,
+  formatWorkOrderTooltip, filterPanolTransactions, filterPanolMaterials
 } from '../lib/panolConstants'
 import { filterEligiblePersonnel, getContractorEnabledWos, getEnabledWorkersAndContractors } from '../lib/allocationEngine'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+
+const PANOL_REALTIME_TABLES = ['materials', 'inventory_transactions', 'gas_cylinder_movements', 'compliance_alerts', 'ships', 'work_orders', 'work_items', 'workers', 'suppliers', 'material_rubros']
 
 export default function Panol() {
   const navigate = useNavigate()
@@ -49,7 +48,8 @@ export default function Panol() {
   const [filterCategory, setFilterCategory] = useState('TODAS')
   const [filterShip, setFilterShip] = useState('TODOS')
   const [filterStockOnly, setFilterStockOnly] = useState(false)
-  const [activeKpiFilter, setActiveKpiFilter] = useState(null)
+  const [activeKpiFilter, setActiveKpiFilter] = useState(() => searchParams.get('kpi') || null)
+  const [onlyWithShipFilter, setOnlyWithShipFilter] = useState(() => searchParams.get('con_barco') === '1')
 
   // Estados de Modales
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
@@ -69,12 +69,16 @@ export default function Panol() {
     if (t && ['planillas', 'gases', 'catalogo', 'epp', 'movimientos', 'kardex'].includes(t)) {
       setActiveTab((t === 'movimientos' || t === 'kardex') ? 'planillas' : t)
     }
+    const kpiParam = searchParams.get('kpi')
+    if (kpiParam) setActiveKpiFilter(kpiParam)
+    setOnlyWithShipFilter(searchParams.get('con_barco') === '1')
   }, [searchParams])
 
   const changeTab = (tab) => {
     setActiveTab(tab)
     setSearchParams({ tab })
     setActiveKpiFilter(null)
+    setOnlyWithShipFilter(false)
   }
 
   const showFeedback = (type, text) => {
@@ -82,8 +86,8 @@ export default function Panol() {
     setTimeout(() => setFeedback(null), 4500)
   }
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
+  const loadData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
       const d = await fetchPanolData()
       setMaterials(d.materials); setInventoryTx(d.inventoryTx); setGasMovements(d.gasMovements)
@@ -92,11 +96,19 @@ export default function Panol() {
     } catch (err) {
       showFeedback('error', 'Error cargando datos de Pañol: ' + err.message)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  const isPanolModalOpen = Boolean(showWithdrawalModal || showNewMaterialModal || showStockAdjustModal.isOpen || showGasModal.isOpen || gasFinalReturnModal.isOpen || gasSupplierModal.isOpen || quickPurchaseModal.isOpen || requestOtModal.isOpen || workerPermissionModal.isOpen)
+  useSupabaseRealtimeRefresh({
+    channelName: 'panol_live',
+    tables: PANOL_REALTIME_TABLES,
+    onSync: () => loadData({ silent: true }),
+    pauseWhen: isPanolModalOpen
+  })
+
+  useEffect(() => { loadData({ silent: false }) }, [loadData])
 
   const gasStats = useMemo(() => calculateGasStats(suppliers, gasMovements, materials), [suppliers, gasMovements, materials])
   const eligiblePersonnel = useMemo(() => filterEligiblePersonnel(workers, { permissionField: 'can_withdraw_materials' }), [workers])
@@ -119,12 +131,12 @@ export default function Panol() {
   const kpiStats = useMemo(() => calculatePanolKpis(materials, inventoryTx, gasStats), [materials, inventoryTx, gasStats])
 
   const filteredTransactions = useMemo(
-    () => filterPanolTransactions(inventoryTx, { activeKpiFilter, filterPeriod, filterShip, filterCategory, searchQuery, materials, ships, workOrders }),
-    [inventoryTx, activeKpiFilter, filterPeriod, filterShip, filterCategory, searchQuery, materials, ships, workOrders]
+    () => filterPanolTransactions(inventoryTx, { activeKpiFilter, onlyWithShip: onlyWithShipFilter, filterPeriod, filterShip, filterCategory, searchQuery, materials, ships, workOrders }),
+    [inventoryTx, activeKpiFilter, onlyWithShipFilter, filterPeriod, filterShip, filterCategory, searchQuery, materials, ships, workOrders]
   )
 
   const panolTotals = useMemo(() => calculatePanolTotals(filteredTransactions), [filteredTransactions])
-  const hasActivePanolFilter = Boolean(searchQuery.trim() || activeKpiFilter || filterShip !== 'TODOS' || filterCategory !== 'TODAS' || filterPeriod !== 'TODOS')
+  const hasActivePanolFilter = Boolean(searchQuery.trim() || activeKpiFilter || onlyWithShipFilter || filterShip !== 'TODOS' || filterCategory !== 'TODAS' || filterPeriod !== 'TODOS')
 
   const filteredMaterials = useMemo(
     () => filterPanolMaterials(materials, { activeKpiFilter, filterStockOnly, filterCategory, searchQuery }),
@@ -134,7 +146,7 @@ export default function Panol() {
   return (
     <div className="space-y-4 pb-10 font-sans text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
       {feedback && (
-        <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border text-xs font-bold ${
+        <div className={`fixed top-5 right-5 z-[100] px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border text-xs font-bold ${
           feedback.type === 'error' ? 'bg-rose-950/95 border-rose-500 text-rose-200' : 'bg-emerald-950/95 border-emerald-500 text-emerald-200'
         }`}>
           {feedback.type === 'error' ? <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
@@ -155,8 +167,18 @@ export default function Panol() {
 
       {/* ZONA 2: RADAR DE KPIS */}
       <PanolAlertasPanel
-        kpiStats={kpiStats} activeKpiFilter={activeKpiFilter} onClearKpiFilter={() => setActiveKpiFilter(null)}
-        onToggleKpiFilter={(k, tab) => { setActiveKpiFilter(activeKpiFilter === k ? null : k); if (tab && activeTab !== tab) changeTab(tab) }}
+        kpiStats={kpiStats}
+        activeKpiFilter={activeKpiFilter}
+        onClearKpiFilter={() => {
+          setActiveKpiFilter(null)
+          setOnlyWithShipFilter(false)
+          if (searchParams.get('kpi') || searchParams.get('con_barco')) setSearchParams({ tab: activeTab }, { replace: true })
+        }}
+        onToggleKpiFilter={(k, tab) => {
+          setActiveKpiFilter(activeKpiFilter === k ? null : k)
+          setOnlyWithShipFilter(false)
+          if (tab && activeTab !== tab) changeTab(tab)
+        }}
       />
 
       {/* BLOQUE OPERATIVO UNIFICADO (ZONA 3 + ZONA 4) */}
@@ -179,7 +201,10 @@ export default function Panol() {
             panolTotals={panolTotals} user={user} profile={profile}
             getEnabledWorkersAndContractors={getEnabledPersonnel} getEnabledWosForShipAndContractor={getEnabledWos}
             formatWorkOrderTooltip={(wo, ship) => formatWorkOrderTooltip(wo, ship, workItems, workOrders)}
-            onClearAllFilters={() => { setSearchQuery(''); setActiveKpiFilter(null); setFilterShip('TODOS'); setFilterCategory('TODAS'); setFilterPeriod('TODOS') }}
+            onClearAllFilters={() => {
+              setSearchQuery(''); setActiveKpiFilter(null); setOnlyWithShipFilter(false); setFilterShip('TODOS'); setFilterCategory('TODAS'); setFilterPeriod('TODOS')
+              if (searchParams.get('kpi') || searchParams.get('con_barco')) setSearchParams({ tab: activeTab }, { replace: true })
+            }}
             onOpenWithdrawalModal={(tx) => { setEditingWithdrawalRow(tx); setShowWithdrawalModal(true) }}
             onOpenQuickPurchaseModal={setQuickPurchaseModal}
             onOpenRequestOtModal={({ txId, shipId, targetWorkerOrContractor }) => setRequestOtModal({ isOpen: true, txId, shipId, targetWorkerOrContractor, reason: '' })}

@@ -6,9 +6,27 @@
 
 import { supabase } from '../lib/supabase.js'
 import { auditService } from '../lib/auditService.js'
+import { assignMonotonicFolios } from '../lib/monotonicFolioEngine.js'
 
 const SHEET_NAME = 'Personal · Nómina de Operarios'
 const MODULE_ROUTE = '/personal'
+
+/**
+ * Carga nómina de operarios y último período/dólar de tarifario desde Supabase.
+ */
+export async function fetchPersonalBaseDataService() {
+  const [workersRes, rateRes] = await Promise.all([
+    supabase.from('workers').select('*').order('admin_center').order('work_group').order('name'),
+    supabase.from('rate_cards').select('period, dollar_rate, year, month, quincena').order('year', { ascending: false }).order('month', { ascending: false }).order('quincena', { ascending: false }).limit(1)
+  ])
+  if (workersRes.error) throw workersRes.error
+  const latestRate = rateRes.data?.[0] || null
+  return {
+    workers: workersRes.data?.length ? assignMonotonicFolios(workersRes.data, { dateField: 'created_at' }) : [],
+    periodKey: latestRate?.period || null,
+    dollarRate: latestRate?.dollar_rate ? (parseFloat(latestRate.dollar_rate) || 1500) : null
+  }
+}
 
 const PERM_FIELD_MAP = {
   P: 'can_withdraw_materials',

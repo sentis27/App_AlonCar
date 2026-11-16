@@ -1,7 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Clock, AlertCircle, AlertTriangle, FileText, X } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
+import {
+  fetchLaborData,
+  deleteLaborLogService,
+  updateLaborApprovalStatusService
+} from '../services/laborService'
 import LaborCargaPanel from '../components/labor/LaborCargaPanel'
 import LaborControlDiarioPanel from '../components/labor/LaborControlDiarioPanel'
 import LaborSabanaPanel from '../components/labor/LaborSabanaPanel'
@@ -9,6 +14,8 @@ import { LaborModalsContainer } from '../components/labor/LaborModals'
 import LaborSharedDatalists from '../components/labor/LaborSharedDatalists'
 import { buildQuincenaWorkersList } from '../lib/laborWorkerCatalog'
 import { buildQuincenaDays, FALLBACK_SHIPS, FALLBACK_WOS } from '../lib/laborConstants'
+
+const LABOR_REALTIME_TABLES = ['labor_logs', 'ships', 'work_orders', 'work_items', 'workers', 'rate_cards']
 
 export default function LaborLogs() {
   const { user } = useAuth()
@@ -44,29 +51,30 @@ export default function LaborLogs() {
     setTimeout(() => setStatusMessage(null), 5000)
   }, [])
 
-  useEffect(() => { fetchData() }, [])
-
-  async function fetchData() {
-    setLoading(true)
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
-      const [logsRes, shipsRes, woRes, wiRes, wkrRes] = await Promise.all([
-        supabase.from('labor_logs').select('*, ships(id, name), work_orders(id, ot_number, title, ship_id)').order('date_logged', { ascending: false }).order('created_at', { ascending: false }).limit(2000),
-        supabase.from('ships').select('id, name, status').order('name'),
-        supabase.from('work_orders').select('id, ot_number, title, ship_id, status').order('ot_number'),
-        supabase.from('work_items').select('id, work_order_id, contractors, description, status, work_type'),
-        supabase.from('workers').select('id, name, category, trade, work_group, admin_center, status, can_impute_hours').order('name')
-      ])
-      setRecentLogs(logsRes.data || [])
-      setShips(shipsRes.data?.length ? shipsRes.data : FALLBACK_SHIPS)
-      setWorkOrders(woRes.data?.length ? woRes.data : FALLBACK_WOS)
-      setWorkItems(wiRes.data || [])
-      setDbWorkers(wkrRes.data || [])
+      const d = await fetchLaborData()
+      setRecentLogs(d.laborLogs || [])
+      setShips(d.ships?.length ? d.ships : FALLBACK_SHIPS)
+      setWorkOrders(d.workOrders?.length ? d.workOrders : FALLBACK_WOS)
+      setWorkItems(d.workItems || [])
+      setDbWorkers(d.workers || [])
     } catch (err) {
       showFeedbackMsg('error', 'Error al sincronizar datos: ' + (err.message || err))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }
+  }, [showFeedbackMsg])
+
+  useSupabaseRealtimeRefresh({
+    channelName: 'labor_logs_live',
+    tables: LABOR_REALTIME_TABLES,
+    onSync: () => fetchData({ silent: true }),
+    pauseWhen: Boolean(editingLog || quickLogWorker || showReviewModal || reviewReasonModal.isOpen || shipPickerModal.isOpen)
+  })
+
+  useEffect(() => { fetchData({ silent: false }) }, [fetchData])
 
   const toggleSelectLog = useCallback((id) => {
     setSelectedLogIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -78,8 +86,13 @@ export default function LaborLogs() {
   const handleDeleteLog = async (id, name) => {
     if (!window.confirm(`¿Eliminar imputación de ${name}?`)) return
     try {
-      const { error } = await supabase.from('labor_logs').delete().eq('id', id)
-      if (error) throw error
+      const target = recentLogs.find(l => l.id === id)
+      await deleteLaborLogService({
+        logId: id,
+        workerName: name,
+        shipName: target?.ships?.name || 'Buque',
+        changedBy: user?.email || 'Operador Web'
+      })
       setRecentLogs(prev => prev.filter(l => l.id !== id))
       setSelectedLogIds(prev => { const n = new Set(prev); n.delete(id); return n })
       showFeedbackMsg('success', 'Imputación eliminada.')
@@ -88,8 +101,13 @@ export default function LaborLogs() {
 
   const handleUpdateApprovalStatus = async (logId, status) => {
     try {
-      const { error } = await supabase.from('labor_logs').update({ approval_status: status }).eq('id', logId)
-      if (error) throw error
+      const target = recentLogs.find(l => l.id === logId)
+      await updateLaborApprovalStatusService({
+        logId,
+        approvalStatus: status,
+        workerName: target?.worker_name || 'Operario',
+        changedBy: user?.email || 'Operador Web'
+      })
       setRecentLogs(prev => prev.map(l => l.id === logId ? { ...l, approval_status: status } : l))
     } catch (err) { showFeedbackMsg('error', 'Error: ' + err.message) }
   }

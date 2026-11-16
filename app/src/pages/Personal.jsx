@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Users, Calculator, TrendingUp } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-import { assignMonotonicFolios } from '../lib/monotonicFolioEngine'
+import { fetchPersonalBaseDataService } from '../services/personalNominaService'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import PersonalNominaPanel from '../components/personal/PersonalNominaPanel'
 import PersonalTarifarioPanel from '../components/personal/PersonalTarifarioPanel'
 import PersonalAnalisisPanel from '../components/personal/PersonalAnalisisPanel'
+
+const PERSONAL_REALTIME_TABLES = ['workers', 'rate_cards', 'organization_roles', 'system_settings']
 
 export default function Personal() {
   const [activeTab, setActiveTab] = useState('nomina') // 'nomina' | 'tarifario' | 'analisis'
@@ -13,52 +15,32 @@ export default function Personal() {
   const [currentPeriodKey, setCurrentPeriodKey] = useState('2026-10-1Q')
   const [dollarRate, setDollarRate] = useState(1500)
 
-  // Cargar datos de personal desde Supabase (Fuente Única de Verdad - Hallazgo B-04)
-  async function loadWorkers() {
+  const loadWorkers = useCallback(async ({ silent = false } = {}) => {
     try {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('workers')
-        .select('*')
-        .order('admin_center', { ascending: true })
-        .order('work_group', { ascending: true })
-        .order('name', { ascending: true })
-
-      if (error) throw error
-
-      setWorkers(data && data.length > 0 ? assignMonotonicFolios(data, { dateField: 'created_at' }) : [])
+      if (!silent) setLoading(true)
+      const data = await fetchPersonalBaseDataService()
+      setWorkers(data.workers)
+      if (!silent) {
+        if (data.periodKey) setCurrentPeriodKey(data.periodKey)
+        if (data.dollarRate) setDollarRate(data.dollarRate)
+      }
     } catch (err) {
       console.error('Error al cargar nómina desde workers:', err)
-      setWorkers([])
+      if (!silent) setWorkers([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }
-
-  // Cargar última quincena y cotización dólar registrada
-  useEffect(() => {
-    async function loadLatestPeriodMeta() {
-      try {
-        const { data } = await supabase
-          .from('rate_cards')
-          .select('period, dollar_rate, year, month, quincena')
-          .order('year', { ascending: false })
-          .order('month', { ascending: false })
-          .order('quincena', { ascending: false })
-          .limit(1)
-
-        if (data && data.length > 0) {
-          if (data[0].period) setCurrentPeriodKey(data[0].period)
-          if (data[0].dollar_rate) setDollarRate(parseFloat(data[0].dollar_rate) || 1500)
-        }
-      } catch (err) {
-        console.warn('Error cargando período inicial de tarifas:', err)
-      }
-    }
-
-    loadWorkers()
-    loadLatestPeriodMeta()
   }, [])
+
+  useSupabaseRealtimeRefresh({
+    channelName: 'personal_live',
+    tables: PERSONAL_REALTIME_TABLES,
+    onSync: () => loadWorkers({ silent: true })
+  })
+
+  useEffect(() => {
+    loadWorkers({ silent: false })
+  }, [loadWorkers])
 
   return (
     <div className="space-y-6 w-full pb-10">

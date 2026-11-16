@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../hooks/useGridContextMenu'
 import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
@@ -34,11 +36,19 @@ export default function Terceros() {
   const [feedbackMessage, setFeedbackMessage] = useState(null)
 
   // Filtros y vistas
+  const [searchParams, setSearchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState('filas')
-  const [kpiFilter, setKpiFilter] = useState('todos')
+  const [kpiFilter, setKpiFilter] = useState(() => searchParams.get('kpi') || 'todos')
   const [searchTerm, setSearchTerm] = useState('')
   const searchInputRef = useRef(null)
-  const [selectedShipFilter, setSelectedShipFilter] = useState('todos')
+  const [selectedShipFilter, setSelectedShipFilter] = useState(() => searchParams.get('shipId') || 'todos')
+
+  useEffect(() => {
+    const kpiParam = searchParams.get('kpi')
+    const shipParam = searchParams.get('shipId')
+    if (kpiParam) setKpiFilter(kpiParam)
+    if (shipParam) setSelectedShipFilter(shipParam)
+  }, [searchParams])
   const [selectedContractorFilter, setSelectedContractorFilter] = useState('todos')
   const [selectedTradeFilter, setSelectedTradeFilter] = useState('todos')
   const [selectedVoucherFilter, setSelectedVoucherFilter] = useState('todos')
@@ -59,18 +69,25 @@ export default function Terceros() {
     setFeedbackMessage({ type, text }); setTimeout(() => setFeedbackMessage(null), 4500)
   }, [])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async ({ silent = false } = {}) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const d = await fetchTercerosData()
       setServices(d.services); setShips(d.ships); setWorkOrders(d.workOrders)
       setWorkItems(d.workItems); setContractors(d.contractors)
       setMacroVariables(d.macroVariables); setVoucherHistory(d.voucherHistory)
     } catch (err) { showFeedback('error', 'Error al sincronizar datos: ' + err.message) }
-    finally { setLoading(false) }
+    finally { if (!silent) setLoading(false) }
   }, [showFeedback])
 
-  useEffect(() => { loadData() }, [loadData])
+  useSupabaseRealtimeRefresh({
+    channelName: 'terceros_live',
+    tables: ['third_party_services', 'third_party_voucher_history', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables'],
+    onSync: () => loadData({ silent: true }),
+    pauseWhen: Boolean(inlineEdit.id || isModalOpen || evolvingService || auditingService || pickerModal.isOpen || contractorPickerModal.isOpen)
+  })
+
+  useEffect(() => { loadData({ silent: false }) }, [loadData])
 
   // Mapas y derivados
   const { shipMap, otMap, contractorMap } = useMemo(() => buildTercerosMaps(ships, workOrders, contractors), [ships, workOrders, contractors])
@@ -83,7 +100,8 @@ export default function Terceros() {
   const hasActiveFilters = Boolean(searchTerm || selectedShipFilter !== 'todos' || selectedContractorFilter !== 'todos' || selectedTradeFilter !== 'todos' || selectedVoucherFilter !== 'todos' || (kpiFilter && kpiFilter !== 'todos'))
   const clearAllFilters = useCallback(() => {
     setSearchTerm(''); setSelectedShipFilter('todos'); setSelectedContractorFilter('todos'); setSelectedTradeFilter('todos'); setSelectedVoucherFilter('todos'); setKpiFilter('todos')
-  }, [])
+    if (searchParams.toString()) setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // Modales y acciones
   const handleOpenNewModal = () => { setEditingService(null); setIsModalOpen(true) }

@@ -18,7 +18,7 @@ export async function fetchLaborData() {
       .select('*, ships(id, name), work_orders(id, ot_number, title, ship_id)')
       .order('date_logged', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(1500),
+      .limit(2000),
     supabase.from('ships').select('id, name, status').order('name'),
     supabase.from('work_orders').select('id, ot_number, title, ship_id, status').order('ot_number'),
     supabase.from('work_items').select('id, work_order_id, contractors, description, status, work_type'),

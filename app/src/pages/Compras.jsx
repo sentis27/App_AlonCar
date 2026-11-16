@@ -1,13 +1,15 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ShoppingCart, SlidersHorizontal, Plus } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { assignMonotonicFolios } from '../lib/monotonicFolioEngine'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
+import { fetchComprasData } from '../services/comprasService'
 import ComprasPedidosPanel from '../components/compras/ComprasPedidosPanel'
 import ComprasProveedoresPanel from '../components/compras/ComprasProveedoresPanel'
 import ComprasOcrPanel from '../components/compras/ComprasOcrPanel'
 import { parseOrderQueryParams, computeContractorGroups, getCurrentFortnight } from '../lib/comprasConstants'
+
+const COMPRAS_REALTIME_TABLES = ['purchase_orders', 'suppliers', 'materials', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables', 'purchase_documents', 'system_settings']
 
 // Re-exportar utilidades y constantes canónicas para retrocompatibilidad
 export { isCostAuditError, STATUS_OPTIONS, STANDARD_TRADES, CATALOG_RUBROS, OFFICIAL_UNITS, SECURITY_FACTORS, deduceUnitMeasure, formatArgPhoneForWhatsApp, getSearchMatchMap } from '../lib/comprasConstants'
@@ -36,60 +38,57 @@ export default function Compras() {
   // Modal de carga inicial y nuevo pedido
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [editingOrder, setEditingOrder] = useState(null)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [initialKpiFilter, setInitialKpiFilter] = useState(() => searchParams.get('kpi') || null)
 
-  // Sincronización con parámetros URL (?mode=simple, ?nuevo=true, ?materialId=...)
+  // Sincronización con parámetros URL (?mode=simple, ?nuevo=true, ?materialId=..., ?kpi=sin_precio)
   useEffect(() => {
-    const { viewMode: vMode, newOrderPayload } = parseOrderQueryParams(searchParams, materials)
+    const { viewMode: vMode, newOrderPayload, kpiFilter: urlKpi } = parseOrderQueryParams(searchParams, materials)
     if (vMode) setViewMode(vMode)
+    if (urlKpi) setInitialKpiFilter(urlKpi)
     if (newOrderPayload) {
       setEditingOrder(newOrderPayload)
       setShowOrderModal(true)
     }
   }, [searchParams, materials])
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  function showFeedbackMsg(type, text) {
+  const showFeedbackMsg = useCallback((type, text) => {
     setFeedback({ type, text })
     setTimeout(() => setFeedback(null), 5000)
-  }
+  }, [])
 
-  async function fetchData() {
-    setLoading(true)
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
     try {
-      const [poRes, supRes, matRes, shpRes, woRes, wiRes, wkrRes, mvRes, docRes, setRes] = await Promise.all([
-        supabase.from('purchase_orders').select('*').order('order_date', { ascending: false }).order('created_at', { ascending: false }),
-        supabase.from('suppliers').select('*').order('name'),
-        supabase.from('materials').select('*').order('name'),
-        supabase.from('ships').select('id, name, vessel_type').order('name'),
-        supabase.from('work_orders').select('id, ot_number, title, description, ship_id, status').order('ot_number'),
-        supabase.from('work_items').select('id, work_order_id, contractors, description'),
-        supabase.from('workers').select('id, name, trade, can_withdraw_materials, phone').order('name'),
-        supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
-        supabase.from('purchase_documents').select('*').order('created_at', { ascending: false }),
-        supabase.from('system_settings').select('*').eq('key', 'compras_whatsapp').maybeSingle()
-      ])
-
-      setPurchaseOrders(assignMonotonicFolios(poRes.data || [], { dateField: 'order_date' }))
-      setSuppliers(supRes.data || [])
-      setMaterials(matRes.data || [])
-      setShips(shpRes.data || [])
-      setWorkOrders(woRes.data || [])
-      setWorkItems(wiRes?.data || [])
-      setWorkers(wkrRes.data || [])
-      setMacroVariables(mvRes.data || [])
-      setDocuments(docRes.data || [])
-      setSystemSettings(setRes.data?.value || null)
+      const d = await fetchComprasData()
+      setPurchaseOrders(d.purchaseOrders)
+      setSuppliers(d.suppliers)
+      setMaterials(d.materials)
+      setShips(d.ships)
+      setWorkOrders(d.workOrders)
+      setWorkItems(d.workItems)
+      setWorkers(d.workers)
+      setMacroVariables(d.macroVariables)
+      setDocuments(d.purchaseDocuments)
+      setSystemSettings(d.whatsappSetting)
     } catch (err) {
       console.error('Error cargando Compras:', err)
       showFeedbackMsg('error', 'Error al sincronizar datos de Compras: ' + (err.message || err))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }
+  }, [showFeedbackMsg])
+
+  useSupabaseRealtimeRefresh({
+    channelName: 'compras_live',
+    tables: COMPRAS_REALTIME_TABLES,
+    onSync: () => fetchData({ silent: true }),
+    pauseWhen: Boolean(showOrderModal || editingOrder)
+  })
+
+  useEffect(() => {
+    fetchData({ silent: false })
+  }, [fetchData])
 
   const contractorGroups = useMemo(() => computeContractorGroups(workItems, suppliers), [workItems, suppliers])
   const astilleroWorkers = useMemo(() => workers.filter((w) => w.can_withdraw_materials), [workers])
@@ -215,6 +214,11 @@ export default function Compras() {
           setShowOrderModal={setShowOrderModal}
           editingOrder={editingOrder}
           setEditingOrder={setEditingOrder}
+          initialKpiFilter={initialKpiFilter}
+          onClearUrlKpi={() => {
+            setInitialKpiFilter(null)
+            if (searchParams.get('kpi')) setSearchParams({ mode: viewMode }, { replace: true })
+          }}
         />
       )}
 

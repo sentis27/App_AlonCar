@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Ship,
   Calendar,
@@ -10,6 +10,7 @@ import {
   X
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { cleanLocation, computeShipOtMetrics, PREDEFINED_VESSEL_TYPES, cleanShipName } from '../lib/shipsConstants'
 import {
   fetchShipsModuleData,
@@ -54,7 +55,7 @@ export default function Ships() {
   const [modalRequestInfo, setModalRequestInfo] = useState({ isOpen: false, ship: null, requestType: 'pendiente_jefe_obra', notes: '' })
 
   // Carga inicial de datos de Supabase
-  const loadInitialData = async () => {
+  const loadInitialData = useCallback(async () => {
     try {
       const data = await fetchShipsModuleData()
       setOrphanLabor(data.orphanLabor)
@@ -69,9 +70,16 @@ export default function Ships() {
       console.error('Error cargando módulo barcos:', err)
       setStatusMessage({ type: 'error', text: 'Error al conectar con Supabase: ' + err.message })
     }
-  }
+  }, [])
 
-  useEffect(() => { loadInitialData() }, [])
+  useSupabaseRealtimeRefresh({
+    channelName: 'ships_live',
+    tables: ['ships', 'owners', 'ship_stays', 'contacts', 'work_orders', 'work_items', 'labor_logs', 'third_party_services', 'purchase_orders'],
+    onSync: loadInitialData,
+    pauseWhen: Boolean(modalShip.isOpen || modalStay.isOpen || modalOwner.isOpen || modalDeleteOwner.isOpen || modalAssignOrphan.isOpen || modalRequestInfo.isOpen)
+  })
+
+  useEffect(() => { loadInitialData() }, [loadInitialData])
 
   // Métricas calculadas
   const getShipOtMetrics = useMemo(() => {

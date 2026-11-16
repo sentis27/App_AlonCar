@@ -1,10 +1,20 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Wallet, RefreshCw, AlertTriangle } from 'lucide-react'
 import TesoreriaDeduccionesPanel from '../components/tesoreria/TesoreriaDeduccionesPanel'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import {
   fetchContractorDeductionsForPeriod,
   getCurrentQuincenaKey
 } from '../lib/contractorDeductionsService'
+
+const TESORERIA_REALTIME_TABLES = [
+  'inventory_transactions',
+  'materials',
+  'workers',
+  'ships',
+  'work_orders',
+  'rate_cards'
+]
 
 /**
  * Módulo Tesorería (Graciela — TESORERIA)
@@ -16,18 +26,24 @@ export default function Tesoreria() {
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState(null)
 
-  const loadPeriod = useCallback(async (periodKey) => {
+  const loadPeriod = useCallback(async (periodKey, { silent = false } = {}) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       setErrorMsg(null)
       const res = await fetchContractorDeductionsForPeriod(periodKey)
       setData(res)
     } catch (err) {
       setErrorMsg(err?.message || 'Error al cargar datos de Tesorería.')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
+
+  useSupabaseRealtimeRefresh({
+    channelName: 'tesoreria_live',
+    tables: TESORERIA_REALTIME_TABLES,
+    onSync: () => loadPeriod(selectedPeriod, { silent: true })
+  })
 
   useEffect(() => {
     let active = true

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   ShieldCheck,
   Lock,
@@ -10,11 +10,17 @@ import {
   Wrench,
   History
 } from 'lucide-react'
-import { supabase } from '../lib/supabase.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import { fetchDashboardZeroCostAlerts } from '../lib/zeroCostAlertsService.js'
+import {
+  ADMIN_DASHBOARD_REALTIME_TABLES,
+  fetchAdminDashboardCountsService
+} from '../lib/dashboardService.js'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh.js'
 
 // Subpaneles modulares extraídos (Arquitectura limpia < 250L)
 import AdminLiveKpiRadar from '../components/admin/AdminLiveKpiRadar.jsx'
+import ZeroCostDashboardAlertCard from '../components/ZeroCostDashboardAlertCard.jsx'
 import AdminRolesMatrixPanel from '../components/admin/AdminRolesMatrixPanel.jsx'
 import AdminMacroPanel from '../components/admin/AdminMacroPanel.jsx'
 import AdminAlertsCompliancePanel from '../components/admin/AdminAlertsCompliancePanel.jsx'
@@ -36,32 +42,39 @@ export default function AdminDashboard() {
     pendingRubroCount: 0
   })
   const [complianceAlertsCount, setComplianceAlertsCount] = useState(0)
+  const [zeroCostAlerts, setZeroCostAlerts] = useState(null)
 
-  useEffect(() => {
-    loadInitialCounts()
-  }, [])
-
-  async function loadInitialCounts() {
+  const loadInitialCounts = useCallback(async () => {
     try {
-      const [rolesRes, complianceRes] = await Promise.all([
-        supabase.from('organization_roles').select('role_key', { count: 'exact', head: true }),
-        supabase.from('compliance_alerts').select('id, entity_type').eq('status', 'PENDIENTE')
+      const [{ rolesCount: nextRolesCount, pendingAlerts }, zeroCostData] = await Promise.all([
+        fetchAdminDashboardCountsService(),
+        fetchDashboardZeroCostAlerts()
       ])
 
-      if (rolesRes.count !== null && rolesRes.count !== undefined) {
-        setRolesCount(rolesRes.count)
+      if (nextRolesCount !== null && nextRolesCount !== undefined) {
+        setRolesCount(nextRolesCount)
       }
 
-      const pendingAlerts = complianceRes.data || []
       setComplianceAlertsCount(pendingAlerts.length)
       setAlertSummary((prev) => ({
         ...prev,
         panolWithoutHoursCount: pendingAlerts.filter((a) => a.entity_type === 'inventory_transactions').length
       }))
+      setZeroCostAlerts(zeroCostData)
     } catch (err) {
       console.error('Error cargando métricas iniciales del dashboard admin:', err)
     }
-  }
+  }, [])
+
+  useSupabaseRealtimeRefresh({
+    channelName: 'admin_dashboard_live',
+    tables: ADMIN_DASHBOARD_REALTIME_TABLES,
+    onSync: loadInitialCounts
+  })
+
+  useEffect(() => {
+    loadInitialCounts()
+  }, [loadInitialCounts])
 
   function handleAlertsSummaryChange({ summary, alertsCount }) {
     if (summary) setAlertSummary(summary)
@@ -113,6 +126,8 @@ export default function AdminDashboard() {
         complianceAlertsCount={complianceAlertsCount}
         onSelectAlerts={() => setActiveTab('alertas')}
       />
+
+      <ZeroCostDashboardAlertCard alerts={zeroCostAlerts} compact />
 
       {/* ============================================================================== */}
       {/* NAVEGACIÓN PRINCIPAL DE PESTAÑAS (ESTANDARIZADA)                              */}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../hooks/useGridContextMenu'
 import { duplicateRecord } from '../lib/gridRowActions'
@@ -59,19 +60,26 @@ export default function WorkOrders() {
     setStatusMessage({ type, text }); setTimeout(() => setStatusMessage(null), 3500)
   }, [])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async ({ silent = false } = {}) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const d = await fetchWorkOrdersData()
       setShips(d.ships); setWorkOrders(d.workOrders); setWorkItems(d.workItems)
       setWorkers(d.workers); setTemplates(d.templates); setThirdPartyServices(d.thirdPartyServices)
       setLaborLogs(d.laborLogs); setInventoryTx(d.inventoryTx); setPurchaseOrders(d.purchaseOrders)
     } catch (err) {
       showWoGridFeedback('error', 'Error al cargar datos de OTs: ' + err.message)
-    } finally { setLoading(false) }
+    } finally { if (!silent) setLoading(false) }
   }, [showWoGridFeedback])
 
-  useEffect(() => { loadData() }, [loadData])
+  useSupabaseRealtimeRefresh({
+    channelName: 'work_orders_live',
+    tables: ['work_orders', 'work_items', 'ships', 'workers', 'ot_templates', 'third_party_services', 'labor_logs', 'inventory_transactions', 'purchase_orders'],
+    onSync: () => loadData({ silent: true }),
+    pauseWhen: Boolean(inlineWoEdit || isWorkModalOpen || separatingRow || isThirdPartyCascadeOpen || editingThirdParty || isTemplateModalOpen || closingTreeWo)
+  })
+
+  useEffect(() => { loadData({ silent: false }) }, [loadData])
 
   // Catálogos derivados y Mapeos
   const foremenList = useMemo(() => {
@@ -247,31 +255,10 @@ export default function WorkOrders() {
       </div>
 
       {/* MODAL CANÓNICO DE CIERRE DE ÁRBOL */}
-      <CloseWorkOrderTreeModal
-        isOpen={Boolean(closingTreeWo)}
-        onClose={() => setClosingTreeWo(null)}
-        wo={closingTreeWo}
-        items={closingTreeWo ? (itemsByWoMap[closingTreeWo.id] || []) : []}
-        onConfirm={handleConfirmCloseTree}
-        loading={submittingCloseTree}
-      />
+      <CloseWorkOrderTreeModal isOpen={Boolean(closingTreeWo)} onClose={() => setClosingTreeWo(null)} wo={closingTreeWo} items={closingTreeWo ? (itemsByWoMap[closingTreeWo.id] || []) : []} onConfirm={handleConfirmCloseTree} loading={submittingCloseTree} />
 
       {/* CONTENEDOR INTEGRAL DE MODALES */}
-      <WorkOrdersModalsContainer
-        isWorkModalOpen={isWorkModalOpen} setIsWorkModalOpen={setIsWorkModalOpen}
-        editingWorkItem={editingWorkItem} preselectedWo={preselectedWo}
-        separatingRow={separatingRow} setSeparatingRow={setSeparatingRow}
-        isThirdPartyCascadeOpen={isThirdPartyCascadeOpen} setIsThirdPartyCascadeOpen={setIsThirdPartyCascadeOpen}
-        editingThirdParty={editingThirdParty} setEditingThirdParty={setEditingThirdParty}
-        selectedWoDetail={selectedWoDetail} setSelectedWoDetail={setSelectedWoDetail}
-        isTemplateModalOpen={isTemplateModalOpen} setIsTemplateModalOpen={setIsTemplateModalOpen}
-        templatePickerFromForm={templatePickerFromForm} setTemplatePickerFromForm={setTemplatePickerFromForm}
-        ships={ships} workOrders={workOrders} templates={templates} workers={workers}
-        foremenList={foremenList} contractorCatalog={contractorCatalog} activeExecutionRows={activeExecutionRows}
-        itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap} thirdPartyByItemMap={thirdPartyByItemMap}
-        user={user} loadData={loadData} showWoGridFeedback={showWoGridFeedback}
-        onOpenNewWorkModal={handleOpenNewWorkModal} onOpenSeparateModal={handleOpenSeparateModal}
-      />
+      <WorkOrdersModalsContainer isWorkModalOpen={isWorkModalOpen} setIsWorkModalOpen={setIsWorkModalOpen} editingWorkItem={editingWorkItem} preselectedWo={preselectedWo} separatingRow={separatingRow} setSeparatingRow={setSeparatingRow} isThirdPartyCascadeOpen={isThirdPartyCascadeOpen} setIsThirdPartyCascadeOpen={setIsThirdPartyCascadeOpen} editingThirdParty={editingThirdParty} setEditingThirdParty={setEditingThirdParty} selectedWoDetail={selectedWoDetail} setSelectedWoDetail={setSelectedWoDetail} isTemplateModalOpen={isTemplateModalOpen} setIsTemplateModalOpen={setIsTemplateModalOpen} templatePickerFromForm={templatePickerFromForm} setTemplatePickerFromForm={setTemplatePickerFromForm} ships={ships} workOrders={workOrders} templates={templates} workers={workers} foremenList={foremenList} contractorCatalog={contractorCatalog} activeExecutionRows={activeExecutionRows} itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap} thirdPartyByItemMap={thirdPartyByItemMap} user={user} loadData={loadData} showWoGridFeedback={showWoGridFeedback} onOpenNewWorkModal={handleOpenNewWorkModal} onOpenSeparateModal={handleOpenSeparateModal} />
     </div>
   )
 }
