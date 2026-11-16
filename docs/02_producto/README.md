@@ -116,6 +116,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | ERR-004 | Pantalla en negro al asignar Buque y OT por hook condicional en modal picker | 3 | borrador | 2026-11-12 | — |
 | ERR-005 | Contenedor max-w-7xl y nuevas columnas recortan visualmente la columna Acciones en Personal y Tarifas | 3 | borrador | 2026-11-13 | — |
 | ERR-006 | Auditoría SKL-017 eliminó `<datalist>` y lógica de selección de operarios en `/horas` | 3 | borrador | 2026-11-15 | `be2614f` / `7387729` |
+| ERR-007 | Disparidad de políticas RLS y feedback off-screen bloquearon guardado de horas en `/horas` | 3 | borrador | 2026-11-15 | — |
 
 ## Conceptos
 
