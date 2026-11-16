@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { RotateCcw } from 'lucide-react'
 import KpiRadar from '../KpiRadar'
 import CrawlerSearchBar from '../CrawlerSearchBar'
@@ -15,6 +15,7 @@ export default function ResumenHojaTercerosPanel({
   otRows = [],
   activeOtId,
   costScope = 'GENERAL',
+  initialKpiFilter = 'ALL',
   thirdPartyRows = [],
   onSelectSheet,
   onChangeCostScope,
@@ -22,8 +23,12 @@ export default function ResumenHojaTercerosPanel({
   onBackToSummary
 }) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [kpiFilter, setKpiFilter] = useState('ALL')
+  const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
   const [voucherFilter, setVoucherFilter] = useState('ALL')
+
+  useEffect(() => {
+    setKpiFilter(initialKpiFilter || 'ALL')
+  }, [initialKpiFilter])
 
   const scopedBaseRows = useMemo(() => {
     return thirdPartyRows.filter((r) => {

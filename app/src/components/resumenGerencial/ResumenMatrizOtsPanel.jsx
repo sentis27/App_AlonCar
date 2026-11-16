@@ -70,7 +70,7 @@ export default function ResumenMatrizOtsPanel({
         </button>
       </div>
 
-      <div className="overflow-x-auto max-h-[62vh]">
+      <div className="overflow-x-auto max-h-[calc(100vh-250px)] overflow-y-auto">
         <table className="w-full text-xs text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-slate-950 border-b border-slate-700">
             {/* Fila 1: Totales acumulados globales equivalentes a fila 1 de RESUMEN 2 */}

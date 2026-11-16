@@ -110,6 +110,9 @@ export const RUBROS_SUGERIDOS = [
   'Electricidad',
   'Carpintería naval',
   'Maniobras y varada',
+  'Pala',
+  'Grúa Grande',
+  'Grúa Chica',
   'Fletes / Logística',
   'Feriado' // Regla Alon Car: si se indica Feriado, la jornada estándar es de 8 horas
 ]

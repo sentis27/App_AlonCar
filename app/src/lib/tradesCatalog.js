@@ -12,6 +12,9 @@ export const OFFICIAL_RUBROS_CATALOG = [
   { code: 'CARPINTERIA', label: 'Carpintería naval' },
   { code: 'ELECTRICIDAD', label: 'Electricidad' },
   { code: 'MANIOBRA', label: 'Maniobras y varada' },
+  { code: 'PALA', label: 'Pala' },
+  { code: 'GRUA GRANDE', label: 'Grúa Grande' },
+  { code: 'GRUA CHICA', label: 'Grúa Chica' },
   { code: 'MAQUINARIA', label: 'Maquinaria' },
   { code: 'TORNERIA', label: 'Tornería' },
   { code: 'PRFV', label: 'PRFV / Plásticos' },
@@ -57,7 +60,14 @@ export function canonicalizeRubroLabel(raw = '') {
   if (norm.includes('CARPINT')) return 'Carpintería naval'
   if (norm.includes('ELECTR')) return 'Electricidad'
   if (norm.includes('MANIOBR') || norm.includes('VARAD')) return 'Maniobras y varada'
-  if (norm.includes('MAQUIN') || norm.includes('PALA') || norm.includes('GRUA')) return 'Maquinaria'
+  if (norm.includes('PALA')) return 'Pala'
+  if (norm.includes('GRUA') && (norm.includes('GRANDE') || norm.includes('GRD') || norm.includes('60'))) {
+    return 'Grúa Grande'
+  }
+  if (norm.includes('GRUA') && (norm.includes('CHIC') || norm.includes('PEQ') || norm.includes('HIDRO') || norm.includes('8T'))) {
+    return 'Grúa Chica'
+  }
+  if (norm.includes('MAQUIN') || norm.includes('GRUA')) return 'Maquinaria'
   if (norm.includes('TORN')) return 'Tornería'
   if (norm.includes('PRFV') || norm.includes('FIBRA')) return 'PRFV / Plásticos'
   if (norm.includes('PANOL')) return 'Pañolero'

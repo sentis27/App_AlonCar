@@ -13,27 +13,43 @@ export const ADHOC_METRICS_SETTINGS_KEY = 'resumen_gerencial_adhoc_metrics'
 export const RESUMEN_GERENCIAL_TABS = [
   {
     id: 'resumen',
-    label: '1. Resumen de Obra & Costos',
+    label: 'Resumen de Obra & Costos',
     shortLabel: 'Resumen GS-004',
     archetype: 'METRICAS_ANALISIS',
-    badge: 'Gallina · Solo Análisis',
-    colorTheme: 'cyan'
+    badge: 'Obra Activa',
+    icon: 'BarChart3',
+    colorTheme: 'cyan',
+    menuGroup: 'OBRA'
   },
   {
-    id: 'comparador',
-    label: '2. Comparador de Obras',
-    shortLabel: 'Comparador',
+    id: 'matriz',
+    label: 'Matriz OTs (RESUMEN 2)',
+    shortLabel: 'Matriz OTs',
     archetype: 'METRICAS_ANALISIS',
-    badge: 'Gallina · Benchmarking',
-    colorTheme: 'violet'
+    badge: 'Matriz OTs',
+    icon: 'Table2',
+    colorTheme: 'sky',
+    menuGroup: 'OBRA'
   },
   {
     id: 'remito',
-    label: '3. Remito Comercial & Tarifario',
-    shortLabel: 'Remito Gallo',
+    label: 'Remito Comercial & Tarifario',
+    shortLabel: 'Remito Comercial',
     archetype: 'CARGA_EDICION',
-    badge: 'Gallo · Editable',
-    colorTheme: 'emerald'
+    badge: 'Comercial · Remito',
+    icon: 'ReceiptText',
+    colorTheme: 'emerald',
+    menuGroup: 'HERRAMIENTA'
+  },
+  {
+    id: 'comparador',
+    label: 'Comparador de Obras',
+    shortLabel: 'Comparador',
+    archetype: 'METRICAS_ANALISIS',
+    badge: 'Multi-Obra',
+    icon: 'ShipCompare',
+    colorTheme: 'violet',
+    menuGroup: 'HERRAMIENTA'
   }
 ]
 

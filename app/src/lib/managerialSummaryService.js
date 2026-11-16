@@ -16,6 +16,12 @@ import { computeManagerialCostSummary, classifyWithdrawalCost } from './workCost
 import { matchTransactionWorker } from './contractorDeductionsService.js'
 import { getDollarRateForDate } from './tercerosConstants.js'
 import {
+  isThirdPartyZeroCost,
+  isPanolTxZeroCost,
+  isDirectPurchaseZeroCost,
+  buildZeroCostAlertsSummary
+} from './zeroCostAlertsRules.js'
+import {
   isInvalidEventOrObjectScalar,
   logBatchPaste,
   logCellChange,
@@ -26,10 +32,26 @@ import {
   ALFA_RATES_SETTINGS_KEY,
   COMPARATOR_VIEWS_SETTINGS_KEY,
   DEFAULT_DRYDOCK_RATE_CARD_ALFA,
-  OP_INPUTS_SETTINGS_KEY,
   REMITO_SETTINGS_KEY,
   getQuincenaPeriodFromDate
 } from './drydockCatalogConstants.js'
+
+export const RESUMEN_REALTIME_TABLES = [
+  'ships',
+  'ship_stays',
+  'owners',
+  'work_orders',
+  'work_items',
+  'labor_logs',
+  'rate_cards',
+  'inventory_transactions',
+  'materials',
+  'purchase_orders',
+  'third_party_services',
+  'workers',
+  'macro_variables',
+  'system_settings'
+]
 
 const HISTORICAL_SHIP_STATUSES = new Set(['TERMINADO', 'CERRADO', 'FACTURADO', 'FINALIZADO', 'INACTIVO'])
 
@@ -101,7 +123,7 @@ export async function fetchManagerialData() {
       .select('id, name, category, rubro, cost_ars, cost_usd, weight_kg, current_stock, minimum_stock, unit_measure, requires_stock_control'),
     supabase
       .from('purchase_orders')
-      .select('id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, invoice_number, remito_number, observations')
+      .select('id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, invoice_number, remito_number, requested_by_name, observations')
       .order('order_date', { ascending: false })
       .limit(2000),
     supabase
@@ -165,7 +187,6 @@ export async function fetchManagerialData() {
         ? settingsMap[ALFA_RATES_SETTINGS_KEY]
         : DEFAULT_DRYDOCK_RATE_CARD_ALFA,
     remitosByShip: settingsMap[REMITO_SETTINGS_KEY] || {},
-    operationalInputsByShip: settingsMap[OP_INPUTS_SETTINGS_KEY] || {},
     comparatorSavedViews: Array.isArray(settingsMap[COMPARATOR_VIEWS_SETTINGS_KEY])
       ? settingsMap[COMPARATOR_VIEWS_SETTINGS_KEY]
       : [],
@@ -275,7 +296,7 @@ export function enrichMaterialMovements({
       notes: tx.notes || '',
       isDeletionRequested: Boolean(tx.is_deletion_requested),
       hasMissingOt: !tx.work_order_id,
-      hasZeroPrice: unitUsd <= 0 && logicalCategory !== 'ELEM.SEGURIDAD',
+      hasZeroPrice: isPanolTxZeroCost({ ...tx, unitUsd, category: logicalCategory }, mat),
       classification
     })
   }
@@ -336,7 +357,7 @@ export function enrichMaterialMovements({
       notes: po.observations || `OC Directa (${po.status})`,
       isDeletionRequested: false,
       hasMissingOt: !po.work_order_id,
-      hasZeroPrice: unitUsd <= 0,
+      hasZeroPrice: isDirectPurchaseZeroCost(po) || unitUsd <= 0,
       classification: { bucket: 'COMPRA_DIRECTA_OBRA' }
     })
   }
@@ -484,6 +505,8 @@ export function enrichLaborLogs({
       otTitle: resolvedWo?.title || '',
       workerName: log.worker_name || worker?.name || 'Operario',
       workerType: isContractor ? 'Contratista' : 'Astillero',
+      workerCategory: normKey(worker?.category || ''),
+      workerTrade: normKey(worker?.trade || ''),
       rubro: normKey(log.rubro || worker?.trade || 'GENERAL'),
       workType: workTypeUpper || 'HORA',
       isPresupuesto,
@@ -553,11 +576,12 @@ export function enrichThirdPartyServices({
         amountUsd: round2(usd),
         voucherType: normKey(s.voucher_type || s.status || 'PRC'),
         voucherNumber: s.invoice_number || s.supplier_remito_number || s.budget_number || s.voucher_number || '',
+        budgetNumber: s.budget_number || '',
         internalRemitoNumber: s.internal_remito_number || '',
         observations: [s.direct_observations, s.specific_observations].filter(Boolean).join(' · '),
         auditStatus: s.audit_status || 'PENDIENTE',
         hasMissingOt: !s.work_order_id,
-        hasZeroCost: usd <= 0 && ars <= 0
+        hasZeroCost: isThirdPartyZeroCost({ amount_ars: ars, amount_usd: usd, is_active: s.is_active })
       }
     })
 }
@@ -572,6 +596,71 @@ function matchesScopeFilter(ship, ot, scope) {
   const otHist = ot ? isHistoricalOrderStatus(ot.status) : false
   const isHist = ot ? otHist || shipHist : shipHist
   return scope === 'historico' ? isHist : !isHist
+}
+
+function normAscii(v) {
+  return String(v || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+}
+
+/**
+ * Filtra los buques visibles en Zona 1 según alcance (`activas` por defecto, `historico` o `mixto`).
+ */
+export function filterSelectableShipsByScope(ships = [], scope = 'activas') {
+  const nonAstillero = (ships || []).filter((s) => normKey(s.name) !== 'ASTILLERO')
+  if (scope === 'mixto' || !scope) return nonAstillero
+  return nonAstillero.filter((s) => {
+    const isHist = isHistoricalOrderStatus(s.status) || s.is_active === false
+    return scope === 'historico' ? isHist : !isHist
+  })
+}
+
+/**
+ * Suma horas físicas desde `labor_logs` para Pala, Grúa Grande y Grúa Chica (100% solo lectura).
+ */
+export function sumEquipmentHoursFromLogs(rows = []) {
+  let gruaGrande = 0
+  let gruaChica = 0
+  let hrsPala = 0
+
+  for (const r of rows) {
+    const hrs = Number(r.hoursPhysical ?? r.hours_worked) || 0
+    if (hrs <= 0) continue
+
+    const structured = normAscii(
+      `${r.rubro || ''} ${r.workerName || r.worker_name || ''} ${r.workerCategory || ''} ${r.workerTrade || ''}`
+    )
+    const notesUpper = normAscii(r.notes || '')
+    const combined = `${structured} ${notesUpper}`
+
+    if (structured.includes('PALA') || /\bPALA\b/.test(notesUpper)) {
+      hrsPala += hrs
+    } else if (
+      combined.includes('GRUA CHICA') ||
+      combined.includes('GRUA CH') ||
+      combined.includes('GRUA PEQ') ||
+      combined.includes('HIDROGRUA') ||
+      /\b8\s*TON\b|\b8T\b/.test(notesUpper)
+    ) {
+      gruaChica += hrs
+    } else if (
+      combined.includes('GRUA GRANDE') ||
+      combined.includes('GRUA GRD') ||
+      combined.includes('GRUA G') ||
+      /\b60\s*TON\b|\b60T\b/.test(notesUpper)
+    ) {
+      gruaGrande += hrs
+    }
+  }
+
+  return {
+    gruaGrande: round2(gruaGrande),
+    gruaChica: round2(gruaChica),
+    hrsPala: round2(hrsPala)
+  }
 }
 
 function buildTopDonutSegments(entries = [], maxSlices = 5) {
@@ -604,8 +693,7 @@ export function computeShipManagerialSummary({
   materialRows = [],
   laborRows = [],
   thirdPartyRows = [],
-  operationalInputsByShip = {},
-  scope = 'mixto',
+  scope = 'activas',
   yearFilter = 'TODOS'
 }) {
   const ship = ships.find((s) => s.id === shipId) || null
@@ -736,21 +824,16 @@ export function computeShipManagerialSummary({
     ? shipTps.filter((r) => (resolvedOt.id === 'SIN_OT' ? !r.workOrderId : r.workOrderId === resolvedOt.id))
     : []
 
-  // Horas de Grúa (detectadas en partes/terceros + inputs guardados en system_settings)
-  const shipInputs = operationalInputsByShip[shipId] || {}
-  const otInputs = (resolvedOt && shipInputs?.byOt?.[resolvedOt.id]) || {}
-  const autoCraneFromLogs = (rows) =>
-    rows
-      .filter((r) => normKey(r.rubro).includes('GRUA') || /grua|grúa/i.test(r.notes || ''))
-      .reduce((acc, r) => acc + (r.hoursPhysical || 0), 0)
-
+  // Horas de Grúa Grande, Grúa Chica y Pala (100% solo lectura desde Planilla de Horas `labor_logs`)
+  const shipEq = sumEquipmentHoursFromLogs(shipLabor)
+  const otEq = sumEquipmentHoursFromLogs(otLabor)
   const craneHours = {
-    shipGruaGrande: Number(shipInputs.gruaGrande ?? autoCraneFromLogs(shipLabor)) || 0,
-    shipGruaChica: Number(shipInputs.gruaChica ?? 0) || 0,
-    shipHrsPala: Number(shipInputs.hrsPala ?? 0) || 0,
-    otGruaGrande: Number(otInputs.gruaGrande ?? autoCraneFromLogs(otLabor)) || 0,
-    otGruaChica: Number(otInputs.gruaChica ?? 0) || 0,
-    otHrsPala: Number(otInputs.hrsPala ?? 0) || 0
+    shipGruaGrande: shipEq.gruaGrande,
+    shipGruaChica: shipEq.gruaChica,
+    shipHrsPala: shipEq.hrsPala,
+    otGruaGrande: otEq.gruaGrande,
+    otGruaChica: otEq.gruaChica,
+    otHrsPala: otEq.hrsPala
   }
 
   // Donuts Buque (4)
@@ -777,6 +860,12 @@ export function computeShipManagerialSummary({
     tercerosOt: groupSum(otTps, (t) => `${t.contractorName} (${t.voucherType})`, (t) => t.amountUsd)
   }
 
+  const zeroCostAlerts = buildZeroCostAlertsSummary({
+    materialRows: shipMats,
+    thirdPartyRows: shipTps,
+    ships: ship ? [ship] : []
+  })
+
   return {
     ship,
     totals,
@@ -785,6 +874,7 @@ export function computeShipManagerialSummary({
     donutsShip,
     donutsOt,
     craneHours,
+    zeroCostAlerts,
     filteredCounts: {
       materials: shipMats.length,
       labor: shipLabor.length,

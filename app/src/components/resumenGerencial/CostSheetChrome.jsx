@@ -32,9 +32,16 @@ export function CostSheetHeaderBar({
   onBackToSummary
 }) {
   const activeOt = otRows.find((o) => o.id === activeOtId) || null
+  const isGeneral = costScope === 'GENERAL'
 
   return (
-    <div className="bg-slate-900/80 border border-cyan-500/35 rounded-xl p-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+    <div
+      className={`rounded-xl p-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3 border transition-colors ${
+        isGeneral
+          ? 'bg-cyan-950/20 border-cyan-500/50'
+          : 'bg-violet-950/25 border-violet-500/50'
+      }`}
+    >
       <div className="flex flex-wrap items-center gap-2.5">
         <button
           type="button"
@@ -57,7 +64,9 @@ export function CostSheetHeaderBar({
                 onClick={() => onSelectSheet(s.id)}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
                   isActive
-                    ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
+                    ? isGeneral
+                      ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
+                      : 'bg-violet-500/25 text-violet-200 border border-violet-400/50'
                     : 'text-slate-400 hover:text-slate-200 border border-transparent'
                 }`}
               >
@@ -68,11 +77,24 @@ export function CostSheetHeaderBar({
           })}
         </div>
 
-        {/* Badge obligatorio Gallina Solo Lectura */}
+        {/* Badge de vista solo lectura sin palabras internas */}
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/10 text-sky-300 border border-sky-400/35">
           <Eye className="w-3.5 h-3.5" />
-          Gallina · Solo Lectura
+          Solo Lectura
           <Lock className="w-3 h-3 opacity-80" />
+        </span>
+
+        {/* Indicador cromático inequívoco: Costo General (Cian) vs Costo por OT (Violeta) */}
+        <span
+          className={`px-2.5 py-1 rounded-full text-[10.5px] font-black uppercase tracking-wider border ${
+            isGeneral
+              ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/50'
+              : 'bg-violet-500/25 text-violet-200 border-violet-400/50'
+          }`}
+        >
+          {isGeneral
+            ? 'Vista: Costos Generales (Buque)'
+            : `Vista: Costos por O.T. (${activeOt?.otNumber || 'O.T.'})`}
         </span>
       </div>
 

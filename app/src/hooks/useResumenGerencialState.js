@@ -1,15 +1,16 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
-  OP_INPUTS_SETTINGS_KEY,
   COMPARATOR_VIEWS_SETTINGS_KEY,
   ADHOC_METRICS_SETTINGS_KEY
 } from '../lib/drydockCatalogConstants'
 import {
+  RESUMEN_REALTIME_TABLES,
   fetchManagerialData,
   resolveDollarReference,
   enrichMaterialMovements,
   enrichLaborLogs,
   enrichThirdPartyServices,
+  filterSelectableShipsByScope,
   computeShipManagerialSummary,
   computeComparatorDataset,
   saveSystemSettingJson,
@@ -17,17 +18,18 @@ import {
   saveRemitoActionWithAudit,
   saveAlfaRateCardWithAudit
 } from '../lib/managerialSummaryService'
+import { useSupabaseRealtimeRefresh } from './useSupabaseRealtimeRefresh'
 
 /**
- * Hook orquestador del estado, datos enriquecidos y mutaciones con auditoría del Resumen Gerencial.
+ * Hook orquestador del estado, datos enriquecidos, sincronización Realtime en vivo
+ * y mutaciones auditadas (únicamente en sub-herramientas editables como Remito / Comparador).
  */
 export function useResumenGerencialState({ actorName = 'Dirección' }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [feedback, setFeedback] = useState(null)
-  const [scope, setScope] = useState('mixto')
+  const [scope, setScope] = useState('activas')
   const [yearFilter, setYearFilter] = useState('TODOS')
-  const [dollarOverride, setDollarOverride] = useState(null)
   const [selectedShipId, setSelectedShipId] = useState('')
   const [selectedOtId, setSelectedOtId] = useState('')
 
@@ -36,31 +38,48 @@ export function useResumenGerencialState({ actorName = 'Dirección' }) {
     setTimeout(() => setFeedback((curr) => (curr?.text === text ? null : curr)), 4500)
   }, [])
 
-  const loadAll = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetchManagerialData()
-      setData(res)
-      setSelectedShipId((prevId) => {
-        if (prevId) return prevId
-        const firstActive =
-          res.ships.find((s) => s.name?.toUpperCase() !== 'ASTILLERO') || res.ships[0]
-        return firstActive?.id || ''
-      })
-    } catch (err) {
-      showFeedback('error', `Error cargando Resumen Gerencial: ${err.message}`)
-    } finally {
-      setLoading(false)
-    }
-  }, [showFeedback])
+  const markSyncedRef = useRef(null)
+
+  const loadAll = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) setLoading(true)
+      try {
+        const res = await fetchManagerialData()
+        setData(res)
+        markSyncedRef.current?.()
+        setSelectedShipId((prevId) => {
+          if (prevId) return prevId
+          const actives = filterSelectableShipsByScope(res.ships, 'activas')
+          const first = actives[0] || res.ships.find((s) => s.name?.toUpperCase() !== 'ASTILLERO') || res.ships[0]
+          return first?.id || ''
+        })
+      } catch (err) {
+        if (!silent) showFeedback('error', `Error cargando Resumen Gerencial: ${err.message}`)
+      } finally {
+        if (!silent) setLoading(false)
+      }
+    },
+    [showFeedback]
+  )
+
+  const { realtimeStatus, lastSyncAt, markSynced } = useSupabaseRealtimeRefresh({
+    channelName: 'resumen_gerencial_live',
+    tables: RESUMEN_REALTIME_TABLES,
+    onSync: () => loadAll({ silent: true }),
+    enabled: true
+  })
 
   useEffect(() => {
-    loadAll()
+    markSyncedRef.current = markSynced
+  }, [markSynced])
+
+  useEffect(() => {
+    loadAll({ silent: false })
   }, [loadAll])
 
   const dollarRate = useMemo(
-    () => resolveDollarReference(data?.macroVariables, data?.rateCards, dollarOverride),
-    [data?.macroVariables, data?.rateCards, dollarOverride]
+    () => resolveDollarReference(data?.macroVariables, data?.rateCards),
+    [data?.macroVariables, data?.rateCards]
   )
 
   const materialRows = useMemo(
@@ -85,10 +104,20 @@ export function useResumenGerencialState({ actorName = 'Dirección' }) {
     return Array.from(yrs).sort((a, b) => b.localeCompare(a))
   }, [materialRows, laborRows, thirdPartyRows])
 
+  const selectableShips = useMemo(
+    () => filterSelectableShipsByScope(data?.ships || [], scope),
+    [data?.ships, scope]
+  )
+
+  const effectiveShipId = useMemo(() => {
+    if (selectableShips.some((s) => s.id === selectedShipId)) return selectedShipId
+    return selectableShips[0]?.id || ''
+  }, [selectableShips, selectedShipId])
+
   const shipSummary = useMemo(() => {
-    if (!data || !selectedShipId) return null
+    if (!data || !effectiveShipId) return null
     return computeShipManagerialSummary({
-      shipId: selectedShipId,
+      shipId: effectiveShipId,
       activeOtId: selectedOtId || 'ALL',
       ships: data.ships,
       workOrders: data.workOrders,
@@ -96,20 +125,10 @@ export function useResumenGerencialState({ actorName = 'Dirección' }) {
       materialRows,
       laborRows,
       thirdPartyRows,
-      operationalInputsByShip: data.operationalInputsByShip,
       scope,
       yearFilter
     })
-  }, [
-    data,
-    selectedShipId,
-    selectedOtId,
-    materialRows,
-    laborRows,
-    thirdPartyRows,
-    scope,
-    yearFilter
-  ])
+  }, [data, effectiveShipId, selectedOtId, materialRows, laborRows, thirdPartyRows, scope, yearFilter])
 
   const comparatorData = useMemo(() => {
     if (!data) return []
@@ -125,33 +144,6 @@ export function useResumenGerencialState({ actorName = 'Dirección' }) {
       yearFilter
     })
   }, [data, materialRows, laborRows, thirdPartyRows, scope, yearFilter])
-
-  const selectableShips = useMemo(
-    () => (data?.ships || []).filter((s) => s.name?.toUpperCase() !== 'ASTILLERO'),
-    [data?.ships]
-  )
-
-  const handleSaveCraneHours = useCallback(
-    async ({ level, shipId, otId, field, value }) => {
-      const currMap = data?.operationalInputsByShip || {}
-      const currShip = currMap[shipId] || {}
-      const nextShip =
-        level === 'SHIP'
-          ? { ...currShip, [field]: value }
-          : {
-              ...currShip,
-              byOt: {
-                ...(currShip.byOt || {}),
-                [otId]: { ...(currShip.byOt?.[otId] || {}), [field]: value }
-              }
-            }
-      const nextMap = { ...currMap, [shipId]: nextShip }
-      await saveSystemSettingJson(OP_INPUTS_SETTINGS_KEY, nextMap, actorName)
-      setData((prev) => ({ ...prev, operationalInputsByShip: nextMap }))
-      showFeedback('success', 'Horas de equipo guardadas en system_settings.')
-    },
-    [data?.operationalInputsByShip, actorName, showFeedback]
-  )
 
   const handleSaveAdhocArea = useCallback(
     async (shipId, areaM2) => {
@@ -221,13 +213,14 @@ export function useResumenGerencialState({ actorName = 'Dirección' }) {
     feedback,
     showFeedback,
     loadAll,
+    realtimeStatus,
+    lastSyncAt,
     scope,
     setScope,
     yearFilter,
     setYearFilter,
     dollarRate,
-    setDollarOverride,
-    selectedShipId,
+    selectedShipId: effectiveShipId,
     setSelectedShipId,
     selectedOtId,
     setSelectedOtId,
@@ -238,7 +231,6 @@ export function useResumenGerencialState({ actorName = 'Dirección' }) {
     shipSummary,
     comparatorData,
     selectableShips,
-    handleSaveCraneHours,
     handleSaveAdhocArea,
     handleSavePresetView,
     handleDeletePresetView,

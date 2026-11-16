@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { RotateCcw } from 'lucide-react'
 import KpiRadar from '../KpiRadar'
 import CrawlerSearchBar from '../CrawlerSearchBar'
@@ -16,6 +16,7 @@ export default function ResumenHojaMaterialesPanel({
   otRows = [],
   activeOtId,
   costScope = 'GENERAL',
+  initialKpiFilter = 'ALL',
   materialRows = [],
   onSelectSheet,
   onChangeCostScope,
@@ -23,9 +24,13 @@ export default function ResumenHojaMaterialesPanel({
   onBackToSummary
 }) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [kpiFilter, setKpiFilter] = useState('ALL')
+  const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [onlyKgPositive, setOnlyKgPositive] = useState(false)
+
+  useEffect(() => {
+    setKpiFilter(initialKpiFilter || 'ALL')
+  }, [initialKpiFilter])
 
   // Base según Buque + Alcance (GENERAL vs POR O.T)
   const scopedBaseRows = useMemo(() => {

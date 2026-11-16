@@ -24,6 +24,7 @@ export default function ResumenGerencial() {
   const [resumenSubView, setResumenSubView] = useState('RESUMEN')
   const [activeCostSheet, setActiveCostSheet] = useState('materiales')
   const [costSheetScope, setCostSheetScope] = useState('GENERAL')
+  const [costSheetInitialKpi, setCostSheetInitialKpi] = useState('ALL')
 
   const state = useResumenGerencialState({
     actorName: profile?.full_name || user?.email || 'Dirección'
@@ -38,12 +39,16 @@ export default function ResumenGerencial() {
 
   const switchTab = (tabId) => {
     setActiveTab(tabId)
-    if (tabId !== 'resumen') setResumenSubView('RESUMEN')
+    setResumenSubView('RESUMEN')
+    setCostSheetInitialKpi('ALL')
     setSearchParams({ tab: tabId }, { replace: true })
   }
 
+  const isExecutiveFitView =
+    (activeTab === 'resumen' && resumenSubView === 'RESUMEN') || activeTab === 'matriz'
+
   return (
-    <div className="space-y-4 pb-8">
+    <div className={isExecutiveFitView ? 'flex flex-col gap-2.5 md:min-h-[calc(100vh-5.5rem)]' : 'space-y-3 pb-8'}>
       <ResumenGerencialHeader
         activeTab={activeTab}
         onSelectTab={switchTab}
@@ -53,6 +58,9 @@ export default function ResumenGerencial() {
           state.setSelectedShipId(shipId)
           state.setSelectedOtId('')
         }}
+        otRows={state.shipSummary?.otRows || []}
+        selectedOtId={state.shipSummary?.activeOt?.id || ''}
+        onChangeOt={state.setSelectedOtId}
         scope={state.scope}
         onChangeScope={state.setScope}
         yearFilter={state.yearFilter}
@@ -60,7 +68,9 @@ export default function ResumenGerencial() {
         availableYears={state.availableYears}
         shipSummary={state.shipSummary}
         loading={state.loading}
-        onRefresh={state.loadAll}
+        onRefresh={() => state.loadAll({ silent: false })}
+        realtimeStatus={state.realtimeStatus}
+        lastSyncAt={state.lastSyncAt}
       />
 
       {state.feedback && (
@@ -95,27 +105,24 @@ export default function ResumenGerencial() {
             <ResumenObraCostosPanel
               summary={state.shipSummary}
               dollarRate={state.dollarRate}
-              onDollarRateOverride={state.setDollarOverride}
-              onSelectOt={state.setSelectedOtId}
-              onOpenMatrixView={() => setResumenSubView('MATRIX')}
-              onOpenCostSheet={(sheetId, nextScope) => {
+              onOpenCostSheet={(sheetId, nextScope, initialKpi = 'ALL') => {
                 setActiveCostSheet(sheetId)
                 setCostSheetScope(nextScope)
+                setCostSheetInitialKpi(initialKpi)
                 setResumenSubView('SHEET')
               }}
-              onSaveCraneHours={state.handleSaveCraneHours}
             />
           )}
 
-          {activeTab === 'resumen' && resumenSubView === 'MATRIX' && (
+          {activeTab === 'matriz' && (
             <ResumenMatrizOtsPanel
               summary={state.shipSummary}
               activeOtId={state.shipSummary?.activeOt?.id}
               onSelectOtAndInspect={(otId) => {
                 state.setSelectedOtId(otId)
-                setResumenSubView('RESUMEN')
+                switchTab('resumen')
               }}
-              onBackToSummary={() => setResumenSubView('RESUMEN')}
+              onBackToSummary={() => switchTab('resumen')}
             />
           )}
 
@@ -125,11 +132,18 @@ export default function ResumenGerencial() {
               otRows={state.shipSummary?.otRows || []}
               activeOtId={state.shipSummary?.activeOt?.id}
               costScope={costSheetScope}
+              initialKpiFilter={costSheetInitialKpi}
               materialRows={state.materialRows}
-              onSelectSheet={setActiveCostSheet}
+              onSelectSheet={(nextSheet) => {
+                setCostSheetInitialKpi('ALL')
+                setActiveCostSheet(nextSheet)
+              }}
               onChangeCostScope={setCostSheetScope}
               onSelectOt={state.setSelectedOtId}
-              onBackToSummary={() => setResumenSubView('RESUMEN')}
+              onBackToSummary={() => {
+                setCostSheetInitialKpi('ALL')
+                setResumenSubView('RESUMEN')
+              }}
             />
           )}
 
@@ -140,7 +154,10 @@ export default function ResumenGerencial() {
               activeOtId={state.shipSummary?.activeOt?.id}
               costScope={costSheetScope}
               laborRows={state.laborRows}
-              onSelectSheet={setActiveCostSheet}
+              onSelectSheet={(nextSheet) => {
+                setCostSheetInitialKpi('ALL')
+                setActiveCostSheet(nextSheet)
+              }}
               onChangeCostScope={setCostSheetScope}
               onSelectOt={state.setSelectedOtId}
               onBackToSummary={() => setResumenSubView('RESUMEN')}
@@ -153,11 +170,18 @@ export default function ResumenGerencial() {
               otRows={state.shipSummary?.otRows || []}
               activeOtId={state.shipSummary?.activeOt?.id}
               costScope={costSheetScope}
+              initialKpiFilter={costSheetInitialKpi}
               thirdPartyRows={state.thirdPartyRows}
-              onSelectSheet={setActiveCostSheet}
+              onSelectSheet={(nextSheet) => {
+                setCostSheetInitialKpi('ALL')
+                setActiveCostSheet(nextSheet)
+              }}
               onChangeCostScope={setCostSheetScope}
               onSelectOt={state.setSelectedOtId}
-              onBackToSummary={() => setResumenSubView('RESUMEN')}
+              onBackToSummary={() => {
+                setCostSheetInitialKpi('ALL')
+                setResumenSubView('RESUMEN')
+              }}
             />
           )}
 
