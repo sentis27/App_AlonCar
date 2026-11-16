@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { RotateCcw } from 'lucide-react'
 import KpiRadar from '../KpiRadar'
 import CrawlerSearchBar from '../CrawlerSearchBar'
@@ -16,6 +16,7 @@ export default function ResumenHojaHorasPanel({
   otRows = [],
   activeOtId,
   costScope = 'GENERAL',
+  initialKpiFilter = 'ALL',
   laborRows = [],
   onSelectSheet,
   onChangeCostScope,
@@ -23,8 +24,12 @@ export default function ResumenHojaHorasPanel({
   onBackToSummary
 }) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [kpiFilter, setKpiFilter] = useState('ALL')
+  const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
   const [workerTypeFilter, setWorkerTypeFilter] = useState('ALL')
+
+  useEffect(() => {
+    setKpiFilter(initialKpiFilter || 'ALL')
+  }, [initialKpiFilter])
 
   const scopedBaseRows = useMemo(() => {
     return laborRows.filter((r) => {
@@ -93,6 +98,7 @@ export default function ResumenHojaHorasPanel({
       if (kpiFilter === 'CORRECTED_RR' && !row.isCorrectedRR) return false
       if (kpiFilter === 'SIN_OT' && !row.hasMissingOt) return false
       if (kpiFilter === 'DEC_013' && !row.isPresupuesto) return false
+      if (['GRUA_GRANDE', 'GRUA_CHICA', 'PALA'].includes(kpiFilter) && row.equipmentType !== kpiFilter) return false
 
       if (workerTypeFilter !== 'ALL' && row.workerType !== workerTypeFilter) return false
       if (searchQuery && !matchesUniversalSearch(row, searchQuery)) return false
@@ -162,6 +168,21 @@ export default function ResumenHojaHorasPanel({
           <option value="Contratista">Contratista (Tarifa Fija)</option>
         </select>
 
+        <select
+          value={['GRUA_GRANDE', 'GRUA_CHICA', 'PALA'].includes(kpiFilter) ? kpiFilter : 'ALL'}
+          onChange={(e) => setKpiFilter(e.target.value)}
+          className={`border rounded-lg px-2.5 py-1.5 text-xs outline-none ${
+            ['GRUA_GRANDE', 'GRUA_CHICA', 'PALA'].includes(kpiFilter)
+              ? 'bg-cyan-950/60 border-cyan-500/60 text-cyan-100 font-bold'
+              : 'bg-slate-950 border-slate-700 text-slate-200'
+          }`}
+        >
+          <option value="ALL">Maquinaria: Todas</option>
+          <option value="GRUA_GRANDE">Solo Grúa Grande</option>
+          <option value="GRUA_CHICA">Solo Grúa Chica</option>
+          <option value="PALA">Solo Horas Pala</option>
+        </select>
+
         {hasFilters && (
           <button
             type="button"
@@ -184,7 +205,7 @@ export default function ResumenHojaHorasPanel({
           exportFilename={`gs004_horas_${ship?.name || 'buque'}.csv`}
           exportColumns={[
             { key: 'date', label: 'Fecha' },
-            { key: 'otNumber', label: 'O.T' },
+            { key: 'otLabel', label: 'O.T' },
             { key: 'workerName', label: 'Operario' },
             { key: 'workerType', label: 'Centro' },
             { key: 'rubro', label: 'Oficio' },
@@ -230,8 +251,8 @@ export default function ResumenHojaHorasPanel({
                   <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
                     <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
                     <td className="px-2.5 py-1.5 whitespace-nowrap font-mono">{r.date || '—'}</td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono text-cyan-300 font-semibold">
-                      {r.otNumber}
+                    <td className="px-2.5 py-1.5 font-mono text-cyan-300 font-semibold max-w-[200px] truncate" title={r.otLabel || r.otNumber}>
+                      {r.otLabel || (r.otTitle ? `${r.otNumber} · ${r.otTitle}` : r.otNumber)}
                     </td>
                     <td className="px-2.5 py-1.5 font-medium text-white truncate max-w-[180px]">
                       {r.workerName}

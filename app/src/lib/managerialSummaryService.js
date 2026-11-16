@@ -33,8 +33,16 @@ import {
   COMPARATOR_VIEWS_SETTINGS_KEY,
   DEFAULT_DRYDOCK_RATE_CARD_ALFA,
   REMITO_SETTINGS_KEY,
+  formatOtAnalysisLabel,
   getQuincenaPeriodFromDate
 } from './drydockCatalogConstants.js'
+import {
+  buildEquipmentHoverSummary,
+  buildHoursHoverSummary,
+  buildMaterialsHoverSummary,
+  buildThirdPartyHoverSummary,
+  mapWorkTypeToHoverCode
+} from './resumenCostHoverHelpers.js'
 
 export const RESUMEN_REALTIME_TABLES = [
   'ships',
@@ -67,6 +75,46 @@ function extractYear(dateStr) {
   if (!dateStr) return null
   const m = String(dateStr).match(/^(\d{4})/)
   return m ? m[1] : null
+}
+
+function normAscii(v) {
+  return String(v || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+}
+
+/**
+ * Clasificador único de horas de maquinaria en Planilla de Horas (`labor_logs`):
+ * retorna 'PALA' | 'GRUA_CHICA' | 'GRUA_GRANDE' | null.
+ */
+export function classifyEquipmentLogType(r = {}) {
+  const structured = normAscii(
+    `${r.rubro || ''} ${r.workerName || r.worker_name || ''} ${r.workerCategory || ''} ${r.workerTrade || ''}`
+  )
+  const notesUpper = normAscii(r.notes || '')
+  const combined = `${structured} ${notesUpper}`
+
+  if (structured.includes('PALA') || /\bPALA\b/.test(notesUpper)) return 'PALA'
+  if (
+    combined.includes('GRUA CHICA') ||
+    combined.includes('GRUA CH') ||
+    combined.includes('GRUA PEQ') ||
+    combined.includes('HIDROGRUA') ||
+    /\b8\s*TON\b|\b8T\b/.test(notesUpper)
+  ) {
+    return 'GRUA_CHICA'
+  }
+  if (
+    combined.includes('GRUA GRANDE') ||
+    combined.includes('GRUA GRD') ||
+    combined.includes('GRUA G') ||
+    /\b60\s*TON\b|\b60T\b/.test(notesUpper)
+  ) {
+    return 'GRUA_GRANDE'
+  }
+  return null
 }
 
 /**
@@ -123,7 +171,7 @@ export async function fetchManagerialData() {
       .select('id, name, category, rubro, cost_ars, cost_usd, weight_kg, current_stock, minimum_stock, unit_measure, requires_stock_control'),
     supabase
       .from('purchase_orders')
-      .select('id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, invoice_number, remito_number, requested_by_name, observations')
+      .select('id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, unit_measure, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, invoice_number, remito_number, requested_by_name, observations')
       .order('order_date', { ascending: false })
       .limit(2000),
     supabase
@@ -234,7 +282,9 @@ export function enrichMaterialMovements({
 
   // 1. Retiros de Pañol (inventory_transactions)
   for (const tx of inventoryTx) {
-    if (!tx) continue
+    if (!tx || tx.is_deletion_requested) continue
+    if (!tx.material_id && Number(tx.quantity_withdrawn || 0) <= 0) continue
+
     const mat = matMap.get(tx.material_id) || null
     const worker = matchTransactionWorker(tx, workers)
     const classification = classifyWithdrawalCost({ material: mat, transaction: tx, worker })
@@ -257,6 +307,12 @@ export function enrichMaterialMovements({
           ? 'CONSUMIBLES'
           : 'MATERIALES'
 
+    // Retiros 100% a cargo de contratista (EPP o Consumibles Tesorería) no computan gasto ni volumen de obra
+    if (classification.bucket === 'SAFETY_CONTRACTOR_DEDUCTION') continue
+    if (logicalCategory === 'CONSUMIBLES' && classification.deductibleToContractor && classification.shipDirectPct === 0) {
+      continue
+    }
+
     rows.push({
       id: `tx_${tx.id}`,
       rawId: tx.id,
@@ -268,6 +324,12 @@ export function enrichMaterialMovements({
       workOrderId: tx.work_order_id || null,
       otNumber: resolvedWo?.ot_number || 'Sin OT',
       otTitle: resolvedWo?.title || '',
+      otLabel: formatOtAnalysisLabel({
+        id: tx.work_order_id || 'SIN_OT',
+        otNumber: resolvedWo?.ot_number || 'Sin OT',
+        title: resolvedWo?.title || '',
+        description: resolvedWo?.description || ''
+      }),
       materialId: tx.material_id || null,
       materialName: mat?.name || tx.notes || 'Insumo sin asignar',
       rubro: normKey(mat?.rubro) || 'GENERAL',
@@ -336,6 +398,12 @@ export function enrichMaterialMovements({
       workOrderId: po.work_order_id || null,
       otNumber: resolvedWo?.ot_number || 'Sin OT',
       otTitle: resolvedWo?.title || '',
+      otLabel: formatOtAnalysisLabel({
+        id: po.work_order_id || 'SIN_OT',
+        otNumber: resolvedWo?.ot_number || 'Sin OT',
+        title: resolvedWo?.title || '',
+        description: resolvedWo?.description || ''
+      }),
       materialId: po.material_id || null,
       materialName: mat?.name || po.material_name_raw || 'Compra Directa',
       rubro: normKey(mat?.rubro) || 'COMPRAS DIRECTAS',
@@ -445,12 +513,15 @@ export function enrichLaborLogs({
   rateCards = [],
   ships = [],
   workOrders = [],
+  workItems = [],
   defaultDollarRate = 1500
 }) {
   const shipMap = new Map(ships.map((s) => [s.id, s]))
   const woMap = new Map(workOrders.map((w) => [w.id, w]))
+  const wiMap = new Map(workItems.map((wi) => [wi.id, wi]))
   const workerById = new Map(workers.map((w) => [w.id, w]))
   const workerByName = new Map(workers.map((w) => [normKey(w.name), w]))
+  const VALID_WORK_TYPES = new Set(['HORA', 'PRESUPUESTO', 'CONTROL'])
 
   return laborLogs.map((log) => {
     const worker =
@@ -459,6 +530,7 @@ export function enrichLaborLogs({
       null
 
     const resolvedWo = log.work_order_id ? woMap.get(log.work_order_id) || null : null
+    const resolvedWi = log.work_item_id ? wiMap.get(log.work_item_id) || null : null
     const resolvedShipId = log.ship_id || resolvedWo?.ship_id || null
     const resolvedShip = resolvedShipId ? shipMap.get(resolvedShipId) || null : null
 
@@ -469,6 +541,7 @@ export function enrichLaborLogs({
 
     const isContractor =
       normKey(log.worker_type) === 'CONTRATISTA' ||
+      normKey(log.worker_type) === 'TALLER' ||
       normKey(worker?.admin_center) === 'CONTRATISTA' ||
       normKey(worker?.admin_center) === 'TALLER'
 
@@ -476,9 +549,23 @@ export function enrichLaborLogs({
       ? hoursPhysical
       : round2(hNorm + h50 * 1.5 + h100 * 2.0)
 
-    const workTypeUpper = normKey(log.work_type)
+    const rawLogWt = normKey(log.work_type)
+    const wiWt = normKey(resolvedWi?.work_type)
+    const woWt = normKey(resolvedWo?.work_type)
+    const workTypeUpper = VALID_WORK_TYPES.has(rawLogWt)
+      ? rawLogWt
+      : VALID_WORK_TYPES.has(wiWt)
+        ? wiWt
+        : VALID_WORK_TYPES.has(woWt)
+          ? woWt
+          : 'HORA'
+
     const isPresupuesto =
       workTypeUpper === 'PRESUPUESTO' || normKey(log.cost_center) === 'PRESUPUESTO'
+    const workTypeCode = isPresupuesto ? 'PRC' : mapWorkTypeToHoverCode(workTypeUpper)
+    const contractorGroup = isContractor
+      ? normKey(worker?.work_group || log.worker_name || 'CONTRATISTA')
+      : 'ASTILLERO'
 
     const { rateUsd, source: rateSource } = resolveHourlyRateForLog({
       log,
@@ -493,6 +580,18 @@ export function enrichLaborLogs({
     const approvedUsd = isPendingR ? 0 : costUsd
     const pendingRUsd = isPendingR ? costUsd : 0
     const prcNumber = String(log.notes || '').match(/PRC[-_\s#]*(\d+)/i)?.[1] || ''
+    const workerName = log.worker_name || worker?.name || 'Operario'
+    const workerCategory = normKey(worker?.category || '')
+    const workerTrade = normKey(worker?.trade || '')
+    const rubro = normKey(log.rubro || worker?.trade || 'GENERAL')
+    const notes = log.notes || log.review_reason || ''
+    const equipmentType = classifyEquipmentLogType({
+      rubro,
+      workerName,
+      workerCategory,
+      workerTrade,
+      notes
+    })
 
     return {
       id: log.id,
@@ -503,12 +602,21 @@ export function enrichLaborLogs({
       workOrderId: log.work_order_id || null,
       otNumber: resolvedWo?.ot_number || 'Sin OT',
       otTitle: resolvedWo?.title || '',
-      workerName: log.worker_name || worker?.name || 'Operario',
+      otLabel: formatOtAnalysisLabel({
+        id: log.work_order_id || 'SIN_OT',
+        otNumber: resolvedWo?.ot_number || 'Sin OT',
+        title: resolvedWo?.title || '',
+        description: resolvedWo?.description || ''
+      }),
+      workerName,
+      contractorGroup,
       workerType: isContractor ? 'Contratista' : 'Astillero',
-      workerCategory: normKey(worker?.category || ''),
-      workerTrade: normKey(worker?.trade || ''),
-      rubro: normKey(log.rubro || worker?.trade || 'GENERAL'),
+      workerCategory,
+      workerTrade,
+      rubro,
+      equipmentType,
       workType: workTypeUpper || 'HORA',
+      workTypeCode,
       isPresupuesto,
       prcNumber,
       hoursNormal: round2(hNorm),
@@ -526,7 +634,7 @@ export function enrichLaborLogs({
       isCorrectedRR: approvalRaw === 'RR',
       hasMissingOt: !log.work_order_id,
       hasMissingPrc: isPresupuesto && !prcNumber,
-      notes: log.notes || log.review_reason || ''
+      notes
     }
   })
 }
@@ -569,6 +677,12 @@ export function enrichThirdPartyServices({
         workOrderId: s.work_order_id || null,
         otNumber: resolvedWo?.ot_number || 'Sin OT',
         otTitle: resolvedWo?.title || '',
+        otLabel: formatOtAnalysisLabel({
+          id: s.work_order_id || 'SIN_OT',
+          otNumber: resolvedWo?.ot_number || 'Sin OT',
+          title: resolvedWo?.title || '',
+          description: resolvedWo?.description || ''
+        }),
         contractorName: s.contractor_name || 'Contratista',
         rubro: normKey(s.trade || 'VARIOS'),
         amountArs: round2(ars),
@@ -598,14 +712,6 @@ function matchesScopeFilter(ship, ot, scope) {
   return scope === 'historico' ? isHist : !isHist
 }
 
-function normAscii(v) {
-  return String(v || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toUpperCase()
-}
-
 /**
  * Filtra los buques visibles en Zona 1 según alcance (`activas` por defecto, `historico` o `mixto`).
  */
@@ -630,30 +736,10 @@ export function sumEquipmentHoursFromLogs(rows = []) {
     const hrs = Number(r.hoursPhysical ?? r.hours_worked) || 0
     if (hrs <= 0) continue
 
-    const structured = normAscii(
-      `${r.rubro || ''} ${r.workerName || r.worker_name || ''} ${r.workerCategory || ''} ${r.workerTrade || ''}`
-    )
-    const notesUpper = normAscii(r.notes || '')
-    const combined = `${structured} ${notesUpper}`
-
-    if (structured.includes('PALA') || /\bPALA\b/.test(notesUpper)) {
-      hrsPala += hrs
-    } else if (
-      combined.includes('GRUA CHICA') ||
-      combined.includes('GRUA CH') ||
-      combined.includes('GRUA PEQ') ||
-      combined.includes('HIDROGRUA') ||
-      /\b8\s*TON\b|\b8T\b/.test(notesUpper)
-    ) {
-      gruaChica += hrs
-    } else if (
-      combined.includes('GRUA GRANDE') ||
-      combined.includes('GRUA GRD') ||
-      combined.includes('GRUA G') ||
-      /\b60\s*TON\b|\b60T\b/.test(notesUpper)
-    ) {
-      gruaGrande += hrs
-    }
+    const eqType = r.equipmentType || classifyEquipmentLogType(r)
+    if (eqType === 'PALA') hrsPala += hrs
+    else if (eqType === 'GRUA_CHICA') gruaChica += hrs
+    else if (eqType === 'GRUA_GRANDE') gruaGrande += hrs
   }
 
   return {
@@ -663,7 +749,7 @@ export function sumEquipmentHoursFromLogs(rows = []) {
   }
 }
 
-function buildTopDonutSegments(entries = [], maxSlices = 5) {
+function buildTopDonutSegments(entries = [], maxSlices = 12) {
   const valid = entries
     .filter((e) => Number(e.value) > 0)
     .sort((a, b) => b.value - a.value)
@@ -773,11 +859,15 @@ export function computeShipManagerialSummary({
       .filter(Boolean)
       .join(' · ')
 
+    const otNum = wo.ot_number || 'OT'
+    const otTitle = wo.title || 'Sin título'
+    const otDesc = wo.description || itemsDesc || 'Sin descripción registrada'
     return {
       id: wo.id,
-      otNumber: wo.ot_number || 'OT',
-      title: wo.title || 'Sin título',
-      description: wo.description || itemsDesc || 'Sin descripción registrada',
+      otNumber: otNum,
+      title: otTitle,
+      otLabel: formatOtAnalysisLabel({ id: wo.id, otNumber: otNum, title: otTitle, description: otDesc }),
+      description: otDesc,
       workType: wo.work_type || 'HORA',
       status: wo.status || 'En Progreso',
       ...bucket,
@@ -797,6 +887,7 @@ export function computeShipManagerialSummary({
       id: 'SIN_OT',
       otNumber: 'S/OT',
       title: 'MOVIMIENTOS SIN OT ASIGNADA',
+      otLabel: formatOtAnalysisLabel({ id: 'SIN_OT', otNumber: 'S/OT', title: 'MOVIMIENTOS SIN OT ASIGNADA' }),
       description: 'Imputaciones cargadas al buque pendientes de vinculación a una OT',
       workType: 'HORA',
       status: 'Pendiente OT',
@@ -836,15 +927,6 @@ export function computeShipManagerialSummary({
     otHrsPala: otEq.hrsPala
   }
 
-  // Donuts Buque (4)
-  const donutsShip = {
-    totalPorOt: buildTopDonutSegments(otRows.map((o) => ({ label: o.otNumber, value: o.directTotalUsd }))),
-    pesosPorOt: buildTopDonutSegments(otRows.map((o) => ({ label: o.otNumber, value: o.weightKg }))),
-    horasPorOt: buildTopDonutSegments(otRows.map((o) => ({ label: o.otNumber, value: o.physicalHours }))),
-    tercerosPorOt: buildTopDonutSegments(otRows.map((o) => ({ label: o.otNumber, value: o.tercerosUsd })))
-  }
-
-  // Donuts OT Activa (3)
   const groupSum = (items, keyFn, valFn) => {
     const m = new Map()
     items.forEach((it) => {
@@ -852,6 +934,18 @@ export function computeShipManagerialSummary({
       m.set(k, (m.get(k) || 0) + (Number(valFn(it)) || 0))
     })
     return buildTopDonutSegments(Array.from(m.entries()).map(([label, value]) => ({ label, value })))
+  }
+
+  // Donuts Buque (4) — Documentación GS-004 + Imagen 3:
+  // Total por O.T (con nombre obligatorio), Distribución Peso por Rubro material,
+  // Total de Horas por Rubro/Oficio y Terceros Total por Taller/Contratista.
+  const donutsShip = {
+    totalPorOt: buildTopDonutSegments(
+      otRows.map((o) => ({ label: o.otLabel || formatOtAnalysisLabel(o), value: o.directTotalUsd }))
+    ),
+    pesosPorOt: groupSum(shipMats, (m) => m.rubro, (m) => m.weightKg),
+    horasPorOt: groupSum(shipLabor, (l) => l.rubro, (l) => l.hoursPhysical),
+    tercerosPorOt: groupSum(shipTps, (t) => `${t.contractorName} (${t.voucherType})`, (t) => t.amountUsd)
   }
 
   const donutsOt = {
@@ -866,6 +960,28 @@ export function computeShipManagerialSummary({
     ships: ship ? [ship] : []
   })
 
+  const hoverSummaries = {
+    ship: {
+      materiales: buildMaterialsHoverSummary(shipMats, { category: 'MATERIALES' }),
+      consumibles: buildMaterialsHoverSummary(shipMats, { category: 'CONSUMIBLES' }),
+      terceros: buildThirdPartyHoverSummary(shipTps),
+      horasAprobadas: buildHoursHoverSummary(shipLabor, { filterMode: 'APPROVED' }),
+      horasPendR: buildHoursHoverSummary(shipLabor, { filterMode: 'PENDING_R' }),
+      gruaGrande: buildEquipmentHoverSummary(shipLabor, 'GRUA_GRANDE'),
+      gruaChica: buildEquipmentHoverSummary(shipLabor, 'GRUA_CHICA')
+    },
+    ot: resolvedOt
+      ? {
+          materiales: buildMaterialsHoverSummary(otMats, { category: 'MATERIALES' }),
+          consumibles: buildMaterialsHoverSummary(otMats, { category: 'CONSUMIBLES' }),
+          terceros: buildThirdPartyHoverSummary(otTps),
+          horasTotal: buildHoursHoverSummary(otLabor, { filterMode: 'ALL' }),
+          gruaGrande: buildEquipmentHoverSummary(otLabor, 'GRUA_GRANDE'),
+          gruaChica: buildEquipmentHoverSummary(otLabor, 'GRUA_CHICA')
+        }
+      : null
+  }
+
   return {
     ship,
     totals,
@@ -875,6 +991,7 @@ export function computeShipManagerialSummary({
     donutsOt,
     craneHours,
     zeroCostAlerts,
+    hoverSummaries,
     filteredCounts: {
       materials: shipMats.length,
       labor: shipLabor.length,

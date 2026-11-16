@@ -6,7 +6,8 @@ import {
   Table2,
   ReceiptText,
   Ship,
-  Radio
+  Radio,
+  DollarSign
 } from 'lucide-react'
 import { RESUMEN_GERENCIAL_TABS, formatUsd } from '../../lib/drydockCatalogConstants'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
@@ -53,6 +54,7 @@ export default function ResumenGerencialHeader({
   onChangeYear,
   availableYears = [],
   shipSummary,
+  dollarRate = 1500,
   loading = false,
   onRefresh,
   realtimeStatus = 'CONNECTING',
@@ -105,35 +107,37 @@ export default function ResumenGerencialHeader({
 
   return (
     <div className="alon-zone-context p-3 bg-slate-900/80 space-y-2 shrink-0">
-      {/* Fila 1: Identidad analítica (sin palabra Gallina) + 2 Grupos de Menú */}
+      {/* Fila 1: Identidad analítica + Dólar Ref. + 2 Grupos de Menú */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-black text-white tracking-tight">Resumen Gerencial</h1>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 text-sky-300 border border-sky-400/35">
-            {isRemitoView ? (
-              <ReceiptText className="w-3 h-3 shrink-0" />
-            ) : (
-              <BarChart3 className="w-3 h-3 shrink-0" />
-            )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-xl font-black text-white tracking-tight">Resumen Gerencial</h1>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-500/15 text-sky-300 border border-sky-400/35">
+            {isRemitoView ? <ReceiptText className="w-3.5 h-3.5 shrink-0" /> : <BarChart3 className="w-3.5 h-3.5 shrink-0" />}
             <span>GS-004 · {currentTabMeta.badge}</span>
           </span>
+
+          {/* Dólar Ref. trasladado a Zona 1 (solo lectura desde Macro Variables / Tarifarios) */}
+          <div
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950/95 border border-emerald-500/45 select-none shadow-sm"
+            title="Tipo de cambio de referencia vigente (solo lectura desde Macro Variables / Tarifarios)"
+          >
+            <DollarSign className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dólar Ref.</span>
+            <span className="text-sm font-black text-emerald-300 tabular-nums leading-none">
+              ${Number(dollarRate || 1500).toLocaleString('es-AR')}
+            </span>
+          </div>
         </div>
 
         {/* Dos tipos de menús separados visualmente */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 bg-cyan-950/25 border border-cyan-500/35 px-1.5 py-1 rounded-xl">
-            <span className="hidden sm:inline text-[9px] font-black uppercase tracking-wider text-cyan-300/90 px-1.5">
-              Obra Filtrada:
-            </span>
+            <span className="hidden sm:inline text-[9px] font-black uppercase tracking-wider text-cyan-300/90 px-1.5">Obra Filtrada:</span>
             {obraTabs.map(renderTabButton)}
           </div>
-
           <div className="hidden sm:block h-5 w-px bg-slate-700/80" aria-hidden="true" />
-
           <div className="flex items-center gap-1 bg-slate-950/90 border border-violet-500/30 px-1.5 py-1 rounded-xl">
-            <span className="hidden sm:inline text-[9px] font-black uppercase tracking-wider text-violet-300/85 px-1.5">
-              Independientes:
-            </span>
+            <span className="hidden sm:inline text-[9px] font-black uppercase tracking-wider text-violet-300/85 px-1.5">Independientes:</span>
             {toolTabs.map(renderTabButton)}
           </div>
         </div>
@@ -153,9 +157,7 @@ export default function ResumenGerencialHeader({
                 <option value="">Sin buques para este alcance</option>
               ) : (
                 selectableShips.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    Buque: {s.name} ({s.status || 'Activo'})
-                  </option>
+                  <option key={s.id} value={s.id}>Buque: {s.name} ({s.status || 'Activo'})</option>
                 ))
               )}
             </select>
@@ -165,7 +167,7 @@ export default function ResumenGerencialHeader({
               value={selectedOtId || ''}
               onChange={(e) => onChangeOt(e.target.value)}
               disabled={otRows.length === 0}
-              className="w-full sm:w-auto sm:min-w-[230px] max-w-full sm:max-w-[340px] bg-slate-950 border border-violet-500/45 rounded-lg px-2.5 py-1.5 text-xs font-bold text-violet-100 outline-none disabled:opacity-50 min-h-[34px]"
+              className="w-full sm:w-auto sm:min-w-[230px] max-w-full sm:max-w-[360px] bg-slate-950 border border-violet-500/45 rounded-lg px-2.5 py-1.5 text-xs font-bold text-violet-100 outline-none disabled:opacity-50 min-h-[34px]"
               title="Filtra el detalle por Orden de Trabajo manteniendo intacto el Costo General del buque"
             >
               {otRows.length === 0 ? (
@@ -173,7 +175,7 @@ export default function ResumenGerencialHeader({
               ) : (
                 otRows.map((o) => (
                   <option key={o.id} value={o.id}>
-                    OT: {o.otNumber} · {o.title} ({formatUsd(o.directTotalUsd, 0)})
+                    OT: {o.otLabel || `${o.otNumber} · ${o.title}`} ({formatUsd(o.directTotalUsd, 0)})
                   </option>
                 ))
               )}
@@ -189,11 +191,7 @@ export default function ResumenGerencialHeader({
                   key={s.id}
                   type="button"
                   onClick={() => onChangeScope(s.id)}
-                  className={`px-2 py-1 rounded-md font-semibold cursor-pointer ${
-                    scope === s.id
-                      ? 'bg-sky-500/25 text-sky-200'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                  className={`px-2 py-1 rounded-md font-semibold cursor-pointer ${scope === s.id ? 'bg-sky-500/25 text-sky-200' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   {s.label}
                 </button>
@@ -207,11 +205,7 @@ export default function ResumenGerencialHeader({
               className="hidden md:block bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 outline-none"
             >
               <option value="TODOS">Año: Todos</option>
-              {availableYears.map((yr) => (
-                <option key={yr} value={yr}>
-                  Año {yr}
-                </option>
-              ))}
+              {availableYears.map((yr) => <option key={yr} value={yr}>Año {yr}</option>)}
             </select>
           </div>
         ) : isRemitoView ? (
@@ -223,9 +217,7 @@ export default function ResumenGerencialHeader({
               className="w-full sm:w-auto bg-slate-950 border border-emerald-500/45 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white outline-none"
             >
               {selectableShips.map((s) => (
-                <option key={s.id} value={s.id}>
-                  Remito de Buque: {s.name} ({s.status || 'Activo'})
-                </option>
+                <option key={s.id} value={s.id}>Remito de Buque: {s.name} ({s.status || 'Activo'})</option>
               ))}
             </select>
             <span className="text-[11px] text-emerald-300/80 bg-emerald-950/30 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
@@ -257,9 +249,7 @@ export default function ResumenGerencialHeader({
           )}
           <span
             className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border ${
-              realtimeStatus === 'SUBSCRIBED'
-                ? 'bg-emerald-950/45 border-emerald-500/35 text-emerald-300'
-                : 'bg-slate-900 border-slate-700 text-slate-400'
+              realtimeStatus === 'SUBSCRIBED' ? 'bg-emerald-950/45 border-emerald-500/35 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'
             }`}
             title={
               realtimeStatus === 'SUBSCRIBED'

@@ -32,6 +32,7 @@ export function CostSheetHeaderBar({
   onBackToSummary
 }) {
   const activeOt = otRows.find((o) => o.id === activeOtId) || null
+  const activeOtDisplay = activeOt?.otLabel || (activeOt ? `${activeOt.otNumber} · ${activeOt.title}` : 'O.T.')
   const isGeneral = costScope === 'GENERAL'
 
   return (
@@ -94,7 +95,7 @@ export function CostSheetHeaderBar({
         >
           {isGeneral
             ? 'Vista: Costos Generales (Buque)'
-            : `Vista: Costos por O.T. (${activeOt?.otNumber || 'O.T.'})`}
+            : `Vista: Costos por O.T. (${activeOtDisplay})`}
         </span>
       </div>
 
@@ -125,7 +126,7 @@ export function CostSheetHeaderBar({
                 : 'text-slate-400 hover:text-slate-200 border border-transparent'
             }`}
           >
-            Por O.T {activeOt ? `(${activeOt.otNumber})` : ''}
+            Por O.T {activeOt ? `(${activeOtDisplay})` : ''}
           </button>
         </div>
 
@@ -137,7 +138,7 @@ export function CostSheetHeaderBar({
           >
             {otRows.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.otNumber} · {o.title}
+                {o.otLabel || `${o.otNumber} · ${o.title}`}
               </option>
             ))}
           </select>

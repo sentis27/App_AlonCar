@@ -12,7 +12,8 @@ export default function ResumenCostosMobileView({
   totals,
   activeOt,
   craneHours = {},
-  zeroCostAlerts = { thirdPartyCount: 0, materialsCount: 0, thirdPartyItems: [], materialItems: [] }
+  zeroCostAlerts = { thirdPartyCount: 0, materialsCount: 0, thirdPartyItems: [], materialItems: [] },
+  onOpenCostSheet
 }) {
   const [expandedAlert, setExpandedAlert] = useState(null)
 
@@ -49,26 +50,46 @@ export default function ResumenCostosMobileView({
         </div>
 
         <div className="divide-y divide-slate-800/80 text-xs">
-          <div className="px-3.5 py-1.5 flex justify-between">
+          <button
+            type="button"
+            onClick={() => onOpenCostSheet?.('materiales', 'GENERAL', 'MATERIALES')}
+            className="w-full px-3.5 py-2 flex justify-between text-left hover:bg-cyan-950/30 cursor-pointer"
+          >
             <span className="text-slate-300">1. Materiales</span>
             <span className="font-bold text-slate-100 tabular-nums">{formatUsd(totals.materialesUsd)}</span>
-          </div>
-          <div className="px-3.5 py-1.5 flex justify-between">
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenCostSheet?.('materiales', 'GENERAL', 'CONSUMIBLES')}
+            className="w-full px-3.5 py-2 flex justify-between text-left hover:bg-cyan-950/30 cursor-pointer"
+          >
             <span className="text-slate-300">2. Consumibles Obra</span>
             <span className="font-bold text-slate-100 tabular-nums">{formatUsd(totals.consumiblesObraUsd)}</span>
-          </div>
-          <div className="px-3.5 py-1.5 flex justify-between">
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenCostSheet?.('terceros', 'GENERAL', 'ALL')}
+            className="w-full px-3.5 py-2 flex justify-between text-left hover:bg-cyan-950/30 cursor-pointer"
+          >
             <span className="text-slate-300">3. Terceros</span>
             <span className="font-bold text-slate-100 tabular-nums">{formatUsd(totals.tercerosUsd)}</span>
-          </div>
-          <div className="px-3.5 py-1.5 flex justify-between">
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenCostSheet?.('horas', 'GENERAL', 'APPROVED')}
+            className="w-full px-3.5 py-2 flex justify-between text-left hover:bg-cyan-950/30 cursor-pointer"
+          >
             <span className="text-slate-300">4. Horas Aprobadas</span>
             <span className="font-bold text-slate-100 tabular-nums">{formatUsd(totals.horasUsd)}</span>
-          </div>
-          <div className="px-3.5 py-1.5 flex justify-between bg-amber-950/15">
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenCostSheet?.('horas', 'GENERAL', 'PENDING_R')}
+            className="w-full px-3.5 py-2 flex justify-between text-left bg-amber-950/15 hover:bg-amber-950/35 cursor-pointer"
+          >
             <span className="text-amber-200">5. Horas Pend. (&quot;R&quot;)</span>
             <span className="font-bold text-amber-300 tabular-nums">{formatUsd(totals.horasPendAprobarUsd)}</span>
-          </div>
+          </button>
           <div className="px-3.5 py-1.5 bg-amber-500/10 border-t border-dashed border-amber-400/40 flex justify-between items-center text-[11px]">
             <span className="inline-flex items-center gap-1 text-amber-300 font-semibold">
               <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
@@ -138,7 +159,7 @@ export default function ResumenCostosMobileView({
               Detalle Orden de Trabajo
             </span>
             <span className="text-xs font-extrabold text-white truncate block">
-              {activeOt ? `${activeOt.otNumber} — ${activeOt.title}` : 'Sin OT activa'}
+              {activeOt ? (activeOt.otLabel || `${activeOt.otNumber} — ${activeOt.title}`) : 'Sin OT activa'}
             </span>
           </div>
           {activeOt && (

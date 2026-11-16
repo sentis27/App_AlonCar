@@ -378,3 +378,42 @@ export function getQuincenaPeriodFromDate(dateStr) {
   const q = day <= 15 ? '1Q' : '2Q'
   return `${year}-${month}-${q}`
 }
+
+/**
+ * Regla global de análisis GS-004:
+ * Una Orden de Trabajo NUNCA puede exhibirse solo por su número;
+ * siempre muestra su nombre/título (y número cuando existe).
+ */
+export function formatOtAnalysisLabel(otOrRow, { includeNumber = true } = {}) {
+  if (!otOrRow) return 'S/OT · SIN OT ASIGNADA'
+
+  const num = String(otOrRow.otNumber ?? otOrRow.ot_number ?? '').trim()
+  const rawTitle = String(otOrRow.title ?? otOrRow.otTitle ?? '').trim()
+  const desc = String(otOrRow.description ?? '').trim()
+  const id = String(otOrRow.id ?? '').trim()
+
+  const isUnassigned =
+    id === 'SIN_OT' ||
+    !num ||
+    num.toUpperCase() === 'S/OT' ||
+    num.toUpperCase() === 'SIN OT'
+
+  if (isUnassigned) {
+    if (rawTitle && rawTitle.toLowerCase() !== 'sin título') return rawTitle
+    return 'S/OT · SIN OT ASIGNADA'
+  }
+
+  const hasValidTitle = rawTitle && rawTitle.toLowerCase() !== 'sin título'
+  if (hasValidTitle) {
+    if (!includeNumber) return rawTitle
+    if (rawTitle.toUpperCase().startsWith(num.toUpperCase())) return rawTitle
+    return `${num} · ${rawTitle}`
+  }
+
+  if (desc) {
+    const shortDesc = desc.length > 42 ? `${desc.slice(0, 42).trim()}…` : desc
+    return includeNumber ? `${num} · ${shortDesc}` : shortDesc
+  }
+
+  return includeNumber ? `${num} · Trabajo de Obra` : 'Trabajo de Obra'
+}

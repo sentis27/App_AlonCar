@@ -7,6 +7,18 @@
 
 <!-- Las nuevas entradas de cierre se agregan aquí arriba -->
 
+## [2026-11-16] Sesión de Cierre — Modalidad Columna F (`/horas`) y Rediseño Resumen Gerencial (`GS-004`)
+- **Hora:** 16:56 ART | **Agente:** Antigravity | **Revisor:** Usuario
+- **Superficie evaluada (`33` archivos `app/` + `docs/`):**
+  * `/horas` (`10` archivos): `laborService.js`, `laborConstants.js`, `laborCargaGridHelpers.js`, `laborCargaService.js`, `laborFacialClockHelpers.js`, `LaborClockAssignSheet.jsx`, `LaborLogsTable.jsx`, `LaborLogsTableRow.jsx`, `LaborModals.jsx`, `LaborLogs.jsx` — restauración de Columna F (`work_type`: `HORA | PRESUPUESTO | CONTROL`).
+  * `/resumen-gerencial` (`22` archivos + `docs/planillas/resumen-gerencial.md`): unificación de Dólar Ref. en Zona 1, eliminación de Zona 2 redundante, anillos limpios (`showLegend={false}`), regla OT Nombre+Número (`formatOtAnalysisLabel`), hover emergente (`CostCategoryHoverCard`, `CostHoverMaterialsSection`, `resumenCostHoverHelpers.js`), exclusión de bajas solicitadas (`is_deletion_requested`) y retiros 100% contratista en obra sin romper Tesorería (`workCostRules.js`), donuts generales por Rubro/Oficio (`DISTRIBUCIÓN PESO` y `TOTAL DE HORAS`), y botones interactivos de maquinaria (`ResumenEquipmentButtonsRow.jsx`, filtro `GRUA_GRANDE` / `GRUA_CHICA` / `PALA` en `ResumenHojaHorasPanel.jsx`).
+- **Blast Radius:** En `/horas`, normalización consistente de `work_type` respetando DEC-013. En `/resumen-gerencial`, `resolveConsumablesDiscountPct` evaluó primero `ASTILLERO`/`CLIENTE` (`0%`) sin alterar la deducción automática de Tesorería (`evaluateContractorDeductions`, verificado `TANO = US$ 26,42`).
+- **Tracker Anti-Rot:** Nuevos módulos bajo límite estricto (`ResumenEquipmentButtonsRow.jsx` `108 L`, `CostCategoryHoverCard.jsx` `179 L`, `resumenCostHoverHelpers.js` `288 L`, `workCostRules.js` `286 L`). Cero SQL directo en vistas; trazabilidad en `auditService.js`.
+- **Verificación Runtime & Build:** Node live vs Supabase (`ERRORS: null`, `NONO PASCUAL`: `2. MAT. CONSUMIBLES = US$ 115,08`, `DELETED ROWS INCLUDED COUNT: 0`, donuts generales por rubro/oficio) + `npm.cmd run build` (`PASS`) + `oxlint` (`0` errors) + `npm.cmd run check:hygiene` (`OK`).
+- **Veredicto Final:** 🟢 **COMMITS ATÓMICOS Y PUSH A `origin/main` LISTOS**
+
+---
+
 ## [2026-11-15] Sesión de Cierre — Restauración Listas Operarios `/horas` (Lógica Pañol `[H]`) y Blindaje Anti-Regresión (`ERR-006`, `PLAN-001`)
 - **Hora:** 22:05 ART | **Agente:** Antigravity | **Revisor:** Usuario
 - **Superficie evaluada (Lote `/horas` + Protocolo `ERR-` + Auditoría/Higiene, sin incluir trabajo previo ajeno sin commitear):**

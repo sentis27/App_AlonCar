@@ -50,16 +50,17 @@ export function resolveEffectiveSafetyCenter(worker) {
  */
 export function resolveConsumablesDiscountPct(worker) {
   if (!worker) return 0
+  if (String(worker.admin_center || '').trim().toUpperCase() === 'ASTILLERO') return 0
+  const tag = String(worker.consumables || '').trim().toUpperCase()
+  if (tag === 'CLIENTE') return 0
   if (worker.consumables_discount_pct !== null && worker.consumables_discount_pct !== undefined && worker.consumables_discount_pct !== '') {
     const num = Number(worker.consumables_discount_pct)
     if (Number.isFinite(num)) return Math.max(0, Math.min(100, num))
   }
-  const tag = String(worker.consumables || '').trim().toUpperCase()
   if (tag === 'CONTRATISTA') return 100
-  if (tag === 'CLIENTE') return 0
   const m = tag.match(/(\d+)/)
   if (m) return Math.max(0, Math.min(100, Number(m[1])))
-  return String(worker.admin_center || '').toUpperCase() === 'ASTILLERO' ? 0 : 100
+  return 100
 }
 
 /**

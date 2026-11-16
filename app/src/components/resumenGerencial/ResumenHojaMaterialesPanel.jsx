@@ -218,7 +218,7 @@ export default function ResumenHojaMaterialesPanel({
           exportColumns={[
             { key: 'date', label: 'Fecha' },
             { key: 'sourceType', label: 'Origen' },
-            { key: 'otNumber', label: 'O.T' },
+            { key: 'otLabel', label: 'O.T' },
             { key: 'materialName', label: 'Material' },
             { key: 'rubro', label: 'Rubro' },
             { key: 'category', label: 'Clasificación' },
@@ -275,8 +275,8 @@ export default function ResumenHojaMaterialesPanel({
                         {r.sourceType === 'COMPRA_DIRECTA' ? 'OC DIRECTA' : 'PAÑOL'}
                       </span>
                     </td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono text-cyan-300 font-semibold">
-                      {r.otNumber}
+                    <td className="px-2.5 py-1.5 font-mono text-cyan-300 font-semibold max-w-[200px] truncate" title={r.otLabel || r.otNumber}>
+                      {r.otLabel || (r.otTitle ? `${r.otNumber} · ${r.otTitle}` : r.otNumber)}
                     </td>
                     <td className="px-2.5 py-1.5 font-medium text-white max-w-[220px] truncate" title={r.materialName}>
                       {r.materialName}

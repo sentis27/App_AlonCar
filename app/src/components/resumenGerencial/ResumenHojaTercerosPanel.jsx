@@ -194,7 +194,7 @@ export default function ResumenHojaTercerosPanel({
           exportFilename={`gs004_terceros_${ship?.name || 'buque'}.csv`}
           exportColumns={[
             { key: 'date', label: 'Fecha' },
-            { key: 'otNumber', label: 'O.T' },
+            { key: 'otLabel', label: 'O.T' },
             { key: 'contractorName', label: 'Contratista' },
             { key: 'rubro', label: 'Rubro' },
             { key: 'voucherType', label: 'Tipo' },
@@ -237,8 +237,8 @@ export default function ResumenHojaTercerosPanel({
                   <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
                     <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
                     <td className="px-2.5 py-1.5 whitespace-nowrap font-mono">{r.date || '—'}</td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono text-cyan-300 font-semibold">
-                      {r.otNumber}
+                    <td className="px-2.5 py-1.5 font-mono text-cyan-300 font-semibold max-w-[200px] truncate" title={r.otLabel || r.otNumber}>
+                      {r.otLabel || (r.otTitle ? `${r.otNumber} · ${r.otTitle}` : r.otNumber)}
                     </td>
                     <td className="px-2.5 py-1.5 font-medium text-white truncate max-w-[190px]">
                       {r.contractorName}

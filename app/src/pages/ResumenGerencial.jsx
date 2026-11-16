@@ -67,6 +67,7 @@ export default function ResumenGerencial() {
         onChangeYear={state.setYearFilter}
         availableYears={state.availableYears}
         shipSummary={state.shipSummary}
+        dollarRate={state.dollarRate}
         loading={state.loading}
         onRefresh={() => state.loadAll({ silent: false })}
         realtimeStatus={state.realtimeStatus}
@@ -104,7 +105,6 @@ export default function ResumenGerencial() {
           {activeTab === 'resumen' && resumenSubView === 'RESUMEN' && (
             <ResumenObraCostosPanel
               summary={state.shipSummary}
-              dollarRate={state.dollarRate}
               onOpenCostSheet={(sheetId, nextScope, initialKpi = 'ALL') => {
                 setActiveCostSheet(sheetId)
                 setCostSheetScope(nextScope)
@@ -153,6 +153,7 @@ export default function ResumenGerencial() {
               otRows={state.shipSummary?.otRows || []}
               activeOtId={state.shipSummary?.activeOt?.id}
               costScope={costSheetScope}
+              initialKpiFilter={costSheetInitialKpi}
               laborRows={state.laborRows}
               onSelectSheet={(nextSheet) => {
                 setCostSheetInitialKpi('ALL')
@@ -160,7 +161,10 @@ export default function ResumenGerencial() {
               }}
               onChangeCostScope={setCostSheetScope}
               onSelectOt={state.setSelectedOtId}
-              onBackToSummary={() => setResumenSubView('RESUMEN')}
+              onBackToSummary={() => {
+                setCostSheetInitialKpi('ALL')
+                setResumenSubView('RESUMEN')
+              }}
             />
           )}
 

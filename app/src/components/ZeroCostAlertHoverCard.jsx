@@ -60,7 +60,12 @@ export default function ZeroCostAlertHoverCard({
               <div className="flex flex-wrap items-center justify-between gap-1.5">
                 <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                   <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700/70 shrink-0">
-                    {item.otNumber === 'Sin OT' ? 'Sin OT' : `OT #${item.otNumber}`}
+                    {item.otLabel ||
+                      (item.otNumber === 'Sin OT'
+                        ? 'S/OT · Sin OT asignada'
+                        : item.otTitle
+                          ? `${item.otNumber} · ${item.otTitle}`
+                          : `OT #${item.otNumber}`)}
                   </span>
                   {showShip && item.shipName && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 border border-slate-700 shrink-0">
