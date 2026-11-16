@@ -15,13 +15,13 @@ export async function fetchLaborData() {
   const [logsRes, shipsRes, staysRes, woRes, workItemsRes, workersRes] = await Promise.all([
     supabase
       .from('labor_logs')
-      .select('*, ships(id, name), work_orders(id, ot_number, title, ship_id)')
+      .select('*, ships(id, name), work_orders(id, ot_number, title, ship_id, work_type)')
       .order('date_logged', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(2000),
     supabase.from('ships').select('id, name, status, current_location, is_active').order('name'),
     supabase.from('ship_stays').select('id, ship_id, location, start_date, end_date').order('start_date', { ascending: false }),
-    supabase.from('work_orders').select('id, ot_number, title, ship_id, status').order('ot_number'),
+    supabase.from('work_orders').select('id, ot_number, title, ship_id, status, work_type').order('ot_number'),
     supabase.from('work_items').select('id, work_order_id, contractors, description, status, work_type'),
     supabase.from('workers').select('id, name, category, trade, work_group, admin_center, status, can_impute_hours').order('name')
   ])

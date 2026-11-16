@@ -17,7 +17,8 @@ import { supabase } from '../../lib/supabase'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
 import { buildLocalRelationsForLog, getEnabledWosForWorkerInShip } from '../../lib/laborConstants'
 import { updateLaborShipWoService } from '../../services/laborCargaService'
-import { deduplicateWorkOrdersWithScope } from '../../lib/workOrdersConstants'
+import { deduplicateWorkOrdersWithScope, TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants'
+import { normalizeLaborWorkType } from '../../lib/laborCargaGridHelpers'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 
 // ==============================================================================
@@ -104,7 +105,15 @@ export function EditLaborLogModal({
                   return (
                     <WorkOrderSelectorWithHover
                       value={editingForm.work_order_id}
-                      onChange={(newWoId) => setEditingForm({ ...editingForm, work_order_id: newWoId })}
+                      onChange={(newWoId) => {
+                        const chosenWo = availableWos.find((w) => String(w.id) === String(newWoId))
+                        const inferredWt = normalizeLaborWorkType(chosenWo?.work_type, '')
+                        setEditingForm({
+                          ...editingForm,
+                          work_order_id: newWoId,
+                          ...(inferredWt && !editingLog.work_order_id ? { work_type: inferredWt } : {})
+                        })
+                      }}
                       availableWos={availableWos}
                       ship={ships.find((s) => s.id === currentShipId)}
                       workItems={workItems}
@@ -195,7 +204,7 @@ export function EditLaborLogModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-slate-300 mb-1">
                 Fecha del Trabajo
@@ -221,6 +230,23 @@ export function EditLaborLogModal({
                 <option value="Astillero">Astillero</option>
                 <option value="Taller">Taller</option>
                 <option value="Contratista">Contratista</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                Modalidad (Col. F)
+              </label>
+              <select
+                value={normalizeLaborWorkType(editingForm.work_type, 'HORA')}
+                onChange={(e) => setEditingForm({ ...editingForm, work_type: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+              >
+                {TIPOS_DE_TRABAJO.map((t) => (
+                  <option key={t.value} value={t.value} className="bg-slate-900 text-white">
+                    {t.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -421,7 +447,15 @@ export function QuickLogModal({
                   return (
                     <WorkOrderSelectorWithHover
                       value={quickLogWorker.work_order_id || ''}
-                      onChange={(newWoId) => setQuickLogWorker({ ...quickLogWorker, work_order_id: newWoId })}
+                      onChange={(newWoId) => {
+                        const chosenWo = availableWos.find((w) => String(w.id) === String(newWoId))
+                        const inferredWt = normalizeLaborWorkType(chosenWo?.work_type, '')
+                        setQuickLogWorker({
+                          ...quickLogWorker,
+                          work_order_id: newWoId,
+                          ...(inferredWt ? { work_type: inferredWt } : {})
+                        })
+                      }}
                       availableWos={availableWos}
                       ship={ships.find((s) => s.id === currentShipId)}
                       workItems={workItems}
@@ -435,7 +469,7 @@ export function QuickLogModal({
               </div>
             </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
                 Rubro
@@ -447,6 +481,23 @@ export function QuickLogModal({
                 onChange={(e) => setQuickLogWorker({ ...quickLogWorker, rubro: e.target.value })}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Modalidad (Col. F)
+              </label>
+              <select
+                value={normalizeLaborWorkType(quickLogWorker.work_type, 'HORA')}
+                onChange={(e) => setQuickLogWorker({ ...quickLogWorker, work_type: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+              >
+                {TIPOS_DE_TRABAJO.map((t) => (
+                  <option key={t.value} value={t.value} className="bg-slate-900 text-white">
+                    {t.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -1095,7 +1146,7 @@ export function LaborModalsContainer({
         hours_normal: editingLog.hours_normal ?? editingLog.hours_worked ?? 0,
         hours_extra_50: editingLog.hours_extra_50 ?? 0,
         hours_extra_100: editingLog.hours_extra_100 ?? 0,
-        work_type: editingLog.work_type || 'MONTAJE',
+        work_type: normalizeLaborWorkType(editingLog.work_type, 'HORA'),
         notes: editingLog.notes || '',
         approval_status: editingLog.approval_status || 'Aprobado',
         review_reason: editingLog.review_reason || ''
@@ -1124,7 +1175,7 @@ export function LaborModalsContainer({
         hours_normal: hN,
         hours_extra_50: h50,
         hours_extra_100: h100,
-        work_type: editingForm.work_type,
+        work_type: normalizeLaborWorkType(editingForm.work_type, 'HORA'),
         notes: editingForm.notes,
         approval_status: editingForm.work_order_id ? editingForm.approval_status : 'R',
         review_reason: editingForm.work_order_id ? editingForm.review_reason : 'Falta Cargar OT'
@@ -1161,13 +1212,13 @@ export function LaborModalsContainer({
         hours_normal: hN,
         hours_extra_50: h50,
         hours_extra_100: h100,
-        work_type: 'MONTAJE',
+        work_type: normalizeLaborWorkType(quickLogWorker.work_type, 'HORA'),
         cost_center: 'CLIENTE',
         notes: quickLogWorker.notes || null,
         approval_status: isMissing ? 'R' : 'Aprobado',
         review_reason: isMissing ? 'Falta Cargar OT' : null
       }
-      const { data, error } = await supabase.from('labor_logs').insert([payload]).select('*, ships(id, name), work_orders(id, ot_number, title, ship_id)').single()
+      const { data, error } = await supabase.from('labor_logs').insert([payload]).select('*, ships(id, name), work_orders(id, ot_number, title, ship_id, work_type)').single()
       if (error) throw error
       setRecentLogs(prev => [data, ...prev])
       setQuickLogWorker(null)
@@ -1195,8 +1246,15 @@ export function LaborModalsContainer({
   const handleSelectShipWo = async ({ shipId, workOrderId }) => {
     if (!shipPickerModal.logId) return
     const targetLog = recentLogs.find(l => l.id === shipPickerModal.logId) || {}
+    const targetWo = workOrders.find(w => String(w.id) === String(workOrderId)) || null
     try {
-      const payload = await updateLaborShipWoService({ logId: shipPickerModal.logId, shipId, workOrderId, targetLog })
+      const payload = await updateLaborShipWoService({
+        logId: shipPickerModal.logId,
+        shipId,
+        workOrderId,
+        targetLog,
+        inferredWorkType: targetWo?.work_type || null
+      })
       setRecentLogs(prev => prev.map(l => l.id === shipPickerModal.logId ? { ...l, ...payload, ...buildLocalRelationsForLog(shipId, workOrderId, ships, workOrders) } : l))
       setShipPickerModal({ isOpen: false, logId: null, currentShipId: '', currentWorkOrderId: '', workerName: '' })
       showFeedbackMsg?.('success', 'Buque y OT vinculados.')

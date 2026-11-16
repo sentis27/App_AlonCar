@@ -1,6 +1,8 @@
 import React from 'react'
 import HighlightText from '../HighlightText.jsx'
 import { cleanShipName } from '../../lib/laborConstants.js'
+import { TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants.js'
+import { normalizeLaborWorkType, getWorkTypeBadgeMeta } from '../../lib/laborCargaGridHelpers.js'
 import LaborInlineCell from './LaborInlineCell.jsx'
 import LaborRowTrailingCells from './LaborRowTrailingCells.jsx'
 
@@ -185,6 +187,51 @@ export default function LaborLogsTableRow({
         >
           <HighlightText text={log.rubro || 'General'} query={filterWorker} />
         </span>
+      </LaborInlineCell>
+
+      <LaborInlineCell
+        cellProps={getHorasCellProps(rowIndex, 'work_type')}
+        onDoubleClick={() => activateHorasCell(log, 'work_type')}
+        className="py-2 px-2 text-center cursor-pointer whitespace-nowrap"
+        title="Doble clic o Enter para elegir Modalidad (Col. F: Hora / Presupuesto / Control)"
+        isEditing={isEditingField('work_type')}
+        editInput={
+          <select
+            autoFocus
+            value={normalizeLaborWorkType(inlineLogEdit.value, 'HORA')}
+            onChange={(e) => {
+              const nextVal = e.target.value
+              setInlineLogEdit({ ...inlineLogEdit, value: nextVal })
+              saveInlineLogEdit(log.id, 'work_type', nextVal)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveInlineLogEdit(log.id, 'work_type', e.target.value)
+              if (e.key === 'Escape') cancelInlineEdit()
+            }}
+            onBlur={() => cancelInlineEdit()}
+            className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] font-bold text-white focus:outline-none"
+          >
+            {TIPOS_DE_TRABAJO.map((t) => (
+              <option key={t.value} value={t.value} className="bg-slate-900 text-white">
+                {t.value}
+              </option>
+            ))}
+          </select>
+        }
+        onFillHandleMouseDown={onFillHandleMouseDown}
+        onFillHandleDoubleClick={onFillHandleDoubleClick}
+      >
+        {(() => {
+          const wt = getWorkTypeBadgeMeta(log.work_type)
+          return (
+            <span
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono font-bold ${wt.cls}`}
+              title={`Modalidad Col. F: ${wt.label}`}
+            >
+              <HighlightText text={wt.code} query={filterWorker} />
+            </span>
+          )
+        })()}
       </LaborInlineCell>
 
       {NUMERIC_HOUR_CELLS.map((cfg) => (

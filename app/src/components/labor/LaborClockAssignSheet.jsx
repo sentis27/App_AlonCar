@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { X, Mic, MicOff, Save, Ship, Users, AlertTriangle } from 'lucide-react'
 import { buildClockAssignmentPayload } from '../../lib/laborFacialClockHelpers.js'
 import { insertLaborBatchService } from '../../services/laborCargaService.js'
+import { TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants.js'
 
 const QUICK_HOURS = [2, 4, 4.5, 8, 9]
 
@@ -19,6 +20,7 @@ export default function LaborClockAssignSheet({
   const [hoursMode, setHoursMode] = useState('fixed')
   const [customHours, setCustomHours] = useState('4.5')
   const [workOrderId, setWorkOrderId] = useState('')
+  const [workType, setWorkType] = useState('HORA')
   const [rubro, setRubro] = useState('')
   const [notes, setNotes] = useState('')
   const [isListening, setIsListening] = useState(false)
@@ -34,6 +36,7 @@ export default function LaborClockAssignSheet({
     setHoursMode(assignment.workers?.length > 1 ? 'pending' : 'fixed')
     setCustomHours(String(defH))
     setWorkOrderId('')
+    setWorkType('HORA')
     setRubro(first?.default_rubro || 'Calderería')
     setNotes('')
     setSpeechError('')
@@ -87,6 +90,7 @@ export default function LaborClockAssignSheet({
       hoursMode,
       customHours,
       workOrderId,
+      workType,
       rubro,
       notes,
       dateLogged
@@ -168,12 +172,19 @@ export default function LaborClockAssignSheet({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-300 mb-1">Orden de Trabajo (Opcional)</label>
               <select
                 value={workOrderId}
-                onChange={(e) => setWorkOrderId(e.target.value)}
+                onChange={(e) => {
+                  const nextWoId = e.target.value
+                  setWorkOrderId(nextWoId)
+                  const woObj = shipWos.find(w => String(w.id) === String(nextWoId))
+                  if (woObj?.work_type && ['HORA', 'PRESUPUESTO', 'CONTROL'].includes(String(woObj.work_type).toUpperCase())) {
+                    setWorkType(String(woObj.work_type).toUpperCase())
+                  }
+                }}
                 className={`w-full bg-slate-950 border rounded-xl px-3 py-2 text-xs focus:outline-none ${!workOrderId ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-emerald-500/50 text-white'}`}
               >
                 <option value="" className="bg-slate-900 text-amber-300">-- ⚠️ Dejar OT en blanco --</option>
@@ -192,6 +203,18 @@ export default function LaborClockAssignSheet({
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
                 placeholder="Ej: Calderería, Pintura..."
               />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">Modalidad (Col. F)</label>
+              <select
+                value={workType}
+                onChange={(e) => setWorkType(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
+              >
+                {TIPOS_DE_TRABAJO.map(t => (
+                  <option key={t.value} value={t.value} className="bg-slate-900 text-white">{t.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 

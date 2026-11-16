@@ -100,6 +100,7 @@ export default function LaborLogsTable({
                 <th className="py-2.5 px-2.5">Barco / OT ✎</th>
                 <th className="py-2.5 px-2.5">Operario / Tipo ✎</th>
                 <th className="py-2.5 px-2.5">Rubro ✎</th>
+                <th className="py-2.5 px-2 text-center" title="Columna F (GS-001): Hora, Presupuesto o Control">Modalidad ✎</th>
                 <th className="py-2.5 px-2 text-center">Norm ✎</th>
                 <th className="py-2.5 px-2 text-center text-cyan-400">50% ✎</th>
                 <th className="py-2.5 px-2 text-center text-amber-400">100% ✎</th>

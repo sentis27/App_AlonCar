@@ -6,6 +6,32 @@
 import { matchesUniversalSearch } from './searchEngine.js'
 import { cleanShipName, buildLocalRelationsForLog } from './laborConstants.js'
 import { normalizeText } from './tradesCatalog.js'
+import { TIPOS_DE_TRABAJO } from './workOrdersConstants.js'
+
+const VALID_LABOR_WORK_TYPES = new Set(TIPOS_DE_TRABAJO.map(t => t.value))
+
+export function normalizeLaborWorkType(rawVal, fallback = '') {
+  const upper = String(rawVal || '').trim().toUpperCase()
+  if (VALID_LABOR_WORK_TYPES.has(upper)) return upper
+  if (upper === 'PRC') return 'PRESUPUESTO'
+  if (upper === 'HH') return 'HORA'
+  if (upper === 'CTRL') return 'CONTROL'
+  return fallback
+}
+
+export function getWorkTypeBadgeMeta(workTypeRaw) {
+  const norm = normalizeLaborWorkType(workTypeRaw, '')
+  if (norm === 'PRESUPUESTO') {
+    return { code: 'PRC', label: 'Presupuesto', cls: 'bg-purple-950/90 text-purple-200 border-purple-500/60' }
+  }
+  if (norm === 'CONTROL') {
+    return { code: 'CTRL', label: 'Control', cls: 'bg-emerald-950/90 text-emerald-200 border-emerald-500/60' }
+  }
+  if (norm === 'HORA') {
+    return { code: 'HH', label: 'Hora', cls: 'bg-cyan-950/70 text-cyan-200 border-cyan-700/60' }
+  }
+  return { code: '—', label: workTypeRaw || 'Sin definir', cls: 'bg-amber-950/70 text-amber-300 border-amber-600/60' }
+}
 
 export const LOG_PASTE_FIELDS = [
   'ship_id',
@@ -38,6 +64,7 @@ export function buildHorasSpreadsheetColumns() {
     },
     { key: 'worker_name', label: 'Operario', readOnly: false },
     { key: 'rubro', label: 'Rubro', readOnly: false },
+    { key: 'work_type', label: 'Modalidad (Col. F)', readOnly: false },
     { key: 'hours_normal', label: 'Norm', readOnly: false },
     { key: 'hours_extra_50', label: '50%', readOnly: false },
     { key: 'hours_extra_100', label: '100%', readOnly: false },
@@ -117,11 +144,18 @@ export function applyLocalHorasBatchUpdate(logs = [], {
   return logs.map(l => {
     if (!targetSet.has(l.id)) return l
     if (colKey === 'ship_wo' && newValue && typeof newValue === 'object') {
+      const targetWo = workOrders.find(w => String(w.id) === String(newValue.work_order_id))
+      const currentValidWt = normalizeLaborWorkType(l.work_type, '')
+      const nextWt = currentValidWt || normalizeLaborWorkType(targetWo?.work_type, 'HORA')
       return {
         ...l,
+        work_type: nextWt,
         ...buildLocalRelationsForLog(newValue.ship_id, newValue.work_order_id, ships, workOrders),
         ...(!newValue.work_order_id ? { approval_status: 'R', review_reason: 'Falta Cargar OT (Pendiente de apertura)' } : {})
       }
+    }
+    if (colKey === 'work_type') {
+      return { ...l, work_type: normalizeLaborWorkType(newValue, l.work_type || 'HORA') }
     }
     if (HOUR_NUMERIC_FIELDS.includes(colKey)) {
       const num = parseFloat(newValue) || 0
@@ -138,6 +172,9 @@ export function prepareInlineLogPatch(targetLog, field, newValue, { eligibleCata
   let cleanedVal = newValue
   if (HOUR_NUMERIC_FIELDS.includes(field)) {
     cleanedVal = Math.max(0, parseFloat(newValue) || 0)
+  } else if (field === 'work_type') {
+    cleanedVal = normalizeLaborWorkType(newValue, '')
+    if (!cleanedVal) return { shouldSkip: true }
   } else if (field === 'notes') {
     cleanedVal = typeof newValue === 'string' ? (newValue.trim() || null) : null
     if ((targetLog.notes || null) === cleanedVal) return { shouldSkip: true }

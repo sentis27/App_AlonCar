@@ -74,6 +74,9 @@ export async function batchUpdateLaborLogsService({
     if (colKey === 'ship_wo' && newValue && typeof newValue === 'object') {
       payload.ship_id = newValue.ship_id ?? null
       payload.work_order_id = newValue.work_order_id ?? null
+    } else if (colKey === 'work_type') {
+      const upperWt = String(newValue || '').trim().toUpperCase()
+      payload.work_type = ['HORA', 'PRESUPUESTO', 'CONTROL'].includes(upperWt) ? upperWt : 'HORA'
     } else {
       payload[colKey] = newValue
     }
@@ -138,7 +141,7 @@ export async function insertBlankLaborLogService({ newPayload, userEmail = null 
   const { data, error } = await supabase
     .from('labor_logs')
     .insert([newPayload])
-    .select('*, ships(id, name), work_orders(id, ot_number, title, ship_id)')
+    .select('*, ships(id, name), work_orders(id, ot_number, title, ship_id, work_type)')
     .single()
 
   if (error) throw error
@@ -216,11 +219,20 @@ export async function updateLaborShipWoService({
   shipId,
   workOrderId,
   targetLog = {},
+  inferredWorkType = null,
   userEmail = null
 }) {
+  const currentWt = String(targetLog.work_type || '').trim().toUpperCase()
+  const validInferred = ['HORA', 'PRESUPUESTO', 'CONTROL'].includes(String(inferredWorkType || '').trim().toUpperCase())
+    ? String(inferredWorkType).trim().toUpperCase()
+    : null
+  const shouldInheritWorkType =
+    Boolean(validInferred) && (!targetLog.work_order_id || !['HORA', 'PRESUPUESTO', 'CONTROL'].includes(currentWt))
+
   const payload = {
     ship_id: shipId || null,
     work_order_id: workOrderId || null,
+    ...(shouldInheritWorkType ? { work_type: validInferred } : {}),
     ...(workOrderId
       ? { approval_status: 'Aprobado', review_reason: null }
       : { approval_status: 'R', review_reason: 'Falta Cargar OT' })

@@ -145,6 +145,7 @@ export function buildLocalRelationsForLog(shipId, workOrderId, ships = [], workO
           title: w.title,
           ot_number: w.ot_number,
           ship_id: w.ship_id,
+          work_type: w.work_type,
           ships: s ? { name: s.name } : null
         }
       : null

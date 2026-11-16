@@ -143,6 +143,7 @@ export function buildClockAssignmentPayload({
   hoursMode = 'fixed',
   customHours = 4.5,
   workOrderId = '',
+  workType = 'HORA',
   rubro = '',
   notes = '',
   dateLogged = ''
@@ -173,7 +174,9 @@ export function buildClockAssignmentPayload({
       worker_name: w.worker_name,
       worker_type: w.worker_type || 'Astillero',
       rubro: rubro || w.default_rubro || 'General',
-      work_type: 'HORA',
+      work_type: ['HORA', 'PRESUPUESTO', 'CONTROL'].includes(String(workType || '').toUpperCase())
+        ? String(workType).toUpperCase()
+        : 'HORA',
       cost_center: 'CLIENTE',
       notes: cleanNotes,
       approval_status: targetWoId ? 'Aprobado' : 'R',
