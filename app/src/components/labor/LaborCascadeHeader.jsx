@@ -10,6 +10,7 @@ export default function LaborCascadeHeader({
   selectedContractorGroup,
   onContractorGroupChange,
   enabledContractorsForShip = [],
+  isHeaderContractorsExpanded = false,
   selectedWorkOrderId,
   setSelectedWorkOrderId,
   availableWorkOrders = [],
@@ -94,6 +95,16 @@ export default function LaborCascadeHeader({
                   {contractor}
                 </option>
               ))
+            )}
+            {selectedShipId && !isHeaderContractorsExpanded && (
+              <option value="__EXPANDIR_CONTRATISTAS__" className="bg-slate-900 text-amber-300 font-bold">
+                🔓 Expandir (Ver totalidad de contratistas y Astillero)...
+              </option>
+            )}
+            {selectedShipId && isHeaderContractorsExpanded && (
+              <option value="__CONTRAER_CONTRATISTAS__" className="bg-slate-900 text-sky-300 font-bold">
+                🔒 Contraer (Solo habilitados del barco)
+              </option>
             )}
           </select>
         </div>

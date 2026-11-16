@@ -124,7 +124,7 @@ export function EditLaborLogModal({
                 Operario / Contratista
               </label>
               <input
-                type="text"
+                type="text" list="all-workers-datalist"
                 required
                 value={editingForm.worker_name}
                 onChange={(e) => setEditingForm({ ...editingForm, worker_name: e.target.value })}
@@ -137,7 +137,7 @@ export function EditLaborLogModal({
                 Rubro Manual
               </label>
               <input
-                type="text"
+                type="text" list="rubros-list-carga"
                 required
                 value={editingForm.rubro}
                 onChange={(e) => setEditingForm({ ...editingForm, rubro: e.target.value })}
@@ -441,7 +441,7 @@ export function QuickLogModal({
                 Rubro
               </label>
               <input
-                type="text"
+                type="text" list="rubros-list-carga"
                 required
                 value={quickLogWorker.rubro || ''}
                 onChange={(e) => setQuickLogWorker({ ...quickLogWorker, rubro: e.target.value })}

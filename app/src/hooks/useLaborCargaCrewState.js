@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   createEmptyOperarioRow,
-  getEnabledContractorsForShip,
   getAvailableWorkOrders,
   getActiveItemsForSelectedWo,
   buildCrewRowsForContractor,
@@ -10,8 +9,14 @@ import {
   applyHomonymCandidateToRow,
   computeDraftWorkerSummary
 } from '../lib/laborCargaHelpers.js'
+import {
+  buildLaborEligibleCatalog,
+  getEnabledContractorsForShipWithExpand,
+  resolveSelectedWorkerForRow
+} from '../lib/laborWorkerCatalog.js'
 
 export function useLaborCargaCrewState({
+  ships = [],
   workOrders = [],
   workItems = [],
   dbWorkers = []
@@ -23,7 +28,23 @@ export function useLaborCargaCrewState({
   const [dateLogged, setDateLogged] = useState(() => new Date().toISOString().split('T')[0])
   const [workType, setWorkType] = useState('MONTAJE')
   const [openRubroEmergencyIds, setOpenRubroEmergencyIds] = useState(() => new Set())
+  const [isHeaderContractorsExpanded, setIsHeaderContractorsExpanded] = useState(false)
+  const [isWorkersExpanded, setIsWorkersExpanded] = useState(false)
   const [operariosRows, setOperariosRows] = useState(() => [createEmptyOperarioRow({ id: 1 })])
+
+  useEffect(() => {
+    if (!selectedShipId && ships.length > 0) {
+      setSelectedShipId(ships[0].id)
+    }
+  }, [selectedShipId, ships])
+
+  const handleSelectShip = useCallback((newShipId) => {
+    setSelectedShipId(newShipId)
+    setIsHeaderContractorsExpanded(false)
+    setIsWorkersExpanded(false)
+  }, [])
+
+  const eligibleCatalog = useMemo(() => buildLaborEligibleCatalog(dbWorkers), [dbWorkers])
 
   const woByIdMap = useMemo(() => {
     const m = {}
@@ -50,8 +71,11 @@ export function useLaborCargaCrewState({
   )
 
   const enabledContractorsForShip = useMemo(
-    () => getEnabledContractorsForShip(selectedShipId, activeWorkItemsForShip, dbWorkers),
-    [selectedShipId, activeWorkItemsForShip, dbWorkers]
+    () => getEnabledContractorsForShipWithExpand(selectedShipId, activeWorkItemsForShip, dbWorkers, {
+      isExpanded: isHeaderContractorsExpanded,
+      eligibleCatalog
+    }),
+    [selectedShipId, activeWorkItemsForShip, dbWorkers, isHeaderContractorsExpanded, eligibleCatalog]
   )
 
   const syncCrewWithContractor = useCallback((newContractor) => {
@@ -103,6 +127,14 @@ export function useLaborCargaCrewState({
   }, [activeItemsForSelectedWo, selectedWorkItemId])
 
   const handleContractorGroupChange = (newContractor) => {
+    if (newContractor === '__EXPANDIR_CONTRATISTAS__') {
+      setIsHeaderContractorsExpanded(true)
+      return
+    }
+    if (newContractor === '__CONTRAER_CONTRATISTAS__') {
+      setIsHeaderContractorsExpanded(false)
+      return
+    }
     setSelectedContractorGroup(newContractor)
     syncCrewWithContractor(newContractor)
   }
@@ -134,6 +166,10 @@ export function useLaborCargaCrewState({
     setOperariosRows(prev => prev.map(r => (r.id === rowId ? applyOperarioRowFieldUpdate(r, field, value) : r)))
   }
 
+  const selectOperarioForRow = (rowId, workerName) => {
+    setOperariosRows(prev => prev.map(r => (r.id === rowId ? resolveSelectedWorkerForRow(r, workerName, eligibleCatalog) : r)))
+  }
+
   const resolveHomonymCandidate = (rowId, candidate) => {
     setOperariosRows(prev => prev.map(r => (r.id === rowId ? applyHomonymCandidateToRow(r, candidate) : r)))
   }
@@ -155,7 +191,7 @@ export function useLaborCargaCrewState({
 
   return {
     selectedShipId,
-    setSelectedShipId,
+    setSelectedShipId: handleSelectShip,
     selectedContractorGroup,
     selectedWorkOrderId,
     setSelectedWorkOrderId,
@@ -166,6 +202,10 @@ export function useLaborCargaCrewState({
     workType,
     setWorkType,
     openRubroEmergencyIds,
+    isHeaderContractorsExpanded,
+    isWorkersExpanded,
+    setIsWorkersExpanded,
+    eligibleCatalog,
     operariosRows,
     setOperariosRows,
     woByIdMap,
@@ -185,6 +225,7 @@ export function useLaborCargaCrewState({
     addOperarioRow,
     removeOperarioRow,
     updateOperarioRow,
+    selectOperarioForRow,
     resolveHomonymCandidate,
     toggleRubroEmergency
   }

@@ -1,7 +1,9 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { AlertTriangle, Trash2 } from 'lucide-react'
 import { cleanShipName } from '../../lib/laborConstants.js'
 import { normalizeText } from '../../lib/tradesCatalog.js'
+import { getRowWorkerPickerState, buildCrewRubroOptions } from '../../lib/laborRowOptions.js'
+import LaborSearchableSelect from './LaborSearchableSelect.jsx'
 
 export default function LaborCrewRow({
   row,
@@ -11,10 +13,15 @@ export default function LaborCrewRow({
   ships = [],
   workOrders = [],
   workItems = [],
+  eligibleCatalog = null,
+  selectedContractorGroup = '',
+  isWorkersExpanded = false,
+  onToggleWorkersExpanded,
   selectedShipId,
   selectedWorkOrderId,
   isRowEmergencyOpen,
   onUpdateRow,
+  onSelectWorker,
   onRemoveRow,
   onToggleRubroEmergency,
   onResolveHomonym
@@ -33,10 +40,24 @@ export default function LaborCrewRow({
   )
 
   const effectiveRowShipId = row.ship_id || selectedShipId
+  const effectiveRowWoId = row.work_order_id || selectedWorkOrderId
   const rowEnabledWorkOrders = workOrders.filter(wo => {
     if (String(wo.ship_id) !== String(effectiveRowShipId)) return false
     return workItems.some(i => String(i.work_order_id) === String(wo.id) && i.status === 'En ejecución')
   })
+
+  const workerPicker = useMemo(() => getRowWorkerPickerState({
+    catalog: eligibleCatalog,
+    shipId: effectiveRowShipId,
+    workOrderId: effectiveRowWoId,
+    selectedContractorGroup,
+    isMultiOtMode,
+    isExpanded: isWorkersExpanded,
+    workOrders,
+    workItems
+  }), [eligibleCatalog, effectiveRowShipId, effectiveRowWoId, selectedContractorGroup, isMultiOtMode, isWorkersExpanded, workOrders, workItems])
+
+  const rubroOptions = useMemo(() => buildCrewRubroOptions(row, isRowEmergencyOpen), [row, isRowEmergencyOpen])
 
   return (
     <div
@@ -92,28 +113,43 @@ export default function LaborCrewRow({
             </div>
           )}
 
-          <input
-            type="text"
+          <LaborSearchableSelect
             required
-            list="all-workers-datalist"
-            placeholder="Nombre del operario..."
             value={row.worker_name}
-            onChange={(e) => onUpdateRow(row.id, 'worker_name', e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary font-medium"
+            options={workerPicker.options}
+            placeholder="Escribir o elegir operario..."
+            headerTitle={isWorkersExpanded ? `🔓 Padrón Completo [H] (${workerPicker.options.length})` : `-- Habilitados en Barco (${workerPicker.options.length}) --`}
+            emptyMessage={workerPicker.isEmptyStrict ? '⚠️ Sin operarios con OT activa en este barco.' : 'Sin coincidencias para el filtro.'}
+            inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary font-medium"
+            onChangeText={(val) => onUpdateRow(row.id, 'worker_name', val)}
+            onSelectOption={(val) => (onSelectWorker ? onSelectWorker(row.id, val) : onUpdateRow(row.id, 'worker_name', val))}
+            expandConfig={{
+              isExpanded: isWorkersExpanded,
+              onToggleExpand: (next) => onToggleWorkersExpanded?.(typeof next === 'boolean' ? next : !isWorkersExpanded),
+              enabledCount: workerPicker.enabledCount,
+              expandedCount: workerPicker.expandedCount
+            }}
+            fallbackExpandCountFn={(q) => {
+              const cleanQ = normalizeText(q)
+              if (!cleanQ) return workerPicker.expandedCount
+              const full = getRowWorkerPickerState({ catalog: eligibleCatalog, shipId: effectiveRowShipId, workOrderId: effectiveRowWoId, selectedContractorGroup, isMultiOtMode, isExpanded: true, workOrders, workItems })
+              return full.options.filter((o) => normalizeText(o.searchKeywords || o.label).includes(cleanQ)).length
+            }}
           />
         </div>
 
         <div className="space-y-1">
           <div className="flex items-center gap-1">
-            <input
-              type="text"
+            <LaborSearchableSelect
               required
-              list="rubros-list-carga"
               value={row.rubro}
-              onChange={(e) => onUpdateRow(row.id, 'rubro', e.target.value)}
-              className={`w-full bg-slate-900 border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium ${
-                hasLoanedRubro ? 'border-purple-500 text-purple-200' : 'border-slate-700'
-              }`}
+              options={rubroOptions}
+              placeholder="Elegir o filtrar rubro..."
+              headerTitle={isRowEmergencyOpen ? `🔓 Catálogo Completo de Rubros (${rubroOptions.length})` : `⭐ Rubros del Operario (${rubroOptions.length})`}
+              emptyMessage="Sin rubros coincidentes (probá con 🔓)."
+              inputClassName={`bg-slate-900 border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium ${hasLoanedRubro ? 'border-purple-500 text-purple-200' : 'border-slate-700'}`}
+              onChangeText={(val) => onUpdateRow(row.id, 'rubro', val)}
+              onSelectOption={(val) => onUpdateRow(row.id, 'rubro', val)}
             />
             <button
               type="button"

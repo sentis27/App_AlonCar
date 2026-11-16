@@ -35,6 +35,7 @@ export default function LaborCargaPanel({
   user
 }) {
   const crew = useLaborCargaCrewState({
+    ships,
     workOrders,
     workItems,
     dbWorkers
@@ -96,6 +97,7 @@ export default function LaborCargaPanel({
           selectedContractorGroup={crew.selectedContractorGroup}
           onContractorGroupChange={crew.handleContractorGroupChange}
           enabledContractorsForShip={crew.enabledContractorsForShip}
+          isHeaderContractorsExpanded={crew.isHeaderContractorsExpanded}
           selectedWorkOrderId={crew.selectedWorkOrderId}
           setSelectedWorkOrderId={crew.setSelectedWorkOrderId}
           availableWorkOrders={crew.availableWorkOrders}
@@ -121,6 +123,9 @@ export default function LaborCargaPanel({
           ships={ships}
           workOrders={workOrders}
           workItems={workItems}
+          eligibleCatalog={crew.eligibleCatalog}
+          isWorkersExpanded={crew.isWorkersExpanded}
+          onToggleWorkersExpanded={crew.setIsWorkersExpanded}
           selectedShipId={crew.selectedShipId}
           selectedWorkOrderId={crew.selectedWorkOrderId}
           totalHorasNormales={crew.totalHorasNormales}
@@ -130,6 +135,7 @@ export default function LaborCargaPanel({
           submitting={actions.submitting}
           onAddOperarioRow={crew.addOperarioRow}
           onUpdateRow={crew.updateOperarioRow}
+          onSelectWorker={crew.selectOperarioForRow}
           onRemoveRow={crew.removeOperarioRow}
           onToggleRubroEmergency={crew.toggleRubroEmergency}
           onResolveHomonym={crew.resolveHomonymCandidate}

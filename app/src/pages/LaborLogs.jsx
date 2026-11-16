@@ -6,7 +6,9 @@ import LaborCargaPanel from '../components/labor/LaborCargaPanel'
 import LaborControlDiarioPanel from '../components/labor/LaborControlDiarioPanel'
 import LaborSabanaPanel from '../components/labor/LaborSabanaPanel'
 import { LaborModalsContainer } from '../components/labor/LaborModals'
-import { NOMINA_ASTILLERO_BASE, buildQuincenaDays, FALLBACK_SHIPS, FALLBACK_WOS } from '../lib/laborConstants'
+import LaborSharedDatalists from '../components/labor/LaborSharedDatalists'
+import { buildQuincenaWorkersList } from '../lib/laborWorkerCatalog'
+import { buildQuincenaDays, FALLBACK_SHIPS, FALLBACK_WOS } from '../lib/laborConstants'
 
 export default function LaborLogs() {
   const { user } = useAuth()
@@ -112,14 +114,12 @@ export default function LaborLogs() {
   }, [recentLogs])
 
   const daysInQuincena = useMemo(() => buildQuincenaDays(selectedYear, selectedMonth, selectedQuincena), [selectedYear, selectedMonth, selectedQuincena])
-  const allQuincenaWorkers = useMemo(() => {
-    const set = new Set()
-    dbWorkers.filter(w => w.status !== 'INACTIVO').forEach(w => set.add(w.name))
-    NOMINA_ASTILLERO_BASE.forEach(w => set.add(w.name))
-    recentLogs.forEach(l => { if (l.worker_name) set.add(l.worker_name) })
-    return Array.from(set).sort()
-  }, [dbWorkers, recentLogs])
-  const filteredSabanaWorkers = useMemo(() => !sabanaSearch ? allQuincenaWorkers : allQuincenaWorkers.filter(w => w.toLowerCase().includes(sabanaSearch.toLowerCase())), [allQuincenaWorkers, sabanaSearch])
+  const allQuincenaWorkers = useMemo(() => buildQuincenaWorkersList(dbWorkers, recentLogs), [dbWorkers, recentLogs])
+  const filteredSabanaWorkers = useMemo(() => {
+    if (!sabanaSearch) return allQuincenaWorkers
+    const q = sabanaSearch.toLowerCase()
+    return allQuincenaWorkers.filter(w => (w.name || '').toLowerCase().includes(q) || (w.type || '').toLowerCase().includes(q))
+  }, [allQuincenaWorkers, sabanaSearch])
   const filteredReviewLogs = useMemo(() => recentLogs.filter(l => l.approval_status === 'R' || l.approval_status === 'RR'), [recentLogs])
 
   return (
@@ -194,6 +194,7 @@ export default function LaborLogs() {
         <LaborSabanaPanel selectedYear={selectedYear} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedQuincena={selectedQuincena} setSelectedQuincena={setSelectedQuincena} sabanaSearch={sabanaSearch} setSabanaSearch={setSabanaSearch} selectedQuincenaWorker={selectedQuincenaWorker} setSelectedQuincenaWorker={setSelectedQuincenaWorker} daysInQuincena={daysInQuincena} filteredSabanaWorkers={filteredSabanaWorkers} allQuincenaWorkers={allQuincenaWorkers} recentLogs={recentLogs} selectedLogIds={selectedLogIds} toggleSelectLog={toggleSelectLog} toggleSelectAllLogs={toggleSelectAllLogs} handleEditDayCell={(log) => setEditingLog(log)} handleQuickAddFromSabana={(name, date) => setQuickLogWorker({ worker_name: name, worker_type: 'Astillero', default_rubro: 'General', allowed_trades: ['General'], rubro: 'General', ship_id: '', work_order_id: '', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: `Imputación desde sábana ${date}` })} handleEditFromDaily={(log) => setEditingLog(log)} handleDeleteLog={handleDeleteLog} handleUpdateApprovalStatus={handleUpdateApprovalStatus} setReviewReasonModal={setReviewReasonModal} />
       )}
 
+      <LaborSharedDatalists dbWorkers={dbWorkers} />
       <LaborModalsContainer editingLog={editingLog} setEditingLog={setEditingLog} quickLogWorker={quickLogWorker} setQuickLogWorker={setQuickLogWorker} showReviewModal={showReviewModal} setShowReviewModal={setShowReviewModal} reviewReasonModal={reviewReasonModal} setReviewReasonModal={setReviewReasonModal} shipPickerModal={shipPickerModal} setShipPickerModal={setShipPickerModal} ships={ships} workOrders={workOrders} workItems={workItems} dbWorkers={dbWorkers} auditDate={auditDate} recentLogs={recentLogs} setRecentLogs={setRecentLogs} selectedLogIds={selectedLogIds} toggleSelectLog={toggleSelectLog} toggleSelectAllLogs={toggleSelectAllLogs} handleUpdateApprovalStatus={handleUpdateApprovalStatus} handleEditFromDaily={(log) => setEditingLog(log)} countR={countR} countRR={countRR} filteredReviewLogs={filteredReviewLogs} showFeedbackMsg={showFeedbackMsg} />
     </div>
   )

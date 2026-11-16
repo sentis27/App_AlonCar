@@ -12,6 +12,9 @@ export default function LaborCrewGridSection({
   ships = [],
   workOrders = [],
   workItems = [],
+  eligibleCatalog = null,
+  isWorkersExpanded = false,
+  onToggleWorkersExpanded,
   selectedShipId,
   selectedWorkOrderId,
   totalHorasNormales,
@@ -21,6 +24,7 @@ export default function LaborCrewGridSection({
   submitting,
   onAddOperarioRow,
   onUpdateRow,
+  onSelectWorker,
   onRemoveRow,
   onToggleRubroEmergency,
   onResolveHomonym
@@ -43,6 +47,18 @@ export default function LaborCrewGridSection({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onToggleWorkersExpanded?.(!isWorkersExpanded)}
+            title="Alternar entre operarios habilitados en el barco/OT (lógica Pañol) y totalidad del padrón [H]"
+            className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${
+              isWorkersExpanded
+                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                : 'bg-slate-900 border-slate-700 text-cyan-300 hover:border-cyan-500/50'
+            }`}
+          >
+            {isWorkersExpanded ? '🔓 Padrón Completo [H]' : '⚓ Habilitados en Barco'}
+          </button>
           {isSelectedGroupAstillero || isMultiOtMode ? (
             <button
               type="button"
@@ -135,10 +151,15 @@ export default function LaborCrewGridSection({
               ships={ships}
               workOrders={workOrders}
               workItems={workItems}
+              eligibleCatalog={eligibleCatalog}
+              selectedContractorGroup={selectedContractorGroup}
+              isWorkersExpanded={isWorkersExpanded}
+              onToggleWorkersExpanded={onToggleWorkersExpanded}
               selectedShipId={selectedShipId}
               selectedWorkOrderId={selectedWorkOrderId}
               isRowEmergencyOpen={openRubroEmergencyIds.has(row.id) || Boolean(row.is_loaned_rubro)}
               onUpdateRow={onUpdateRow}
+              onSelectWorker={onSelectWorker}
               onRemoveRow={onRemoveRow}
               onToggleRubroEmergency={onToggleRubroEmergency}
               onResolveHomonym={onResolveHomonym}
