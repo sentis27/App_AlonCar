@@ -50,8 +50,10 @@
 * **Contrato Obligatorio:**
   1. Gráficos, tarjetas ejecutivas o matrices comparativas de solo lectura.
   2. Sin celdas editables in-situ (sin `✎`, sin fill handle).
-  3. Filtros analíticos globales por período, barco o contratista.
+  3. Filtros analíticos globales por período, barco o contratista **siempre alojados en Zona 1**.
   4. Botones de exportación o informe ejecutivo (PDF/Excel).
+  5. **Regla Zero-Scroll Ejecutivo (Fit-to-Viewport):** toda vista ejecutiva de análisis/resumen (KPIs, costos totales, gráficos y detalle resumido) debe entrar completa en pantalla en escritorio **sin requerir scroll vertical**. El scroll vertical queda estrictamente reservado para sub-hojas o planillas detalladas de búsqueda y auditoría profunda (Zona 2 / hojas navegables).
+  6. **Versión Móvil Focalizada (Cuando aplique a Gerencia/Campo):** priorizar de arriba hacia abajo únicamente el número maestro de costo de la obra, el detalle acotado de la OT seleccionada y selector ágil en Zona 1 (sin replicar matrices ni tableros anchos en `< md`).
 
 ---
 

@@ -8,7 +8,7 @@ Toda pantalla del ERP AlonCar adopta la estética naval oscura de alta legibilid
 
 | Zona | Clase Base | Color de Acento | Identidad Visual y Rol |
 | :--- | :--- | :--- | :--- |
-| **Zona 1: Contexto** | `.alon-zone-context` | Azul Cielo (`border-l-sky-400`) | Título principal del módulo, migas de pan (`Breadcrumbs`), conmutador de modo y botón de alta principal. |
+| **Zona 1: Contexto** | `.alon-zone-context` | Azul Cielo (`border-l-sky-400`) | Título del módulo, migas de pan (`Breadcrumbs`), **todos los parámetros y selectores iniciales** (ej. Buque, Orden de Trabajo, Alcance, Año), pestañas de hojas (subidas desde el borde inferior legacy hacia la cabecera; separadas visualmente entre *Obra Filtrada* y *Herramientas Independientes* cuando coexisten) y botón de alta principal. Prohibido colocar selectores iniciales dentro de paneles inferiores. |
 | **Zona 2: Radar de KPIs** | `.alon-zone-kpis` | Ámbar Cálido (`border-l-amber-400`) | Monitoreo en vivo de métricas críticas y alertas operativas. *(Opcional: si un módulo funcionalmente no requiere KPIs, esta zona se omite por completo)*. |
 | **Zona 3: Toolbar de Control** | `.alon-zone-toolbar` | Cian Eléctrico (`border-l-cyan-400`) | Buscador omnicanal profundo, selectores rápidos de filtrado, botones Deshacer (`Ctrl+Z`) y Rehacer (`Ctrl+Y`). |
 | **Zona 4: Planilla Sheets** | `.alon-zone-grid` | Borde Superior Esmeralda (`border-t-emerald-500/60`) | Hoja de cálculo interactiva con cabecera sticky, celdas interactivas y fill-down. |

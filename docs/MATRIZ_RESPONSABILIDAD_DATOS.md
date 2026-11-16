@@ -433,8 +433,10 @@ Reglas operativas y de responsabilidad incorporadas al implementar `/resumen-ger
 * **Responsable (`responsible_role`):** `admin` / Dirección General (Nivel Alfa).
 * **Trazabilidad:** Registro automático en `audit_logs` vía `saveAlfaRateCardWithAudit()` (`managerialSummaryService.js`).
 
-### 9.2 Inputs Operativos Ad-Hoc de Grúas y Superficie m² (`REQ_RESUMEN_INPUTS_OPERATIVOS`)
-* **Módulo / Campo:** `resumen_gerencial` (`resumen` y `comparador`) ➔ `system_settings` claves `resumen_gerencial_operational_inputs` (horas grúa grande/chica y pala por buque/OT) y `resumen_gerencial_adhoc_metrics` (superficie casco `m²` ad-hoc cuando `ships.superficie_casco_m2` es nulo).
+### 9.2 Horas de Maquinaria Automáticas y Superficie m² Ad-Hoc (`REQ_RESUMEN_INPUTS_OPERATIVOS`)
+* **Módulo / Campo:**
+  - `resumen_gerencial` (`resumen`): `Grúa Grande`, `Grúa Chica` y `Hrs. Pala` son **100% solo lectura** calculadas automáticamente desde `labor_logs` (`sumEquipmentHoursFromLogs()`). No se admiten ediciones manuales en la vista resumen.
+  - `resumen_gerencial` (`comparador`) ➔ `system_settings` clave `resumen_gerencial_adhoc_metrics` (superficie casco `m²` ad-hoc cuando `ships.superficie_casco_m2` es nulo).
 * **Trigger:** Cierre de estadía, comparación de obras por `m²` o preparación del Remito Comercial.
 * **Responsable (`responsible_role`):** `jefe_obra` / Dirección Operativa.
 * **Pendiente a definir con Dirección:** Establecer si la carga previa de horas grúa y `m²` será requisito bloqueante o alerta en `compliance_alerts` antes de cerrar el Remito Comercial.

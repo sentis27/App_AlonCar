@@ -310,3 +310,20 @@ Las filas calculadas automáticamente se distinguen visualmente (ej: texto en it
 
 > [!NOTE]
 > **Evolución futura:** Si una métrica ad-hoc se usa repetidamente (ej: m² aparece en todas las comparaciones de cubiertas), eso es una señal de que conviene promoverla a **campo estructurado** en la planilla de Terceros o en la OT. El sistema podría detectar este patrón y sugerirlo.
+
+---
+
+### 7. Estándar Visual e Interactivo Implementado en App (GS-004 Ejecutivo)
+
+1. **Navegación Superior (Zona 1) en Dos Bloques, Orden de Uso e Iconografía:**
+   - **Obra Filtrada:** `Resumen de Obra & Costos` + `Matriz OTs (RESUMEN 2)` comparten los selectores superiores de `Buque`, `Orden de Trabajo`, `Alcance` (**por defecto `Obras Activas`**) y `Año`. Al elegir barco u OT en Zona 1 se filtra de inmediato el panel inferior `DETALLE POR ORDEN DE TRABAJO` manteniendo intacto `COSTOS GENERALES US$` del buque arriba.
+   - **Herramientas Independientes (en orden de uso):** 1º `Remito Comercial & Tarifario` (icono factura) y 2º `Comparador de Obras` (icono compuesto `Barco VS Barco`), sin etiquetas internas (`Gallina`/`Gallo`) en UI y con sincronización en vivo vía **Supabase Realtime + foco de pestaña + botón `Actualizar`**.
+2. **Solo Lectura Integral, Diferenciador Cromático y Zero-Scroll:**
+   - **100% Visual (cero edición en Resumen Gerencial):** `Dólar Ref.`, `Grúa Grande`, `Grúa Chica` y `Hrs. Pala` son indicadores intocables calculados automáticamente desde `macro_variables` y la sumatoria de `labor_logs` (Planilla de Horas) para la obra y OT activa.
+   - **Diferenciador de Color General vs O.T.:** Todo lo **General del Buque** usa paleta **Cian** (submenú Zona 2, bloque superior de costos e indicador de hoja abierta) y todo lo **Por O.T.** usa paleta **Violeta** (submenú Zona 2, bloque inferior de detalle OT e indicador de hoja abierta).
+   - Card `COSTOS GENERALES US$` angosta (`lg:col-span-4 xl:col-span-3`) + 4 donuts ampliados (`size={128}`) en una sola línea en desktop; el scroll vertical se limita exclusivamente a las **6 Hojas de Búsqueda Profunda** de Zona 2.
+3. **KPI Único Unificado Pre-Facturación (`$0` Pendiente de Valorizar):**
+   - Reemplaza los KPIs redundantes por una sola franja interactiva sobre los gráficos con contadores simultáneos de **Terceros $0** y **Materiales $0** (pañol + compras directas imputadas a buques, excluyendo `ELEM.SEGURIDAD` / `ENTREGA_EPP` y sin contar el catálogo maestro de materiales).
+   - Al pasar el puntero despliega un preview con **Contratista/Solicitante, OT, Nº Presupuesto, Buque y Observaciones**, y al hacer clic abre la hoja correspondiente ya filtrada (`Sin Costo` / `$0`). Mismo radar replicado en **Dashboard (`/`)** y **Admin (`/admin`)** con deep-links directos a `/terceros?kpi=sin_precio`, `/panol?tab=planillas&kpi=sin_precio&con_barco=1` y `/compras?mode=completa&kpi=sin_precio`.
+4. **Versión Móvil Focalizada (`< md`):**
+   - Prioriza lectura ágil del **Total US$ de Obra**, selector rápido en cabecera y el **Detalle US$ por Orden de Trabajo**, acompañada de barra lateral colapsable en dispositivo móvil.

@@ -30,6 +30,9 @@ Por defecto, el modelo de lenguaje comete **4 fallas estructurales** al diseñar
 - **NEVER** uses nombres distintos para botones que disparan la misma acción modal a lo largo de un módulo (ej. `+ Cargar Trabajo` en Zona 1 y `+ Insertar Trabajo en OT` en Zona 4). Toda acción de carga que abra un modal o menú debe compartir idéntica etiqueta semántica (`+ Nuevo Buque`, `+ Cargar Trabajo`, etc.) en todas sus ubicaciones.
 - **NEVER** etiquetes un botón como "Insertar Fila" si su comportamiento es abrir un menú modal. La acción de insertar fila en la cinta de la grilla (Zona 4) debe denominarse canónicamente **`+ Fila en Blanco`**, insertando un renglón físicamente en la grilla con **únicamente la fecha de hoy pre-cargada** y el resto de campos 100% en blanco (sin pre-asignar entidades ni forzar 'ASTILLERO' o centros de costo por omisión).
 - **NEVER** implementes un diseño que multiplique pasos operativos sin antes desafiar la premisa y presentar al usuario la alternativa de menor fricción.
+- **NEVER** coloques selectores de parámetro inicial (como `Buque`, `Orden de Trabajo` o `Período`) dentro de paneles inferiores para "ahorrar un desplazamiento": **todo parámetro inicial vive en Zona 1** manteniendo estrictamente el flujo Top-Down (y asegurando visibilidad simultánea de Zona 1 y los bloques superiores).
+- **NEVER** mezcles pestañas dependientes del filtro global (ej. *Resumen de Obra* + *Matriz OTs* de ese buque) con herramientas independientes (ej. *Comparador*, *Remito Comercial*) en una tira uniforme sin divisor visual explícito de grupo.
+- **NEVER** obligues a hacer scroll vertical en vistas ejecutivas tipo **Gallina (`METRICAS_ANALISIS`)** para ver costos maestros o gráficos; comprime jerarquía/alturas para lograr lectura completa en 1 pantalla y confina el scroll únicamente a sub-hojas de búsqueda profunda.
 
 ---
 
@@ -69,3 +72,4 @@ Por defecto, el modelo de lenguaje comete **4 fallas estructurales** al diseñar
 1. **Test del Vector Único:** Traza una línea imaginaria siguiendo el orden en que el usuario hará clic o presionará `Tab`. Si la línea se cruza a sí misma o retrocede hacia arriba, **el diseño es inválido y debe reestructurarse**.
 2. **Test de Compresión ($N \to 1$):** Por cada grupo de controles que trabajen juntos, pregunta: *¿Puedo fusionar estos $N$ pasos en 1 solo control inteligente?*
 3. **Test de Estado Vacío/Por Defecto:** Al abrir la pantalla sin tocar nada, ¿el sistema ya está posicionado en el escenario más probable (el 80% de los casos), o fuerza al usuario a configurar todo desde cero?
+4. **Test de Ubicación en Zona 1 y Zero-Scroll Ejecutivo:** ¿Todos los selectores iniciales (`Buque`, `OT`, `Alcance`, `Año`, pestañas de hojas) residen arriba en **Zona 1** (con separación visual si hay vistas independientes) en vez de esconderse abajo? Y si es vista ejecutiva **Gallina**, ¿se lee completa en escritorio sin hacer scroll vertical?
