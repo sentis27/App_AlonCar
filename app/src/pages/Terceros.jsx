@@ -148,7 +148,7 @@ export default function Terceros() {
   const grid = useSpreadsheetGrid({
     rows: filteredServices, columns: spreadsheetColumns, getRowId: (row) => row.id, storageKey: 'aloncar_grid_terceros',
     onBatchUpdate: async (args) => {
-      try { await saveSpreadsheetBatchService({ ...args, services, contractors, macroVariables }); await loadData(); showFeedback('success', 'Filas actualizadas.') }
+      try { await saveSpreadsheetBatchService({ ...args, services, workItems, contractors, macroVariables }); await loadData(); showFeedback('success', 'Filas actualizadas.') }
       catch (err) { showFeedback('error', 'Error en lote: ' + err.message) }
     },
     onPasteRow: (args) => tercerosPasteRef.current?.(args),

@@ -1252,7 +1252,7 @@ export function LaborModalsContainer({
         logId: shipPickerModal.logId,
         shipId,
         workOrderId,
-        targetLog,
+        targetLog, workItems,
         inferredWorkType: targetWo?.work_type || null
       })
       setRecentLogs(prev => prev.map(l => l.id === shipPickerModal.logId ? { ...l, ...payload, ...buildLocalRelationsForLog(shipId, workOrderId, ships, workOrders) } : l))

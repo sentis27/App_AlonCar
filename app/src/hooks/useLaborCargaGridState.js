@@ -92,6 +92,7 @@ export function useLaborCargaGridState({
         newValue,
         targetIds,
         recentLogs,
+        workItems,
         userEmail: user?.email
       })
       showGridFeedback('success', `Se actualizaron ${targetIds.length} imputación(es).`)
@@ -100,7 +101,7 @@ export function useLaborCargaGridState({
       showGridFeedback('error', 'Error al actualizar: ' + err.message)
       fetchData?.()
     }
-  }, [recentLogs, ships, workOrders, showGridFeedback, fetchData, setRecentLogs, user?.email])
+  }, [recentLogs, ships, workOrders, workItems, showGridFeedback, fetchData, setRecentLogs, user?.email])
 
   const activateHorasCell = useCallback((log, colKey) => {
     if (!log) return

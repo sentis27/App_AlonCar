@@ -1,6 +1,7 @@
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import { X, Undo2, Redo2 } from 'lucide-react'
 import { ESTADOS_TRABAJO } from '../../lib/workOrdersConstants'
+import { buildStandardShipWorkOrdersCatalog } from '../../lib/workOrderUnificationEngine'
 
 export default function WorkOrdersToolbar({
   searchQuery,
@@ -18,6 +19,7 @@ export default function WorkOrdersToolbar({
   setSelectedContractorFilter,
   ships = [],
   workOrders = [],
+  workItems = [],
   foremenList = [],
   contractorCatalog = [],
   hasActiveFilters,
@@ -25,6 +27,11 @@ export default function WorkOrdersToolbar({
   activeMainTab,
   woGrid
 }) {
+  const standardOtOptions = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
+    shipId: selectedShipFilter !== 'todos' ? selectedShipFilter : null,
+    includeEliminated: false,
+    includeClosed: true
+  })
   return (
     <div className="alon-zone-toolbar p-3 space-y-2.5 font-sans">
       <CrawlerSearchBar
@@ -59,13 +66,11 @@ export default function WorkOrdersToolbar({
             title="Filtrar por Orden de Trabajo"
           >
             <option value="todas">Todas las OTs</option>
-            {workOrders
-              .filter((w) => selectedShipFilter === 'todos' || w.ship_id === selectedShipFilter)
-              .map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.ot_number} • {w.title}
-                </option>
-              ))}
+            {standardOtOptions.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.ot_number} • {w.title}
+              </option>
+            ))}
           </select>
 
           {/* Selector de Estado */}

@@ -7,6 +7,8 @@
 import { supabase } from './supabase.js'
 import { auditService } from './auditService.js'
 import { assignMonotonicFolios } from './monotonicFolioEngine.js'
+import { assertNoDuplicateOtTitleInDb, separateWorkItemCompleteService } from './workOrderTransferService.js'
+import { normalizeOtTitleKey } from './workOrderUnificationEngine.js'
 import {
   cleanWorkItemComment,
   normalizeSpecificBudgetId,
@@ -200,7 +202,7 @@ export async function fetchWorkOrdersData() {
     supabase.from('ot_templates').select('*').order('sort_order').order('name'),
     supabase.from('third_party_services').select('*').order('created_at', { ascending: false }),
     supabase.from('labor_logs').select('id, ship_id, work_order_id, work_item_id, hours_worked, hours_normal, hours_extra_50, hours_extra_100, worker_name, date_logged'),
-    supabase.from('inventory_transactions').select('id, work_order_id, work_item_id, transaction_date, quantity_withdrawn, contractor_name'),
+    supabase.from('inventory_transactions').select('id, ship_id, material_id, work_order_id, work_item_id, transaction_date, quantity_withdrawn, contractor_name, is_deletion_requested'),
     supabase.from('purchase_orders').select('id, ship_id, work_order_id, charge_type')
   ])
 
@@ -315,6 +317,13 @@ export async function saveWorkOrderService({
     Boolean(workForm.send_to_third_party_prc)
 
   if (isBatchMode) {
+    const seenBatchTitles = new Set()
+    for (const batchItem of selectedBatchTemplates) {
+      const tKey = normalizeOtTitleKey(batchItem.ot_title)
+      if (seenBatchTitles.has(tKey)) throw new Error('Esta orden ya existe')
+      seenBatchTitles.add(tKey)
+      await assertNoDuplicateOtTitleInDb({ shipId: workForm.ship_id, title: tKey })
+    }
     const createdOtNumbers = []
     for (let idx = 0; idx < selectedBatchTemplates.length; idx++) {
       const batchItem = selectedBatchTemplates[idx]
@@ -412,59 +421,30 @@ export async function saveWorkOrderService({
   let targetWoRecord = null
 
   if (workForm.ot_mode === 'new') {
-    // Blindaje defensivo contra duplicación de cabeceras en el mismo buque
-    const normTitle = normalizedOtTitle
-    let existingWo = null
-
-    if (normTitle && workForm.ship_id) {
-      const { data: matchedWos } = await supabase
-        .from('work_orders')
-        .select('id, ot_number, title, ship_id')
-        .eq('ship_id', workForm.ship_id)
-        .ilike('title', normTitle)
-        .limit(1)
-
-      if (matchedWos && matchedWos.length > 0) {
-        existingWo = matchedWos[0]
-      }
-    }
-
-    if (existingWo) {
-      targetWoId = existingWo.id
-      targetWoRecord = existingWo
-    } else {
-      const autoConsecutiveOt = getNextOtNumberForShip(workForm.ship_id, 0)
-      const woPayload = {
-        ship_id: workForm.ship_id,
-        ot_number: autoConsecutiveOt,
-        title: normalizedOtTitle,
-        description: workForm.description.trim() || null,
-        status: workForm.status === 'En ejecución' ? 'En Progreso' : 'Pendiente',
-        work_type: workForm.work_type,
-        assignment_type: workForm.assignment_type,
-        budget_code: normalizedBudget,
-        foreman_name: workForm.foreman_name,
-        contractor_name: workForm.contractors.join(', ') || null,
-        is_tabulated: workForm.ot_creation_type === 'tabulada',
-        start_date: todayIso
-      }
-
-      const { data: newWoData, error: woErr } = await supabase.from('work_orders').insert([woPayload]).select()
-      if (woErr) throw woErr
-      targetWoId = newWoData[0].id
-      targetWoRecord = newWoData[0]
-    }
-  } else if (editingWorkItem && normalizedOtTitle) {
-    await supabase.from('work_orders').update({
+    await assertNoDuplicateOtTitleInDb({ shipId: workForm.ship_id, title: normalizedOtTitle })
+    const autoConsecutiveOt = getNextOtNumberForShip(workForm.ship_id, 0)
+    const woPayload = {
+      ship_id: workForm.ship_id,
+      ot_number: autoConsecutiveOt,
       title: normalizedOtTitle,
-      foreman_name: workForm.foreman_name
-    }).eq('id', targetWoId)
-    targetWoRecord = {
-      id: targetWoId,
-      ship_id: targetShipId,
-      ot_number: editingWorkItem.wo?.ot_number || workForm.ot_number,
-      title: normalizedOtTitle
+      description: workForm.description.trim() || null,
+      status: workForm.status === 'En ejecución' ? 'En Progreso' : 'Pendiente',
+      work_type: workForm.work_type,
+      assignment_type: workForm.assignment_type,
+      budget_code: normalizedBudget,
+      foreman_name: workForm.foreman_name,
+      contractor_name: workForm.contractors.join(', ') || null,
+      is_tabulated: workForm.ot_creation_type === 'tabulada',
+      start_date: todayIso
     }
+    const { data: newWoData, error: woErr } = await supabase.from('work_orders').insert([woPayload]).select()
+    if (woErr) throw woErr
+    targetWoId = newWoData[0].id
+    targetWoRecord = newWoData[0]
+  } else if (editingWorkItem && normalizedOtTitle) {
+    await assertNoDuplicateOtTitleInDb({ shipId: targetShipId, title: normalizedOtTitle, excludeWoId: targetWoId })
+    await supabase.from('work_orders').update({ title: normalizedOtTitle, foreman_name: workForm.foreman_name }).eq('id', targetWoId)
+    targetWoRecord = { id: targetWoId, ship_id: targetShipId, ot_number: editingWorkItem.wo?.ot_number || workForm.ot_number, title: normalizedOtTitle }
   }
 
   const existingEliminadaTag =
@@ -625,87 +605,9 @@ export async function createForemanInlineService(newForemanForm, workers = [], u
   return savedWorker
 }
 
-// Separar / Independizar trabajo de una OT
-export async function separateWorkItemService({
-  separateForm,
-  separatingRow,
-  user,
-  getNextOtNumberForShip,
-  workOrders = []
-}) {
-  const sourceWo = separatingRow.wo
-  const shipId = sourceWo?.ship_id
-  let targetWoId = separateForm.target_existing_wo_id
-  let targetWoLabel = ''
-  const timestamp = new Date().toLocaleString('es-AR')
-  const author = user?.email?.split('@')[0] || 'Supervisor'
-
-  if (separateForm.mode === 'new_ot') {
-    const newOtNum = getNextOtNumberForShip(shipId)
-    const newTitle = (separateForm.new_ot_title || '').trim().toUpperCase()
-    const originNote = `[${timestamp} - Separación de OT por ${author}]: Trabajo independizado desde ${sourceWo?.ot_number} (${sourceWo?.title}). Motivo: ${separateForm.reason.trim()}`
-
-    const woPayload = {
-      ship_id: shipId,
-      ot_number: newOtNum,
-      title: newTitle,
-      description: separatingRow.description || null,
-      status: separatingRow.status === 'En ejecución' ? 'En Progreso' : 'Pendiente',
-      work_type: separatingRow.work_type || 'HORA',
-      assignment_type: separatingRow.assignment_type || 'Presupuesto General',
-      budget_code: separatingRow.specific_budget_id || null,
-      foreman_name: separatingRow.foreman_name || sourceWo?.foreman_name,
-      contractor_name: (separatingRow.contractors || []).join(', ') || null,
-      is_tabulated: separateForm.ot_creation_type === 'tabulada',
-      start_date: new Date().toISOString().split('T')[0],
-      notes: originNote
-    }
-
-    const { data: createdWo, error: createWoErr } = await supabase.from('work_orders').insert([woPayload]).select()
-    if (createWoErr) throw createWoErr
-    targetWoId = createdWo[0].id
-    targetWoLabel = `${newOtNum} - ${newTitle}`
-  } else {
-    const destWo = workOrders.find(w => w.id === targetWoId)
-    targetWoLabel = destWo ? `${destWo.ot_number} - ${destWo.title}` : 'OT destino'
-    const destNote = `[${timestamp} - Reasignación de Trabajo por ${author}]: Se incorporó trabajo proveniente de ${sourceWo?.ot_number} (${sourceWo?.title}). Motivo: ${separateForm.reason.trim()}`
-    const updatedDestNotes = destWo?.notes ? `${destWo.notes}\n\n${destNote}` : destNote
-    await supabase.from('work_orders').update({ notes: updatedDestNotes }).eq('id', targetWoId)
-  }
-
-  if (sourceWo?.id) {
-    const sourceNote = `[${timestamp} - Trabajo Separado por ${author}]: El trabajo "${(separatingRow.description || '').slice(0, 60)}..." fue separado hacia ${targetWoLabel}. Motivo: ${separateForm.reason.trim()}`
-    const updatedSourceNotes = sourceWo.notes ? `${sourceWo.notes}\n\n${sourceNote}` : sourceNote
-    await supabase.from('work_orders').update({ notes: updatedSourceNotes }).eq('id', sourceWo.id)
-  }
-
-  const { error: moveItemErr } = await supabase.from('work_items').update({
-    work_order_id: targetWoId,
-    updated_at: new Date().toISOString()
-  }).eq('id', separatingRow.id)
-  if (moveItemErr) throw moveItemErr
-
-  await supabase.from('third_party_services').update({
-    work_order_id: targetWoId,
-    updated_at: new Date().toISOString()
-  }).eq('work_item_id', separatingRow.id)
-
-  if (separateForm.migrate_linked_records) {
-    await supabase.from('labor_logs').update({ work_order_id: targetWoId }).eq('work_item_id', separatingRow.id)
-    await supabase.from('inventory_transactions').update({ work_order_id: targetWoId }).eq('work_item_id', separatingRow.id)
-  }
-
-  await auditService.logRowAction({
-    action: 'UPDATE',
-    entityType: 'work_orders',
-    entityId: targetWoId,
-    entityName: `Separación · ${targetWoLabel}`,
-    details: { workItemId: separatingRow.id, sourceWoId: sourceWo?.id, reason: separateForm.reason },
-    sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
-    user: user?.email || 'Supervisor'
-  })
-
-  return targetWoLabel
+// Separar / Independizar trabajo de una OT (delega al motor transaccional completo)
+export async function separateWorkItemService(args) {
+  return separateWorkItemCompleteService(args)
 }
 
 // Carga guiada en cascada hacia Terceros

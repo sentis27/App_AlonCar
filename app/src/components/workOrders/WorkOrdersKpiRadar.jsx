@@ -18,16 +18,16 @@ export default function WorkOrdersKpiRadar({
         <div
           className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
             stats.totalSinOt > 0
-              ? 'bg-rose-950/40 border-rose-500/50 shadow-md shadow-rose-950/30'
-              : 'bg-slate-950/80 border-slate-800'
+              ? 'bg-rose-950/35 border-rose-500/60 shadow-md shadow-rose-950/30'
+              : 'bg-rose-950/15 border-rose-500/30'
           }`}
         >
           <div className="flex items-center justify-between text-[11px] font-bold">
-            <span className={stats.totalSinOt > 0 ? 'text-rose-300' : 'text-slate-400'}>
+            <span className={stats.totalSinOt > 0 ? 'text-rose-300' : 'text-rose-200/80'}>
               ⚠️ Imputaciones sin OT
             </span>
             <AlertTriangle
-              className={`w-3.5 h-3.5 ${stats.totalSinOt > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-600'}`}
+              className={`w-3.5 h-3.5 ${stats.totalSinOt > 0 ? 'text-rose-400 animate-pulse' : 'text-rose-400/50'}`}
             />
           </div>
           <div className="mt-1.5 flex items-baseline gap-1.5">
@@ -40,25 +40,32 @@ export default function WorkOrdersKpiRadar({
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[9px] font-mono font-bold">
             <Link
-              to="/horas"
-              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700"
-              title="Ir a Horas sin OT"
+              to="/horas?kpi=sin_ot"
+              className="px-1.5 py-0.5 rounded bg-cyan-950/60 hover:bg-cyan-900/70 text-cyan-300 border border-cyan-500/40"
+              title="Filtrar Horas sin OT"
             >
               Hs: {stats.horasSinOt}
             </Link>
             <Link
-              to="/terceros"
-              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-purple-300 border border-slate-700"
-              title="Ir a Terceros sin OT"
+              to="/terceros?kpi=sin_ot"
+              className="px-1.5 py-0.5 rounded bg-purple-950/60 hover:bg-purple-900/70 text-purple-300 border border-purple-500/40"
+              title="Filtrar Terceros sin OT"
             >
               3ros: {stats.tercerosSinOt}
             </Link>
             <Link
-              to="/compras"
-              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-700"
-              title="Ir a Compras sin OT"
+              to="/compras?kpi=sin_ot"
+              className="px-1.5 py-0.5 rounded bg-amber-950/60 hover:bg-amber-900/70 text-amber-300 border border-amber-500/40"
+              title="Filtrar Compras sin OT"
             >
               Comp: {stats.comprasSinOt}
+            </Link>
+            <Link
+              to="/panol?tab=planillas&kpi=sin_ot"
+              className="px-1.5 py-0.5 rounded bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 border border-emerald-500/40"
+              title="Filtrar Materiales de Pañol sin OT"
+            >
+              Mat: {stats.materialesSinOt ?? 0}
             </Link>
           </div>
         </div>
@@ -70,17 +77,17 @@ export default function WorkOrdersKpiRadar({
           }
           className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
             selectedStatusFilter === 'En ejecución'
-              ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-400'
-              : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+              ? 'bg-emerald-950/70 border-emerald-400 ring-2 ring-emerald-400/70 shadow-lg shadow-emerald-500/15'
+              : 'bg-emerald-950/20 border-emerald-500/40 hover:border-emerald-400/80'
           }`}
         >
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+          <div className="flex items-center justify-between text-emerald-300 text-[11px] font-bold">
             <span>Trabajos en Ejecución</span>
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className="text-2xl font-black text-emerald-400 font-mono">{stats.enEjecucion}</span>
-            <span className="text-[10px] text-slate-500">activos p/ costos</span>
+            <span className="text-[10px] text-slate-400">activos p/ costos</span>
           </div>
         </div>
 
@@ -91,17 +98,17 @@ export default function WorkOrdersKpiRadar({
           }
           className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
             selectedStatusFilter === 'Pendiente de inicio'
-              ? 'bg-amber-950/50 border-amber-500 ring-1 ring-amber-400'
-              : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+              ? 'bg-amber-950/70 border-amber-400 ring-2 ring-amber-400/70 shadow-lg shadow-amber-500/15'
+              : 'bg-amber-950/20 border-amber-500/40 hover:border-amber-400/80'
           }`}
         >
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+          <div className="flex items-center justify-between text-amber-300 text-[11px] font-bold">
             <span>Pendientes Inicio</span>
             <span className="w-2 h-2 rounded-full bg-amber-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className="text-2xl font-black text-amber-400 font-mono">{stats.pendientes}</span>
-            <span className="text-[10px] text-slate-500">por iniciar</span>
+            <span className="text-[10px] text-slate-400">por iniciar</span>
           </div>
         </div>
 
@@ -112,17 +119,17 @@ export default function WorkOrdersKpiRadar({
           }
           className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
             selectedStatusFilter === 'Finalizado'
-              ? 'bg-cyan-950/50 border-cyan-500 ring-1 ring-cyan-400'
-              : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+              ? 'bg-cyan-950/70 border-cyan-400 ring-2 ring-cyan-400/70 shadow-lg shadow-cyan-500/15'
+              : 'bg-cyan-950/20 border-cyan-500/40 hover:border-cyan-400/80'
           }`}
         >
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+          <div className="flex items-center justify-between text-cyan-300 text-[11px] font-bold">
             <span>Finalizados / Remito</span>
             <span className="w-2 h-2 rounded-full bg-cyan-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className="text-2xl font-black text-cyan-300 font-mono">{stats.pdteRemito}</span>
-            <span className="text-[10px] text-slate-500">en cierre</span>
+            <span className="text-[10px] text-slate-400">en cierre</span>
           </div>
         </div>
 
@@ -133,28 +140,36 @@ export default function WorkOrdersKpiRadar({
           }
           className={`p-3.5 rounded-xl border flex flex-col justify-between cursor-pointer transition-all ${
             selectedStatusFilter === 'Facturado'
-              ? 'bg-purple-950/50 border-purple-500 ring-1 ring-purple-400'
-              : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+              ? 'bg-purple-950/70 border-purple-400 ring-2 ring-purple-400/70 shadow-lg shadow-purple-500/15'
+              : 'bg-purple-950/20 border-purple-500/40 hover:border-purple-400/80'
           }`}
         >
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
+          <div className="flex items-center justify-between text-purple-300 text-[11px] font-bold">
             <span>Facturados</span>
             <span className="w-2 h-2 rounded-full bg-purple-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className="text-2xl font-black text-purple-300 font-mono">{stats.facturados}</span>
-            <span className="text-[10px] text-slate-500">cerrados</span>
+            <span className="text-[10px] text-slate-400">cerrados</span>
           </div>
         </div>
 
-        {/* BARCOS EN OBRA */}
-        <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
-            <span>Barcos en Obra</span>
-            <Ship className="w-3.5 h-3.5 text-cyan-400" />
+        {/* BARCOS EN OBRA (SOLO INDICADOR INFORMATIVO - NO FILTRA) */}
+        <div
+          className="p-3.5 rounded-xl bg-slate-900/50 border border-dashed border-slate-700 flex flex-col justify-between cursor-default select-none"
+          title="Indicador informativo de cantidad de buques con trabajos activos (no aplica filtro)"
+        >
+          <div className="flex items-center justify-between gap-1 text-slate-400 text-[11px] font-semibold">
+            <div className="flex items-center gap-1.5">
+              <Ship className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span>Barcos en Obra</span>
+            </div>
+            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 text-[8px] font-black uppercase tracking-wider">
+              Solo lectura
+            </span>
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-white font-mono">{stats.barcosActivos}</span>
+            <span className="text-2xl font-black text-slate-200 font-mono">{stats.barcosActivos}</span>
             <span className="text-[10px] text-slate-500">buques activos</span>
           </div>
         </div>

@@ -18,6 +18,7 @@ export default function LaborFacialClockModal({
   ships = [],
   shipStays = [],
   workOrders = [],
+  workItems = [],
   dbWorkers = [],
   recentLogs = [],
   fetchData,
@@ -231,6 +232,7 @@ export default function LaborFacialClockModal({
         assignment={assignContext}
         onClose={() => setAssignContext(null)}
         workOrders={workOrders}
+        workItems={workItems}
         dateLogged={dateLogged}
         userEmail={user?.email}
         onSuccess={(msg) => {

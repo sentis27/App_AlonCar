@@ -349,7 +349,7 @@ export function TercerosModalsContainer({
         editingService,
         canEditAmounts,
         contractors,
-        macroVariables,
+        macroVariables, workItems,
         actor
       })
       setIsModalOpen(false)
@@ -1184,7 +1184,7 @@ export function TercerosModalsContainer({
               serviceId: pickerModal.serviceId,
               shipId,
               workOrderId,
-              services,
+              services, workItems,
               actor
             })
             setPickerModal({ isOpen: false, serviceId: null, shipId: '', workOrderId: '', contractorName: '' })
@@ -1228,8 +1228,8 @@ export function TercerosModalsContainer({
                 serviceId: contractorPickerModal.serviceId,
                 field: 'contractor_name',
                 newValue: selectedName,
-                services,
-                macroVariables,
+                services, workItems,
+                macroVariables, workItems,
                 contractors,
                 actor
               })

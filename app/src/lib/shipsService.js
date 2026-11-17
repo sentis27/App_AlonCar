@@ -10,7 +10,7 @@ export async function fetchShipsModuleData() {
     supabase.from('ships').select('*, owners(*)').order('name', { ascending: true }),
     supabase.from('owners').select('*').order('name', { ascending: true }),
     supabase.from('ship_stays').select('*, ships(id, name)').order('start_date', { ascending: false }),
-    supabase.from('work_orders').select('id, ship_id, ot_number, title, status, description, created_at').order('created_at', { ascending: false }),
+    supabase.from('work_orders').select('id, ship_id, ot_number, title, status, description, created_at, merged_into_wo_id, notes').order('created_at', { ascending: false }),
     supabase.from('work_items').select('id, work_order_id, status, description, contractors, work_type').order('created_at', { ascending: true }),
     supabase.from('labor_logs').select('id, ship_id').is('work_order_id', null),
     supabase.from('third_party_services').select('id, ship_id').is('work_order_id', null),

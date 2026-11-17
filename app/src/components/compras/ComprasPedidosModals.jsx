@@ -85,6 +85,7 @@ export default function ComprasPedidosModals({
           order={editingOrder}
           ships={ships}
           workOrders={workOrders}
+          workItems={workItems}
           suppliers={suppliers}
           materials={materials}
           workers={workers}

@@ -1,4 +1,4 @@
-import { Ship, Eye, Trash2, GitBranch, Lock } from 'lucide-react'
+import { Ship, Eye, Trash2, GitBranch, Lock, Combine } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import {
   ESTADOS_TRABAJO,
@@ -7,6 +7,7 @@ import {
   isWorkItemEliminada
 } from '../../lib/workOrdersConstants'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
+import { isMergedWorkOrder } from '../../lib/workOrderUnificationEngine'
 
 export default function WorkOrdersOtsPanel({
   workOrders = [],
@@ -19,10 +20,12 @@ export default function WorkOrdersOtsPanel({
   onOpenEditWorkModal,
   onOpenSeparateModal,
   onOpenCloseTreeModal,
+  onOpenUnifyModal,
   setSelectedWoDetail,
   onDeleteWo
 }) {
   const filteredWos = workOrders.filter((w) => {
+    if (isMergedWorkOrder(w)) return false
     if (selectedShipFilter !== 'todos' && w.ship_id !== selectedShipFilter) return false
     if (searchQuery.trim()) {
       const items = itemsByWoMap[w.id] || []
@@ -217,6 +220,17 @@ export default function WorkOrdersOtsPanel({
                   </span>
 
                   <div className="flex items-center gap-1.5">
+                    {typeof onOpenUnifyModal === 'function' && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenUnifyModal(wo)}
+                        className="px-2 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/35 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1"
+                        title="Unificar / Trasladar esta OT y todos sus gastos hacia otra OT del barco"
+                      >
+                        <Combine className="w-3.5 h-3.5" />
+                        <span>Unificar</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSelectedWoDetail(wo)}

@@ -34,44 +34,42 @@ export default function WorkOrdersHeader({
 
         {/* PESTAÑAS Y ACCIONES A LA DERECHA */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800">
-            <button
-              type="button"
-              onClick={() => setActiveMainTab('unificado')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeMainTab === 'unificado'
-                  ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <ClipboardList className="w-3.5 h-3.5" />
-              <span>1. Unificado ({totalUnifiedCount})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMainTab('ots')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeMainTab === 'ots'
-                  ? 'bg-primary text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>2. Por Barco ({totalOtsCount})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMainTab('terceros')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeMainTab === 'terceros'
-                  ? 'bg-purple-500 text-white shadow-md font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>3. Terceros PRC ({totalTercerosCount})</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('unificado')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 border transition-all cursor-pointer ${
+              activeMainTab === 'unificado'
+                ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-lg shadow-cyan-500/20'
+                : 'bg-cyan-950/35 text-cyan-200 border-cyan-500/40 hover:bg-cyan-950/60 hover:border-cyan-400/70'
+            }`}
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            <span>1. Unificado ({totalUnifiedCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('ots')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 border transition-all cursor-pointer ${
+              activeMainTab === 'ots'
+                ? 'bg-primary text-slate-950 border-primary shadow-lg shadow-primary/20'
+                : 'bg-sky-950/35 text-sky-200 border-sky-500/40 hover:bg-sky-950/60 hover:border-sky-400/70'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>2. Por Barco ({totalOtsCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('terceros')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 border transition-all cursor-pointer ${
+              activeMainTab === 'terceros'
+                ? 'bg-purple-500 text-white border-purple-400 shadow-lg shadow-purple-500/20'
+                : 'bg-purple-950/35 text-purple-200 border-purple-500/40 hover:bg-purple-950/60 hover:border-purple-400/70'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>3. Terceros PRC ({totalTercerosCount})</span>
+          </button>
 
           <div className="flex items-center gap-2">
             <button

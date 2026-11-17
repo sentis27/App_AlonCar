@@ -160,6 +160,7 @@ export default function LaborCargaPanel({
         ships={ships}
         shipStays={shipStays}
         workOrders={workOrders}
+        workItems={workItems}
         dbWorkers={dbWorkers}
         recentLogs={recentLogs}
         fetchData={fetchData}

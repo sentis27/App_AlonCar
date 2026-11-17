@@ -2,6 +2,8 @@
 // CONSTANTES Y HELPERS CANÓNICOS DEL MÓDULO DE BARCOS Y BUQUES (ALONCAR ERP)
 // ==============================================================================
 
+import { isMergedWorkOrder } from './workOrderUnificationEngine.js'
+
 // Componentes predeterminados de la Ficha Técnica Dinámica Naval
 export const DEFAULT_TECH_COMPONENTS = [
   { key: 'tanques_combustible', label: 'Tanques de Combustible', defaultUnit: 'tanques', hint: 'Ej: 2 en bodega 10m³, 1 popa boyante 15m³, 1 diario 2m³' },
@@ -77,7 +79,7 @@ export function computeShipOtMetrics(ships = [], workOrders = [], workItems = []
 
   const map = {}
   ships.forEach(ship => {
-    const shipWos = workOrders.filter(w => w.ship_id === ship.id)
+    const shipWos = workOrders.filter(w => w.ship_id === ship.id && !isMergedWorkOrder(w))
     const activeWos = shipWos.filter(wo => {
       const items = itemsByWo[wo.id] || []
       const hasExecutionItem = items.some(i => i.status === 'En ejecución' || i.status === 'Pendiente de inicio')

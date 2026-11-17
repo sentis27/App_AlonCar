@@ -7,7 +7,8 @@ import {
   Eye,
   Trash2,
   Lock,
-  Plus
+  Plus,
+  Combine
 } from 'lucide-react'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -43,6 +44,7 @@ export default function WorkOrdersUnificadoPanel({
   onOpenEditWorkModal,
   onOpenSeparateModal,
   onOpenCloseTreeModal,
+  onOpenUnifyModal,
   onDuplicateWorkItem,
   onDeleteWorkItem,
   setSelectedWoDetail,
@@ -634,34 +636,21 @@ export default function WorkOrdersUnificadoPanel({
 
                         {/* Fila 2: Acciones sobre la OT / Árbol */}
                         <div className="flex items-center justify-end gap-1 pt-0.5 border-t border-slate-800/70">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onOpenNewWorkModal(row.wo)
-                            }}
-                            className="p-1 text-cyan-400 hover:text-cyan-200 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-colors cursor-pointer"
-                            title="+ Trabajo: Agregar otro trabajo dentro de esta misma OT"
-                          >
+                          <button type="button" onClick={(e) => { e.stopPropagation(); onOpenNewWorkModal(row.wo) }} className="p-1 text-cyan-400 hover:text-cyan-200 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-colors cursor-pointer" title="+ Trabajo: Agregar otro trabajo dentro de esta misma OT">
                             <Plus className="w-3 h-3" />
                           </button>
                           {!row.isPlaceholder && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenSeparateModal(row)}
-                              className="p-1 text-amber-300 hover:text-amber-200 rounded-md bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-colors cursor-pointer"
-                              title="Separar OT: Independizar o mover este trabajo a otra OT"
-                            >
+                            <button type="button" onClick={() => onOpenSeparateModal(row)} className="p-1 text-amber-300 hover:text-amber-200 rounded-md bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-colors cursor-pointer" title="Separar OT: Independizar o mover este trabajo a otra OT">
                               <GitBranch className="w-3 h-3" />
                             </button>
                           )}
+                          {row.wo && typeof onOpenUnifyModal === 'function' && (
+                            <button type="button" onClick={() => onOpenUnifyModal(row.wo)} className="p-1 text-sky-300 hover:text-sky-200 rounded-md bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 transition-colors cursor-pointer" title="Unificar / Trasladar esta OT completa hacia otra OT del barco">
+                              <Combine className="w-3 h-3" />
+                            </button>
+                          )}
                           {row.wo && !isLocked && typeof onOpenCloseTreeModal === 'function' && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenCloseTreeModal(row.wo)}
-                              className="p-1 text-purple-300 hover:text-purple-200 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 transition-colors cursor-pointer"
-                              title="Cerrar Árbol: Finalizar o Facturar todas las subtareas de esta OT en 1 clic"
-                            >
+                            <button type="button" onClick={() => onOpenCloseTreeModal(row.wo)} className="p-1 text-purple-300 hover:text-purple-200 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 transition-colors cursor-pointer" title="Cerrar Árbol: Finalizar o Facturar todas las subtareas de esta OT en 1 clic">
                               <Lock className="w-3 h-3" />
                             </button>
                           )}

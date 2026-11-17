@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import {
@@ -31,7 +32,26 @@ export default function LaborLogs() {
   const [workItems, setWorkItems] = useState([])
   const [dbWorkers, setDbWorkers] = useState([])
 
-  const [activeKpiFilter, setActiveKpiFilter] = useState('todos')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [activeKpiFilter, setActiveKpiFilter] = useState(() => searchParams.get('kpi') || 'todos')
+
+  useEffect(() => {
+    const kpiParam = searchParams.get('kpi')
+    if (kpiParam) {
+      setActiveTab('carga')
+      setActiveKpiFilter(kpiParam)
+    }
+  }, [searchParams])
+
+  const handleSetActiveKpiFilter = useCallback((nextVal) => {
+    setActiveKpiFilter((prev) => {
+      const resolved = typeof nextVal === 'function' ? nextVal(prev) : nextVal
+      if (resolved === 'todos' && searchParams.get('kpi')) {
+        setSearchParams({}, { replace: true })
+      }
+      return resolved
+    })
+  }, [searchParams, setSearchParams])
   const [dailyFilterType, setDailyFilterType] = useState('todos')
   const [selectedLogIds, setSelectedLogIds] = useState(new Set())
   const [auditDate, setAuditDate] = useState(new Date().toISOString().split('T')[0])
@@ -176,7 +196,7 @@ export default function LaborLogs() {
         incompleteCount={incompleteCount}
         countSinPrc={countSinPrc}
         activeKpiFilter={activeKpiFilter}
-        onToggleKpiFilter={setActiveKpiFilter}
+        onToggleKpiFilter={handleSetActiveKpiFilter}
       />
 
       {loading && recentLogs.length === 0 && (
@@ -200,7 +220,7 @@ export default function LaborLogs() {
           toggleSelectLog={toggleSelectLog}
           toggleSelectAllLogs={toggleSelectAllLogs}
           activeKpiFilter={activeKpiFilter}
-          setActiveKpiFilter={setActiveKpiFilter}
+          setActiveKpiFilter={handleSetActiveKpiFilter}
           handleEditFromDaily={(log) => setEditingLog(log)}
           handleDeleteLog={handleDeleteLog}
           handleUpdateApprovalStatus={handleUpdateApprovalStatus}

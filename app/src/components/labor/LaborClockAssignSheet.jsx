@@ -3,6 +3,7 @@ import { X, Mic, MicOff, Save, Ship, Users, AlertTriangle } from 'lucide-react'
 import { buildClockAssignmentPayload } from '../../lib/laborFacialClockHelpers.js'
 import { insertLaborBatchService } from '../../services/laborCargaService.js'
 import { TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants.js'
+import { buildStandardShipWorkOrdersCatalog, resolveSingleWorkItemId } from '../../lib/workOrderUnificationEngine.js'
 
 const QUICK_HOURS = [2, 4, 4.5, 8, 9]
 
@@ -13,6 +14,7 @@ export default function LaborClockAssignSheet({
   assignment,
   onClose,
   workOrders = [],
+  workItems = [],
   dateLogged,
   userEmail,
   onSuccess
@@ -46,7 +48,11 @@ export default function LaborClockAssignSheet({
 
   if (!assignment) return null
 
-  const shipWos = workOrders.filter(w => String(w.ship_id) === String(assignment.ship?.id) && !['Cancelada', 'Completada', 'Facturada'].includes(w.status))
+  const shipWos = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
+    shipId: assignment.ship?.id,
+    includeEliminated: false,
+    includeClosed: false
+  })
   const pendingCount = (assignment.workers || []).filter(w => w.pendingHours > 0).length
 
   const toggleVoiceDictation = () => {
@@ -84,12 +90,14 @@ export default function LaborClockAssignSheet({
   const handleConfirm = async (e) => {
     e.preventDefault()
     setLocalError('')
+    const resolvedWiId = resolveSingleWorkItemId(workOrderId, workItems)
     const { errorMsg, payload, totalHours } = buildClockAssignmentPayload({
       ship: assignment.ship,
       targetWorkers: assignment.workers || [],
       hoursMode,
       customHours,
       workOrderId,
+      workItemId: resolvedWiId,
       workType,
       rubro,
       notes,

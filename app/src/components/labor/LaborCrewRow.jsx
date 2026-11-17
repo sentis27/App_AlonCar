@@ -3,6 +3,7 @@ import { AlertTriangle, Trash2 } from 'lucide-react'
 import { cleanShipName } from '../../lib/laborConstants.js'
 import { normalizeText } from '../../lib/tradesCatalog.js'
 import { getRowWorkerPickerState, buildCrewRubroOptions } from '../../lib/laborRowOptions.js'
+import { isMergedWorkOrder } from '../../lib/workOrderUnificationEngine.js'
 import LaborSearchableSelect from './LaborSearchableSelect.jsx'
 
 export default function LaborCrewRow({
@@ -42,6 +43,7 @@ export default function LaborCrewRow({
   const effectiveRowShipId = row.ship_id || selectedShipId
   const effectiveRowWoId = row.work_order_id || selectedWorkOrderId
   const rowEnabledWorkOrders = workOrders.filter(wo => {
+    if (isMergedWorkOrder(wo)) return false
     if (String(wo.ship_id) !== String(effectiveRowShipId)) return false
     return workItems.some(i => String(i.work_order_id) === String(wo.id) && i.status === 'En ejecución')
   })

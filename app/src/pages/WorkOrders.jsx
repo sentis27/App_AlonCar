@@ -12,8 +12,10 @@ import WorkOrdersOtsPanel from '../components/workOrders/WorkOrdersOtsPanel'
 import WorkOrdersTercerosPanel from '../components/workOrders/WorkOrdersTercerosPanel'
 import { WorkOrdersModalsContainer } from '../components/workOrders/WorkOrdersModals'
 import CloseWorkOrderTreeModal from '../components/workOrders/CloseWorkOrderTreeModal'
+import WorkOrderUnifyModal from '../components/workOrders/WorkOrderUnifyModal'
 import { fetchWorkOrdersData, applyWoSinglePatchService, deleteWorkItemService, deleteWoService, closeEntireWorkOrderTreeService } from '../lib/workOrdersService.js'
 import { WO_GRID_COLUMNS, WORK_ITEM_CLONE_FIELDS, filterUnifiedRows, calculateWorkOrderStats, computeOtMetricsAndDates, buildContractorCatalog, buildUnifiedRows, isRowLockedDec011, hasThirdPartyPermission } from '../lib/workOrdersConstants.js'
+import { isMergedWorkOrder } from '../lib/workOrderUnificationEngine.js'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 export default function WorkOrders() {
@@ -54,6 +56,7 @@ export default function WorkOrders() {
   const [templatePickerFromForm, setTemplatePickerFromForm] = useState(false)
   const [inlineWoEdit, setInlineWoEdit] = useState(null)
   const [closingTreeWo, setClosingTreeWo] = useState(null)
+  const [unifyingWo, setUnifyingWo] = useState(null)
   const [submittingCloseTree, setSubmittingCloseTree] = useState(false)
 
   const showWoGridFeedback = useCallback((type, text) => {
@@ -76,7 +79,7 @@ export default function WorkOrders() {
     channelName: 'work_orders_live',
     tables: ['work_orders', 'work_items', 'ships', 'workers', 'ot_templates', 'third_party_services', 'labor_logs', 'inventory_transactions', 'purchase_orders'],
     onSync: () => loadData({ silent: true }),
-    pauseWhen: Boolean(inlineWoEdit || isWorkModalOpen || separatingRow || isThirdPartyCascadeOpen || editingThirdParty || isTemplateModalOpen || closingTreeWo)
+    pauseWhen: Boolean(inlineWoEdit || isWorkModalOpen || separatingRow || isThirdPartyCascadeOpen || editingThirdParty || isTemplateModalOpen || closingTreeWo || unifyingWo)
   })
 
   useEffect(() => { loadData({ silent: false }) }, [loadData])
@@ -97,9 +100,10 @@ export default function WorkOrders() {
   }, [thirdPartyServices])
 
   const otMetricsAndDatesMap = useMemo(() => computeOtMetricsAndDates(workOrders, laborLogs, inventoryTx, thirdPartyServices), [workOrders, laborLogs, inventoryTx, thirdPartyServices])
+  const visibleWorkOrders = useMemo(() => workOrders.filter((w) => !isMergedWorkOrder(w)), [workOrders])
   const unifiedRows = useMemo(() => buildUnifiedRows(workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList[0] || 'ALE CAMADELLI', otMetricsAndDatesMap), [workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList, otMetricsAndDatesMap])
   const filteredRows = useMemo(() => filterUnifiedRows(unifiedRows, { selectedShipFilter, selectedOtFilter, selectedStatusFilter, selectedForemanFilter, selectedContractorFilter, searchQuery }), [unifiedRows, selectedShipFilter, selectedOtFilter, selectedStatusFilter, selectedForemanFilter, selectedContractorFilter, searchQuery])
-  const stats = useMemo(() => calculateWorkOrderStats(unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, selectedShipFilter), [unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, selectedShipFilter])
+  const stats = useMemo(() => calculateWorkOrderStats(unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, selectedShipFilter, inventoryTx), [unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, selectedShipFilter, inventoryTx])
   const activeExecutionRows = useMemo(() => unifiedRows.filter(r => !r.isPlaceholder && r.status === 'En ejecución'), [unifiedRows])
 
   const hasActiveFilters = Boolean(searchQuery || selectedShipFilter !== 'todos' || selectedOtFilter !== 'todas' || selectedStatusFilter !== 'todos' || selectedForemanFilter !== 'todos' || selectedContractorFilter !== 'todos')
@@ -201,7 +205,7 @@ export default function WorkOrders() {
         activeMainTab={activeMainTab} setActiveMainTab={setActiveMainTab}
         onOpenNewWorkModal={() => handleOpenNewWorkModal(null)}
         onOpenCatalog={() => { setTemplatePickerFromForm(false); setIsTemplateModalOpen(true) }}
-        totalUnifiedCount={filteredRows.length} totalOtsCount={workOrders.length} totalTercerosCount={thirdPartyServices.length}
+        totalUnifiedCount={filteredRows.length} totalOtsCount={visibleWorkOrders.length} totalTercerosCount={thirdPartyServices.length}
       />
 
       {/* ZONA 2: RADAR DE KPIS */}
@@ -216,7 +220,7 @@ export default function WorkOrders() {
           selectedStatusFilter={selectedStatusFilter} setSelectedStatusFilter={setSelectedStatusFilter}
           selectedForemanFilter={selectedForemanFilter} setSelectedForemanFilter={setSelectedForemanFilter}
           selectedContractorFilter={selectedContractorFilter} setSelectedContractorFilter={setSelectedContractorFilter}
-          ships={ships} workOrders={workOrders} foremenList={foremenList} contractorCatalog={contractorCatalog}
+          ships={ships} workOrders={workOrders} workItems={workItems} foremenList={foremenList} contractorCatalog={contractorCatalog}
           hasActiveFilters={hasActiveFilters} onClearAllFilters={clearAllFilters} activeMainTab={activeMainTab} woGrid={woGrid}
         />
 
@@ -228,7 +232,7 @@ export default function WorkOrders() {
             inlineWoEdit={inlineWoEdit} setInlineWoEdit={setInlineWoEdit} commitInlineWoEdit={commitInlineWoEdit}
             onOpenNewWorkModal={handleOpenNewWorkModal} onOpenEditWorkModal={handleOpenEditWorkModal}
             onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal}
-            onDuplicateWorkItem={handleDuplicateWorkItem}
+            onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} onDuplicateWorkItem={handleDuplicateWorkItem}
             onDeleteWorkItem={handleDeleteWorkItem} setSelectedWoDetail={setSelectedWoDetail}
             setEditingThirdParty={setEditingThirdParty} menuTarget={menuTarget} openMenu={openMenu} closeMenu={closeMenu}
             showWoGridFeedback={showWoGridFeedback}
@@ -241,7 +245,7 @@ export default function WorkOrders() {
             thirdPartyByItemMap={thirdPartyByItemMap} selectedShipFilter={selectedShipFilter} searchQuery={searchQuery}
             onOpenNewWorkModal={handleOpenNewWorkModal} onOpenEditWorkModal={handleOpenEditWorkModal}
             onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal}
-            setSelectedWoDetail={setSelectedWoDetail} onDeleteWo={handleDeleteWo}
+            onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} setSelectedWoDetail={setSelectedWoDetail} onDeleteWo={handleDeleteWo}
           />
         )}
 
@@ -254,11 +258,14 @@ export default function WorkOrders() {
         )}
       </div>
 
-      {/* MODAL CANÓNICO DE CIERRE DE ÁRBOL */}
+      {/* MODAL CANÓNICO DE CIERRE DE ÁRBOL & UNIFICACIÓN */}
       <CloseWorkOrderTreeModal isOpen={Boolean(closingTreeWo)} onClose={() => setClosingTreeWo(null)} wo={closingTreeWo} items={closingTreeWo ? (itemsByWoMap[closingTreeWo.id] || []) : []} onConfirm={handleConfirmCloseTree} loading={submittingCloseTree} />
+      {unifyingWo && (
+        <WorkOrderUnifyModal key={unifyingWo.id} sourceWo={unifyingWo} ships={ships} workOrders={workOrders} workItems={workItems} user={user} onClose={() => setUnifyingWo(null)} onSuccess={() => loadData()} showFeedback={showWoGridFeedback} />
+      )}
 
       {/* CONTENEDOR INTEGRAL DE MODALES */}
-      <WorkOrdersModalsContainer isWorkModalOpen={isWorkModalOpen} setIsWorkModalOpen={setIsWorkModalOpen} editingWorkItem={editingWorkItem} preselectedWo={preselectedWo} separatingRow={separatingRow} setSeparatingRow={setSeparatingRow} isThirdPartyCascadeOpen={isThirdPartyCascadeOpen} setIsThirdPartyCascadeOpen={setIsThirdPartyCascadeOpen} editingThirdParty={editingThirdParty} setEditingThirdParty={setEditingThirdParty} selectedWoDetail={selectedWoDetail} setSelectedWoDetail={setSelectedWoDetail} isTemplateModalOpen={isTemplateModalOpen} setIsTemplateModalOpen={setIsTemplateModalOpen} templatePickerFromForm={templatePickerFromForm} setTemplatePickerFromForm={setTemplatePickerFromForm} ships={ships} workOrders={workOrders} templates={templates} workers={workers} foremenList={foremenList} contractorCatalog={contractorCatalog} activeExecutionRows={activeExecutionRows} itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap} thirdPartyByItemMap={thirdPartyByItemMap} user={user} loadData={loadData} showWoGridFeedback={showWoGridFeedback} onOpenNewWorkModal={handleOpenNewWorkModal} onOpenSeparateModal={handleOpenSeparateModal} />
+      <WorkOrdersModalsContainer isWorkModalOpen={isWorkModalOpen} setIsWorkModalOpen={setIsWorkModalOpen} editingWorkItem={editingWorkItem} preselectedWo={preselectedWo} separatingRow={separatingRow} setSeparatingRow={setSeparatingRow} isThirdPartyCascadeOpen={isThirdPartyCascadeOpen} setIsThirdPartyCascadeOpen={setIsThirdPartyCascadeOpen} editingThirdParty={editingThirdParty} setEditingThirdParty={setEditingThirdParty} selectedWoDetail={selectedWoDetail} setSelectedWoDetail={setSelectedWoDetail} isTemplateModalOpen={isTemplateModalOpen} setIsTemplateModalOpen={setIsTemplateModalOpen} templatePickerFromForm={templatePickerFromForm} setTemplatePickerFromForm={setTemplatePickerFromForm} ships={ships} workOrders={workOrders} workItems={workItems} templates={templates} workers={workers} foremenList={foremenList} contractorCatalog={contractorCatalog} activeExecutionRows={activeExecutionRows} itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap} thirdPartyByItemMap={thirdPartyByItemMap} user={user} loadData={loadData} showWoGridFeedback={showWoGridFeedback} onOpenNewWorkModal={handleOpenNewWorkModal} onOpenSeparateModal={handleOpenSeparateModal} onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} />
     </div>
   )
 }

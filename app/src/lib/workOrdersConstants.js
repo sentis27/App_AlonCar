@@ -426,30 +426,19 @@ export function filterUnifiedRows(rows = [], {
 }
 
 // Cálculo de estadísticas globales y radar de imputaciones sin OT
-export function calculateWorkOrderStats(unifiedRows = [], laborLogs = [], thirdPartyServices = [], purchaseOrders = [], selectedShipFilter = 'todos') {
+export function calculateWorkOrderStats(unifiedRows = [], laborLogs = [], thirdPartyServices = [], purchaseOrders = [], selectedShipFilter = 'todos', inventoryTx = []) {
   const enEjecucion = unifiedRows.filter(r => r.status === 'En ejecución').length
   const pendientes = unifiedRows.filter(r => r.status === 'Pendiente de inicio').length
   const pdteRemito = unifiedRows.filter(r => r.status === 'Pendiente remito' || r.status === 'Remito realizado/Pdte firma' || r.status === 'Finalizado').length
   const facturados = unifiedRows.filter(r => r.status === 'Facturado').length
   const barcosActivos = new Set(unifiedRows.filter(r => r.status === 'En ejecución').map(r => r.wo?.ship_id)).size
-
   const matchShip = (shipId) => selectedShipFilter === 'todos' || shipId === selectedShipFilter
   const horasSinOt = laborLogs.filter(l => !l.work_order_id && matchShip(l.ship_id)).length
   const tercerosSinOt = thirdPartyServices.filter(t => !t.work_order_id && matchShip(t.ship_id)).length
   const comprasSinOt = purchaseOrders.filter(p => !p.work_order_id && matchShip(p.ship_id)).length
-  const totalSinOt = horasSinOt + tercerosSinOt + comprasSinOt
-
-  return {
-    enEjecucion,
-    pendientes,
-    pdteRemito,
-    facturados,
-    barcosActivos,
-    horasSinOt,
-    tercerosSinOt,
-    comprasSinOt,
-    totalSinOt
-  }
+  const materialesSinOt = inventoryTx.filter(t => !t.work_order_id && matchShip(t.ship_id)).length
+  const totalSinOt = horasSinOt + tercerosSinOt + comprasSinOt + materialesSinOt
+  return { enEjecucion, pendientes, pdteRemito, facturados, barcosActivos, horasSinOt, tercerosSinOt, comprasSinOt, materialesSinOt, totalSinOt }
 }
 
 // Construcción del catálogo de contratistas a partir del personal activo
@@ -483,6 +472,7 @@ export function buildContractorCatalog(workers = []) {
 export function buildUnifiedRows(workOrders = [], itemsByWoMap = {}, thirdPartyByItemMap = {}, defaultForeman = 'ALE CAMADELLI', otMetricsAndDatesMap = {}) {
   const rows = []
   workOrders.forEach(wo => {
+    if (wo?.merged_into_wo_id || String(wo?.status || '').toUpperCase() === 'UNIFICADA') return
     const items = itemsByWoMap[wo.id] || []
     const computedOt = computeOtState(wo, items)
     const otDates = otMetricsAndDatesMap[wo.id] || { totalHours: 0, createdDate: wo.created_at ? String(wo.created_at).split('T')[0] : null }
@@ -733,12 +723,12 @@ export function deduplicateWorkOrdersWithScope(workOrders = [], workItems = []) 
   const grouped = new Map()
 
   workOrders.forEach((wo) => {
-    const key = `${wo.ship_id || 'no_ship'}::${String(wo.ot_number || wo.id).trim().toUpperCase()}`
+    if (!wo || wo.merged_into_wo_id || String(wo.status || '').toUpperCase() === 'UNIFICADA') return
+    if (wo.status === 'Cancelada' || String(wo.notes || '').toUpperCase().includes('[ELIMINADA]')) return
+    const titleKey = String(wo.title || '').trim().toUpperCase()
+    const key = `${wo.ship_id || 'no_ship'}::${titleKey || String(wo.ot_number || wo.id).trim().toUpperCase()}`
     if (!grouped.has(key)) {
-      grouped.set(key, {
-        master: { ...wo },
-        allWoIds: new Set([wo.id])
-      })
+      grouped.set(key, { master: { ...wo }, allWoIds: new Set([wo.id]) })
     } else {
       grouped.get(key).allWoIds.add(wo.id)
     }

@@ -1704,7 +1704,7 @@ export function PanolModalsContainer({
         gasMovements,
         materials,
         suppliers,
-        ships,
+        ships, workItems,
         astilleroWorkers,
         user
       })

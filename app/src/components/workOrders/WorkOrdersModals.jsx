@@ -16,8 +16,17 @@ import {
   Lock,
   User,
   Info,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle,
+  Combine
 } from 'lucide-react'
+import WorkOrderSeparateModal from './WorkOrderSeparateModal.jsx'
+import {
+  buildStandardShipWorkOrdersCatalog,
+  findDuplicateOtNameConflict,
+  findBatchOtNameConflicts,
+  isMergedWorkOrder
+} from '../../lib/workOrderUnificationEngine.js'
 import {
   ESTADOS_TRABAJO,
   TIPOS_DE_TRABAJO,
@@ -35,7 +44,6 @@ import {
 import {
   saveWorkOrderService,
   createForemanInlineService,
-  separateWorkItemService,
   saveThirdPartyCascadeService,
   saveThirdPartyEditService,
   closeOtWithValidationService,
@@ -71,6 +79,7 @@ export function WorkOrdersModalsContainer({
   // Data
   ships = [],
   workOrders = [],
+  workItems = [],
   templates = [],
   workers = [],
   foremenList = [],
@@ -83,7 +92,8 @@ export function WorkOrdersModalsContainer({
   loadData,
   showWoGridFeedback,
   onOpenNewWorkModal,
-  onOpenSeparateModal
+  onOpenSeparateModal,
+  onOpenUnifyModal
 }) {
   // -------------------------------------------------------------
   // 1. ESTADOS LOCALES DEL WORK MODAL
@@ -151,7 +161,11 @@ export function WorkOrdersModalsContainer({
       })
     } else {
       const defaultShipId = preselectedWo ? preselectedWo.ship_id : (ships[0]?.id || '')
-      const shipWos = workOrders.filter((w) => w.ship_id === defaultShipId)
+      const shipWos = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
+        shipId: defaultShipId,
+        includeEliminated: false,
+        includeClosed: true
+      })
       setBudgetOptionMode('PENDIENTE')
       setWorkForm({
         ship_id: defaultShipId,
@@ -204,11 +218,41 @@ export function WorkOrdersModalsContainer({
       : { canEnable: false, reason: `"${list[0]}" no tiene permiso 3ros activo.` }
   }, [workForm.contractors, workers])
 
+  const standardShipWos = useMemo(() => {
+    if (!workForm.ship_id) return []
+    return buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
+      shipId: workForm.ship_id,
+      includeEliminated: false,
+      includeClosed: true
+    })
+  }, [workOrders, workItems, workForm.ship_id])
+
+  const workDuplicateConflict = useMemo(() => {
+    if (editingWorkItem || workForm.ot_mode !== 'new' || !workForm.ship_id) return null
+    const singleTitle = workForm.ot_title || (selectedBatchTemplates.length === 1 ? selectedBatchTemplates[0].ot_title : '')
+    return findDuplicateOtNameConflict(workOrders, workItems, workForm.ship_id, singleTitle)
+  }, [editingWorkItem, workForm.ot_mode, workForm.ship_id, workForm.ot_title, selectedBatchTemplates, workOrders, workItems])
+
+  const batchDuplicateConflicts = useMemo(() => {
+    if (editingWorkItem || workForm.ot_mode !== 'new' || !workForm.ship_id || selectedBatchTemplates.length <= 1) return []
+    return findBatchOtNameConflicts(workOrders, workItems, workForm.ship_id, selectedBatchTemplates)
+  }, [editingWorkItem, workForm.ot_mode, workForm.ship_id, selectedBatchTemplates, workOrders, workItems])
+
   const handleSaveWorkSubmit = async (e) => {
     e.preventDefault()
     if (!workForm.ship_id) {
       alert('Seleccioná un Barco.')
       return
+    }
+    if (!editingWorkItem && workForm.ot_mode === 'new') {
+      if (workDuplicateConflict) {
+        showWoGridFeedback('error', workDuplicateConflict.message)
+        return
+      }
+      if (batchDuplicateConflicts.length > 0) {
+        showWoGridFeedback('error', `${batchDuplicateConflicts[0].title}: ${batchDuplicateConflicts[0].message}`)
+        return
+      }
     }
     setSavingWork(true)
     try {
@@ -246,56 +290,8 @@ export function WorkOrdersModalsContainer({
   }
 
   // -------------------------------------------------------------
-  // 2. ESTADOS LOCALES DE SEPARAR TRABAJO
+  // 2. SEPARAR TRABAJO (DELEGADO A WorkOrderSeparateModal)
   // -------------------------------------------------------------
-  const [separateForm, setSeparateForm] = useState({
-    mode: 'new_ot',
-    ot_creation_type: 'libre',
-    selected_template_id: '',
-    new_ot_number: 'OT-1',
-    new_ot_title: '',
-    target_existing_wo_id: '',
-    migrate_linked_records: true,
-    reason: 'Se independiza el trabajo en una OT propia para seguimiento individual'
-  })
-  const [savingSeparate, setSavingSeparate] = useState(false)
-
-  useEffect(() => {
-    if (!separatingRow) return
-    const shipId = separatingRow.wo?.ship_id
-    const otherWos = workOrders.filter((w) => w.ship_id === shipId && w.id !== separatingRow.work_order_id)
-    setSeparateForm({
-      mode: 'new_ot',
-      ot_creation_type: 'libre',
-      selected_template_id: '',
-      new_ot_number: getNextOtNumberForShip(workOrders, shipId),
-      new_ot_title: separatingRow.description ? separatingRow.description.split('\n')[0].slice(0, 55).toUpperCase() : `${separatingRow.wo?.title || 'TRABAJO'} (SEPARADO)`,
-      target_existing_wo_id: otherWos[0]?.id || '',
-      migrate_linked_records: true,
-      reason: 'Se independiza el trabajo en una OT propia para seguimiento individual'
-    })
-  }, [separatingRow, workOrders])
-
-  const handleConfirmSeparateWorkItem = async (e) => {
-    e.preventDefault()
-    setSavingSeparate(true)
-    try {
-      const label = await separateWorkItemService({
-        separateForm,
-        separatingRow,
-        user,
-        getNextOtNumberForShip: (sId) => getNextOtNumberForShip(workOrders, sId),
-        workOrders
-      })
-      setSeparatingRow(null)
-      await loadData()
-      showWoGridFeedback('success', `Trabajo separado hacia ${label}.`)
-    } catch (err) {
-      showWoGridFeedback('error', 'Error al separar: ' + err.message)
-    } finally {
-      setSavingSeparate(false)
-    }
-  }
 
   // -------------------------------------------------------------
   // 3. ESTADOS LOCALES DE TERCEROS CASCADA
@@ -528,7 +524,11 @@ export function WorkOrdersModalsContainer({
                             value={workForm.ship_id}
                             onChange={(e) => {
                               const newShipId = e.target.value
-                              const shipWos = workOrders.filter((w) => w.ship_id === newShipId)
+                              const shipWos = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
+                                shipId: newShipId,
+                                includeEliminated: false,
+                                includeClosed: true
+                              })
                               setWorkForm((p) => ({
                                 ...p,
                                 ship_id: newShipId,
@@ -622,10 +622,47 @@ export function WorkOrdersModalsContainer({
                                 onChange={(e) => setWorkForm((prev) => ({ ...prev, ot_title: e.target.value.toUpperCase() }))}
                                 onBlur={() => setWorkForm((prev) => ({ ...prev, ot_title: (prev.ot_title || '').trim().toUpperCase() }))}
                                 placeholder="EJ: REPARACIÓN DE LÍNEA DE EJES"
-                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold uppercase focus:border-sky-400 focus:outline-none"
+                                className={`w-full bg-slate-900 border rounded-xl px-2.5 py-1.5 text-xs text-white font-bold uppercase focus:outline-none ${
+                                  workDuplicateConflict ? 'border-rose-500 focus:border-rose-400' : 'border-slate-700 focus:border-sky-400'
+                                }`}
                               />
                             </div>
                           </div>
+                          {(workDuplicateConflict || batchDuplicateConflicts.length > 0) && (
+                            <div
+                              className={`p-2 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-2 ${
+                                (workDuplicateConflict?.kind || batchDuplicateConflicts[0]?.kind) === 'ELIMINATED'
+                                  ? 'bg-amber-950/60 border-amber-500/60 text-amber-200'
+                                  : 'bg-rose-950/60 border-rose-500/60 text-rose-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 shrink-0" />
+                                <span>
+                                  {workDuplicateConflict
+                                    ? workDuplicateConflict.message
+                                    : `${batchDuplicateConflicts[0].title}: ${batchDuplicateConflicts[0].message}`}
+                                </span>
+                              </div>
+                              {workDuplicateConflict?.kind === 'ACTIVE' && workDuplicateConflict.existingWo?.id && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setWorkForm((prev) => ({
+                                      ...prev,
+                                      ot_mode: 'existing',
+                                      existing_wo_id: workDuplicateConflict.existingWo.id,
+                                      ot_title: workDuplicateConflict.existingWo.title,
+                                      ot_number: workDuplicateConflict.existingWo.ot_number
+                                    }))
+                                  }
+                                  className="px-2 py-0.5 rounded-lg bg-white text-slate-900 text-[10px] font-black shrink-0 cursor-pointer"
+                                >
+                                  Usar esa OT existente
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="pt-1 border-t border-sky-500/15">
@@ -647,11 +684,9 @@ export function WorkOrdersModalsContainer({
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold disabled:opacity-60"
                           >
                             <option value="">-- Seleccionar OT --</option>
-                            {workOrders
-                              .filter((w) => w.ship_id === workForm.ship_id)
-                              .map((w) => (
-                                <option key={w.id} value={w.id}>{w.ot_number} &bull; {w.title}</option>
-                              ))}
+                            {standardShipWos.map((w) => (
+                              <option key={w.id} value={w.id}>{w.ot_number} &bull; {w.title}</option>
+                            ))}
                           </select>
                         </div>
                       )}
@@ -1068,7 +1103,7 @@ export function WorkOrdersModalsContainer({
 
               <div className="alon-modal-footer">
                 <button type="button" onClick={() => setIsWorkModalOpen(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold cursor-pointer">Cancelar</button>
-                <button type="submit" disabled={savingWork} className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 font-black rounded-xl cursor-pointer flex items-center gap-1.5 shadow-lg">
+                <button type="submit" disabled={savingWork || (!editingWorkItem && workForm.ot_mode === 'new' && (Boolean(workDuplicateConflict) || batchDuplicateConflicts.length > 0))} className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 disabled:opacity-50 text-slate-950 font-black rounded-xl cursor-pointer flex items-center gap-1.5 shadow-lg">
                   <Plus className="w-4 h-4 stroke-[2.5]" />
                   <span>{savingWork ? 'Guardando...' : editingWorkItem ? 'Actualizar Trabajo' : 'Guardar Trabajo y OT'}</span>
                 </button>
@@ -1078,87 +1113,18 @@ export function WorkOrdersModalsContainer({
         </div>
       )}
 
-      {/* 2. SEPARATE MODAL */}
+      {/* 2. SEPARATE MODAL (MODULAR) */}
       {separatingRow && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto font-sans">
-          <div className="w-full max-w-xl bg-slate-900 border border-amber-500/50 rounded-3xl shadow-2xl p-6 space-y-4 my-8">
-            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
-              <div>
-                <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase">Desglose y Reasignación con Trazabilidad</span>
-                <h3 className="text-base font-black text-white flex items-center gap-2 mt-1">
-                  <GitBranch className="w-5 h-5 text-amber-400" />
-                  Separar / Independizar Trabajo de su Contenedor OT
-                </h3>
-              </div>
-              <button type="button" onClick={() => setSeparatingRow(null)} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"><X className="w-5 h-5" /></button>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5 text-xs">
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>Barco: <strong className="text-white">{separatingRow.wo?.ships?.name}</strong></span>
-                <span>OT: <strong className="text-primary font-mono">{separatingRow.wo?.ot_number} &bull; {separatingRow.wo?.title}</strong></span>
-              </div>
-              <p className="text-slate-200 font-medium line-clamp-3">{separatingRow.description || 'Sin descripción'}</p>
-            </div>
-
-            <form onSubmit={handleConfirmSeparateWorkItem} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setSeparateForm((prev) => ({ ...prev, mode: 'new_ot' }))}
-                  className={`p-3 rounded-xl border text-left cursor-pointer ${separateForm.mode === 'new_ot' ? 'bg-amber-500/20 border-amber-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`}
-                >
-                  <div className="font-black text-amber-300 flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /><span>1. Nueva OT Propia</span></div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const otherWos = workOrders.filter((w) => w.ship_id === separatingRow.wo?.ship_id && w.id !== separatingRow.work_order_id)
-                    if (otherWos.length === 0) { alert('No hay otras OTs en este barco.'); return }
-                    setSeparateForm((prev) => ({ ...prev, mode: 'existing_ot', target_existing_wo_id: otherWos[0]?.id || '' }))
-                  }}
-                  className={`p-3 rounded-xl border text-left cursor-pointer ${separateForm.mode === 'existing_ot' ? 'bg-cyan-500/20 border-cyan-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`}
-                >
-                  <div className="font-black text-cyan-300 flex items-center gap-1.5"><ArrowRight className="w-3.5 h-3.5" /><span>2. Mover a otra OT</span></div>
-                </button>
-              </div>
-
-              {separateForm.mode === 'new_ot' ? (
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Nº Nueva OT</label>
-                      <input type="text" readOnly disabled value={separateForm.new_ot_number} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-primary font-mono font-black cursor-not-allowed" />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">Nombre Nueva OT *</label>
-                      <input type="text" required value={separateForm.new_ot_title} onChange={(e) => setSeparateForm((p) => ({ ...p, new_ot_title: e.target.value.toUpperCase() }))} onBlur={() => setSeparateForm((p) => ({ ...p, new_ot_title: (p.new_ot_title || '').trim().toUpperCase() }))} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-bold uppercase" />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">OT Destino:</label>
-                  <select value={separateForm.target_existing_wo_id} onChange={(e) => setSeparateForm((p) => ({ ...p, target_existing_wo_id: e.target.value }))} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold">
-                    {workOrders.filter((w) => w.ship_id === separatingRow.wo?.ship_id && w.id !== separatingRow.work_order_id).map((w) => (
-                      <option key={w.id} value={w.id}>{w.ot_number} &bull; {w.title}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Motivo de Separación *</label>
-                <input type="text" required value={separateForm.reason} onChange={(e) => setSeparateForm((p) => ({ ...p, reason: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2.5">
-                <button type="button" onClick={() => setSeparatingRow(null)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-semibold cursor-pointer">Cancelar</button>
-                <button type="submit" disabled={savingSeparate} className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl cursor-pointer">{savingSeparate ? 'Separando...' : 'Confirmar'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <WorkOrderSeparateModal
+          key={separatingRow.id || separatingRow.work_order_id}
+          separatingRow={separatingRow}
+          workOrders={workOrders}
+          workItems={workItems}
+          user={user}
+          onClose={() => setSeparatingRow(null)}
+          loadData={loadData}
+          showWoGridFeedback={showWoGridFeedback}
+        />
       )}
 
       {/* 3. TERCEROS CASCADA */}
@@ -1282,10 +1248,25 @@ export function WorkOrdersModalsContainer({
                     <div className="p-3 rounded-xl bg-slate-950 border border-cyan-900/50"><span className="text-[10px] text-cyan-400 uppercase block">F. Final</span><strong className="text-cyan-300 font-bold">{formatShortDate(dates.endDate, true)}</strong></div>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                    <button type="button" onClick={() => setIsAmpliarModalOpen(true)} className="px-3 py-1.5 bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-                      <Send className="w-3.5 h-3.5" /><span>Botón Ampliar</span>
-                    </button>
+                  <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setIsAmpliarModalOpen(true)} className="px-3 py-1.5 bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+                        <Send className="w-3.5 h-3.5" /><span>Botón Ampliar</span>
+                      </button>
+                      {typeof onOpenUnifyModal === 'function' && !isMergedWorkOrder(selectedWoDetail) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = selectedWoDetail
+                            setSelectedWoDetail(null)
+                            onOpenUnifyModal(target)
+                          }}
+                          className="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Combine className="w-3.5 h-3.5" /><span>Unificar OT</span>
+                        </button>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 flex-wrap justify-end">
                       <button
                         type="button"

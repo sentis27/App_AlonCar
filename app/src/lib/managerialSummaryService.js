@@ -21,12 +21,8 @@ import {
   isDirectPurchaseZeroCost,
   buildZeroCostAlertsSummary
 } from './zeroCostAlertsRules.js'
-import {
-  isInvalidEventOrObjectScalar,
-  logBatchPaste,
-  logCellChange,
-  logRowAction
-} from './auditService.js'
+import { isInvalidEventOrObjectScalar, logBatchPaste, logCellChange, logRowAction } from './auditService.js'
+import { isMergedWorkOrder, isEliminatedWorkOrder } from './workOrderUnificationEngine.js'
 import {
   ADHOC_METRICS_SETTINGS_KEY,
   ALFA_RATES_SETTINGS_KEY,
@@ -145,7 +141,7 @@ export async function fetchManagerialData() {
     supabase.from('owners').select('id, name, cuit, armador_name'),
     supabase
       .from('work_orders')
-      .select('id, ship_id, ot_number, title, description, work_type, assignment_type, budget_code, foreman_name, contractor_name, start_date, estimated_end_date, closed_at, status, is_tabulated, created_at')
+      .select('id, ship_id, ot_number, title, description, work_type, assignment_type, budget_code, foreman_name, contractor_name, start_date, estimated_end_date, closed_at, status, is_tabulated, created_at, merged_into_wo_id, notes')
       .order('ot_number'),
     supabase
       .from('work_items')
@@ -783,7 +779,7 @@ export function computeShipManagerialSummary({
   yearFilter = 'TODOS'
 }) {
   const ship = ships.find((s) => s.id === shipId) || null
-  const allShipWos = workOrders.filter((w) => w.ship_id === shipId)
+  const allShipWos = workOrders.filter((w) => w.ship_id === shipId && !isMergedWorkOrder(w))
 
   const passesCommonFilter = (row) => {
     if (row.shipId !== shipId) return false
@@ -849,33 +845,35 @@ export function computeShipManagerialSummary({
   })
 
   const filteredWos = allShipWos.filter((w) => matchesScopeFilter(ship, w, scope))
-  const otRows = filteredWos.map((wo) => {
-    const mats = shipMats.filter((r) => r.workOrderId === wo.id)
-    const labs = shipLabor.filter((r) => r.workOrderId === wo.id)
-    const tps = shipTps.filter((r) => r.workOrderId === wo.id)
-    const bucket = sumBucket(mats, labs, tps)
-    const itemsDesc = (wiByWo.get(wo.id) || [])
-      .map((i) => i.description)
-      .filter(Boolean)
-      .join(' · ')
+  const otRows = filteredWos
+    .map((wo) => {
+      const mats = shipMats.filter((r) => r.workOrderId === wo.id)
+      const labs = shipLabor.filter((r) => r.workOrderId === wo.id)
+      const tps = shipTps.filter((r) => r.workOrderId === wo.id)
+      const woItems = wiByWo.get(wo.id) || []
+      const hasLinkedMovements = mats.length > 0 || labs.length > 0 || tps.length > 0
+      if (!hasLinkedMovements && isEliminatedWorkOrder(wo, woItems)) return null
+      const bucket = sumBucket(mats, labs, tps)
+      const itemsDesc = woItems.map((i) => i.description).filter(Boolean).join(' · ')
 
-    const otNum = wo.ot_number || 'OT'
-    const otTitle = wo.title || 'Sin título'
-    const otDesc = wo.description || itemsDesc || 'Sin descripción registrada'
-    return {
-      id: wo.id,
-      otNumber: otNum,
-      title: otTitle,
-      otLabel: formatOtAnalysisLabel({ id: wo.id, otNumber: otNum, title: otTitle, description: otDesc }),
-      description: otDesc,
-      workType: wo.work_type || 'HORA',
-      status: wo.status || 'En Progreso',
-      ...bucket,
-      matsCount: mats.length,
-      labsCount: labs.length,
-      tpsCount: tps.length
-    }
-  })
+      const otNum = wo.ot_number || 'OT'
+      const otTitle = wo.title || 'Sin título'
+      const otDesc = wo.description || itemsDesc || 'Sin descripción registrada'
+      return {
+        id: wo.id,
+        otNumber: otNum,
+        title: otTitle,
+        otLabel: formatOtAnalysisLabel({ id: wo.id, otNumber: otNum, title: otTitle, description: otDesc }),
+        description: otDesc,
+        workType: wo.work_type || 'HORA',
+        status: wo.status || 'En Progreso',
+        ...bucket,
+        matsCount: mats.length,
+        labsCount: labs.length,
+        tpsCount: tps.length
+      }
+    })
+    .filter(Boolean)
 
   // Costos cargados al buque sin OT asignada
   const orphanMats = shipMats.filter((r) => !r.workOrderId)

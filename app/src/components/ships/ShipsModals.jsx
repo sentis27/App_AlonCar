@@ -529,13 +529,13 @@ export function ShipDetailModal({
                 </Link>
               </div>
 
-              {workOrders.filter(w => w.ship_id === selectedShip360.id).length === 0 ? (
+              {(getShipOtMetrics[selectedShip360.id]?.shipWos || []).length === 0 ? (
                 <div className="p-5 text-center text-slate-500 text-xs">
                   Sin Órdenes de Trabajo abiertas para este barco.
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {workOrders.filter(w => w.ship_id === selectedShip360.id).map(wo => {
+                  {(getShipOtMetrics[selectedShip360.id]?.shipWos || []).map(wo => {
                     const items = workItems.filter(i => i.work_order_id === wo.id)
                     const inExecutionItems = items.filter(i => i.status === 'En ejecución')
                     const isExecution = inExecutionItems.length > 0 || wo.status === 'En Progreso' || wo.status === 'En ejecución'

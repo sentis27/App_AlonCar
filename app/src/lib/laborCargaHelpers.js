@@ -5,6 +5,7 @@
 
 import { TALLERES_FRECUENTES } from './laborConstants.js'
 import { normalizeText, parseWorkerTrades } from './tradesCatalog.js'
+import { isMergedWorkOrder } from './workOrderUnificationEngine.js'
 
 export const LABOR_BATCH_STORAGE_KEY = 'aloncar_last_labor_batch_v2'
 
@@ -61,7 +62,7 @@ export function getAvailableWorkOrders(selectedShipId, selectedContractorGroup, 
     const isMatch = list.includes(selectedContractorGroup) || (isSelectAst && (list.length === 0 || list.some(c => String(c).toUpperCase().startsWith('ASTILLERO'))))
     if (isMatch) matchingWoIds.add(item.work_order_id)
   })
-  return workOrders.filter(wo => wo.ship_id === selectedShipId && matchingWoIds.has(wo.id))
+  return workOrders.filter(wo => !isMergedWorkOrder(wo) && wo.ship_id === selectedShipId && matchingWoIds.has(wo.id))
 }
 
 export function getActiveItemsForSelectedWo(activeWorkItemsForShip = [], selectedWorkOrderId, selectedContractorGroup) {

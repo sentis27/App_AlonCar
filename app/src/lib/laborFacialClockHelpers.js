@@ -143,6 +143,7 @@ export function buildClockAssignmentPayload({
   hoursMode = 'fixed',
   customHours = 4.5,
   workOrderId = '',
+  workItemId = null,
   workType = 'HORA',
   rubro = '',
   notes = '',
@@ -165,7 +166,7 @@ export function buildClockAssignmentPayload({
     payload.push({
       ship_id: ship.id,
       work_order_id: targetWoId,
-      work_item_id: null,
+      work_item_id: targetWoId ? (workItemId || null) : null,
       hours_worked: h,
       hours_normal: h,
       hours_extra_50: 0,

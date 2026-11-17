@@ -115,7 +115,7 @@ export default function PanolMovimientosPanel({
         newWorkOrderId,
         tx,
         ships,
-        user,
+        user, workItems,
         getEnabledWorkersAndContractors
       })
       if (grid?.pushUndoAction && tx) {
