@@ -1,4 +1,4 @@
-import { Ship, Eye, Trash2, GitBranch, Lock, Combine } from 'lucide-react'
+import { Ship, Eye, Trash2, GitBranch, Lock, Unlock, Combine } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import {
   ESTADOS_TRABAJO,
@@ -20,6 +20,7 @@ export default function WorkOrdersOtsPanel({
   onOpenEditWorkModal,
   onOpenSeparateModal,
   onOpenCloseTreeModal,
+  onOpenReopenModal,
   onOpenUnifyModal,
   setSelectedWoDetail,
   onDeleteWo
@@ -85,6 +86,17 @@ export default function WorkOrdersOtsPanel({
                         <span>Cerrar Árbol</span>
                       </button>
                     )}
+                    {typeof onOpenReopenModal === 'function' && !computed.isEliminada && wo.status === 'Facturada' && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenReopenModal(wo)}
+                        className="px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Reabrir OT Facturada para corregir error humano"
+                      >
+                        <Unlock className="w-2.5 h-2.5 text-amber-400" />
+                        <span>Reabrir OT</span>
+                      </button>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${computed.color}`}>
@@ -113,13 +125,15 @@ export default function WorkOrdersOtsPanel({
                 <div className="mt-3 space-y-1.5 border-t border-slate-800 pt-3">
                   <div className="flex items-center justify-between text-[10px] uppercase font-bold text-slate-400">
                     <span>Trabajos en esta OT ({items.length})</span>
-                    <button
-                      type="button"
-                      onClick={() => onOpenNewWorkModal(wo)}
-                      className="text-primary hover:underline cursor-pointer"
-                    >
-                      + Agregar Trabajo
-                    </button>
+                    {wo.status !== 'Facturada' && !wo.closed_at && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenNewWorkModal(wo)}
+                        className="text-primary hover:underline cursor-pointer"
+                      >
+                        + Agregar Trabajo
+                      </button>
+                    )}
                   </div>
 
                   {items.map((item) => {

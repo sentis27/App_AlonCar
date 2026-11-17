@@ -7,6 +7,7 @@
 
 import { supabase } from './supabase.js'
 import { auditService } from './auditService.js'
+import { syncWorkOrderHeaderStatusService } from './workOrderHeaderSync.js'
 import { normalizeOtTitleKey, resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import {
   fetchWorkOrderTransferSummaryService,
@@ -70,10 +71,11 @@ export async function unifyWorkOrdersService({ sourceWo, targetWo, reason = '', 
     .eq('id', sourceWo.id)
   if (srcErr) throw srcErr
 
-  const { data: targetItems } = await supabase.from('work_items').select('id, status').eq('work_order_id', targetWo.id)
-  if ((targetItems || []).some((it) => it.status === 'En ejecución')) {
-    await supabase.from('work_orders').update({ status: 'En Progreso', closed_at: null }).eq('id', targetWo.id)
-  }
+  await syncWorkOrderHeaderStatusService({
+    workOrderId: targetWo.id,
+    user,
+    reason: 'Unificación de Órdenes de Trabajo'
+  })
 
   await auditService.logRowAction({
     action: 'UNIFY_WORK_ORDERS',
@@ -251,6 +253,19 @@ export async function separateWorkItemCompleteService({
     moduleRoute: '/ots',
     user: user?.email || 'Supervisor'
   })
+
+  await syncWorkOrderHeaderStatusService({
+    workOrderId: targetWoId,
+    user,
+    reason: 'Separación / traslado de trabajo hacia OT destino'
+  })
+  if (sourceWo?.id && sourceWo.id !== targetWoId) {
+    await syncWorkOrderHeaderStatusService({
+      workOrderId: sourceWo.id,
+      user,
+      reason: 'Separación / egreso de trabajo desde OT origen'
+    })
+  }
 
   return targetWoLabel
 }

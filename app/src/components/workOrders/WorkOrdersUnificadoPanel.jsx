@@ -7,6 +7,7 @@ import {
   Eye,
   Trash2,
   Lock,
+  Unlock,
   Plus,
   Combine
 } from 'lucide-react'
@@ -44,6 +45,7 @@ export default function WorkOrdersUnificadoPanel({
   onOpenEditWorkModal,
   onOpenSeparateModal,
   onOpenCloseTreeModal,
+  onOpenReopenModal,
   onOpenUnifyModal,
   onDuplicateWorkItem,
   onDeleteWorkItem,
@@ -501,12 +503,12 @@ export default function WorkOrdersUnificadoPanel({
                       onDoubleClick={(e) => {
                         e.stopPropagation()
                         if (isLocked) {
-                          showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada.`)
+                          showWoGridFeedback('error', `🔒 Bloqueo DEC-011: La ${row.wo?.ot_number} está Facturada y Cerrada. Usá el botón Reabrir OT en Acciones para revertir el estado.`)
                           return
                         }
                         setInlineWoEdit({ rowId: row.id, colKey: 'status', value: row.status })
                       }}
-                      title={isLocked ? 'Bloqueado DEC-011' : 'Doble clic o selector para cambiar Estado del Trabajo'}
+                      title={isLocked ? 'Bloqueado DEC-011 (OT Facturada). Usá el botón Reabrir OT en Acciones para revertir.' : 'Doble clic o selector para cambiar Estado del Trabajo'}
                       className={getWoCellClass(6, 'py-1.5 px-2.5 text-center')}
                     >
                       <div className="flex flex-col items-center gap-1">
@@ -600,11 +602,11 @@ export default function WorkOrdersUnificadoPanel({
                             type="button"
                             onClick={() => onOpenEditWorkModal(row)}
                             className="p-1 text-slate-400 hover:text-primary rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
-                            title="Editar este trabajo"
+                            title={isLocked ? 'Editar trabajo (si cambiás el estado a operativo, destraba la OT automáticamente)' : 'Editar este trabajo'}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          {!row.isPlaceholder && (
+                          {!row.isPlaceholder && !isLocked && (
                             <button
                               type="button"
                               onClick={() => onDuplicateWorkItem(row)}
@@ -622,7 +624,7 @@ export default function WorkOrdersUnificadoPanel({
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
-                          {!row.isPlaceholder && (
+                          {!row.isPlaceholder && !isLocked && (
                             <button
                               type="button"
                               onClick={() => onDeleteWorkItem(row)}
@@ -636,22 +638,29 @@ export default function WorkOrdersUnificadoPanel({
 
                         {/* Fila 2: Acciones sobre la OT / Árbol */}
                         <div className="flex items-center justify-end gap-1 pt-0.5 border-t border-slate-800/70">
-                          <button type="button" onClick={(e) => { e.stopPropagation(); onOpenNewWorkModal(row.wo) }} className="p-1 text-cyan-400 hover:text-cyan-200 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-colors cursor-pointer" title="+ Trabajo: Agregar otro trabajo dentro de esta misma OT">
-                            <Plus className="w-3 h-3" />
-                          </button>
-                          {!row.isPlaceholder && (
+                          {!isLocked && row.wo?.status !== 'Facturada' && (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); onOpenNewWorkModal(row.wo) }} className="p-1 text-cyan-400 hover:text-cyan-200 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-colors cursor-pointer" title="+ Trabajo: Agregar otro trabajo dentro de esta misma OT">
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          )}
+                          {!row.isPlaceholder && !isLocked && (
                             <button type="button" onClick={() => onOpenSeparateModal(row)} className="p-1 text-amber-300 hover:text-amber-200 rounded-md bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-colors cursor-pointer" title="Separar OT: Independizar o mover este trabajo a otra OT">
                               <GitBranch className="w-3 h-3" />
                             </button>
                           )}
-                          {row.wo && typeof onOpenUnifyModal === 'function' && (
+                          {row.wo && !isLocked && typeof onOpenUnifyModal === 'function' && (
                             <button type="button" onClick={() => onOpenUnifyModal(row.wo)} className="p-1 text-sky-300 hover:text-sky-200 rounded-md bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 transition-colors cursor-pointer" title="Unificar / Trasladar esta OT completa hacia otra OT del barco">
                               <Combine className="w-3 h-3" />
                             </button>
                           )}
-                          {row.wo && !isLocked && typeof onOpenCloseTreeModal === 'function' && (
+                          {row.wo && !isLocked && row.wo?.status !== 'Facturada' && typeof onOpenCloseTreeModal === 'function' && (
                             <button type="button" onClick={() => onOpenCloseTreeModal(row.wo)} className="p-1 text-purple-300 hover:text-purple-200 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 transition-colors cursor-pointer" title="Cerrar Árbol: Finalizar o Facturar todas las subtareas de esta OT en 1 clic">
                               <Lock className="w-3 h-3" />
+                            </button>
+                          )}
+                          {row.wo && (isLocked || row.wo?.status === 'Facturada') && typeof onOpenReopenModal === 'function' && (
+                            <button type="button" onClick={() => onOpenReopenModal(row.wo)} className="p-1 text-amber-300 hover:text-amber-200 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 transition-colors cursor-pointer" title="Reabrir OT Facturada: revertir estado por error humano">
+                              <Unlock className="w-3 h-3" />
                             </button>
                           )}
                         </div>
