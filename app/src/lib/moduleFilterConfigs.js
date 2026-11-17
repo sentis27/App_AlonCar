@@ -11,7 +11,7 @@ const findOtRowLabel = (otRows = [], otId = '') => {
 }
 
 export const MODULE_FILTER_CONFIGS = {
-  work_orders: {
+  work_orders_unificado: {
     defaults: {
       searchQuery: '',
       selectedShipFilter: 'todos',
@@ -30,6 +30,19 @@ export const MODULE_FILTER_CONFIGS = {
       if (f.selectedContractorFilter && f.selectedContractorFilter !== 'todos') lines.push(`Contratista: ${f.selectedContractorFilter}`)
       return lines
     }
+  },
+  work_orders_ots: {
+    defaults: { searchQuery: '', selectedShipFilter: 'todos' },
+    buildSummary: (f, { ships = [] } = {}) => {
+      const lines = []
+      if (f.searchQuery) lines.push(`Búsqueda: "${f.searchQuery}"`)
+      if (f.selectedShipFilter && f.selectedShipFilter !== 'todos') lines.push(`Barco: ${resolveShipFilterLabel(ships, f.selectedShipFilter)}`)
+      return lines
+    }
+  },
+  work_orders_terceros: {
+    defaults: { searchQuery: '' },
+    labelMap: { searchQuery: 'Búsqueda' }
   },
   compras_pedidos: {
     defaults: {
@@ -62,7 +75,15 @@ export const MODULE_FILTER_CONFIGS = {
       return lines
     }
   },
-  panol: {
+  compras_proveedores: {
+    defaults: { supplierSearchQuery: '', supplierKpiFilter: 'TODOS' },
+    labelMap: { supplierSearchQuery: 'Búsqueda', supplierKpiFilter: 'Radar KPI' }
+  },
+  compras_documentos: {
+    defaults: { searchQuery: '', filterDocType: 'TODOS' },
+    labelMap: { searchQuery: 'Búsqueda', filterDocType: 'Tipo Doc.' }
+  },
+  panol_planillas: {
     defaults: {
       searchQuery: '',
       filterPeriod: 'TODOS',
@@ -70,7 +91,6 @@ export const MODULE_FILTER_CONFIGS = {
       filterShip: 'TODOS',
       filterOt: 'TODAS',
       filterContractor: 'TODOS',
-      filterStockOnly: false,
       activeKpiFilter: null,
       onlyWithShipFilter: false
     },
@@ -82,10 +102,34 @@ export const MODULE_FILTER_CONFIGS = {
       if (f.filterOt && f.filterOt !== 'TODAS') lines.push(`OT: ${resolveOtFilterLabel(workOrders, f.filterOt)}`)
       if (f.filterContractor && f.filterContractor !== 'TODOS') lines.push(`Contratista: ${f.filterContractor}`)
       if (f.filterCategory && f.filterCategory !== 'TODAS') lines.push(`Categoría: ${f.filterCategory}`)
-      if (f.filterStockOnly) lines.push('Solo con Control de Stock')
       if (f.activeKpiFilter) lines.push(`Radar KPI: ${f.activeKpiFilter}`)
       return lines
     }
+  },
+  panol_gases: {
+    defaults: { searchQuery: '', traceSupplierFilter: 'TODOS', traceMaterialFilter: 'TODOS', activeKpiFilter: null },
+    buildSummary: (f, { suppliers = [], materials = [] } = {}) => {
+      const lines = []
+      if (f.searchQuery) lines.push(`Búsqueda: "${f.searchQuery}"`)
+      if (f.traceSupplierFilter && f.traceSupplierFilter !== 'TODOS') {
+        const sup = suppliers.find((s) => String(s.id) === String(f.traceSupplierFilter))
+        lines.push(`Gasera: ${sup?.name || f.traceSupplierFilter}`)
+      }
+      if (f.traceMaterialFilter && f.traceMaterialFilter !== 'TODOS') {
+        const mat = materials.find((m) => String(m.id) === String(f.traceMaterialFilter))
+        lines.push(`Gas: ${mat?.name || f.traceMaterialFilter}`)
+      }
+      if (f.activeKpiFilter) lines.push(`Radar KPI: ${f.activeKpiFilter}`)
+      return lines
+    }
+  },
+  panol_catalogo: {
+    defaults: { searchQuery: '', filterCategory: 'TODAS', filterStockOnly: false, activeKpiFilter: null },
+    labelMap: { searchQuery: 'Búsqueda', filterCategory: 'Categoría', filterStockOnly: 'Solo Control Stock', activeKpiFilter: 'Radar KPI' }
+  },
+  panol_epp: {
+    defaults: { searchQuery: '', filterCategory: 'TODAS', activeKpiFilter: null },
+    labelMap: { searchQuery: 'Búsqueda', filterCategory: 'Categoría', activeKpiFilter: 'Radar KPI' }
   },
   labor_carga: {
     defaults: {
@@ -110,6 +154,14 @@ export const MODULE_FILTER_CONFIGS = {
       if (f.activeKpiFilter && f.activeKpiFilter !== 'todos') lines.push(`Radar KPI: ${f.activeKpiFilter}`)
       return lines
     }
+  },
+  labor_control_diario: {
+    defaults: { dailySearch: '', dailyFilterType: 'todos', auditDate: '' },
+    labelMap: { dailySearch: 'Búsqueda', dailyFilterType: 'Filtro rápido', auditDate: 'Fecha auditoría' }
+  },
+  labor_sabana: {
+    defaults: { sabanaSearch: '', selectedMonth: '', selectedQuincena: '' },
+    labelMap: { sabanaSearch: 'Búsqueda', selectedMonth: 'Mes', selectedQuincena: 'Quincena' }
   },
   terceros: {
     defaults: {

@@ -1,7 +1,8 @@
 import React from 'react'
+import { useModuleFilterMemory } from '../../hooks/useModuleFilterMemory'
+import CrawlerSearchBar from '../CrawlerSearchBar'
 import {
   Table,
-  Search,
   Pencil,
   Plus,
   Trash2,
@@ -34,6 +35,17 @@ export default function LaborSabanaPanel({
   handleUpdateApprovalStatus,
   setReviewReasonModal
 }) {
+  const sabanaViewsController = useModuleFilterMemory({
+    moduleKey: 'labor_sabana',
+    currentFilters: { sabanaSearch, selectedMonth, selectedQuincena },
+    onApplyFilters: (f) => {
+      setSabanaSearch(f.sabanaSearch ?? '')
+      if (f.selectedMonth) setSelectedMonth(f.selectedMonth)
+      if (f.selectedQuincena) setSelectedQuincena(f.selectedQuincena)
+    },
+    hasActiveFilters: Boolean(sabanaSearch)
+  })
+
   return (
     <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl space-y-5">
       {/* Cabecera Sábana */}
@@ -83,25 +95,14 @@ export default function LaborSabanaPanel({
           </span>
 
           {/* Buscador de Operario en Sábana */}
-          <div className="relative min-w-[200px]">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar operario en la sábana..."
-              value={sabanaSearch}
-              onChange={(e) => setSabanaSearch(e.target.value)}
-              className="w-full pl-8 pr-7 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-colors"
-            />
-            {sabanaSearch && (
-              <button
-                type="button"
-                onClick={() => setSabanaSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold"
-              >
-                ×
-              </button>
-            )}
-          </div>
+          <CrawlerSearchBar
+            compact
+            value={sabanaSearch}
+            onChange={setSabanaSearch}
+            onClear={() => setSabanaSearch('')}
+            viewsController={sabanaViewsController}
+            placeholder="Buscar operario en la sábana... (Ctrl+F)"
+          />
         </div>
       </div>
 

@@ -19,7 +19,7 @@ import {
 import { getModuleFilterConfig, resolveConfiguredSummary } from '../lib/moduleFilterConfigs.js'
 
 /**
- * Calcula sincrónicamente el estado inicial de filtros de un módulo (0 ms)
+ * Calcula sincrónicamente el estado inicial de filtros de un módulo o submódulo (0 ms)
  * combinando valores por defecto del registro central, memoria persistida y overrides de URL.
  */
 export function resolveInitialModuleFilters(user, profile, moduleKey, urlOverrides = {}) {
@@ -36,12 +36,14 @@ export function resolveInitialModuleFilters(user, profile, moduleKey, urlOverrid
 }
 
 /**
- * Hook universal de Zona 3 para memoria continua de filtros y hasta 5 Vistas Favoritas por usuario/módulo.
+ * Hook universal de Zona 3 para memoria continua de filtros y hasta 5 Vistas Favoritas por usuario/submódulo.
+ * Soporta cambios dinámicos de `moduleKey` (cambio de sub-pestaña) sin mezclar filtros ni vistas.
  */
 export function useModuleFilterMemory({
   moduleKey,
   currentFilters = {},
   setters = {},
+  onApplyFilters,
   summaryContext = {},
   hasActiveFilters
 }) {
@@ -49,20 +51,30 @@ export function useModuleFilterMemory({
   const { defaults = {} } = useMemo(() => getModuleFilterConfig(moduleKey), [moduleKey])
   const userKey = useMemo(() => resolveFilterUserKey(user, profile), [user, profile])
   const actorName = profile?.full_name || user?.email || 'Usuario'
+  const scopeKey = `${userKey}::${moduleKey}`
 
-  const [savedViews, setSavedViews] = useState(() => loadSavedFilterViewsLocal(userKey, moduleKey))
+  const [viewsByScope, setViewsByScope] = useState(() => ({
+    [scopeKey]: loadSavedFilterViewsLocal(userKey, moduleKey)
+  }))
   const [viewsError, setViewsError] = useState(null)
   const [syncingViews, setSyncingViews] = useState(false)
+
+  const savedViews = useMemo(
+    () => viewsByScope[scopeKey] ?? loadSavedFilterViewsLocal(userKey, moduleKey),
+    [viewsByScope, scopeKey, userKey, moduleKey]
+  )
 
   useEffect(() => {
     let active = true
     syncModuleSavedViewsFromSupabase(userKey, moduleKey)
       .then((synced) => {
-        if (active && Array.isArray(synced)) setSavedViews(synced)
+        if (active && Array.isArray(synced)) {
+          setViewsByScope((prev) => ({ ...prev, [scopeKey]: synced }))
+        }
       })
       .catch(() => {})
     return () => { active = false }
-  }, [userKey, moduleKey])
+  }, [userKey, moduleKey, scopeKey])
 
   const serializedFilters = JSON.stringify(currentFilters || {})
   useEffect(() => {
@@ -86,7 +98,7 @@ export function useModuleFilterMemory({
   const commitViewsList = useCallback(
     async (nextList) => {
       setViewsError(null)
-      setSavedViews(nextList)
+      setViewsByScope((prev) => ({ ...prev, [scopeKey]: nextList }))
       saveSavedFilterViewsLocal(userKey, moduleKey, nextList)
       try {
         setSyncingViews(true)
@@ -98,19 +110,23 @@ export function useModuleFilterMemory({
         setSyncingViews(false)
       }
     },
-    [userKey, moduleKey, actorName]
+    [scopeKey, userKey, moduleKey, actorName]
   )
 
   const onApplyView = useCallback(
     (view) => {
       if (!view) return
       const merged = { ...defaults, ...(view.filters || {}) }
-      for (const [key, setter] of Object.entries(setters || {})) {
-        if (typeof setter === 'function') setter(merged[key])
+      if (typeof onApplyFilters === 'function') {
+        onApplyFilters(merged)
+      } else {
+        for (const [key, setter] of Object.entries(setters || {})) {
+          if (typeof setter === 'function') setter(merged[key])
+        }
       }
       saveModuleFilterMemory(userKey, moduleKey, merged)
     },
-    [defaults, setters, userKey, moduleKey]
+    [defaults, onApplyFilters, setters, userKey, moduleKey]
   )
 
   const onSaveNewView = useCallback(

@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import CrawlerSearchBar from '../CrawlerSearchBar'
 import {
   Calendar,
   UserCheck,
-  Search,
   X,
   Ship,
   Pencil,
@@ -34,9 +36,26 @@ export default function LaborControlDiarioPanel({
   handleEditFromDaily,
   handleDeleteLog
 }) {
-  const [dailySearch, setDailySearch] = useState('')
-  const [dailyFilterType, setDailyFilterType] = useState('todos')
+  const { user, profile } = useAuth()
+  const initialDailyFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'labor_control_diario'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+  const [dailySearch, setDailySearch] = useState(initialDailyFilters.dailySearch || '')
+  const [dailyFilterType, setDailyFilterType] = useState(initialDailyFilters.dailyFilterType || 'todos')
   const [inlineLogEdit, setInlineLogEdit] = useState({ id: null, field: null, value: '' })
+
+  const controlViewsController = useModuleFilterMemory({
+    moduleKey: 'labor_control_diario',
+    currentFilters: { dailySearch, dailyFilterType, auditDate },
+    onApplyFilters: (f) => {
+      setDailySearch(f.dailySearch ?? '')
+      setDailyFilterType(f.dailyFilterType ?? 'todos')
+      if (f.auditDate) setAuditDate?.(f.auditDate)
+    },
+    hasActiveFilters: Boolean(dailySearch || dailyFilterType !== 'todos')
+  })
 
   const activateHorasCell = (log, field) => {
     if (!log) return
@@ -274,25 +293,14 @@ export default function LaborControlDiarioPanel({
             </p>
           </div>
 
-          <div className="relative min-w-[260px]">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Buscar operario, taller, rubro..."
-              value={dailySearch}
-              onChange={(e) => setDailySearch(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
-            />
-            {dailySearch && (
-              <button
-                type="button"
-                onClick={() => setDailySearch('')}
-                className="absolute right-2.5 top-2.5 text-slate-500 hover:text-white cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <CrawlerSearchBar
+            compact
+            value={dailySearch}
+            onChange={setDailySearch}
+            onClear={() => { setDailySearch(''); setDailyFilterType('todos') }}
+            viewsController={controlViewsController}
+            placeholder="Buscar operario, taller, rubro... (Ctrl+F | Esc limpia)"
+          />
         </div>
 
         {/* BOTONES DE FILTRO RÁPIDO */}

@@ -45,85 +45,91 @@ export default function PanolToolbar({
       />
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
         <div className="flex flex-wrap items-center gap-2">
-          {/* 1. Período (Índigo) */}
-          <select
-            value={filterPeriod}
-            onChange={(e) => setFilterPeriod(e.target.value)}
-            className={getFilterSelectClass('period', filterPeriod !== 'TODOS')}
-            title="Filtrar por Período"
-          >
-            <option value="TODOS" className="bg-slate-900">Todos los Períodos</option>
-            <option value="HOY" className="bg-slate-900">Solo Hoy</option>
-            <option value="QUINCENA" className="bg-slate-900">Quincena Actual</option>
-            <option value="MES" className="bg-slate-900">Mes Actual</option>
-          </select>
+          {activeTab === 'planillas' && (
+            <>
+              {/* 1. Período (Índigo) */}
+              <select
+                value={filterPeriod}
+                onChange={(e) => setFilterPeriod(e.target.value)}
+                className={getFilterSelectClass('period', filterPeriod !== 'TODOS')}
+                title="Filtrar por Período"
+              >
+                <option value="TODOS" className="bg-slate-900">Todos los Períodos</option>
+                <option value="HOY" className="bg-slate-900">Solo Hoy</option>
+                <option value="QUINCENA" className="bg-slate-900">Quincena Actual</option>
+                <option value="MES" className="bg-slate-900">Mes Actual</option>
+              </select>
 
-          {/* 2. Barco (Cian) */}
-          <select
-            value={filterShip}
-            onChange={(e) => {
-              setFilterShip(e.target.value)
-              setFilterOt?.('TODAS')
-            }}
-            className={getFilterSelectClass('ship', filterShip !== 'TODOS', 'max-w-[165px]')}
-            title="Filtrar por Barco"
-          >
-            <option value="TODOS" className="bg-slate-900">Todos los Barcos</option>
-            {ships.map((s) => (
-              <option key={s.id} value={s.id} className="bg-slate-900">
-                {s.name}
-              </option>
-            ))}
-          </select>
+              {/* 2. Barco (Cian) */}
+              <select
+                value={filterShip}
+                onChange={(e) => {
+                  setFilterShip(e.target.value)
+                  setFilterOt?.('TODAS')
+                }}
+                className={getFilterSelectClass('ship', filterShip !== 'TODOS', 'max-w-[165px]')}
+                title="Filtrar por Barco"
+              >
+                <option value="TODOS" className="bg-slate-900">Todos los Barcos</option>
+                {ships.map((s) => (
+                  <option key={s.id} value={s.id} className="bg-slate-900">
+                    {s.name}
+                  </option>
+                ))}
+              </select>
 
-          {/* 3. Orden de Trabajo (Esmeralda) */}
-          {setFilterOt && (
-            <select
-              value={filterOt}
-              onChange={(e) => setFilterOt(e.target.value)}
-              className={getFilterSelectClass('ot', filterOt !== 'TODAS', 'max-w-[175px]')}
-              title="Filtrar por Orden de Trabajo"
-            >
-              <option value="TODAS" className="bg-slate-900">Todas las OTs</option>
-              <option value="SIN_OT" className="bg-slate-900">⚠️ Sin OT</option>
-              {otOptions.map((w) => (
-                <option key={w.id} value={w.id} className="bg-slate-900">
-                  {w.ot_number} • {w.title}
-                </option>
-              ))}
-            </select>
-          )}
+              {/* 3. Orden de Trabajo (Esmeralda) */}
+              {setFilterOt && (
+                <select
+                  value={filterOt}
+                  onChange={(e) => setFilterOt(e.target.value)}
+                  className={getFilterSelectClass('ot', filterOt !== 'TODAS', 'max-w-[175px]')}
+                  title="Filtrar por Orden de Trabajo"
+                >
+                  <option value="TODAS" className="bg-slate-900">Todas las OTs</option>
+                  <option value="SIN_OT" className="bg-slate-900">⚠️ Sin OT</option>
+                  {otOptions.map((w) => (
+                    <option key={w.id} value={w.id} className="bg-slate-900">
+                      {w.ot_number} • {w.title}
+                    </option>
+                  ))}
+                </select>
+              )}
 
-          {/* 4. Contratista / Operario (Ámbar) */}
-          {setFilterContractor && (
-            <select
-              value={filterContractor}
-              onChange={(e) => setFilterContractor(e.target.value)}
-              className={getFilterSelectClass('contractor', filterContractor !== 'TODOS', 'max-w-[180px]')}
-              title="Filtrar por Contratista u Operario"
-            >
-              <option value="TODOS" className="bg-slate-900">Todos los Contratistas</option>
-              {contractorOptions.map((c) => (
-                <option key={c} value={c} className="bg-slate-900">
-                  {c}
-                </option>
-              ))}
-            </select>
+              {/* 4. Contratista / Operario (Ámbar) */}
+              {setFilterContractor && (
+                <select
+                  value={filterContractor}
+                  onChange={(e) => setFilterContractor(e.target.value)}
+                  className={getFilterSelectClass('contractor', filterContractor !== 'TODOS', 'max-w-[180px]')}
+                  title="Filtrar por Contratista u Operario"
+                >
+                  <option value="TODOS" className="bg-slate-900">Todos los Contratistas</option>
+                  {contractorOptions.map((c) => (
+                    <option key={c} value={c} className="bg-slate-900">
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
           )}
 
           {/* 5. Categoría (Azul Cielo) */}
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className={getFilterSelectClass('category', filterCategory !== 'TODAS')}
-            title="Filtrar por Categoría"
-          >
-            <option value="TODAS" className="bg-slate-900">Todas las Categorías</option>
-            <option value="MATERIALES" className="bg-slate-900">MATERIALES</option>
-            <option value="CONSUMIBLES" className="bg-slate-900">CONSUMIBLES</option>
-            <option value="ELEM.SEGURIDAD" className="bg-slate-900">ELEM.SEGURIDAD</option>
-            <option value="GASES" className="bg-slate-900">GASES</option>
-          </select>
+          {activeTab !== 'gases' && (
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className={getFilterSelectClass('category', filterCategory !== 'TODAS')}
+              title="Filtrar por Categoría"
+            >
+              <option value="TODAS" className="bg-slate-900">Todas las Categorías</option>
+              <option value="MATERIALES" className="bg-slate-900">MATERIALES</option>
+              <option value="CONSUMIBLES" className="bg-slate-900">CONSUMIBLES</option>
+              <option value="ELEM.SEGURIDAD" className="bg-slate-900">ELEM.SEGURIDAD</option>
+              <option value="GASES" className="bg-slate-900">GASES</option>
+            </select>
+          )}
 
           {activeTab === 'catalogo' && (
             <button
@@ -139,7 +145,7 @@ export default function PanolToolbar({
           )}
         </div>
 
-        {(hasActiveFilters || filterStockOnly) && onClearAllFilters && (
+        {hasActiveFilters && onClearAllFilters && (
           <button
             type="button"
             onClick={onClearAllFilters}

@@ -106,7 +106,7 @@ export default function CrawlerSearchBar({
       } ${className}`}
     >
       {searchInput}
-      <SavedFilterViewsDropdown controller={viewsController} />
+      <SavedFilterViewsDropdown key={viewsController.moduleKey} controller={viewsController} />
     </div>
   )
 }

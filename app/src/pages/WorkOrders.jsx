@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useModuleFilterMemory, resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
+import { useTabbedFilterMemory } from '../hooks/useTabbedFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../hooks/useGridContextMenu'
@@ -22,11 +22,6 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 export default function WorkOrders() {
   const { user, profile } = useAuth()
-  const initialWoFilters = useMemo(
-    () => resolveInitialModuleFilters(user, profile, 'work_orders'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
 
   // Datos principales
   const [ships, setShips] = useState([])
@@ -41,15 +36,21 @@ export default function WorkOrders() {
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
 
-  // Navegación y Filtros
+  // Navegación y Filtros independientes por submódulo (Unificado / Por Barco / Terceros PRC)
   const [activeMainTab, setActiveMainTab] = useState('unificado')
-  const [searchQuery, setSearchQuery] = useState(initialWoFilters.searchQuery)
   const searchInputRef = useRef(null)
-  const [selectedShipFilter, setSelectedShipFilter] = useState(initialWoFilters.selectedShipFilter)
-  const [selectedOtFilter, setSelectedOtFilter] = useState(initialWoFilters.selectedOtFilter)
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState(initialWoFilters.selectedStatusFilter)
-  const [selectedForemanFilter, setSelectedForemanFilter] = useState(initialWoFilters.selectedForemanFilter)
-  const [selectedContractorFilter, setSelectedContractorFilter] = useState(initialWoFilters.selectedContractorFilter)
+  const {
+    filtersByTab, activeFilters, hasActiveFilters, setTabFilter, setActiveFilter, clearActiveTabFilters: clearAllFilters, viewsController: woViewsController
+  } = useTabbedFilterMemory({
+    modulePrefix: 'work_orders',
+    tabs: ['unificado', 'ots', 'terceros'],
+    activeTab: activeMainTab,
+    summaryContext: { ships, workOrders }
+  })
+
+  const unificadoFilters = filtersByTab.unificado
+  const otsFilters = filtersByTab.ots
+  const tercerosFilters = filtersByTab.terceros
 
   // Triggers de Modales
   const [isWorkModalOpen, setIsWorkModalOpen] = useState(false)
@@ -111,22 +112,9 @@ export default function WorkOrders() {
   const otMetricsAndDatesMap = useMemo(() => computeOtMetricsAndDates(workOrders, laborLogs, inventoryTx, thirdPartyServices), [workOrders, laborLogs, inventoryTx, thirdPartyServices])
   const visibleWorkOrders = useMemo(() => workOrders.filter((w) => !isMergedWorkOrder(w)), [workOrders])
   const unifiedRows = useMemo(() => buildUnifiedRows(workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList[0] || 'ALE CAMADELLI', otMetricsAndDatesMap), [workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList, otMetricsAndDatesMap])
-  const filteredRows = useMemo(() => filterUnifiedRows(unifiedRows, { selectedShipFilter, selectedOtFilter, selectedStatusFilter, selectedForemanFilter, selectedContractorFilter, searchQuery }), [unifiedRows, selectedShipFilter, selectedOtFilter, selectedStatusFilter, selectedForemanFilter, selectedContractorFilter, searchQuery])
-  const stats = useMemo(() => calculateWorkOrderStats(unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, selectedShipFilter, inventoryTx), [unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, selectedShipFilter, inventoryTx])
+  const filteredRows = useMemo(() => filterUnifiedRows(unifiedRows, unificadoFilters), [unifiedRows, unificadoFilters])
+  const stats = useMemo(() => calculateWorkOrderStats(unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, unificadoFilters.selectedShipFilter, inventoryTx), [unifiedRows, laborLogs, thirdPartyServices, purchaseOrders, unificadoFilters.selectedShipFilter, inventoryTx])
   const activeExecutionRows = useMemo(() => unifiedRows.filter(r => !r.isPlaceholder && r.status === 'En ejecución'), [unifiedRows])
-
-  const hasActiveFilters = Boolean(searchQuery || selectedShipFilter !== 'todos' || selectedOtFilter !== 'todas' || selectedStatusFilter !== 'todos' || selectedForemanFilter !== 'todos' || selectedContractorFilter !== 'todos')
-  const clearAllFilters = useCallback(() => {
-    setSearchQuery(''); setSelectedShipFilter('todos'); setSelectedOtFilter('todas'); setSelectedStatusFilter('todos'); setSelectedForemanFilter('todos'); setSelectedContractorFilter('todos')
-  }, [])
-
-  const woViewsController = useModuleFilterMemory({
-    moduleKey: 'work_orders',
-    currentFilters: { searchQuery, selectedShipFilter, selectedOtFilter, selectedStatusFilter, selectedForemanFilter, selectedContractorFilter },
-    setters: { searchQuery: setSearchQuery, selectedShipFilter: setSelectedShipFilter, selectedOtFilter: setSelectedOtFilter, selectedStatusFilter: setSelectedStatusFilter, selectedForemanFilter: setSelectedForemanFilter, selectedContractorFilter: setSelectedContractorFilter },
-    summaryContext: { ships, workOrders },
-    hasActiveFilters
-  })
 
   // Disparadores de modales
   const handleOpenNewWorkModal = (preWo = null) => { setEditingWorkItem(null); setPreselectedWo(preWo); setIsWorkModalOpen(true) }
@@ -234,17 +222,24 @@ export default function WorkOrders() {
       />
 
       {/* ZONA 2: RADAR DE KPIS */}
-      <WorkOrdersKpiRadar stats={stats} selectedStatusFilter={selectedStatusFilter} setSelectedStatusFilter={setSelectedStatusFilter} />
+      <WorkOrdersKpiRadar
+        stats={stats}
+        selectedStatusFilter={unificadoFilters.selectedStatusFilter}
+        setSelectedStatusFilter={(nextStatus) => {
+          setTabFilter('unificado', 'selectedStatusFilter', nextStatus)
+          if (activeMainTab !== 'unificado') setActiveMainTab('unificado')
+        }}
+      />
 
       {/* BLOQUE OPERATIVO UNIFICADO (ZONAS 3 Y 4) */}
       <div className="alon-workspace-block">
         <WorkOrdersToolbar
-          searchQuery={searchQuery} setSearchQuery={setSearchQuery} searchInputRef={searchInputRef}
-          selectedShipFilter={selectedShipFilter} setSelectedShipFilter={setSelectedShipFilter}
-          selectedOtFilter={selectedOtFilter} setSelectedOtFilter={setSelectedOtFilter}
-          selectedStatusFilter={selectedStatusFilter} setSelectedStatusFilter={setSelectedStatusFilter}
-          selectedForemanFilter={selectedForemanFilter} setSelectedForemanFilter={setSelectedForemanFilter}
-          selectedContractorFilter={selectedContractorFilter} setSelectedContractorFilter={setSelectedContractorFilter}
+          searchQuery={activeFilters.searchQuery ?? ''} setSearchQuery={(v) => setActiveFilter('searchQuery', v)} searchInputRef={searchInputRef}
+          selectedShipFilter={activeFilters.selectedShipFilter ?? 'todos'} setSelectedShipFilter={(v) => setActiveFilter('selectedShipFilter', v)}
+          selectedOtFilter={activeFilters.selectedOtFilter ?? 'todas'} setSelectedOtFilter={(v) => setActiveFilter('selectedOtFilter', v)}
+          selectedStatusFilter={activeFilters.selectedStatusFilter ?? 'todos'} setSelectedStatusFilter={(v) => setActiveFilter('selectedStatusFilter', v)}
+          selectedForemanFilter={activeFilters.selectedForemanFilter ?? 'todos'} setSelectedForemanFilter={(v) => setActiveFilter('selectedForemanFilter', v)}
+          selectedContractorFilter={activeFilters.selectedContractorFilter ?? 'todos'} setSelectedContractorFilter={(v) => setActiveFilter('selectedContractorFilter', v)}
           ships={ships} workOrders={workOrders} workItems={workItems} foremenList={foremenList} contractorCatalog={contractorCatalog}
           hasActiveFilters={hasActiveFilters} onClearAllFilters={clearAllFilters} activeMainTab={activeMainTab} woGrid={woGrid} viewsController={woViewsController}
         />
@@ -252,7 +247,7 @@ export default function WorkOrders() {
         {activeMainTab === 'unificado' && (
           <WorkOrdersUnificadoPanel
             filteredRows={filteredRows} unifiedRows={unifiedRows} woGrid={woGrid} ships={ships} foremenList={foremenList}
-            searchQuery={searchQuery} stats={stats} hasActiveFilters={hasActiveFilters} onClearAllFilters={clearAllFilters}
+            searchQuery={unificadoFilters.searchQuery} stats={stats} hasActiveFilters={hasActiveFilters} onClearAllFilters={clearAllFilters}
             isRowLockedDec011={isRowLockedDec011} hasThirdPartyPermission={checkContractor3ros}
             inlineWoEdit={inlineWoEdit} setInlineWoEdit={setInlineWoEdit} commitInlineWoEdit={commitInlineWoEdit}
             onOpenNewWorkModal={handleOpenNewWorkModal} onOpenEditWorkModal={handleOpenEditWorkModal}
@@ -267,7 +262,7 @@ export default function WorkOrders() {
         {activeMainTab === 'ots' && (
           <WorkOrdersOtsPanel
             workOrders={workOrders} itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap}
-            thirdPartyByItemMap={thirdPartyByItemMap} selectedShipFilter={selectedShipFilter} searchQuery={searchQuery}
+            thirdPartyByItemMap={thirdPartyByItemMap} selectedShipFilter={otsFilters.selectedShipFilter} searchQuery={otsFilters.searchQuery}
             onOpenNewWorkModal={handleOpenNewWorkModal} onOpenEditWorkModal={handleOpenEditWorkModal}
             onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal} onOpenReopenModal={handleOpenReopenModal}
             onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} setSelectedWoDetail={setSelectedWoDetail} onDeleteWo={handleDeleteWo}
@@ -276,7 +271,7 @@ export default function WorkOrders() {
 
         {activeMainTab === 'terceros' && (
           <WorkOrdersTercerosPanel
-            thirdPartyServices={thirdPartyServices} workOrders={workOrders} searchQuery={searchQuery}
+            thirdPartyServices={thirdPartyServices} workOrders={workOrders} searchQuery={tercerosFilters.searchQuery}
             onOpenTpCascadeModal={() => setIsThirdPartyCascadeOpen(true)}
             setEditingThirdParty={setEditingThirdParty}
           />

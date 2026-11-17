@@ -58,9 +58,20 @@ export default function LaborLogs() {
       return resolved
     })
   }, [searchParams, setSearchParams])
+  const initialControlFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'labor_control_diario'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+  const initialSabanaFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'labor_sabana'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [dailyFilterType, setDailyFilterType] = useState('todos')
   const [selectedLogIds, setSelectedLogIds] = useState(new Set())
-  const [auditDate, setAuditDate] = useState(new Date().toISOString().split('T')[0])
+  const [auditDate, setAuditDate] = useState(() => initialControlFilters.auditDate || new Date().toISOString().split('T')[0])
 
   const [editingLog, setEditingLog] = useState(null)
   const [quickLogWorker, setQuickLogWorker] = useState(null)
@@ -70,9 +81,9 @@ export default function LaborLogs() {
 
   const currentDate = new Date()
   const [selectedYear, setSelectedYear] = useState(String(currentDate.getFullYear()))
-  const [selectedMonth, setSelectedMonth] = useState(String(currentDate.getMonth() + 1))
-  const [selectedQuincena, setSelectedQuincena] = useState(currentDate.getDate() <= 15 ? '1' : '2')
-  const [sabanaSearch, setSabanaSearch] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(() => initialSabanaFilters.selectedMonth || String(currentDate.getMonth() + 1))
+  const [selectedQuincena, setSelectedQuincena] = useState(() => initialSabanaFilters.selectedQuincena || (currentDate.getDate() <= 15 ? '1' : '2'))
+  const [sabanaSearch, setSabanaSearch] = useState(() => initialSabanaFilters.sabanaSearch || '')
   const [selectedQuincenaWorker, setSelectedQuincenaWorker] = useState(null)
 
   const showFeedbackMsg = useCallback((type, text) => {

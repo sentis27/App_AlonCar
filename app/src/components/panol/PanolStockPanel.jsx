@@ -47,6 +47,10 @@ export default function PanolStockPanel({
   activeKpiFilter,
   filterCategory,
   filterStockOnly,
+  traceSupplierFilter: propTraceSupplierFilter,
+  setTraceSupplierFilter: propSetTraceSupplierFilter,
+  traceMaterialFilter: propTraceMaterialFilter,
+  setTraceMaterialFilter: propSetTraceMaterialFilter,
   isAdmin,
   user,
   criticalMaterialsCount,
@@ -63,8 +67,12 @@ export default function PanolStockPanel({
 }) {
   const navigate = useNavigate()
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
-  const [traceSupplierFilter, setTraceSupplierFilter] = useState('TODOS')
-  const [traceMaterialFilter, setTraceMaterialFilter] = useState('TODOS')
+  const [localTraceSupplierFilter, setLocalTraceSupplierFilter] = useState('TODOS')
+  const [localTraceMaterialFilter, setLocalTraceMaterialFilter] = useState('TODOS')
+  const traceSupplierFilter = propTraceSupplierFilter ?? localTraceSupplierFilter
+  const setTraceSupplierFilter = propSetTraceSupplierFilter ?? setLocalTraceSupplierFilter
+  const traceMaterialFilter = propTraceMaterialFilter ?? localTraceMaterialFilter
+  const setTraceMaterialFilter = propSetTraceMaterialFilter ?? setLocalTraceMaterialFilter
 
   const handleSaveInlineMaterial = async (matId, field, value) => {
     try {

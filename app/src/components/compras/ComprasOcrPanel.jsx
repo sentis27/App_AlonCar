@@ -7,13 +7,15 @@ import {
   Paperclip,
   Plus,
   Trash2,
-  Search,
   X,
   FileCheck,
   Eye,
   ExternalLink
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import CrawlerSearchBar from '../CrawlerSearchBar'
 import { extractTextFromPdf } from '../../lib/pdfTextExtractor'
 
 export function UploadDocModal({ order, supplier, onClose, onSuccess }) {
@@ -378,9 +380,22 @@ export default function ComprasOcrPanel({
   workOrders = [],
   reloadDocs
 }) {
+  const { user, profile } = useAuth()
+  const initialDocFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'compras_documentos'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
   const [docsViewMode, setDocsViewMode] = useState('lista')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filterDocType, setFilterDocType] = useState('TODOS')
+  const [searchQuery, setSearchQuery] = useState(initialDocFilters.searchQuery || '')
+  const [filterDocType, setFilterDocType] = useState(initialDocFilters.filterDocType || 'TODOS')
+
+  const docsViewsController = useModuleFilterMemory({
+    moduleKey: 'compras_documentos',
+    currentFilters: { searchQuery, filterDocType },
+    setters: { searchQuery: setSearchQuery, filterDocType: setFilterDocType },
+    hasActiveFilters: Boolean(searchQuery || filterDocType !== 'TODOS')
+  })
   const [selectedDocAction, setSelectedDocAction] = useState(null)
   const [showDocActionModal, setShowDocActionModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -460,24 +475,14 @@ export default function ComprasOcrPanel({
 
       {/* Barra de Filtro y Búsqueda OCR */}
       <div className="alon-zone-toolbar p-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
-        <div className="relative flex-1 min-w-[280px] max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por texto en PDF, remito, factura o descripción..."
-            className="w-full pl-9 pr-8 py-1.5 bg-slate-900 border border-slate-750 focus:border-cyan-500 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+        <CrawlerSearchBar
+          compact
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onClear={() => { setSearchQuery(''); setFilterDocType('TODOS') }}
+          viewsController={docsViewsController}
+          placeholder="Buscar por texto en PDF, remito, factura o descripción..."
+        />
 
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
           {['TODOS', 'COTIZACION_MATERIAL', 'FICHA_TECNICA', 'REMITO', 'FACTURA'].map((type) => (

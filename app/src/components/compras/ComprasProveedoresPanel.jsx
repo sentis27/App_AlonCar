@@ -7,7 +7,6 @@ import {
   Mail,
   Tag,
   Plus,
-  Search,
   X,
   List,
   LayoutGrid,
@@ -23,6 +22,9 @@ import {
   Redo2
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import CrawlerSearchBar from '../CrawlerSearchBar'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -398,8 +400,21 @@ export default function ComprasProveedoresPanel({
   purchaseOrders = [],
   reloadSuppliers
 }) {
-  const [supplierKpiFilter, setSupplierKpiFilter] = useState('TODOS')
-  const [supplierSearchQuery, setSupplierSearchQuery] = useState('')
+  const { user, profile } = useAuth()
+  const initialSupplierFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'compras_proveedores'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+  const [supplierKpiFilter, setSupplierKpiFilter] = useState(initialSupplierFilters.supplierKpiFilter || 'TODOS')
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState(initialSupplierFilters.supplierSearchQuery || '')
+
+  const proveedoresViewsController = useModuleFilterMemory({
+    moduleKey: 'compras_proveedores',
+    currentFilters: { supplierSearchQuery, supplierKpiFilter },
+    setters: { supplierSearchQuery: setSupplierSearchQuery, supplierKpiFilter: setSupplierKpiFilter },
+    hasActiveFilters: Boolean(supplierSearchQuery || supplierKpiFilter !== 'TODOS')
+  })
   const [suppliersViewMode, setSuppliersViewMode] = useState('lista')
   const [supplierInlineEdit, setSupplierInlineEdit] = useState({ supplierId: null, field: null, value: '' })
   const [showSupplierModal, setShowSupplierModal] = useState(false)
@@ -763,26 +778,15 @@ export default function ComprasProveedoresPanel({
       {/* BLOQUE OPERATIVO UNIFICADO: ZONA 3 + ZONA 4 */}
       <div className="alon-workspace-block">
         <div className="alon-zone-toolbar flex flex-wrap items-center justify-between gap-3 p-3">
-          <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-md">
-            <div className="relative w-full">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={supplierSearchQuery}
-                onChange={(e) => setSupplierSearchQuery(e.target.value)}
-                placeholder="Buscar proveedor, rubro, CUIT, teléfono, email, notas..."
-                className="w-full pl-9 pr-8 py-1.5 bg-slate-900/90 border border-slate-750 focus:border-cyan-500 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none"
-              />
-              {supplierSearchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSupplierSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+          <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-xl">
+            <CrawlerSearchBar
+              compact
+              value={supplierSearchQuery}
+              onChange={setSupplierSearchQuery}
+              onClear={() => { setSupplierSearchQuery(''); setSupplierKpiFilter('TODOS') }}
+              viewsController={proveedoresViewsController}
+              placeholder="Buscar proveedor, rubro, CUIT, teléfono, email, notas..."
+            />
             <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
               {filteredSuppliers.length} de {suppliers.length}
             </span>
