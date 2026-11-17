@@ -90,6 +90,83 @@ export async function unifyWorkOrdersService({ sourceWo, targetWo, reason = '', 
 }
 
 /**
+ * Crea una nueva OT en el mismo barco y traslada íntegramente todas las sublíneas
+ * y costos vinculados de `sourceWo` hacia esa nueva OT, archivando `sourceWo` como Unificada.
+ */
+export async function transferWorkOrderToNewOtService({
+  sourceWo,
+  newOtTitle,
+  otCreationType = 'libre',
+  reason = '',
+  user,
+  getNextOtNumberForShip
+}) {
+  if (!sourceWo?.id || !sourceWo?.ship_id) throw new Error('Seleccioná la OT origen.')
+  const normalizedTitle = normalizeOtTitleKey(newOtTitle)
+  if (!normalizedTitle) throw new Error('Ingresá el nombre de la nueva OT.')
+
+  await assertNoDuplicateOtTitleInDb({ shipId: sourceWo.ship_id, title: normalizedTitle })
+
+  const summary = await fetchWorkOrderTransferSummaryService(sourceWo.id)
+  const newOtNum = typeof getNextOtNumberForShip === 'function'
+    ? getNextOtNumberForShip(sourceWo.ship_id)
+    : `OT-${Date.now()}`
+  const nowIso = new Date().toISOString()
+
+  const { data: createdList, error: createErr } = await supabase
+    .from('work_orders')
+    .insert([{
+      ship_id: sourceWo.ship_id,
+      ot_number: newOtNum,
+      title: normalizedTitle,
+      description: sourceWo.description || null,
+      status: sourceWo.status === 'Unificada' ? 'En Progreso' : (sourceWo.status || 'En Progreso'),
+      work_type: sourceWo.work_type || 'HORA',
+      assignment_type: sourceWo.assignment_type || 'Presupuesto General',
+      budget_code: sourceWo.budget_code || null,
+      foreman_name: sourceWo.foreman_name || null,
+      contractor_name: sourceWo.contractor_name || null,
+      is_tabulated: otCreationType === 'tabulada',
+      start_date: sourceWo.start_date || nowIso.split('T')[0],
+      notes: `Creada por traslado completo desde ${sourceWo.ot_number} · ${sourceWo.title}${reason?.trim() ? ` (${reason.trim()})` : ''}`
+    }])
+    .select()
+  if (createErr) throw createErr
+  const createdWo = createdList?.[0]
+  if (!createdWo?.id) throw new Error('No se pudo crear la nueva Orden de Trabajo destino.')
+
+  const { error: wiErr } = await supabase
+    .from('work_items')
+    .update({ work_order_id: createdWo.id, updated_at: nowIso })
+    .eq('work_order_id', sourceWo.id)
+  if (wiErr) throw wiErr
+
+  await moveAllLinkedRecordsBetweenWos(sourceWo.id, createdWo.id, null)
+
+  const mergeTag = `[TRASLADADA A ${createdWo.ot_number}] Absorción completa hacia nueva OT ${createdWo.ot_number} · ${createdWo.title}${reason?.trim() ? ` (${reason.trim()})` : ''}`
+  const nextSourceNotes = [sourceWo.notes, mergeTag].filter(Boolean).join('\n')
+
+  const { error: srcErr } = await supabase
+    .from('work_orders')
+    .update({ status: 'Unificada', merged_into_wo_id: createdWo.id, notes: nextSourceNotes })
+    .eq('id', sourceWo.id)
+  if (srcErr) throw srcErr
+
+  await auditService.logRowAction({
+    action: 'UNIFY_WORK_ORDERS',
+    entityType: 'work_orders',
+    entityId: createdWo.id,
+    entityName: `${sourceWo.ot_number} (${sourceWo.title}) -> ${createdWo.ot_number} (${createdWo.title})`,
+    details: { sourceWoId: sourceWo.id, targetWoId: createdWo.id, createdNewOt: true, summary: summary.rows, reason },
+    sheetName: SHEET_NAME,
+    moduleRoute: '/ots',
+    user: user?.email || 'Supervisor'
+  })
+
+  return { summary, targetLabel: `${createdWo.ot_number} · ${createdWo.title}` }
+}
+
+/**
  * Separa/traslada una sublínea (`work_item`) hacia una nueva OT o una OT existente,
  * moviendo sus gastos vinculados (completo por OT cuando se confirma o por work_item_id).
  */

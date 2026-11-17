@@ -102,7 +102,7 @@ export function WorkOrdersModalsContainer({
     ship_id: '',
     ot_mode: 'new',
     existing_wo_id: '',
-    ot_creation_type: 'tabulada',
+    ot_creation_type: 'libre',
     selected_template_id: '',
     ot_number: 'OT-1',
     ot_title: '',
@@ -169,9 +169,9 @@ export function WorkOrdersModalsContainer({
       setBudgetOptionMode('PENDIENTE')
       setWorkForm({
         ship_id: defaultShipId,
-        ot_mode: preselectedWo ? 'existing' : (shipWos.length > 0 ? 'existing' : 'new'),
+        ot_mode: preselectedWo ? 'existing' : 'new',
         existing_wo_id: preselectedWo ? preselectedWo.id : (shipWos[0]?.id || ''),
-        ot_creation_type: 'tabulada',
+        ot_creation_type: 'libre',
         selected_template_id: '',
         ot_number: getNextOtNumberForShip(workOrders, defaultShipId),
         ot_title: '',
@@ -485,7 +485,7 @@ export function WorkOrdersModalsContainer({
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 truncate">
-                    Recorrido guiado por color: 1º Barco/OT ➔ 2º Catálogo OT.ABC ➔ 3º Detalle y Responsables ➔ 4º Contratistas y 3ros.
+                    Recorrido lineal: 1º Barco y OT ➔ 2º Detalle Técnico ➔ 3º Responsables y Facturación.
                   </p>
                 </div>
               </div>
@@ -500,542 +500,568 @@ export function WorkOrdersModalsContainer({
             </div>
 
             <form onSubmit={handleSaveWorkSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
-              <div className="alon-modal-body">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
-                  {/* COLUMNA IZQUIERDA */}
-                  <div className="space-y-3">
-                    {/* BLOQUE 1: BARCO Y OT */}
-                    <div className="alon-chunk-sky space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
-                        <span className="text-[11px] font-black uppercase tracking-wider text-sky-400">
-                          1. Barco y Contenedor de Orden de Trabajo
-                        </span>
-                        <span className="text-[10px] text-slate-400">Origen naval</span>
+              <div className="alon-modal-body space-y-3">
+                {/* BLOQUE 1: BARCO Y CONTENEDOR DE OT (LINEAL) */}
+                <div className="alon-chunk-sky space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-sky-400">
+                      1. Barco y Contenedor de Orden de Trabajo
+                    </span>
+                    <span className="text-[10px] text-slate-400">Selección directa</span>
+                  </div>
+
+                  {/* Barra superior de 3 botoneras */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
+                    <div className="md:col-span-4">
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">Tipo de OT</label>
+                      <div className={`grid grid-cols-2 gap-1 p-0.5 rounded-xl bg-slate-900 border border-slate-800 ${workForm.ot_mode === 'existing' ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWorkForm((prev) => ({ ...prev, ot_creation_type: 'tabulada' }))
+                            setShowInlineMultiPicker(true)
+                          }}
+                          className={`py-1 px-2 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                            workForm.ot_creation_type === 'tabulada' ? 'bg-purple-950/90 text-purple-200 border border-purple-500/80 shadow-sm' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Tabulada
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWorkForm((prev) => ({ ...prev, ot_creation_type: 'libre', selected_template_id: '' }))
+                            setShowInlineMultiPicker(false)
+                          }}
+                          className={`py-1 px-2 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                            workForm.ot_creation_type === 'libre' ? 'bg-amber-500/20 text-amber-200 border border-amber-400/80 shadow-sm' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Nombre Libre
+                        </button>
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                            1° Barco / Embarcación <span className="text-rose-400">*</span>
-                          </label>
-                          <select
-                            required
-                            disabled={Boolean(editingWorkItem)}
-                            value={workForm.ship_id}
-                            onChange={(e) => {
-                              const newShipId = e.target.value
-                              const shipWos = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
-                                shipId: newShipId,
-                                includeEliminated: false,
-                                includeClosed: true
-                              })
-                              setWorkForm((p) => ({
-                                ...p,
-                                ship_id: newShipId,
-                                ot_mode: shipWos.length > 0 ? 'existing' : 'new',
-                                existing_wo_id: shipWos[0]?.id || '',
-                                ot_number: getNextOtNumberForShip(workOrders, newShipId)
-                              }))
-                            }}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold disabled:opacity-60"
-                          >
-                            <option value="">-- Seleccionar Barco --</option>
-                            {ships.map((s) => (
-                              <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                            2° Destino del Trabajo <span className="text-rose-400">*</span>
-                          </label>
-                          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-xl bg-slate-900 border border-slate-800">
-                            <button
-                              type="button"
-                              disabled={Boolean(editingWorkItem)}
-                              onClick={() => setWorkForm((prev) => ({ ...prev, ot_mode: 'new' }))}
-                              className={`py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                                workForm.ot_mode === 'new' ? 'bg-sky-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
-                              }`}
-                            >
-                              + Crear Nueva OT
-                            </button>
-                            <button
-                              type="button"
-                              disabled={Boolean(editingWorkItem)}
-                              onClick={() => setWorkForm((prev) => ({ ...prev, ot_mode: 'existing' }))}
-                              className={`py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                                workForm.ot_mode === 'existing' ? 'bg-sky-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
-                              }`}
-                            >
-                              Usar OT Existente
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {workForm.ot_mode === 'new' ? (
-                        <div className="space-y-2.5 pt-1 border-t border-sky-500/15">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-bold text-slate-300">Tipo de OT:</span>
-                            <button
-                              type="button"
-                              onClick={() => setWorkForm((prev) => ({ ...prev, ot_creation_type: 'tabulada' }))}
-                              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] border cursor-pointer ${
-                                workForm.ot_creation_type === 'tabulada' ? 'bg-purple-950/80 text-purple-300 border-purple-500 shadow-sm' : 'bg-slate-900 text-slate-400 border-slate-800'
-                              }`}
-                            >
-                              📋 Tabulada (Catálogo OT.ABC)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setWorkForm((prev) => ({ ...prev, ot_creation_type: 'libre', selected_template_id: '' }))}
-                              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] border cursor-pointer ${
-                                workForm.ot_creation_type === 'libre' ? 'bg-cyan-950/80 text-cyan-300 border-cyan-500 shadow-sm' : 'bg-slate-900 text-slate-400 border-slate-800'
-                              }`}
-                            >
-                              ✍️ Nombre Libre
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <div>
-                              <label className="block text-[11px] font-semibold text-slate-400 mb-1">Nº Consecutivo</label>
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  readOnly
-                                  disabled
-                                  value={workForm.ot_number}
-                                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-primary font-mono font-black cursor-not-allowed"
-                                />
-                                <span className="absolute right-2 top-1.5 text-[10px] text-slate-500 font-bold">🔒 Auto</span>
-                              </div>
-                            </div>
-                            <div className="sm:col-span-2">
-                              <label className="block text-[11px] font-semibold text-slate-300 mb-1">Nombre de la OT *</label>
-                              <input
-                                type="text"
-                                required={selectedBatchTemplates.length <= 1}
-                                value={workForm.ot_title}
-                                onChange={(e) => setWorkForm((prev) => ({ ...prev, ot_title: e.target.value.toUpperCase() }))}
-                                onBlur={() => setWorkForm((prev) => ({ ...prev, ot_title: (prev.ot_title || '').trim().toUpperCase() }))}
-                                placeholder="EJ: REPARACIÓN DE LÍNEA DE EJES"
-                                className={`w-full bg-slate-900 border rounded-xl px-2.5 py-1.5 text-xs text-white font-bold uppercase focus:outline-none ${
-                                  workDuplicateConflict ? 'border-rose-500 focus:border-rose-400' : 'border-slate-700 focus:border-sky-400'
-                                }`}
-                              />
-                            </div>
-                          </div>
-                          {(workDuplicateConflict || batchDuplicateConflicts.length > 0) && (
-                            <div
-                              className={`p-2 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-2 ${
-                                (workDuplicateConflict?.kind || batchDuplicateConflicts[0]?.kind) === 'ELIMINATED'
-                                  ? 'bg-amber-950/60 border-amber-500/60 text-amber-200'
-                                  : 'bg-rose-950/60 border-rose-500/60 text-rose-200'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <AlertTriangle className="w-4 h-4 shrink-0" />
-                                <span>
-                                  {workDuplicateConflict
-                                    ? workDuplicateConflict.message
-                                    : `${batchDuplicateConflicts[0].title}: ${batchDuplicateConflicts[0].message}`}
-                                </span>
-                              </div>
-                              {workDuplicateConflict?.kind === 'ACTIVE' && workDuplicateConflict.existingWo?.id && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setWorkForm((prev) => ({
-                                      ...prev,
-                                      ot_mode: 'existing',
-                                      existing_wo_id: workDuplicateConflict.existingWo.id,
-                                      ot_title: workDuplicateConflict.existingWo.title,
-                                      ot_number: workDuplicateConflict.existingWo.ot_number
-                                    }))
-                                  }
-                                  className="px-2 py-0.5 rounded-lg bg-white text-slate-900 text-[10px] font-black shrink-0 cursor-pointer"
-                                >
-                                  Usar esa OT existente
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="pt-1 border-t border-sky-500/15">
-                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">Seleccionar OT Existente *</label>
-                          <select
-                            required
-                            disabled={Boolean(editingWorkItem)}
-                            value={workForm.existing_wo_id}
-                            onChange={(e) => {
-                              const wo = workOrders.find((w) => w.id === e.target.value)
-                              setWorkForm((prev) => ({
-                                ...prev,
-                                existing_wo_id: e.target.value,
-                                foreman_name: wo?.foreman_name || prev.foreman_name,
-                                ot_title: wo?.title || prev.ot_title,
-                                ot_number: wo?.ot_number || prev.ot_number
-                              }))
-                            }}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold disabled:opacity-60"
-                          >
-                            <option value="">-- Seleccionar OT --</option>
-                            {standardShipWos.map((w) => (
-                              <option key={w.id} value={w.id}>{w.ot_number} &bull; {w.title}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
                     </div>
 
-                    {/* BLOQUE 2: CATÁLOGO */}
-                    {workForm.ot_mode === 'new' && workForm.ot_creation_type === 'tabulada' && (
-                      <div className="alon-chunk-purple space-y-2">
-                        <div className="flex items-center justify-between border-b border-purple-500/20 pb-1">
-                          <span className="text-[11px] font-black uppercase tracking-wider text-purple-300">
-                            2. Catálogo OT.ABC y Selección Múltiple
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => { setTemplatePickerFromForm(true); setIsTemplateModalOpen(true) }}
-                            className="text-[10px] text-amber-300 hover:underline font-bold flex items-center gap-1 cursor-pointer"
-                          >
-                            <Sparkles className="w-3 h-3" />
-                            <span>Abrir Catálogo Completo</span>
-                          </button>
-                        </div>
+                    <div className="md:col-span-4">
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Destino del Trabajo <span className="text-rose-400">*</span>
+                      </label>
+                      <div className="grid grid-cols-2 gap-1 p-0.5 rounded-xl bg-slate-900 border border-slate-800">
+                        <button
+                          type="button"
+                          disabled={Boolean(editingWorkItem)}
+                          onClick={() => setWorkForm((prev) => ({ ...prev, ot_mode: 'new' }))}
+                          className={`py-1 px-2 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                            workForm.ot_mode === 'new' ? 'bg-sky-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          + Crear Nueva OT
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(editingWorkItem)}
+                          onClick={() => setWorkForm((prev) => ({ ...prev, ot_mode: 'existing' }))}
+                          className={`py-1 px-2 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                            workForm.ot_mode === 'existing' ? 'bg-sky-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Usar OT Existente
+                        </button>
+                      </div>
+                    </div>
 
-                        <div className="flex items-center gap-2">
+                    <div className="md:col-span-4">
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Tipo de Trabajo <span className="text-rose-400">*</span>
+                      </label>
+                      <div className="grid grid-cols-3 gap-1 p-0.5 rounded-xl bg-slate-900 border border-slate-800">
+                        {TIPOS_DE_TRABAJO.map((t) => (
+                          <button
+                            key={t.value}
+                            type="button"
+                            onClick={() => setWorkForm((prev) => ({ ...prev, work_type: t.value }))}
+                            className={`py-1 px-1.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer truncate ${
+                              workForm.work_type === t.value
+                                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400 shadow-sm'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                            title={t.label}
+                          >
+                            {t.shortLabel || t.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Fila lineal de datos del barco y OT */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end pt-1.5 border-t border-sky-500/15">
+                    <div className="sm:col-span-2">
+                      <label className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1">
+                        <span>Nº</span>
+                        {workForm.ot_mode === 'new' && <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400">Auto</span>}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        disabled
+                        value={workForm.ot_number}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-primary font-mono font-black text-center cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Barco / Embarcación <span className="text-rose-400">*</span>
+                      </label>
+                      <select
+                        required
+                        disabled={Boolean(editingWorkItem)}
+                        value={workForm.ship_id}
+                        onChange={(e) => {
+                          const newShipId = e.target.value
+                          const shipWos = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
+                            shipId: newShipId,
+                            includeEliminated: false,
+                            includeClosed: true
+                          })
+                          setWorkForm((p) => ({
+                            ...p,
+                            ship_id: newShipId,
+                            existing_wo_id: shipWos[0]?.id || '',
+                            ot_number: getNextOtNumberForShip(workOrders, newShipId)
+                          }))
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold disabled:opacity-60"
+                      >
+                        <option value="">-- Seleccionar Barco --</option>
+                        {ships.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {workForm.ot_mode === 'new' ? (
+                      <>
+                        <div className={workForm.ot_creation_type === 'tabulada' ? 'sm:col-span-4' : 'sm:col-span-7'}>
+                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">Nombre de la OT *</label>
                           <input
                             type="text"
-                            value={inlineCatalogSearch}
-                            onChange={(e) => setInlineCatalogSearch(e.target.value)}
-                            placeholder="Buscar en Catálogo OT.ABC..."
-                            className="flex-1 bg-slate-900 border border-purple-800/60 rounded-xl px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none"
+                            required={selectedBatchTemplates.length <= 1}
+                            value={workForm.ot_title}
+                            onChange={(e) => setWorkForm((prev) => ({ ...prev, ot_title: e.target.value.toUpperCase() }))}
+                            onBlur={() => setWorkForm((prev) => ({ ...prev, ot_title: (prev.ot_title || '').trim().toUpperCase() }))}
+                            placeholder="Ej: Reparación válvulas de casco..."
+                            className={`w-full bg-slate-900 border rounded-xl px-2.5 py-1.5 text-xs text-white font-bold uppercase focus:outline-none ${
+                              workDuplicateConflict ? 'border-rose-500 focus:border-rose-400' : 'border-slate-700 focus:border-sky-400'
+                            }`}
                           />
-                          <button
-                            type="button"
-                            onClick={() => setShowInlineMultiPicker(!showInlineMultiPicker)}
-                            className="px-2.5 py-1 rounded-xl bg-purple-950 border border-purple-600/70 text-purple-200 text-[11px] font-bold cursor-pointer"
-                          >
-                            {showInlineMultiPicker ? 'Ocultar' : `Ver Lista (${templates.length})`}
-                          </button>
                         </div>
 
-                        {(showInlineMultiPicker || inlineCatalogSearch.trim()) && (
-                          <div className="max-h-40 overflow-y-auto space-y-1 p-1 bg-slate-950 rounded-xl border border-purple-900/50">
-                            {templates
-                              .filter((t) =>
-                                !inlineCatalogSearch.trim() ? true : t.name.toLowerCase().includes(inlineCatalogSearch.toLowerCase())
-                              )
-                              .map((tpl) => {
-                                const isChecked = selectedBatchTemplates.some((item) => item.template_id === tpl.id)
-                                return (
-                                  <div
-                                    key={tpl.id}
-                                    onClick={() =>
-                                      setSelectedBatchTemplates((prev) =>
-                                        prev.some((item) => item.template_id === tpl.id)
-                                          ? prev.filter((item) => item.template_id !== tpl.id)
-                                          : [...prev, { template_id: tpl.id, ot_title: String(tpl.name || '').toUpperCase(), description: tpl.description || '', status: workForm.status || 'En ejecución' }]
-                                      )
-                                    }
-                                    className={`p-1.5 rounded-lg border text-[11px] flex items-center justify-between cursor-pointer ${
-                                      isChecked ? 'bg-purple-950/80 border-purple-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-300'
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2 truncate">
-                                      <input type="checkbox" checked={isChecked} onChange={() => {}} className="w-3.5 h-3.5 rounded accent-purple-500" />
-                                      <span className="truncate">{tpl.name}</span>
-                                    </div>
-                                    {tpl.category && <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">{tpl.category}</span>}
-                                  </div>
-                                )
-                              })}
+                        {workForm.ot_creation_type === 'tabulada' && (
+                          <div className="sm:col-span-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-semibold text-purple-300">Catálogo OT.ABC</label>
+                              <button
+                                type="button"
+                                onClick={() => { setTemplatePickerFromForm(true); setIsTemplateModalOpen(true) }}
+                                className="text-[10px] text-amber-300 hover:underline font-bold flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <Sparkles className="w-2.5 h-2.5" />
+                                <span>ABM</span>
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              value={inlineCatalogSearch}
+                              onChange={(e) => { setInlineCatalogSearch(e.target.value); setShowInlineMultiPicker(true) }}
+                              placeholder="Buscar trabajo estándar..."
+                              className="w-full bg-slate-900 border border-purple-700/70 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-400"
+                            />
                           </div>
                         )}
+                      </>
+                    ) : (
+                      <div className="sm:col-span-7">
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">Seleccionar OT Existente *</label>
+                        <select
+                          required
+                          disabled={Boolean(editingWorkItem)}
+                          value={workForm.existing_wo_id}
+                          onChange={(e) => {
+                            const wo = workOrders.find((w) => w.id === e.target.value)
+                            setWorkForm((prev) => ({
+                              ...prev,
+                              existing_wo_id: e.target.value,
+                              foreman_name: wo?.foreman_name || prev.foreman_name,
+                              ot_title: wo?.title || prev.ot_title,
+                              ot_number: wo?.ot_number || prev.ot_number
+                            }))
+                          }}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold disabled:opacity-60"
+                        >
+                          <option value="">-- Seleccionar OT --</option>
+                          {standardShipWos.map((w) => (
+                            <option key={w.id} value={w.id}>{w.ot_number} &bull; {w.title}</option>
+                          ))}
+                        </select>
                       </div>
                     )}
                   </div>
 
-                  {/* COLUMNA DERECHA */}
-                  <div className="space-y-3">
-                    {/* BLOQUE 3: DETALLE TÉCNICO */}
-                    <div className="alon-chunk-amber space-y-2">
-                      <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
-                        <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
-                          3. Detalle Técnico del Trabajo
+                  {/* Alerta de duplicados */}
+                  {workForm.ot_mode === 'new' && (workDuplicateConflict || batchDuplicateConflicts.length > 0) && (
+                    <div
+                      className={`p-2 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-2 ${
+                        (workDuplicateConflict?.kind || batchDuplicateConflicts[0]?.kind) === 'ELIMINATED'
+                          ? 'bg-amber-950/60 border-amber-500/60 text-amber-200'
+                          : 'bg-rose-950/60 border-rose-500/60 text-rose-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>
+                          {workDuplicateConflict
+                            ? workDuplicateConflict.message
+                            : `${batchDuplicateConflicts[0].title}: ${batchDuplicateConflicts[0].message}`}
                         </span>
-                        <span className="text-[10px] text-slate-400">Descripción & Estado</span>
                       </div>
+                      {workDuplicateConflict?.kind === 'ACTIVE' && workDuplicateConflict.existingWo?.id && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWorkForm((prev) => ({
+                              ...prev,
+                              ot_mode: 'existing',
+                              existing_wo_id: workDuplicateConflict.existingWo.id,
+                              ot_title: workDuplicateConflict.existingWo.title,
+                              ot_number: workDuplicateConflict.existingWo.ot_number
+                            }))
+                          }
+                          className="px-2 py-0.5 rounded-lg bg-white text-slate-900 text-[10px] font-black shrink-0 cursor-pointer"
+                        >
+                          Usar esa OT existente
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                          Descripción Técnica del Trabajo <span className="text-rose-400">*</span>
-                        </label>
-                        <textarea
-                          rows={3}
-                          required
-                          value={workForm.description}
-                          onChange={(e) => setWorkForm((prev) => ({ ...prev, description: e.target.value }))}
-                          placeholder="Detallá los trabajos a realizar..."
-                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-amber-400 focus:outline-none"
-                        />
+                  {/* Lista visible automática al elegir Tabulada */}
+                  {workForm.ot_mode === 'new' && workForm.ot_creation_type === 'tabulada' && (
+                    <div className="p-2 rounded-xl bg-slate-950/90 border border-purple-700/50 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-purple-300">
+                          Catálogo OT.ABC ({templates.length} plantillas)
+                          {selectedBatchTemplates.length > 0 && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded bg-purple-900/80 text-white text-[10px]">
+                              {selectedBatchTemplates.length} seleccionada(s)
+                            </span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowInlineMultiPicker((v) => !v)}
+                          className="text-[10px] text-slate-400 hover:text-white font-bold cursor-pointer"
+                        >
+                          {showInlineMultiPicker ? 'Contraer lista' : 'Mostrar lista'}
+                        </button>
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                            Estado del Trabajo <span className="text-rose-400">*</span>
-                          </label>
-                          <select
-                            value={workForm.status}
-                            onChange={(e) => setWorkForm((prev) => ({ ...prev, status: e.target.value }))}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold focus:border-amber-400 focus:outline-none"
-                          >
-                            {ESTADOS_TRABAJO.map((st) => (
-                              <option key={st.value} value={st.value}>{st.value}</option>
-                            ))}
-                          </select>
+                      {(showInlineMultiPicker || inlineCatalogSearch.trim()) && (
+                        <div className="max-h-32 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
+                          {templates
+                            .filter((t) =>
+                              !inlineCatalogSearch.trim() ? true : t.name.toLowerCase().includes(inlineCatalogSearch.toLowerCase())
+                            )
+                            .map((tpl) => {
+                              const isChecked = selectedBatchTemplates.some((item) => item.template_id === tpl.id)
+                              return (
+                                <div
+                                  key={tpl.id}
+                                  onClick={() => {
+                                    setSelectedBatchTemplates((prev) => {
+                                      const next = prev.some((item) => item.template_id === tpl.id)
+                                        ? prev.filter((item) => item.template_id !== tpl.id)
+                                        : [...prev, { template_id: tpl.id, ot_title: String(tpl.name || '').toUpperCase(), description: tpl.description || '', status: workForm.status || 'En ejecución' }]
+                                      if (next.length === 1) {
+                                        setWorkForm((wf) => ({
+                                          ...wf,
+                                          selected_template_id: next[0].template_id,
+                                          ot_title: next[0].ot_title,
+                                          description: wf.description || next[0].description || ''
+                                        }))
+                                      }
+                                      return next
+                                    })
+                                  }}
+                                  className={`p-1.5 rounded-lg border text-[11px] flex items-center justify-between gap-1.5 cursor-pointer ${
+                                    isChecked ? 'bg-purple-950/80 border-purple-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <input type="checkbox" checked={isChecked} onChange={() => {}} className="w-3.5 h-3.5 rounded accent-purple-500 shrink-0" />
+                                    <span className="truncate">{tpl.name}</span>
+                                  </div>
+                                  {tpl.category && <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400 font-mono shrink-0">{tpl.category}</span>}
+                                </div>
+                              )
+                            })}
                         </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">Comentarios</label>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* BLOQUE 2: DETALLE TÉCNICO (LINEAL) */}
+                <div className="alon-chunk-amber space-y-2">
+                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
+                      2. Detalle Técnico del Trabajo
+                    </span>
+                    <span className="text-[10px] text-slate-400">Descripción & Estado</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start">
+                    <div className="md:col-span-6">
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Descripción Técnica del Trabajo <span className="text-rose-400">*</span>
+                      </label>
+                      <textarea
+                        rows={2}
+                        required
+                        value={workForm.description}
+                        onChange={(e) => setWorkForm((prev) => ({ ...prev, description: e.target.value }))}
+                        placeholder="Detallá los trabajos a realizar..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Estado del Trabajo <span className="text-rose-400">*</span>
+                      </label>
+                      <select
+                        value={workForm.status}
+                        onChange={(e) => setWorkForm((prev) => ({ ...prev, status: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold focus:border-amber-400 focus:outline-none"
+                      >
+                        {ESTADOS_TRABAJO.map((st) => (
+                          <option key={st.value} value={st.value}>{st.value}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">Comentarios</label>
+                      <input
+                        type="text"
+                        value={workForm.comments}
+                        onChange={(e) => setWorkForm((prev) => ({ ...prev, comments: e.target.value }))}
+                        placeholder="Comentario interno opcional..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* BLOQUE 3: RESPONSABLES, FACTURACIÓN Y TERCEROS (LINEAL) */}
+                <div className="alon-chunk-emerald space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400">
+                      3. Responsables, Facturación y Terceros
+                    </span>
+                    <span className="text-[10px] text-slate-400">Asignación operativa</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                    {/* Columna 1: Jefe de Obra */}
+                    <div className="md:col-span-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-slate-300">Jefe de Obra *</label>
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingForemanInline(!isCreatingForemanInline)}
+                          className="text-[10px] text-cyan-400 hover:underline font-bold cursor-pointer"
+                        >
+                          {isCreatingForemanInline ? 'Cancelar' : '+ Crear JO'}
+                        </button>
+                      </div>
+                      {isCreatingForemanInline ? (
+                        <div className="p-2 rounded-xl bg-slate-950 border border-cyan-500/50 space-y-1.5">
                           <input
                             type="text"
-                            value={workForm.comments}
-                            onChange={(e) => setWorkForm((prev) => ({ ...prev, comments: e.target.value }))}
-                            placeholder="Comentario interno opcional..."
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                            placeholder="Nombre Jefe..."
+                            value={newForemanForm.name}
+                            onChange={(e) => setNewForemanForm((p) => ({ ...p, name: e.target.value }))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
                           />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* BLOQUE 4: RESPONSABLES & CONTRATISTAS */}
-                    <div className="alon-chunk-emerald space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
-                        <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400">
-                          4. Responsables, Facturación y Terceros PRC
-                        </span>
-                        <span className="text-[10px] text-slate-400">Asignación operativa</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-bold text-slate-300">Jefe de Obra *</label>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] text-slate-400">Técnico</span>
                             <button
                               type="button"
-                              onClick={() => setIsCreatingForemanInline(!isCreatingForemanInline)}
-                              className="text-[10px] text-cyan-400 hover:underline font-bold cursor-pointer"
+                              disabled={savingNewForeman}
+                              onClick={handleCreateForemanInline}
+                              className="px-2 py-0.5 rounded bg-cyan-500 text-slate-950 text-[10px] font-bold cursor-pointer"
                             >
-                              {isCreatingForemanInline ? 'Cancelar' : '+ Crear JO'}
+                              {savingNewForeman ? 'Guardando...' : 'Guardar'}
                             </button>
                           </div>
-                          {isCreatingForemanInline ? (
-                            <div className="p-2 rounded-xl bg-slate-950 border border-cyan-500/50 space-y-1.5">
-                              <input
-                                type="text"
-                                placeholder="Nombre Jefe..."
-                                value={newForemanForm.name}
-                                onChange={(e) => setNewForemanForm((p) => ({ ...p, name: e.target.value }))}
-                                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
-                              />
-                              <div className="flex items-center justify-between">
-                                <span className="text-[9px] text-slate-400">Técnico</span>
-                                <button
-                                  type="button"
-                                  disabled={savingNewForeman}
-                                  onClick={handleCreateForemanInline}
-                                  className="px-2 py-0.5 rounded bg-cyan-500 text-slate-950 text-[10px] font-bold cursor-pointer"
-                                >
-                                  {savingNewForeman ? 'Guardando...' : 'Guardar'}
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <select
-                              value={workForm.foreman_name}
-                              onChange={(e) => setWorkForm((prev) => ({ ...prev, foreman_name: e.target.value }))}
-                              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold"
-                            >
-                              {foremenList.map((f) => (
-                                <option key={f} value={f}>{f}</option>
-                              ))}
-                            </select>
-                          )}
                         </div>
+                      ) : (
+                        <select
+                          value={workForm.foreman_name}
+                          onChange={(e) => setWorkForm((prev) => ({ ...prev, foreman_name: e.target.value }))}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold"
+                        >
+                          {foremenList.map((f) => (
+                            <option key={f} value={f}>{f}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
 
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-300 mb-1">Tipo de Trabajo *</label>
-                          <select
-                            value={workForm.work_type}
-                            onChange={(e) => setWorkForm((prev) => ({ ...prev, work_type: e.target.value }))}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-cyan-300 font-mono font-bold"
-                          >
-                            {TIPOS_DE_TRABAJO.map((t) => (
-                              <option key={t.value} value={t.value}>{t.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="relative">
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
-                              <span>Centro de Facturación</span>
-                              <button
-                                type="button"
-                                onClick={() => setShowFacturacionInfo((v) => !v)}
-                                onMouseEnter={() => setShowFacturacionInfo(true)}
-                                onMouseLeave={() => setShowFacturacionInfo(false)}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-600/60 hover:bg-cyan-900 text-[10px] font-bold cursor-pointer transition-colors"
-                                title="¿Qué diferencia hay entre Presupuesto General y Adicional / Específico?"
-                              >
-                                <Info className="w-3 h-3" />
-                                <span>¿Qué es?</span>
-                              </button>
-                            </label>
-                          </div>
-
-                          {showFacturacionInfo && (
-                            <div
+                    {/* Columna 2: Centro de Facturación (Botones directos) */}
+                    <div className="md:col-span-4 space-y-2">
+                      <div className="relative">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                            <span>Centro de Facturación</span>
+                            <button
+                              type="button"
+                              onClick={() => setShowFacturacionInfo((v) => !v)}
                               onMouseEnter={() => setShowFacturacionInfo(true)}
                               onMouseLeave={() => setShowFacturacionInfo(false)}
-                              className="absolute left-0 right-0 bottom-full mb-1.5 z-40 p-3 bg-slate-950/95 rounded-xl border-2 border-cyan-500/40 text-[11px] text-slate-200 space-y-2 shadow-2xl shadow-cyan-950/30 animate-in fade-in duration-100"
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-600/60 hover:bg-cyan-900 text-[10px] font-bold cursor-pointer transition-colors"
+                              title="¿Qué diferencia hay entre Presupuesto General y Adicional / Específico?"
                             >
-                              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                                <span className="font-bold text-white flex items-center gap-1.5">
-                                  <Info className="w-3.5 h-3.5 text-cyan-400" />
-                                  {FACTURACION_CENTRO_INFO.title}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowFacturacionInfo(false)}
-                                  className="text-slate-400 hover:text-white cursor-pointer"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                              <div className="space-y-1.5">
-                                {FACTURACION_CENTRO_INFO.options.map((opt) => (
-                                  <div key={opt.key} className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1">
-                                    <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded border ${opt.badgeClass}`}>
-                                      {opt.badge}
-                                    </span>
-                                    <p className="text-white font-semibold leading-snug">{opt.summary}</p>
-                                    <p className="text-[10px] text-slate-400 leading-snug">{opt.details}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          <select
-                            value={workForm.assignment_type}
-                            onChange={(e) => {
-                              const nextType = e.target.value
-                              setWorkForm((prev) => ({
-                                ...prev,
-                                assignment_type: nextType,
-                                specific_budget_id: nextType === 'Adicional / Específico' ? prev.specific_budget_id : ''
-                              }))
-                            }}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold"
-                          >
-                            <option value="Presupuesto General">Presupuesto General</option>
-                            <option value="Adicional / Específico">Adicional / Específico</option>
-                          </select>
+                              <Info className="w-3 h-3" />
+                              <span>¿Qué es?</span>
+                            </button>
+                          </label>
                         </div>
 
-                        {workForm.assignment_type === 'Adicional / Específico' && (
-                          <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-500/40 space-y-2">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <div>
-                                <label className="block text-[11px] font-semibold text-amber-300 mb-1">
-                                  Opción de Nº Presupuesto *
-                                </label>
-                                <select
-                                  value={budgetOptionMode}
-                                  onChange={(e) => {
-                                    const mode = e.target.value
-                                    setBudgetOptionMode(mode)
-                                    if (mode === 'PENDIENTE') {
-                                      setWorkForm((prev) => ({ ...prev, specific_budget_id: BUDGET_PENDING_VALUE }))
-                                    } else {
-                                      setWorkForm((prev) => ({
-                                        ...prev,
-                                        specific_budget_id: extractBudgetDigits(prev.specific_budget_id)
-                                      }))
-                                    }
-                                  }}
-                                  className="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none"
-                                >
-                                  <option value="CONOCIDO">Tengo Nº de Presupuesto (Numérico)</option>
-                                  <option value="PENDIENTE">Pendiente / A definir (Alerta María José)</option>
-                                </select>
-                              </div>
-
-                              <div>
-                                <label className="block text-[11px] font-semibold text-amber-300 mb-1">
-                                  Nº Presupuesto (Solo números — vacío = PENDIENTE)
-                                </label>
-                                {budgetOptionMode === 'CONOCIDO' ? (
-                                  <div className="flex items-center bg-slate-900 border border-amber-500/50 rounded-xl overflow-hidden focus-within:border-amber-400">
-                                    <span className="px-2.5 py-1.5 bg-amber-950/60 border-r border-amber-500/30 text-[11px] font-mono font-black text-amber-300 select-none shrink-0">
-                                      PRESUP.
-                                    </span>
-                                    <input
-                                      type="text"
-                                      inputMode="numeric"
-                                      pattern="[0-9]*"
-                                      value={extractBudgetDigits(workForm.specific_budget_id)}
-                                      onChange={(e) => {
-                                        const onlyDigits = extractBudgetDigits(e.target.value)
-                                        setWorkForm((prev) => ({ ...prev, specific_budget_id: onlyDigits }))
-                                      }}
-                                      onBlur={() => {
-                                        const onlyDigits = extractBudgetDigits(workForm.specific_budget_id)
-                                        if (!onlyDigits) {
-                                          setWorkForm((prev) => ({ ...prev, specific_budget_id: '' }))
-                                        }
-                                      }}
-                                      placeholder="Ej: 210 (vacío = PENDIENTE)"
-                                      className="w-full bg-transparent px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="px-2.5 py-1.5 rounded-xl bg-amber-950/50 border border-amber-500/50 text-[11px] font-mono font-black text-amber-300">
-                                    {BUDGET_PENDING_VALUE} • Alerta a María José
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between text-[10px] text-amber-200/90">
-                              <span>
-                                Se guardará como:{' '}
-                                <strong className="font-mono text-white">
-                                  {formatSpecificBudgetLabel(
-                                    budgetOptionMode === 'PENDIENTE' ? BUDGET_PENDING_VALUE : workForm.specific_budget_id
-                                  )}
-                                </strong>
+                        {showFacturacionInfo && (
+                          <div
+                            onMouseEnter={() => setShowFacturacionInfo(true)}
+                            onMouseLeave={() => setShowFacturacionInfo(false)}
+                            className="absolute left-0 right-0 bottom-full mb-1.5 z-40 p-3 bg-slate-950/95 rounded-xl border-2 border-cyan-500/40 text-[11px] text-slate-200 space-y-2 shadow-2xl shadow-cyan-950/30 animate-in fade-in duration-100"
+                          >
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                              <span className="font-bold text-white flex items-center gap-1.5">
+                                <Info className="w-3.5 h-3.5 text-cyan-400" />
+                                {FACTURACION_CENTRO_INFO.title}
                               </span>
-                              {(!extractBudgetDigits(workForm.specific_budget_id) || budgetOptionMode === 'PENDIENTE') && (
-                                <span className="text-amber-300 font-semibold">
-                                  ⚠️ Generará alerta pendiente para María José
-                                </span>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => setShowFacturacionInfo(false)}
+                                className="text-slate-400 hover:text-white cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <div className="space-y-1.5">
+                              {FACTURACION_CENTRO_INFO.options.map((opt) => (
+                                <div key={opt.key} className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1">
+                                  <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded border ${opt.badgeClass}`}>
+                                    {opt.badge}
+                                  </span>
+                                  <p className="text-white font-semibold leading-snug">{opt.summary}</p>
+                                  <p className="text-[10px] text-slate-400 leading-snug">{opt.details}</p>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         )}
+
+                        <div className="grid grid-cols-2 gap-1 p-0.5 rounded-xl bg-slate-900 border border-slate-800">
+                          {['Presupuesto General', 'Adicional / Específico'].map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() =>
+                                setWorkForm((prev) => ({
+                                  ...prev,
+                                  assignment_type: opt,
+                                  specific_budget_id: opt === 'Adicional / Específico' ? prev.specific_budget_id : ''
+                                }))
+                              }
+                              className={`py-1 px-2 rounded-lg font-bold text-[11px] transition-all cursor-pointer truncate ${
+                                workForm.assignment_type === opt
+                                  ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
+                      {workForm.assignment_type === 'Adicional / Específico' && (
+                        <div className="p-2 rounded-xl bg-amber-950/20 border border-amber-500/40 space-y-1.5">
+                          <div className="grid grid-cols-2 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBudgetOptionMode('CONOCIDO')
+                                setWorkForm((prev) => ({ ...prev, specific_budget_id: extractBudgetDigits(prev.specific_budget_id) }))
+                              }}
+                              className={`py-1 px-2 rounded-lg text-[10px] font-bold border cursor-pointer ${
+                                budgetOptionMode === 'CONOCIDO'
+                                  ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                                  : 'bg-slate-900 border-slate-800 text-slate-400'
+                              }`}
+                            >
+                              Tengo Nº
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBudgetOptionMode('PENDIENTE')
+                                setWorkForm((prev) => ({ ...prev, specific_budget_id: BUDGET_PENDING_VALUE }))
+                              }}
+                              className={`py-1 px-2 rounded-lg text-[10px] font-bold border cursor-pointer ${
+                                budgetOptionMode === 'PENDIENTE'
+                                  ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                                  : 'bg-slate-900 border-slate-800 text-slate-400'
+                              }`}
+                            >
+                              Pendiente (Alerta)
+                            </button>
+                          </div>
+
+                          {budgetOptionMode === 'CONOCIDO' ? (
+                            <div className="flex items-center bg-slate-900 border border-amber-500/50 rounded-xl overflow-hidden focus-within:border-amber-400">
+                              <span className="px-2 py-1 bg-amber-950/60 border-r border-amber-500/30 text-[10px] font-mono font-black text-amber-300 select-none shrink-0">
+                                PRESUP.
+                              </span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={extractBudgetDigits(workForm.specific_budget_id)}
+                                onChange={(e) => {
+                                  const onlyDigits = extractBudgetDigits(e.target.value)
+                                  setWorkForm((prev) => ({ ...prev, specific_budget_id: onlyDigits }))
+                                }}
+                                onBlur={() => {
+                                  const onlyDigits = extractBudgetDigits(workForm.specific_budget_id)
+                                  if (!onlyDigits) {
+                                    setWorkForm((prev) => ({ ...prev, specific_budget_id: '' }))
+                                  }
+                                }}
+                                placeholder="Ej: 210"
+                                className="w-full bg-transparent px-2 py-1 text-xs text-white font-mono font-bold focus:outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <div className="px-2 py-1 rounded-xl bg-amber-950/50 border border-amber-500/50 text-[10px] font-mono font-black text-amber-300">
+                              {BUDGET_PENDING_VALUE} • Alerta a María José
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Columna 3: Contratistas y Terceros PRC */}
+                    <div className="md:col-span-5 space-y-2">
                       <div>
                         <label className="block text-[11px] font-bold text-slate-300 mb-1">Contratista(s) o Grupo(s)</label>
                         <div className="relative">
@@ -1044,7 +1070,7 @@ export function WorkOrdersModalsContainer({
                             value={contractorSelectInput}
                             onChange={(e) => { setContractorSelectInput(e.target.value); setIsContractorListOpen(true) }}
                             onFocus={() => setIsContractorListOpen(true)}
-                            placeholder="Escribí para buscar y agregar..."
+                            placeholder="Buscar contratista o grupo..."
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none"
                           />
                           {isContractorListOpen && (
@@ -1072,16 +1098,16 @@ export function WorkOrdersModalsContainer({
                         {workForm.contractors.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-1.5">
                             {workForm.contractors.map((c) => (
-                              <span key={c} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs font-mono font-bold text-slate-200">
+                              <span key={c} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-[11px] font-mono font-bold text-slate-200">
                                 <span>{c}</span>
-                                <button type="button" onClick={() => setWorkForm((p) => ({ ...p, contractors: p.contractors.filter((x) => x !== c) }))} className="text-slate-400 hover:text-rose-400">✕</button>
+                                <button type="button" onClick={() => setWorkForm((p) => ({ ...p, contractors: p.contractors.filter((x) => x !== c) }))} className="text-slate-400 hover:text-rose-400 cursor-pointer">✕</button>
                               </span>
                             ))}
                           </div>
                         )}
                       </div>
 
-                      <div className="p-2.5 rounded-xl bg-slate-950 border border-purple-900/50 space-y-1.5">
+                      <div className="p-2 rounded-xl bg-slate-950 border border-purple-900/50">
                         <label className="flex items-start gap-2 text-xs text-slate-200 cursor-pointer">
                           <input
                             type="checkbox"
@@ -1091,8 +1117,8 @@ export function WorkOrdersModalsContainer({
                             className="w-4 h-4 rounded accent-purple-500 mt-0.5"
                           />
                           <div>
-                            <span className="font-bold text-purple-300">Generar Comprobante PRC $0 en Terceros</span>
-                            <p className="text-[10px] text-slate-400 mt-0.5">{thirdPartyPrcEvaluation.reason}</p>
+                            <span className="font-bold text-purple-300 text-[11px]">Generar Comprobante PRC $0 en Terceros</span>
+                            <p className="text-[10px] text-slate-400">{thirdPartyPrcEvaluation.reason}</p>
                           </div>
                         </label>
                       </div>

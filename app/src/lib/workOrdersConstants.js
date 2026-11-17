@@ -64,9 +64,9 @@ export const ESTADOS_TRABAJO = [
 
 // Tipos de Trabajo (Columna W de GS-003)
 export const TIPOS_DE_TRABAJO = [
-  { value: 'HORA', label: 'Hora (Mano de Obra Directa)' },
-  { value: 'PRESUPUESTO', label: 'Presupuesto (Ajuste Alzado / PRC)' },
-  { value: 'CONTROL', label: 'Control (Inspección / Seguimiento)' }
+  { value: 'HORA', label: 'Hora (Mano de Obra Directa)', shortLabel: 'Hora' },
+  { value: 'PRESUPUESTO', label: 'Presupuesto (Ajuste Alzado / PRC)', shortLabel: 'Presupuesto (PRC)' },
+  { value: 'CONTROL', label: 'Control (Inspección / Seguimiento)', shortLabel: 'Control' }
 ]
 
 // Valor estandarizado cuando un trabajo Adicional / Específico aún no tiene Nº de presupuesto asignado
