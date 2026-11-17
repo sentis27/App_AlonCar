@@ -6,6 +6,7 @@
 
 import { supabase } from '../lib/supabase.js'
 import { auditService } from '../lib/auditService.js'
+import { getWorkersLookupCached, resolveWorkerIdFromCatalog, stampWorkerIdOnRecord } from '../lib/workerIdentity.js'
 
 const SHEET_NAME = 'Compras · Pedidos'
 const MODULE_ROUTE = '/compras'
@@ -19,9 +20,15 @@ export async function updatePedidoFieldService({
   entityName = '',
   fieldLabel = field
 }) {
+  const finalExtra = { ...extraFields }
+  if (field === 'requested_by_name' && !finalExtra.requested_by) {
+    const workersCatalog = await getWorkersLookupCached(supabase)
+    finalExtra.requested_by = resolveWorkerIdFromCatalog(newValue, workersCatalog)
+  }
+
   const { error } = await supabase
     .from('purchase_orders')
-    .update({ [field]: newValue, ...extraFields, updated_at: new Date().toISOString() })
+    .update({ [field]: newValue, ...finalExtra, updated_at: new Date().toISOString() })
     .eq('id', orderId)
 
   if (error) throw error
@@ -129,9 +136,18 @@ export async function batchUpdatePedidosService({ targetIds, dbPayload, colKey, 
 }
 
 export async function insertPedidoService({ payload, auditAction = 'ROW_INSERT', entityName = 'Pedido', details = {} }) {
+  let safePayload = payload
+  if (safePayload && !safePayload.requested_by && safePayload.requested_by_name) {
+    const workersCatalog = await getWorkersLookupCached(supabase)
+    safePayload = stampWorkerIdOnRecord(safePayload, workersCatalog, {
+      nameFields: ['requested_by_name'],
+      idField: 'requested_by'
+    })
+  }
+
   const { data, error } = await supabase
     .from('purchase_orders')
-    .insert([payload])
+    .insert([safePayload])
     .select()
     .single()
 

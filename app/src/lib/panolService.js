@@ -9,6 +9,8 @@ import { logCellChange, logRowAction } from './auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { normalizeText, setAllocationWorkersCache } from './allocationEngine.js'
 import { isGasMaterial, stripGasTagFromNotes, findLinkedGasMovement } from './panolConstants.js'
+import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
+import { getWorkersLookupCached, resolveWorkerIdFromCatalog } from './workerIdentity.js'
 
 let _hasGasTxLinkCache = null
 
@@ -201,17 +203,12 @@ export async function fetchPanolData() {
 }
 
 export async function saveShipAndWorkOrderService({
-  txId,
-  newShipId,
-  newWorkOrderId,
-  tx,
-  ships,
-  user,
-  getEnabledWorkersAndContractors
+  txId, newShipId, newWorkOrderId, workItemId = null, workItems = [], tx, ships, user, getEnabledWorkersAndContractors
 }) {
   const cleanShipId = (newShipId === '__ASTILLERO_STOCK__' || !newShipId) ? null : newShipId
   const cleanWoId = (!cleanShipId || !newWorkOrderId) ? null : newWorkOrderId
-  const updates = { ship_id: cleanShipId, work_order_id: cleanWoId }
+  const resolvedWiId = cleanWoId ? (workItemId ?? resolveSingleWorkItemId(cleanWoId, workItems)) : null
+  const updates = { ship_id: cleanShipId, work_order_id: cleanWoId, work_item_id: resolvedWiId }
   const currentWorkerOrContractor = tx?.worker_name || tx?.contractor_name
 
   let deassigned = false
@@ -321,25 +318,13 @@ export async function saveInlineMaterialService({ matId, field, value, materials
 }
 
 export async function saveMultiWithdrawalService({
-  shipId,
-  workOrderId,
-  contractorGroup,
-  notes,
-  date,
-  items,
-  editId,
-  originalTx = null,
-  linkedGasMovement = null,
-  gasMovements = [],
-  materials,
-  suppliers = [],
-  ships = [],
-  astilleroWorkers,
-  user
+  shipId, workOrderId, workItemId = null, workItems = [], contractorGroup, notes, date, items, editId,
+  originalTx = null, linkedGasMovement = null, gasMovements = [], materials, suppliers = [], ships = [], astilleroWorkers, user
 }) {
   const matchedAst = astilleroWorkers.find((w) => w.name.toUpperCase() === String(contractorGroup || '').toUpperCase())
   const workerName = matchedAst ? matchedAst.name : contractorGroup || 'Sin asignar'
   const workerId = matchedAst && matchedAst.id !== matchedAst.name ? matchedAst.id : null
+  const resolvedWiId = workOrderId ? (workItemId ?? resolveSingleWorkItemId(workOrderId, workItems)) : null
   const includeTxLink = await supportsGasTxLink()
 
   if (editId) {
@@ -402,6 +387,7 @@ export async function saveMultiWithdrawalService({
       quantity_withdrawn: qty,
       ship_id: shipId || null,
       work_order_id: workOrderId || null,
+      work_item_id: resolvedWiId,
       contractor_name: workerName,
       worker_name: workerName,
       worker_id: workerId,
@@ -554,6 +540,7 @@ export async function saveMultiWithdrawalService({
       quantity_withdrawn: qty,
       ship_id: shipId || null,
       work_order_id: workOrderId || null,
+      work_item_id: resolvedWiId,
       contractor_name: workerName,
       worker_name: workerName,
       worker_id: workerId,
@@ -784,6 +771,9 @@ export async function registerGasFinalReturnService({
     throw new Error('Seleccioná al menos un tubo en poder del contratista para devolver.')
   }
 
+  const workersCatalog = await getWorkersLookupCached(supabase)
+  const resolvedWorkerId = resolveWorkerIdFromCatalog(cleanContractor, workersCatalog)
+
   const inserts = validReturns.map((r) => {
     const intQty = Math.round(Number(r.quantity))
     if (!Number.isFinite(intQty) || intQty <= 0) {
@@ -802,7 +792,7 @@ export async function registerGasFinalReturnService({
       ship_id: shipId || null,
       work_order_id: workOrderId || null,
       contractor_name: cleanContractor,
-      worker_id: null,
+      worker_id: resolvedWorkerId,
       worker_name: cleanContractor,
       supplier_delivered_id: null,
       supplier_returned_id: r.supplierReturnedId,
@@ -1085,8 +1075,15 @@ export async function saveContractorGasMovementService({ gasData, user }) {
   if (!String(gasData?.contractor_name || '').trim()) throw new Error('Debes seleccionar un contratista.')
 
   const actor = user?.email || 'Pañol Central'
+  const workersCatalog = gasData.worker_id ? [] : await getWorkersLookupCached(supabase)
+  const resolvedWorkerId = resolveWorkerIdFromCatalog(
+    gasData.worker_name || gasData.contractor_name,
+    workersCatalog,
+    gasData.worker_id || null
+  )
   const payload = {
     ...gasData,
+    worker_id: resolvedWorkerId,
     performed_by: actor,
     cylinder_condition:
       gasData.operation_type === 'DEVOLUCION_FINAL'
@@ -1276,6 +1273,8 @@ export async function submitWorkerPermissionService({ workerPermissionModal, wor
 
 export async function createDirectPurchaseOrderService({ material, quantity, urgency, ships }) {
   const astilleroShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO')) || ships[0]
+  const workersCatalog = await getWorkersLookupCached(supabase)
+  const panolWorkerId = resolveWorkerIdFromCatalog('PAÑOL', workersCatalog)
   const { error } = await supabase.from('purchase_orders').insert([{
     material_id: material?.id || null,
     material_name_raw: material?.name || 'Insumo',
@@ -1283,6 +1282,7 @@ export async function createDirectPurchaseOrderService({ material, quantity, urg
     unit_measure: material?.unit_measure || 'unidad',
     charge_type: 'VIA_PANOL',
     ship_id: astilleroShip?.id || null,
+    requested_by: panolWorkerId,
     requested_by_name: 'PAÑOL',
     order_date: new Date().toISOString().split('T')[0],
     status: 'PEDIR',

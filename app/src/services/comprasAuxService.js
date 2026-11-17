@@ -156,6 +156,7 @@ export async function registerPartialDeliveryService({
     order_date: order.order_date,
     ship_id: order.ship_id,
     work_order_id: order.work_order_id,
+    requested_by: order.requested_by || null,
     requested_by_name: order.requested_by_name,
     work_type: order.work_type,
     material_id: order.material_id,

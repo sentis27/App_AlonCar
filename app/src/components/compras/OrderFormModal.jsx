@@ -3,11 +3,14 @@ import { ShoppingCart, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { deduceUnitMeasure } from '../../lib/comprasConstants'
 import { auditService } from '../../lib/auditService'
+import { buildStandardShipWorkOrdersCatalog } from '../../lib/workOrderUnificationEngine'
+import { resolveWorkerIdFromCatalog } from '../../lib/workerIdentity'
 
 export default function OrderFormModal({
   order,
   ships,
   workOrders,
+  workItems = [],
   suppliers,
   materials,
   workers,
@@ -69,11 +72,11 @@ export default function OrderFormModal({
     return { authorizedWorkers: auth, otherWorkers: others }
   }, [workers])
 
-  // Filtrado de OTs por Barco seleccionado
+  // Filtrado estandarizado de OTs por Barco seleccionado
   const availableWorkOrders = useMemo(() => {
     if (!shipId) return []
-    return workOrders.filter((w) => w.ship_id === shipId)
-  }, [shipId, workOrders])
+    return buildStandardShipWorkOrdersCatalog(workOrders, workItems, { shipId, includeEliminated: false, includeClosed: true })
+  }, [shipId, workOrders, workItems])
 
   // OT seleccionada para mostrar su descripción completa
   const selectedWorkOrder = useMemo(() => {
@@ -93,20 +96,10 @@ export default function OrderFormModal({
   }, [chargeType, ships, workOrders])
 
   function handleAddItem() {
-    setItems([
-      ...items,
-      {
-        material_id: null,
-        material_name_raw: '',
-        is_new_material: false,
-        quantity: 1,
-        unit_measure: 'unidad',
-        supplier_id: '',
-        supplier_quoted_price: '',
-        system_unit_price: 0,
-        observations: ''
-      }
-    ])
+    setItems([...items, {
+      material_id: null, material_name_raw: '', is_new_material: false, quantity: 1,
+      unit_measure: 'unidad', supplier_id: '', supplier_quoted_price: '', system_unit_price: 0, observations: ''
+    }])
   }
 
   function handleRemoveItem(idx) {
@@ -157,11 +150,17 @@ export default function OrderFormModal({
 
     setSaving(true)
     try {
+      const resolvedRequestedById = resolveWorkerIdFromCatalog(
+        requestedByName,
+        workers,
+        order?.requested_by_name === requestedByName ? order?.requested_by : null
+      )
       const payloads = items.map((it) => ({
         charge_type: chargeType,
         order_date: orderDate,
         ship_id: shipId || null,
         work_order_id: workOrderId || null,
+        requested_by: resolvedRequestedById,
         requested_by_name: requestedByName,
         urgency,
         material_id: it.material_id,

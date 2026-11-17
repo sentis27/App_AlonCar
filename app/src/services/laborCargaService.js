@@ -7,6 +7,8 @@
 import { supabase } from '../lib/supabase.js'
 import { auditService } from '../lib/auditService.js'
 import { HOUR_NUMERIC_FIELDS } from '../lib/laborCargaGridHelpers.js'
+import { resolveSingleWorkItemId } from '../lib/workOrderUnificationEngine.js'
+import { getWorkersLookupCached, resolveWorkerIdFromCatalog, stampWorkerIdOnRecord } from '../lib/workerIdentity.js'
 
 const SHEET_NAME = 'Carga e Imputación de Horas'
 const MODULE_ROUTE = '/horas'
@@ -24,7 +26,13 @@ export async function insertLaborBatchService({
     throw new Error('El lote de imputaciones está vacío.')
   }
 
-  const { error } = await supabase.from('labor_logs').insert(payload)
+  let safePayload = payload
+  if (safePayload.some(row => !row.worker_id && row.worker_name)) {
+    const workersCatalog = await getWorkersLookupCached(supabase)
+    safePayload = safePayload.map(row => stampWorkerIdOnRecord(row, workersCatalog))
+  }
+
+  const { error } = await supabase.from('labor_logs').insert(safePayload)
   if (error) throw error
 
   await auditService.logRowAction({
@@ -50,6 +58,7 @@ export async function batchUpdateLaborLogsService({
   newValue,
   targetIds = [],
   recentLogs = [],
+  workItems = [],
   userEmail = null
 }) {
   if (!targetIds || targetIds.length === 0) return { ok: true, count: 0 }
@@ -74,9 +83,16 @@ export async function batchUpdateLaborLogsService({
     if (colKey === 'ship_wo' && newValue && typeof newValue === 'object') {
       payload.ship_id = newValue.ship_id ?? null
       payload.work_order_id = newValue.work_order_id ?? null
+      payload.work_item_id = payload.work_order_id
+        ? (newValue.work_item_id ?? resolveSingleWorkItemId(payload.work_order_id, workItems))
+        : null
     } else if (colKey === 'work_type') {
       const upperWt = String(newValue || '').trim().toUpperCase()
       payload.work_type = ['HORA', 'PRESUPUESTO', 'CONTROL'].includes(upperWt) ? upperWt : 'HORA'
+    } else if (colKey === 'worker_name') {
+      payload.worker_name = newValue
+      const workersCatalog = await getWorkersLookupCached(supabase)
+      payload.worker_id = resolveWorkerIdFromCatalog(newValue, workersCatalog)
     } else {
       payload[colKey] = newValue
     }
@@ -110,9 +126,15 @@ export async function updateInlineLaborLogService({
   targetLog = {},
   userEmail = null
 }) {
+  const finalExtra = { ...extraPayload }
+  if (field === 'worker_name' && !finalExtra.worker_id) {
+    const workersCatalog = await getWorkersLookupCached(supabase)
+    finalExtra.worker_id = resolveWorkerIdFromCatalog(cleanedVal, workersCatalog)
+  }
+
   const { error } = await supabase
     .from('labor_logs')
-    .update({ [field]: cleanedVal, ...extraPayload })
+    .update({ [field]: cleanedVal, ...finalExtra })
     .eq('id', logId)
 
   if (error) throw error
@@ -218,6 +240,8 @@ export async function updateLaborShipWoService({
   logId,
   shipId,
   workOrderId,
+  workItemId = null,
+  workItems = [],
   targetLog = {},
   inferredWorkType = null,
   userEmail = null
@@ -229,9 +253,11 @@ export async function updateLaborShipWoService({
   const shouldInheritWorkType =
     Boolean(validInferred) && (!targetLog.work_order_id || !['HORA', 'PRESUPUESTO', 'CONTROL'].includes(currentWt))
 
+  const resolvedWiId = workOrderId ? (workItemId ?? resolveSingleWorkItemId(workOrderId, workItems)) : null
   const payload = {
     ship_id: shipId || null,
     work_order_id: workOrderId || null,
+    work_item_id: resolvedWiId,
     ...(shouldInheritWorkType ? { work_type: validInferred } : {}),
     ...(workOrderId
       ? { approval_status: 'Aprobado', review_reason: null }

@@ -9,18 +9,12 @@ import { logCellChange, logRowAction } from './auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { setAllocationWorkersCache } from './allocationEngine.js'
 import { getDollarRateForDate } from './tercerosConstants.js'
+import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
+import { resolveWorkerIdFromCatalog } from './workerIdentity.js'
 
 // 1. Carga inicial sincronizada desde Supabase
 export async function fetchTercerosData() {
-  const [
-    srvRes,
-    shpRes,
-    woRes,
-    wiRes,
-    wkrRes,
-    mvRes,
-    vhRes
-  ] = await Promise.all([
+  const [srvRes, shpRes, woRes, wiRes, wkrRes, mvRes, vhRes] = await Promise.all([
     supabase.from('third_party_services').select('*').order('created_at', { ascending: false }),
     supabase.from('ships').select('id, name, vessel_type, current_location').order('name'),
     supabase.from('work_orders').select('id, ot_number, title, description, ship_id, status, is_tabulated').order('ot_number'),
@@ -53,7 +47,7 @@ export async function fetchTercerosData() {
 }
 
 // 2. Guardar Servicio (Alta o Modificación completa desde Modal)
-export async function saveServiceService({ formData, editingService, canEditAmounts, contractors = [], macroVariables = [], actor = 'MARIA JOSE' }) {
+export async function saveServiceService({ formData, editingService, canEditAmounts, contractors = [], macroVariables = [], workItems = [], actor = 'MARIA JOSE' }) {
   if (!formData.ship_id) throw new Error('Debe seleccionar un buque/embarcación.')
   if (!formData.contractor_name) throw new Error('Debe seleccionar un contratista o taller autorizado.')
   if (formData.is_manual_trade && !formData.trade) {
@@ -86,7 +80,8 @@ export async function saveServiceService({ formData, editingService, canEditAmou
   const payload = {
     ship_id: formData.ship_id,
     work_order_id: formData.work_order_id || null,
-    work_item_id: formData.work_item_id || null,
+    work_item_id: formData.work_order_id ? (formData.work_item_id || resolveSingleWorkItemId(formData.work_order_id, workItems)) : null,
+    contractor_id: resolveWorkerIdFromCatalog(formData.contractor_name, contractors, foundContractor?.id),
     contractor_name: formData.contractor_name.trim().toUpperCase(),
     trade: resolvedTrade || 'VARIOS',
     voucher_type: formData.voucher_type,
@@ -346,6 +341,7 @@ export async function saveInlineEditService({ serviceId, field, newValue, servic
   } else if (field === 'contractor_name') {
     cleanedValue = String(newValue || '').trim().toUpperCase()
     const foundC = contractors.find((c) => c.name?.toUpperCase().trim() === cleanedValue)
+    extraFields.contractor_id = resolveWorkerIdFromCatalog(cleanedValue, contractors, foundC?.id)
     if (foundC && foundC.trade && foundC.trade.toUpperCase() !== 'MANUAL') {
       extraFields.trade = foundC.trade.toUpperCase()
     }
@@ -377,17 +373,14 @@ export async function saveInlineEditService({ serviceId, field, newValue, servic
 }
 
 // 8. Guardar Asignación de Buque / OT desde Modal Picker
-export async function saveShipWoPickerService({ serviceId, shipId, workOrderId, services = [], actor = 'MARIA JOSE' }) {
+export async function saveShipWoPickerService({ serviceId, shipId, workOrderId, workItemId = null, workItems = [], services = [], actor = 'MARIA JOSE' }) {
   const target = services.find((s) => s.id === serviceId)
   if (!target) return
+  const resolvedWiId = workOrderId ? (workItemId ?? resolveSingleWorkItemId(workOrderId, workItems)) : null
 
   const { error } = await supabase
     .from('third_party_services')
-    .update({
-      ship_id: shipId,
-      work_order_id: workOrderId,
-      updated_at: new Date().toISOString()
-    })
+    .update({ ship_id: shipId, work_order_id: workOrderId, work_item_id: resolvedWiId, updated_at: new Date().toISOString() })
     .eq('id', serviceId)
 
   if (error) throw error
@@ -408,7 +401,7 @@ export async function saveShipWoPickerService({ serviceId, shipId, workOrderId, 
 }
 
 // 9. Actualización Batch para Hoja de Cálculo (Drag Fill / Paste / Undo / Redo)
-export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds, revertMap, isRevert, services = [], contractors = [], macroVariables = [] }) {
+export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds, revertMap, isRevert, services = [], workItems = [], contractors = [], macroVariables = [] }) {
   if (isRevert && revertMap) {
     await Promise.all(
       Object.entries(revertMap).map(([id, oldVal]) => {
@@ -441,9 +434,11 @@ export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds,
   if (!targetIds || targetIds.length === 0) return
 
   let autoTradeForContractor = null
+  let autoContractorId = null
   if (colKey === 'contractor_name' && typeof newValue === 'string') {
     const upperName = newValue.trim().toUpperCase()
     const foundC = contractors.find((c) => c.name?.toUpperCase().trim() === upperName)
+    autoContractorId = resolveWorkerIdFromCatalog(upperName, contractors, foundC?.id)
     if (foundC && foundC.trade && foundC.trade.toUpperCase() !== 'MANUAL') {
       autoTradeForContractor = foundC.trade.toUpperCase()
     }
@@ -475,8 +470,12 @@ export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds,
     if (colKey === 'ship_wo' && newValue && typeof newValue === 'object') {
       updatePayload.ship_id = newValue.ship_id ?? null
       updatePayload.work_order_id = newValue.work_order_id ?? null
+      updatePayload.work_item_id = updatePayload.work_order_id
+        ? (newValue.work_item_id ?? resolveSingleWorkItemId(updatePayload.work_order_id, workItems))
+        : null
     } else if (colKey === 'contractor_name') {
       updatePayload.contractor_name = String(newValue || '').trim().toUpperCase()
+      updatePayload.contractor_id = autoContractorId
       if (autoTradeForContractor) updatePayload.trade = autoTradeForContractor
     } else {
       updatePayload[colKey] = newValue

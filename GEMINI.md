@@ -51,6 +51,10 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 | `organization_roles` | `role_key` | `role_key`, `role_title`, `holder_name`, `department` | `id` |
 | `rate_cards` | `id` | `period`, `year`, `month`, `quincena`, `admin_center`, `entity_name`, `rate_oficial_ars`, `rate_oficial_usd`, `has_ayudante`, `rate_ayudante_ars`, `rate_ayudante_usd`, `dollar_rate` | — |
 | `ships` / `work_orders` | `id` | `ships`: buques/estadías · `work_orders`: `ship_id`, `ot_number`, `description`, `contractors`, `foreman_name`, `work_type`, `status` | — |
+| `labor_logs` | `id` | `worker_id` (FK `workers(id)`), `worker_name`, `ship_id`, `work_order_id`, `work_item_id`, `hours_worked`, `date_logged` | `worker_id` NO apunta a `profiles(id)` |
+| `third_party_services` | `id` | `contractor_id` (FK `workers(id)`), `contractor_name`, `ship_id`, `work_order_id`, `work_item_id`, `amount_ars`, `amount_usd` | — |
+| `work_item_contractors` | `(work_item_id, worker_id)` | Puente N:M `work_items(id)` ↔ `workers(id)` sincronizado vía trigger `trg_work_items_sync_contractors` | — |
+| `purchase_orders` | `id` | `material_id`, `material_name_raw`, `requested_by` (FK `workers(id)`), `requested_by_name`, `courier_worker_id`, `ship_id`, `work_order_id` | — |
 | `audit_logs` | `id` | `action`, `entity_type`, `entity_id`, `entity_name`, `details` (jsonb), `performed_by`, `created_at` | `entity`, `table_name` |
 
 ## 4. Módulos ERP, Commits, Cierre y Registros

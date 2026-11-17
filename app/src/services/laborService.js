@@ -7,6 +7,7 @@
 import { supabase } from '../lib/supabase.js'
 import { logCellChange, logRowAction } from '../lib/auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from '../lib/monotonicFolioEngine.js'
+import { getWorkersLookupCached, stampWorkerIdOnRecord } from '../lib/workerIdentity.js'
 
 /**
  * Carga completa de imputaciones de mano de obra, buques, OTs y personal habilitado.
@@ -58,6 +59,11 @@ export async function saveLaborLogService({ log, isNew = false, changedBy = 'Ope
   // Descartar joins para evitar errores de mutación en PostgREST
   delete payload.ships
   delete payload.work_orders
+
+  if (!payload.worker_id && payload.worker_name) {
+    const workersCatalog = await getWorkersLookupCached(supabase)
+    payload = stampWorkerIdOnRecord(payload, workersCatalog)
+  }
 
   const { data, error } = await supabase
     .from('labor_logs')
@@ -161,12 +167,17 @@ export async function updateLaborApprovalStatusService({ logId, approvalStatus, 
 export async function batchSaveLaborLogsService({ logs = [], changedBy = 'Operador Web' }) {
   if (logs.length === 0) return { ok: true, count: 0 }
 
-  const cleanLogs = logs.map(l => {
+  let cleanLogs = logs.map(l => {
     const copy = { ...l }
     delete copy.ships
     delete copy.work_orders
     return copy
   })
+
+  if (cleanLogs.some(l => !l.worker_id && l.worker_name)) {
+    const workersCatalog = await getWorkersLookupCached(supabase)
+    cleanLogs = cleanLogs.map(l => stampWorkerIdOnRecord(l, workersCatalog))
+  }
 
   const { data, error } = await supabase
     .from('labor_logs')
