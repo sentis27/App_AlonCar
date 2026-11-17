@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Ship, ClipboardList, Search, AlertTriangle, Check, X, Anchor, Building2, Star, Eye, EyeOff } from 'lucide-react'
-import { getWorkOrderConsolidatedScope, deduplicateWorkOrdersWithScope, formatWorkOrderTooltipCanonical } from '../lib/workOrdersConstants.js'
-import { WorkOrderScopeHoverCard } from './workOrders/WorkOrderScopeHoverCard.jsx'
+import { Ship, ClipboardList, Search, AlertTriangle, Check, X, Anchor, Building2, Star, Eye, EyeOff, ChevronDown } from 'lucide-react'
+import { deduplicateWorkOrdersWithScope, formatWorkOrderTooltipCanonical } from '../lib/workOrdersConstants.js'
 
 /**
  * ShipWorkOrderPickerModal
@@ -10,11 +9,12 @@ import { WorkOrderScopeHoverCard } from './workOrders/WorkOrderScopeHoverCard.js
  * de la celda única `Barco / OT` en Terceros, Horas y Compras.
  * 
  * Reglas de Negocio:
+ * - El buque cargado se muestra en una casilla compacta cerrada por defecto; se despliega solo a pedido.
  * - Si se cambia el barco, la OT se limpia automáticamente a menos que el usuario elija una OT de ese nuevo barco.
- * - Destaca las OTs vinculadas al contratista/operario de la fila (`workItems`), priorizándolas arriba de la lista.
+ * - Destaca las OTs vinculadas al contratista/operario de la fila (`workItems`), priorizándolas arriba y ordenadas alfabéticamente.
  * - Permite explícitamente guardar con OT en blanco (`work_order_id = null`), sumando al KPI "⚠️ Falta Cargar OT".
  * - OTs finalizadas quedan ocultas por defecto para carga de datos (regla naval de imputación).
- * - Selector interactivo limpio con previsualización canónica en hover (Imagen 2).
+ * - El alcance de cada OT se muestra únicamente en el tooltip nativo canónico (`title`), evitando saltos de layout.
  */
 export default function ShipWorkOrderPickerModal({
   isOpen,
@@ -37,23 +37,23 @@ export default function ShipWorkOrderPickerModal({
   const [selectedWoId, setSelectedWoId] = useState(currentWorkOrderId || '')
   const [leaveOtBlank, setLeaveOtBlank] = useState(!currentWorkOrderId)
   const [shipQuery, setShipQuery] = useState('')
+  const [isShipDropdownOpen, setIsShipDropdownOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showFinalized, setShowFinalized] = useState(false)
-  const [hoveredWo, setHoveredWo] = useState(null)
 
   useEffect(() => {
     if (isOpen) {
-      if (allowAstilleroStock && !currentShipId && currentChargeType && currentChargeType !== 'DIRECT') {
-        setSelectedShipId(ASTILLERO_STOCK_TOKEN)
-      } else {
-        setSelectedShipId(currentShipId || '')
-      }
+      const initialShipId =
+        allowAstilleroStock && !currentShipId && currentChargeType && currentChargeType !== 'DIRECT'
+          ? ASTILLERO_STOCK_TOKEN
+          : (currentShipId || '')
+      setSelectedShipId(initialShipId)
       setSelectedWoId(currentWorkOrderId || '')
       setLeaveOtBlank(!currentWorkOrderId)
       setShipQuery('')
+      setIsShipDropdownOpen(!initialShipId)
       setSaving(false)
       setShowFinalized(false)
-      setHoveredWo(null)
     }
   }, [isOpen, currentShipId, currentWorkOrderId, currentChargeType, allowAstilleroStock])
 
@@ -115,12 +115,18 @@ export default function ShipWorkOrderPickerModal({
       const aMatch = (a._allWoIds || [a.id]).some((id) => contractorWoSet.has(id)) ? 1 : 0
       const bMatch = (b._allWoIds || [b.id]).some((id) => contractorWoSet.has(id)) ? 1 : 0
       if (aMatch !== bMatch) return bMatch - aMatch
+      const aTitle = String(a.title || a.description || '').trim()
+      const bTitle = String(b.title || b.description || '').trim()
+      const byTitle = aTitle.localeCompare(bTitle, 'es', { sensitivity: 'base', numeric: true })
+      if (byTitle !== 0) return byTitle
       return String(a.ot_number || '').localeCompare(String(b.ot_number || ''), undefined, { numeric: true })
     })
   }, [allDeduplicatedWos, contractorWoSet, showFinalized, currentWorkOrderId])
 
   const handleShipChange = (newShipId) => {
     setSelectedShipId(newShipId)
+    setIsShipDropdownOpen(false)
+    setShipQuery('')
     if (newShipId === ASTILLERO_STOCK_TOKEN || String(newShipId) !== String(currentShipId)) {
       setSelectedWoId('')
       setLeaveOtBlank(true)
@@ -152,26 +158,13 @@ export default function ShipWorkOrderPickerModal({
     }
   }
 
-  const selectedWo = useMemo(() => {
-    return workOrders.find((w) => String(w.id) === String(selectedWoId))
-  }, [workOrders, selectedWoId])
-
-  // OT en previsualización (prioriza hover para inspección ágil, luego la seleccionada)
-  const activePreviewWo = hoveredWo || selectedWo
-
-  const previewScope = useMemo(() => {
-    if (!activePreviewWo) return null
-    return getWorkOrderConsolidatedScope(activePreviewWo, workItems, workOrders, {
-      contractorFilter: contractorName || workerName,
-      maxSummaryTasks: 12
-    })
-  }, [activePreviewWo, workItems, workOrders, contractorName, workerName])
-
   if (!isOpen) return null
 
   const isAstilleroStock = selectedShipId === ASTILLERO_STOCK_TOKEN
   const selectedShip = !isAstilleroStock ? ships.find((s) => String(s.id) === String(selectedShipId)) : null
-  const contractorMatchedCount = availableWorkOrders.filter((w) => contractorWoSet.has(w.id)).length
+  const contractorMatchedCount = availableWorkOrders.filter((w) =>
+    (w._allWoIds || [w.id]).some((id) => contractorWoSet.has(id))
+  ).length
 
   return (
     <div
@@ -224,70 +217,120 @@ export default function ShipWorkOrderPickerModal({
               </span>
             </label>
 
-            {/* Buscador de barcos */}
-            <div className="relative mb-2">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-              <input
-                type="text"
-                autoFocus
-                value={shipQuery}
-                onChange={(e) => setShipQuery(e.target.value)}
-                placeholder="Buscar barco por nombre o iniciales..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-              />
-            </div>
+            {/* Casilla compacta con buque cargado + disparador de desplegable */}
+            <button
+              type="button"
+              onClick={() => setIsShipDropdownOpen((prev) => !prev)}
+              aria-expanded={isShipDropdownOpen}
+              className={`w-full px-3 py-2 rounded-lg border text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                isAstilleroStock
+                  ? 'bg-emerald-950/60 border-emerald-500/70 text-emerald-200 font-bold hover:border-emerald-400'
+                  : selectedShip
+                  ? 'bg-cyan-700/80 border-cyan-400/70 text-white font-bold hover:bg-cyan-700'
+                  : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-cyan-400'
+              }`}
+            >
+              <span className="flex items-center gap-2 min-w-0 truncate">
+                {isAstilleroStock ? (
+                  <>
+                    <Building2 className="w-3.5 h-3.5 shrink-0 text-emerald-300" />
+                    <span className="truncate">ASTILLERO — PAÑOL / STOCK GENERAL</span>
+                  </>
+                ) : selectedShip ? (
+                  <>
+                    <Ship className="w-3.5 h-3.5 shrink-0 text-cyan-200" />
+                    <span className="truncate">{selectedShip.name}</span>
+                    {selectedShip.client_name && (
+                      <span className="text-[10px] text-cyan-100/80 font-normal truncate">
+                        ({selectedShip.client_name})
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Ship className="w-3.5 h-3.5 shrink-0 text-slate-500" />
+                    <span>Seleccionar Buque / Destino...</span>
+                  </>
+                )}
+              </span>
 
-            {/* Selector de buques */}
-            <div className="max-h-28 overflow-y-auto border border-slate-700/80 rounded-lg bg-slate-950 p-1 space-y-0.5">
-              {allowAstilleroStock && (
-                <button
-                  type="button"
-                  onClick={() => handleShipChange(ASTILLERO_STOCK_TOKEN)}
-                  className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                    selectedShipId === ASTILLERO_STOCK_TOKEN
-                      ? 'bg-emerald-600 text-white font-bold'
-                      : 'text-emerald-300 hover:bg-emerald-950/40'
+              <span className="flex items-center gap-1.5 shrink-0">
+                {selectedShipId && <Check className="w-3.5 h-3.5 text-cyan-200" />}
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform duration-150 ${
+                    isShipDropdownOpen ? 'rotate-180' : ''
                   }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>ASTILLERO — PAÑOL / STOCK GENERAL</span>
-                  </span>
-                  {selectedShipId === ASTILLERO_STOCK_TOKEN && <Check className="w-3.5 h-3.5 shrink-0" />}
-                </button>
-              )}
+                />
+              </span>
+            </button>
 
-              {filteredShips.map((s) => {
-                const isSelected = selectedShipId === s.id
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => handleShipChange(s.id)}
-                    className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'bg-cyan-600 text-white font-bold'
-                        : 'text-slate-200 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5 truncate">
-                      <Ship className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-                      <span className="truncate">{s.name}</span>
-                      {s.client_name && (
-                        <span className="text-[10px] text-slate-400 font-normal">({s.client_name})</span>
-                      )}
-                    </span>
-                    {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
-                  </button>
-                )
-              })}
-
-              {filteredShips.length === 0 && (
-                <div className="px-3 py-2 text-center text-xs text-slate-500 italic">
-                  No se encontraron buques con ese nombre
+            {/* Desplegable de búsqueda y selección (solo visible si el usuario lo abre) */}
+            {isShipDropdownOpen && (
+              <div className="mt-2 p-2 rounded-xl border border-slate-700/80 bg-slate-950/90 space-y-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    autoFocus
+                    value={shipQuery}
+                    onChange={(e) => setShipQuery(e.target.value)}
+                    placeholder="Buscar barco por nombre o iniciales..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                  />
                 </div>
-              )}
-            </div>
+
+                <div className="max-h-36 overflow-y-auto border border-slate-800 rounded-lg bg-slate-950 p-1 space-y-0.5">
+                  {allowAstilleroStock && (
+                    <button
+                      type="button"
+                      onClick={() => handleShipChange(ASTILLERO_STOCK_TOKEN)}
+                      className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                        selectedShipId === ASTILLERO_STOCK_TOKEN
+                          ? 'bg-emerald-600 text-white font-bold'
+                          : 'text-emerald-300 hover:bg-emerald-950/40'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>ASTILLERO — PAÑOL / STOCK GENERAL</span>
+                      </span>
+                      {selectedShipId === ASTILLERO_STOCK_TOKEN && <Check className="w-3.5 h-3.5 shrink-0" />}
+                    </button>
+                  )}
+
+                  {filteredShips.map((s) => {
+                    const isSelected = String(selectedShipId) === String(s.id)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => handleShipChange(s.id)}
+                        className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-cyan-600 text-white font-bold'
+                            : 'text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5 truncate">
+                          <Ship className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+                          <span className="truncate">{s.name}</span>
+                          {s.client_name && (
+                            <span className="text-[10px] text-slate-400 font-normal">({s.client_name})</span>
+                          )}
+                        </span>
+                        {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
+                      </button>
+                    )
+                  })}
+
+                  {filteredShips.length === 0 && (
+                    <div className="px-3 py-2 text-center text-xs text-slate-500 italic">
+                      No se encontraron buques con ese nombre
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* PASO 2: ORDEN DE TRABAJO */}
@@ -375,10 +418,9 @@ export default function ShipWorkOrderPickerModal({
                         </div>
                       </div>
                     ) : (
-                      <div className="max-h-36 overflow-y-auto border border-slate-700/80 rounded-xl bg-slate-950 p-1 space-y-1">
+                      <div className="max-h-60 overflow-y-auto border border-slate-700/80 rounded-xl bg-slate-950 p-1 space-y-1">
                         {availableWorkOrders.map((wo) => {
                           const isSelected = String(selectedWoId) === String(wo.id)
-                          const isHovered = hoveredWo?.id === wo.id
                           const isForContractor = (wo._allWoIds || [wo.id]).some((id) => contractorWoSet.has(id))
                           const otNum = wo.ot_number || (wo.id ? String(wo.id).slice(0, 4) : 'OT')
                           const otTitle = wo.title || wo.description || 'Sin título'
@@ -392,17 +434,13 @@ export default function ShipWorkOrderPickerModal({
                                 setSelectedWoId(wo.id)
                                 setLeaveOtBlank(false)
                               }}
-                              onMouseEnter={() => setHoveredWo(wo)}
-                              onMouseLeave={() => setHoveredWo(null)}
                               title={formatWorkOrderTooltipCanonical(wo, selectedShip, workItems, workOrders)}
-                              className={`w-full text-left p-2 rounded-lg border text-xs flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                              className={`w-full text-left p-2 rounded-lg border text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
                                 isSelected
                                   ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-md shadow-emerald-950/40'
-                                  : isHovered
-                                  ? 'bg-slate-800/80 border-cyan-400 text-cyan-200'
                                   : isClosed
-                                  ? 'bg-slate-900/40 border-slate-800 text-slate-500 opacity-60'
-                                  : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700'
+                                  ? 'bg-slate-900/40 border-slate-800 text-slate-500 opacity-60 hover:bg-slate-800/60 hover:border-cyan-400/60'
+                                  : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:bg-slate-800/80 hover:border-cyan-400 hover:text-cyan-200'
                               }`}
                             >
                               <div className="flex items-center gap-2 min-w-0">
@@ -440,18 +478,6 @@ export default function ShipWorkOrderPickerModal({
                           )
                         })}
                       </div>
-                    )}
-
-                    {/* TARJETA CANÓNICA IDÉNTICA A PLANILLA (IMAGEN 2) CON ALCANCE Y TACHADO */}
-                    {activePreviewWo && (
-                      <WorkOrderScopeHoverCard
-                        wo={activePreviewWo}
-                        ship={selectedShip}
-                        workItems={workItems}
-                        allWorkOrders={workOrders}
-                        contractorFilter={contractorName || workerName}
-                        isHoverPreview={Boolean(hoveredWo && hoveredWo.id !== selectedWoId)}
-                      />
                     )}
                   </div>
                 )}
