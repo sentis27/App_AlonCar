@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   ClipboardList,
   Calendar,
@@ -11,8 +11,6 @@ import {
   MessageSquare,
   Send,
   Sparkles,
-  Pencil,
-  Trash2,
   Lock,
   User,
   Info,
@@ -21,6 +19,7 @@ import {
   Combine
 } from 'lucide-react'
 import WorkOrderSeparateModal from './WorkOrderSeparateModal.jsx'
+import OtCatalogModal from './OtCatalogModal.jsx'
 import {
   buildStandardShipWorkOrdersCatalog,
   findDuplicateOtNameConflict,
@@ -30,7 +29,6 @@ import {
 import {
   ESTADOS_TRABAJO,
   TIPOS_DE_TRABAJO,
-  GRUPOS_CATALOGO,
   BUDGET_PENDING_VALUE,
   FACTURACION_CENTRO_INFO,
   extractBudgetDigits,
@@ -42,15 +40,23 @@ import {
   cleanWorkItemComment
 } from '../../lib/workOrdersConstants.js'
 import {
+  OT_ABC_CATEGORIES,
+  buildOperationalSelectionFromTemplate,
+  normalizeOtAbcCategory
+} from '../../lib/otAbcCatalogConstants.js'
+import {
+  saveOtTemplateCompleteService,
+  updateOtTemplateCategoryService,
+  deleteOtTemplateService
+} from '../../lib/otAbcCatalogService.js'
+import {
   saveWorkOrderService,
   createForemanInlineService,
   saveThirdPartyCascadeService,
   saveThirdPartyEditService,
   closeOtWithValidationService,
   closeEntireWorkOrderTreeService,
-  submitAmpliarService,
-  saveTemplateService,
-  deleteTemplateService
+  submitAmpliarService
 } from '../../lib/workOrdersService.js'
 
 export function WorkOrdersModalsContainer({
@@ -121,7 +127,9 @@ export function WorkOrdersModalsContainer({
   const [savingWork, setSavingWork] = useState(false)
   const [selectedBatchTemplates, setSelectedBatchTemplates] = useState([])
   const [inlineCatalogSearch, setInlineCatalogSearch] = useState('')
+  const [inlineCatalogCategory, setInlineCatalogCategory] = useState('TODAS')
   const [showInlineMultiPicker, setShowInlineMultiPicker] = useState(false)
+  const pendingCatalogTemplatesRef = useRef(null)
   const [contractorSelectInput, setContractorSelectInput] = useState('')
   const [isContractorListOpen, setIsContractorListOpen] = useState(false)
   const [isCreatingForemanInline, setIsCreatingForemanInline] = useState(false)
@@ -159,24 +167,31 @@ export function WorkOrdersModalsContainer({
         send_to_third_party_prc: Boolean(row.send_to_third_party_prc || tp),
         specific_observations: tp?.specific_observations || ''
       })
+      setSelectedBatchTemplates([])
+      setShowInlineMultiPicker(false)
     } else {
       const defaultShipId = preselectedWo ? preselectedWo.ship_id : (ships[0]?.id || '')
       const shipWos = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
         shipId: defaultShipId,
         includeEliminated: false,
-        includeClosed: true
+        includeClosed: false
       })
+      const pendingCatalog = pendingCatalogTemplatesRef.current
+      pendingCatalogTemplatesRef.current = null
+      const hasPending = Array.isArray(pendingCatalog) && pendingCatalog.length > 0
+      const firstTpl = hasPending ? pendingCatalog[0] : null
+
       setBudgetOptionMode('PENDIENTE')
       setWorkForm({
         ship_id: defaultShipId,
         ot_mode: preselectedWo ? 'existing' : 'new',
         existing_wo_id: preselectedWo ? preselectedWo.id : (shipWos[0]?.id || ''),
-        ot_creation_type: 'libre',
-        selected_template_id: '',
+        ot_creation_type: hasPending ? 'tabulada' : 'libre',
+        selected_template_id: firstTpl?.template_id || '',
         ot_number: getNextOtNumberForShip(workOrders, defaultShipId),
-        ot_title: '',
+        ot_title: firstTpl ? String(firstTpl.ot_title || '').toUpperCase() : '',
         created_date: new Date().toISOString().split('T')[0],
-        description: '',
+        description: firstTpl?.description || '',
         status: 'En ejecución',
         foreman_name: preselectedWo?.foreman_name || foremenList[0] || 'ALE CAMADELLI',
         work_type: 'HORA',
@@ -187,10 +202,11 @@ export function WorkOrdersModalsContainer({
         send_to_third_party_prc: false,
         specific_observations: ''
       })
+      setSelectedBatchTemplates(hasPending ? pendingCatalog : [])
+      setShowInlineMultiPicker(hasPending && pendingCatalog.length > 1)
     }
-    setSelectedBatchTemplates([])
     setInlineCatalogSearch('')
-    setShowInlineMultiPicker(false)
+    setInlineCatalogCategory('TODAS')
     setContractorSelectInput('')
     setIsContractorListOpen(false)
     setIsCreatingForemanInline(false)
@@ -223,9 +239,9 @@ export function WorkOrdersModalsContainer({
     return buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
       shipId: workForm.ship_id,
       includeEliminated: false,
-      includeClosed: true
+      includeClosed: Boolean(editingWorkItem)
     })
-  }, [workOrders, workItems, workForm.ship_id])
+  }, [workOrders, workItems, workForm.ship_id, editingWorkItem])
 
   const workDuplicateConflict = useMemo(() => {
     if (editingWorkItem || workForm.ot_mode !== 'new' || !workForm.ship_id) return null
@@ -397,69 +413,40 @@ export function WorkOrdersModalsContainer({
   }
 
   // -------------------------------------------------------------
-  // 6. ESTADOS LOCALES DEL CATÁLOGO OT.ABC
+  // 6. IMPORTACIÓN OPERATIVA DESDE CATÁLOGO OT.ABC (SOLO DESCRIPCIÓN)
   // -------------------------------------------------------------
-  const [templateEdit, setTemplateEdit] = useState(null)
-  const [templateSearch, setTemplateSearch] = useState('')
-  const [savingTemplate, setSavingTemplate] = useState(false)
-  const [catalogMultiSelection, setCatalogMultiSelection] = useState([])
-
-  const handleSaveTemplate = async (e) => {
-    e.preventDefault()
-    setSavingTemplate(true)
-    try {
-      await saveTemplateService(templateEdit, templates.length, user)
-      setTemplateEdit(null)
-      await loadData()
-      showWoGridFeedback('success', 'Plantilla guardada en catálogo.')
-    } catch (err) {
-      showWoGridFeedback('error', 'Error al guardar plantilla: ' + err.message)
-    } finally {
-      setSavingTemplate(false)
-    }
-  }
-
-  const handleDeleteTemplate = async (tpl) => {
-    if (!window.confirm(`¿Eliminar "${tpl.name}" del catálogo?`)) return
-    try {
-      await deleteTemplateService(tpl.id, tpl.name, user)
-      await loadData()
-      showWoGridFeedback('info', 'Plantilla eliminada.')
-    } catch (err) {
-      showWoGridFeedback('error', err.message)
-    }
-  }
-
-  const handleConfirmCatalogMultiSelection = () => {
-    if (catalogMultiSelection.length === 0) return
-    setSelectedBatchTemplates(catalogMultiSelection)
+  const handleConfirmCatalogMultiSelection = (selectionList) => {
+    if (!Array.isArray(selectionList) || selectionList.length === 0) return
     if (templatePickerFromForm && isWorkModalOpen) {
+      setSelectedBatchTemplates(selectionList)
       setWorkForm((p) => ({
         ...p,
         ot_mode: p.existing_wo_id ? p.ot_mode : 'new',
         ot_creation_type: 'tabulada',
-        selected_template_id: catalogMultiSelection[0].template_id,
-        ot_title: String(catalogMultiSelection[0].ot_title || '').toUpperCase()
+        selected_template_id: selectionList[0].template_id,
+        ot_title: String(selectionList[0].ot_title || '').toUpperCase(),
+        description: selectionList[0].description || p.description
       }))
     } else {
+      pendingCatalogTemplatesRef.current = selectionList
       onOpenNewWorkModal(null)
     }
     setIsTemplateModalOpen(false)
   }
 
   const handleUseSingleTemplate = (tpl) => {
-    const upperName = String(tpl.name || '').toUpperCase()
-    const single = [{ template_id: tpl.id, ot_title: upperName, description: tpl.description || '', status: 'En ejecución' }]
-    setSelectedBatchTemplates(single)
+    const single = [buildOperationalSelectionFromTemplate(tpl, workForm.status || 'En ejecución')]
     if (templatePickerFromForm && isWorkModalOpen) {
+      setSelectedBatchTemplates(single)
       setWorkForm((p) => ({
         ...p,
         ot_creation_type: 'tabulada',
-        selected_template_id: tpl.id,
-        ot_title: upperName,
-        description: tpl.description || p.description
+        selected_template_id: single[0].template_id,
+        ot_title: single[0].ot_title,
+        description: single[0].description || p.description
       }))
     } else {
+      pendingCatalogTemplatesRef.current = single
       onOpenNewWorkModal(null)
     }
     setIsTemplateModalOpen(false)
@@ -469,11 +456,11 @@ export function WorkOrdersModalsContainer({
     <>
       {/* 1. WORK MODAL */}
       {isWorkModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 font-sans">
-          <div className="alon-modal-card max-w-5xl">
-            <div className="alon-modal-header">
-              <div className="flex items-center gap-3 min-w-0">
-                <ClipboardList className="w-5 h-5 text-primary shrink-0" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 font-sans">
+          <div className="alon-modal-card max-w-6xl max-h-[94vh]">
+            <div className="alon-modal-header py-2 px-4">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <ClipboardList className="w-4 h-4 text-primary shrink-0" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-black text-white truncate">
@@ -484,7 +471,7 @@ export function WorkOrdersModalsContainer({
                       <span>HOY: {formatShortDate(workForm.created_date, true)}</span>
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 truncate">
+                  <p className="text-[10px] text-slate-400 truncate">
                     Recorrido lineal: 1º Barco y OT ➔ 2º Detalle Técnico ➔ 3º Responsables y Facturación.
                   </p>
                 </div>
@@ -500,10 +487,10 @@ export function WorkOrdersModalsContainer({
             </div>
 
             <form onSubmit={handleSaveWorkSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
-              <div className="alon-modal-body space-y-3">
+              <div className="alon-modal-body p-3 space-y-2">
                 {/* BLOQUE 1: BARCO Y CONTENEDOR DE OT (LINEAL) */}
-                <div className="alon-chunk-sky space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
+                <div className="alon-chunk-sky p-2.5 space-y-1.5">
+                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-0.5">
                     <span className="text-[11px] font-black uppercase tracking-wider text-sky-400">
                       1. Barco y Contenedor de Orden de Trabajo
                     </span>
@@ -623,7 +610,7 @@ export function WorkOrdersModalsContainer({
                           const shipWos = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
                             shipId: newShipId,
                             includeEliminated: false,
-                            includeClosed: true
+                            includeClosed: false
                           })
                           setWorkForm((p) => ({
                             ...p,
@@ -748,18 +735,32 @@ export function WorkOrdersModalsContainer({
 
                   {/* Lista visible automática al elegir Tabulada */}
                   {workForm.ot_mode === 'new' && workForm.ot_creation_type === 'tabulada' && (
-                    <div className="p-2 rounded-xl bg-slate-950/90 border border-purple-700/50 space-y-1.5">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-purple-300">
-                          Catálogo OT.ABC ({templates.length} plantillas)
+                    <div className="p-1.5 rounded-xl bg-slate-950/90 border border-purple-700/50 space-y-1">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-purple-300">Catálogo OT.ABC ({templates.length})</span>
+                          {['TODAS', ...OT_ABC_CATEGORIES].map((cat) => (
+                            <button
+                              key={cat}
+                              type="button"
+                              tabIndex={-1}
+                              onClick={() => { setInlineCatalogCategory(cat); setShowInlineMultiPicker(true) }}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                                inlineCatalogCategory === cat ? 'bg-purple-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {cat === 'TODAS' ? 'Todas' : cat}
+                            </button>
+                          ))}
                           {selectedBatchTemplates.length > 0 && (
-                            <span className="ml-2 px-1.5 py-0.5 rounded bg-purple-900/80 text-white text-[10px]">
-                              {selectedBatchTemplates.length} seleccionada(s)
+                            <span className="px-1.5 py-0.5 rounded bg-purple-900/80 text-white text-[10px]">
+                              {selectedBatchTemplates.length} sel.
                             </span>
                           )}
-                        </span>
+                        </div>
                         <button
                           type="button"
+                          tabIndex={-1}
                           onClick={() => setShowInlineMultiPicker((v) => !v)}
                           className="text-[10px] text-slate-400 hover:text-white font-bold cursor-pointer"
                         >
@@ -767,13 +768,16 @@ export function WorkOrdersModalsContainer({
                         </button>
                       </div>
                       {(showInlineMultiPicker || inlineCatalogSearch.trim()) && (
-                        <div className="max-h-32 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
+                        <div className="max-h-24 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1">
                           {templates
-                            .filter((t) =>
-                              !inlineCatalogSearch.trim() ? true : t.name.toLowerCase().includes(inlineCatalogSearch.toLowerCase())
-                            )
+                            .filter((t) => {
+                              const cat = normalizeOtAbcCategory(t.category)
+                              if (inlineCatalogCategory !== 'TODAS' && cat !== inlineCatalogCategory && cat !== 'Ambas') return false
+                              return !inlineCatalogSearch.trim() ? true : t.name.toLowerCase().includes(inlineCatalogSearch.toLowerCase())
+                            })
                             .map((tpl) => {
                               const isChecked = selectedBatchTemplates.some((item) => item.template_id === tpl.id)
+                              const opSel = buildOperationalSelectionFromTemplate(tpl, workForm.status || 'En ejecución')
                               return (
                                 <div
                                   key={tpl.id}
@@ -781,13 +785,13 @@ export function WorkOrdersModalsContainer({
                                     setSelectedBatchTemplates((prev) => {
                                       const next = prev.some((item) => item.template_id === tpl.id)
                                         ? prev.filter((item) => item.template_id !== tpl.id)
-                                        : [...prev, { template_id: tpl.id, ot_title: String(tpl.name || '').toUpperCase(), description: tpl.description || '', status: workForm.status || 'En ejecución' }]
+                                        : [...prev, opSel]
                                       if (next.length === 1) {
                                         setWorkForm((wf) => ({
                                           ...wf,
                                           selected_template_id: next[0].template_id,
                                           ot_title: next[0].ot_title,
-                                          description: wf.description || next[0].description || ''
+                                          description: next[0].description || wf.description
                                         }))
                                       }
                                       return next
@@ -801,10 +805,21 @@ export function WorkOrdersModalsContainer({
                                     <input type="checkbox" checked={isChecked} onChange={() => {}} className="w-3.5 h-3.5 rounded accent-purple-500 shrink-0" />
                                     <span className="truncate">{tpl.name}</span>
                                   </div>
-                                  {tpl.category && <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400 font-mono shrink-0">{tpl.category}</span>}
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {opSel.subworks.length > 0 && (
+                                      <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300 font-bold">{opSel.subworks.length} sub</span>
+                                    )}
+                                    {tpl.category && <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400 font-mono">{tpl.category}</span>}
+                                  </div>
                                 </div>
                               )
                             })}
+                        </div>
+                      )}
+                      {selectedBatchTemplates.length === 1 && selectedBatchTemplates[0].subworks?.length > 0 && (
+                        <div className="px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/40 text-[10px] text-amber-200">
+                          <strong>Sub-trabajos automáticos ({selectedBatchTemplates[0].subworks.length}):</strong>{' '}
+                          {selectedBatchTemplates[0].subworks.map((s) => s.title).join(' · ')}
                         </div>
                       )}
                     </div>
@@ -812,26 +827,26 @@ export function WorkOrdersModalsContainer({
                 </div>
 
                 {/* BLOQUE 2: DETALLE TÉCNICO (LINEAL) */}
-                <div className="alon-chunk-amber space-y-2">
-                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
+                <div className="alon-chunk-amber p-2.5 space-y-1.5">
+                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-0.5">
                     <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
                       2. Detalle Técnico del Trabajo
                     </span>
                     <span className="text-[10px] text-slate-400">Descripción & Estado</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
                     <div className="md:col-span-6">
                       <label className="block text-[11px] font-bold text-slate-300 mb-1">
                         Descripción Técnica del Trabajo <span className="text-rose-400">*</span>
                       </label>
                       <textarea
-                        rows={2}
+                        rows={1}
                         required
                         value={workForm.description}
                         onChange={(e) => setWorkForm((prev) => ({ ...prev, description: e.target.value }))}
                         placeholder="Detallá los trabajos a realizar..."
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none"
+                        className="w-full min-h-[34px] bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none resize-y"
                       />
                     </div>
                     <div className="md:col-span-3">
@@ -862,15 +877,15 @@ export function WorkOrdersModalsContainer({
                 </div>
 
                 {/* BLOQUE 3: RESPONSABLES, FACTURACIÓN Y TERCEROS (LINEAL) */}
-                <div className="alon-chunk-emerald space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
+                <div className="alon-chunk-emerald p-2.5 space-y-1.5">
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-0.5">
                     <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400">
                       3. Responsables, Facturación y Terceros
                     </span>
                     <span className="text-[10px] text-slate-400">Asignación operativa</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start">
                     {/* Columna 1: Jefe de Obra */}
                     <div className="md:col-span-3">
                       <div className="flex items-center justify-between mb-1">
@@ -918,7 +933,7 @@ export function WorkOrdersModalsContainer({
                     </div>
 
                     {/* Columna 2: Centro de Facturación (Botones directos) */}
-                    <div className="md:col-span-4 space-y-2">
+                    <div className="md:col-span-5 space-y-1.5">
                       <div className="relative">
                         <div className="flex items-center justify-between mb-1">
                           <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
@@ -995,15 +1010,16 @@ export function WorkOrdersModalsContainer({
                       </div>
 
                       {workForm.assignment_type === 'Adicional / Específico' && (
-                        <div className="p-2 rounded-xl bg-amber-950/20 border border-amber-500/40 space-y-1.5">
-                          <div className="grid grid-cols-2 gap-1">
+                        <div className="p-1.5 rounded-xl bg-amber-950/20 border border-amber-500/40 flex items-center gap-1.5">
+                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
+                              tabIndex={-1}
                               onClick={() => {
                                 setBudgetOptionMode('CONOCIDO')
                                 setWorkForm((prev) => ({ ...prev, specific_budget_id: extractBudgetDigits(prev.specific_budget_id) }))
                               }}
-                              className={`py-1 px-2 rounded-lg text-[10px] font-bold border cursor-pointer ${
+                              className={`py-1 px-2 rounded-lg text-[10px] font-bold border cursor-pointer whitespace-nowrap ${
                                 budgetOptionMode === 'CONOCIDO'
                                   ? 'bg-amber-500/20 border-amber-400 text-amber-200'
                                   : 'bg-slate-900 border-slate-800 text-slate-400'
@@ -1013,23 +1029,24 @@ export function WorkOrdersModalsContainer({
                             </button>
                             <button
                               type="button"
+                              tabIndex={-1}
                               onClick={() => {
                                 setBudgetOptionMode('PENDIENTE')
                                 setWorkForm((prev) => ({ ...prev, specific_budget_id: BUDGET_PENDING_VALUE }))
                               }}
-                              className={`py-1 px-2 rounded-lg text-[10px] font-bold border cursor-pointer ${
+                              className={`py-1 px-2 rounded-lg text-[10px] font-bold border cursor-pointer whitespace-nowrap ${
                                 budgetOptionMode === 'PENDIENTE'
                                   ? 'bg-amber-500/20 border-amber-400 text-amber-200'
                                   : 'bg-slate-900 border-slate-800 text-slate-400'
                               }`}
                             >
-                              Pendiente (Alerta)
+                              Pendiente
                             </button>
                           </div>
 
                           {budgetOptionMode === 'CONOCIDO' ? (
-                            <div className="flex items-center bg-slate-900 border border-amber-500/50 rounded-xl overflow-hidden focus-within:border-amber-400">
-                              <span className="px-2 py-1 bg-amber-950/60 border-r border-amber-500/30 text-[10px] font-mono font-black text-amber-300 select-none shrink-0">
+                            <div className="flex items-center flex-1 min-w-0 bg-slate-900 border border-amber-500/50 rounded-lg overflow-hidden focus-within:border-amber-400">
+                              <span className="px-1.5 py-1 bg-amber-950/60 border-r border-amber-500/30 text-[9px] font-mono font-black text-amber-300 select-none shrink-0">
                                 PRESUP.
                               </span>
                               <input
@@ -1048,12 +1065,12 @@ export function WorkOrdersModalsContainer({
                                   }
                                 }}
                                 placeholder="Ej: 210"
-                                className="w-full bg-transparent px-2 py-1 text-xs text-white font-mono font-bold focus:outline-none"
+                                className="w-full min-w-0 bg-transparent px-2 py-1 text-xs text-white font-mono font-bold focus:outline-none"
                               />
                             </div>
                           ) : (
-                            <div className="px-2 py-1 rounded-xl bg-amber-950/50 border border-amber-500/50 text-[10px] font-mono font-black text-amber-300">
-                              {BUDGET_PENDING_VALUE} • Alerta a María José
+                            <div className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-amber-950/50 border border-amber-500/50 text-[10px] font-mono font-black text-amber-300 truncate" title={`${BUDGET_PENDING_VALUE} • Alerta a María José`}>
+                              {BUDGET_PENDING_VALUE} • Alerta M.J.
                             </div>
                           )}
                         </div>
@@ -1061,7 +1078,7 @@ export function WorkOrdersModalsContainer({
                     </div>
 
                     {/* Columna 3: Contratistas y Terceros PRC */}
-                    <div className="md:col-span-5 space-y-2">
+                    <div className="md:col-span-4 space-y-1.5">
                       <div>
                         <label className="block text-[11px] font-bold text-slate-300 mb-1">Contratista(s) o Grupo(s)</label>
                         <div className="relative">
@@ -1107,7 +1124,7 @@ export function WorkOrdersModalsContainer({
                         )}
                       </div>
 
-                      <div className="p-2 rounded-xl bg-slate-950 border border-purple-900/50">
+                      <div className="p-1.5 rounded-xl bg-slate-950 border border-purple-900/50">
                         <label className="flex items-start gap-2 text-xs text-slate-200 cursor-pointer">
                           <input
                             type="checkbox"
@@ -1127,9 +1144,9 @@ export function WorkOrdersModalsContainer({
                 </div>
               </div>
 
-              <div className="alon-modal-footer">
-                <button type="button" onClick={() => setIsWorkModalOpen(false)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold cursor-pointer">Cancelar</button>
-                <button type="submit" disabled={savingWork || (!editingWorkItem && workForm.ot_mode === 'new' && (Boolean(workDuplicateConflict) || batchDuplicateConflicts.length > 0))} className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 disabled:opacity-50 text-slate-950 font-black rounded-xl cursor-pointer flex items-center gap-1.5 shadow-lg">
+              <div className="alon-modal-footer py-2 px-4">
+                <button type="button" onClick={() => setIsWorkModalOpen(false)} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={savingWork || (!editingWorkItem && workForm.ot_mode === 'new' && (Boolean(workDuplicateConflict) || batchDuplicateConflicts.length > 0))} className="px-5 py-1.5 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 disabled:opacity-50 text-slate-950 font-black rounded-xl cursor-pointer flex items-center gap-1.5 shadow-lg">
                   <Plus className="w-4 h-4 stroke-[2.5]" />
                   <span>{savingWork ? 'Guardando...' : editingWorkItem ? 'Actualizar Trabajo' : 'Guardar Trabajo y OT'}</span>
                 </button>
@@ -1362,55 +1379,20 @@ export function WorkOrdersModalsContainer({
         </div>
       )}
 
-      {/* 7. TEMPLATE MODAL */}
-      {isTemplateModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto font-sans">
-          <div className="w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 relative my-8">
-            <div className="flex items-start justify-between border-b border-slate-800 pb-3 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0"><Sparkles className="w-5 h-5" /></div>
-                <div><h3 className="text-base font-black text-white">Catálogo de Trabajos (OT.ABC)</h3></div>
-              </div>
-              <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"><X className="w-5 h-5" /></button>
-            </div>
-
-            {templateEdit ? (
-              <form onSubmit={handleSaveTemplate} className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Nombre *</label>
-                  <input type="text" required value={templateEdit.name} onChange={(e) => setTemplateEdit({ ...templateEdit, name: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" autoFocus />
-                </div>
-                <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-                  <button type="button" onClick={() => setTemplateEdit(null)} className="px-3.5 py-1.5 bg-slate-800 text-slate-300 rounded-xl">Cancelar</button>
-                  <button type="submit" disabled={savingTemplate} className="px-4 py-1.5 bg-primary text-slate-950 font-black rounded-xl">{savingTemplate ? 'Guardando...' : 'Guardar'}</button>
-                </div>
-              </form>
-            ) : (
-              <>
-                <div className="flex items-center justify-between gap-3 mb-4 text-xs">
-                  <input type="text" value={templateSearch} onChange={(e) => setTemplateSearch(e.target.value)} placeholder="Buscar en catálogo..." className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white" />
-                  {catalogMultiSelection.length > 0 && (
-                    <button type="button" onClick={handleConfirmCatalogMultiSelection} className="px-4 py-2 bg-purple-600 text-white font-black rounded-xl">Abrir {catalogMultiSelection.length} OTs</button>
-                  )}
-                  <button type="button" onClick={() => setTemplateEdit({ name: '', description: '', category: 'Renovación' })} className="px-3.5 py-2 bg-slate-800 text-slate-200 rounded-xl font-bold">+ Nueva</button>
-                </div>
-                <div className="space-y-2 max-h-[50vh] overflow-y-auto text-xs">
-                  {templates.filter((t) => !templateSearch || t.name.toLowerCase().includes(templateSearch.toLowerCase())).map((tpl) => (
-                    <div key={tpl.id} className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3">
-                      <span className="font-bold text-white truncate">{tpl.name}</span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button type="button" onClick={() => handleUseSingleTemplate(tpl)} className="px-2.5 py-1 bg-amber-500/20 text-amber-300 rounded-lg font-bold">Usar</button>
-                        <button type="button" onClick={() => setTemplateEdit(tpl)} className="p-1.5 text-slate-400 hover:text-white"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button type="button" onClick={() => handleDeleteTemplate(tpl)} className="p-1.5 text-slate-500 hover:text-rose-400"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* 7. CATÁLOGO OT.ABC MODULAR */}
+      <OtCatalogModal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        templates={templates}
+        user={user}
+        loadData={loadData}
+        showWoGridFeedback={showWoGridFeedback}
+        onUseSingleTemplate={handleUseSingleTemplate}
+        onConfirmMultiSelection={handleConfirmCatalogMultiSelection}
+        onSaveTemplate={saveOtTemplateCompleteService}
+        onUpdateCategory={updateOtTemplateCategoryService}
+        onDeleteTemplate={deleteOtTemplateService}
+      />
     </>
   )
 }

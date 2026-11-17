@@ -8,7 +8,14 @@ import { supabase } from './supabase.js'
 import { auditService } from './auditService.js'
 import { assignMonotonicFolios } from './monotonicFolioEngine.js'
 import { assertNoDuplicateOtTitleInDb, separateWorkItemCompleteService } from './workOrderTransferService.js'
+import { syncWorkOrderHeaderStatusService } from './workOrderHeaderSync.js'
 import { normalizeOtTitleKey } from './workOrderUnificationEngine.js'
+import { buildWorkItemPayloadsFromTemplateSelection } from './otAbcCatalogConstants.js'
+export {
+  saveOtTemplateCompleteService as saveTemplateService,
+  deleteOtTemplateService as deleteTemplateService,
+  updateOtTemplateCategoryService
+} from './otAbcCatalogService.js'
 import {
   cleanWorkItemComment,
   normalizeSpecificBudgetId,
@@ -278,6 +285,14 @@ export async function applyWoSinglePatchService({
         .update({ direct_observations: cleanVal || 'Sin descripción cargada en la OT', updated_at: new Date().toISOString() })
         .eq('id', targetRow.thirdPartyRecord.id)
     }
+
+    if (colKey === 'status' && targetRow.work_order_id) {
+      await syncWorkOrderHeaderStatusService({
+        workOrderId: targetRow.work_order_id,
+        user,
+        reason: 'Edición directa de estado en planilla'
+      })
+    }
   }
 
   await auditService.logCellChange({
@@ -354,49 +369,27 @@ export async function saveWorkOrderService({
       if (woErr) throw woErr
       const createdWoId = newWoData[0].id
 
-      const itemPayload = {
-        work_order_id: createdWoId,
-        description: itemDesc,
-        status: itemStatus,
-        foreman_name: workForm.foreman_name,
-        work_type: workForm.work_type,
-        assignment_type: workForm.assignment_type,
-        specific_budget_id: normalizedBudget,
-        contractors: workForm.contractors,
-        contractor_name: workForm.contractors.join(', ') || null,
-        comments: workForm.comments.trim() || null,
-        send_to_third_party_prc: validFor3ros,
-        updated_at: new Date().toISOString()
-      }
-
-      const { data: insItemData, error: itemErr } = await supabase.from('work_items').insert([itemPayload]).select()
+      const itemPayloads = buildWorkItemPayloadsFromTemplateSelection({
+        templateSelection: batchItem,
+        workOrderId: createdWoId,
+        workForm,
+        normalizedBudget,
+        mergedComments: workForm.comments.trim() || null,
+        validFor3ros
+      })
+      const { data: insItemsData, error: itemErr } = await supabase.from('work_items').insert(itemPayloads).select()
       if (itemErr) throw itemErr
-      const createdWorkItem = insItemData?.[0]
 
-      if (createdWorkItem) {
-        await syncBudgetPendingAlertForWorkItem({
-          workItem: createdWorkItem,
-          wo: newWoData[0],
-          shipId: workForm.ship_id,
-          user
-        })
-      }
-
-      if (createdWorkItem && validFor3ros) {
-        const singleContractor = workForm.contractors[0]
-        await supabase.from('third_party_services').upsert({
-          work_item_id: createdWorkItem.id,
-          work_order_id: createdWoId,
-          ship_id: workForm.ship_id,
-          contractor_name: singleContractor,
-          status: 'PRC',
-          voucher_type: 'PRC',
-          amount_ars: 0,
-          service_date: todayIso,
-          direct_observations: itemDesc || 'Sin descripción cargada en la OT',
-          specific_observations: workForm.specific_observations.trim() || null,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'work_item_id' })
+      for (const createdWorkItem of insItemsData || []) {
+        await syncBudgetPendingAlertForWorkItem({ workItem: createdWorkItem, wo: newWoData[0], shipId: workForm.ship_id, user })
+        if (validFor3ros) {
+          await supabase.from('third_party_services').upsert({
+            work_item_id: createdWorkItem.id, work_order_id: createdWoId, ship_id: workForm.ship_id,
+            contractor_name: workForm.contractors[0], status: 'PRC', voucher_type: 'PRC', amount_ars: 0,
+            service_date: todayIso, direct_observations: createdWorkItem.description || 'Sin descripción cargada en la OT',
+            specific_observations: workForm.specific_observations.trim() || null, updated_at: new Date().toISOString()
+          }, { onConflict: 'work_item_id' })
+        }
       }
 
       await auditService.logRowAction({
@@ -468,56 +461,40 @@ export async function saveWorkOrderService({
     updated_at: new Date().toISOString()
   }
 
-  let savedWorkItem = null
+  let savedItems = []
   if (editingWorkItem && !editingWorkItem.isPlaceholder) {
     const { data: updData, error: itemErr } = await supabase.from('work_items').update(itemPayload).eq('id', editingWorkItem.id).select()
     if (itemErr) throw itemErr
-    savedWorkItem = updData?.[0] || { ...editingWorkItem, ...itemPayload }
+    savedItems = [updData?.[0] || { ...editingWorkItem, ...itemPayload }]
   } else {
-    const { data: insData, error: itemErr } = await supabase.from('work_items').insert([itemPayload]).select()
+    const singleTemplate = workForm.ot_mode === 'new' && workForm.ot_creation_type === 'tabulada' ? selectedBatchTemplates[0] : null
+    const insertPayloads = singleTemplate?.subworks?.length > 0
+      ? buildWorkItemPayloadsFromTemplateSelection({
+          templateSelection: singleTemplate, workOrderId: targetWoId, workForm, normalizedBudget, mergedComments, validFor3ros
+        })
+      : [itemPayload]
+    const { data: insData, error: itemErr } = await supabase.from('work_items').insert(insertPayloads).select()
     if (itemErr) throw itemErr
-    savedWorkItem = insData?.[0]
+    savedItems = insData || []
   }
+  const savedWorkItem = savedItems[0] || null
 
-  if (savedWorkItem) {
-    if (!targetWoRecord && targetWoId) {
-      const { data: woLookup } = await supabase
-        .from('work_orders')
-        .select('id, ot_number, title, ship_id')
-        .eq('id', targetWoId)
-        .limit(1)
-      targetWoRecord = woLookup?.[0] || { id: targetWoId, ot_number: workForm.ot_number, title: normalizedOtTitle, ship_id: targetShipId }
-    }
-    await syncBudgetPendingAlertForWorkItem({
-      workItem: savedWorkItem,
-      wo: targetWoRecord,
-      shipId: targetShipId || targetWoRecord?.ship_id,
-      user
-    })
+  if (savedItems.length > 0 && !targetWoRecord && targetWoId) {
+    const { data: woLookup } = await supabase.from('work_orders').select('id, ot_number, title, ship_id').eq('id', targetWoId).limit(1)
+    targetWoRecord = woLookup?.[0] || { id: targetWoId, ot_number: workForm.ot_number, title: normalizedOtTitle, ship_id: targetShipId }
   }
-
-  if (savedWorkItem) {
+  for (const wi of savedItems) {
+    await syncBudgetPendingAlertForWorkItem({ workItem: wi, wo: targetWoRecord, shipId: targetShipId || targetWoRecord?.ship_id, user })
     if (validFor3ros) {
       const singleContractor = workForm.contractors[0]
       const workerObj = workers.find(w => w.name.toUpperCase().trim() === singleContractor?.toUpperCase().trim())
       const resolvedTrade = workerObj?.trade && workerObj.trade.toUpperCase().trim() !== 'MANUAL' ? workerObj.trade : null
-      const tpPayload = {
-        work_item_id: savedWorkItem.id,
-        work_order_id: targetWoId,
-        ship_id: targetShipId,
-        contractor_name: singleContractor,
-        trade: resolvedTrade,
-        status: 'PRC',
-        voucher_type: 'PRC',
-        amount_ars: 0,
-        service_date: todayIso,
-        entry_date: todayIso,
-        direct_observations: workForm.description.trim() || 'Sin descripción cargada en la OT',
-        specific_observations: workForm.specific_observations.trim() || null,
-        updated_at: new Date().toISOString()
-      }
-
-      await supabase.from('third_party_services').upsert(tpPayload, { onConflict: 'work_item_id' })
+      await supabase.from('third_party_services').upsert({
+        work_item_id: wi.id, work_order_id: targetWoId, ship_id: targetShipId, contractor_name: singleContractor,
+        trade: resolvedTrade, status: 'PRC', voucher_type: 'PRC', amount_ars: 0, service_date: todayIso, entry_date: todayIso,
+        direct_observations: wi.description || workForm.description.trim() || 'Sin descripción cargada en la OT',
+        specific_observations: workForm.specific_observations.trim() || null, updated_at: new Date().toISOString()
+      }, { onConflict: 'work_item_id' })
     } else if (editingWorkItem) {
       await supabase.from('third_party_services').delete().eq('work_item_id', editingWorkItem.id)
     }
@@ -532,6 +509,14 @@ export async function saveWorkOrderService({
     sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
     user: user?.email || 'Supervisor'
   })
+
+  if (targetWoId) {
+    await syncWorkOrderHeaderStatusService({
+      workOrderId: targetWoId,
+      user,
+      reason: editingWorkItem ? 'Edición desde ficha de trabajo (Lápiz)' : 'Alta de trabajo en OT'
+    })
+  }
 
   return { type: 'single', savedWorkItem, validFor3ros }
 }
@@ -681,6 +666,15 @@ export async function deleteWorkItemService(row, user) {
     sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
     user: user?.email || 'Supervisor'
   })
+
+  const woId = row.work_order_id || row.wo?.id
+  if (woId) {
+    await syncWorkOrderHeaderStatusService({
+      workOrderId: woId,
+      user,
+      reason: 'Desestimación de trabajo en OT'
+    })
+  }
 }
 
 // Desestimar por eliminación una OT completa (preserva el consecutivo)
@@ -848,6 +842,120 @@ export async function closeEntireWorkOrderTreeService({
   }
 }
 
+const ALLOWED_REOPEN_ITEM_STATUSES = new Set(['En ejecución', 'Finalizado', 'Pendiente de inicio'])
+
+/**
+ * Revierte una OT Facturada o Cerrada a un estado operativo editable (ej. ante error humano).
+ * Desbloquea la cabecera en work_orders, actualiza los work_items afectados con rollback si falla la cabecera,
+ * y deja trazabilidad obligatoria en audit_logs.
+ */
+export async function reopenWorkOrderService({
+  wo,
+  targetStatus = 'En ejecución',
+  reason = '',
+  user
+}) {
+  if (!wo?.id) throw new Error('Se requiere una Orden de Trabajo válida.')
+  const safeTargetStatus = typeof targetStatus === 'string' ? targetStatus.trim() : ''
+  if (!ALLOWED_REOPEN_ITEM_STATUSES.has(safeTargetStatus)) {
+    throw new Error(`Estado destino inválido para reapertura: ${safeTargetStatus}`)
+  }
+
+  const nowIso = new Date().toISOString()
+
+  // 1. Identificar cabeceras hermanas (blindaje por ship_id + ot_number)
+  const targetWoIds = [wo.id]
+  if (wo.ship_id && wo.ot_number) {
+    const { data: siblings } = await supabase
+      .from('work_orders')
+      .select('id')
+      .eq('ship_id', wo.ship_id)
+      .eq('ot_number', wo.ot_number)
+    if (siblings && siblings.length > 0) {
+      siblings.forEach((s) => {
+        if (!targetWoIds.includes(s.id)) targetWoIds.push(s.id)
+      })
+    }
+  }
+
+  // 2. Snapshot de subtareas a revertir para rollback atómico (SKL-015)
+  const revertFromStatuses = safeTargetStatus === 'Finalizado'
+    ? ['Facturado']
+    : ['Facturado', 'Finalizado']
+
+  const { data: itemsToRevert, error: fetchErr } = await supabase
+    .from('work_items')
+    .select('id, status, description')
+    .in('work_order_id', targetWoIds)
+    .in('status', revertFromStatuses)
+
+  if (fetchErr) throw fetchErr
+
+  const itemIds = (itemsToRevert || []).map((it) => it.id)
+  if (itemIds.length > 0) {
+    const { error: itemsError } = await supabase
+      .from('work_items')
+      .update({
+        status: safeTargetStatus,
+        updated_at: nowIso
+      })
+      .in('id', itemIds)
+    if (itemsError) throw itemsError
+  }
+
+  // 3. Desbloquear cabecera(s) de OT
+  const nextWoStatus = safeTargetStatus === 'Pendiente de inicio' ? 'Pendiente' : 'En Progreso'
+  const { error: woError } = await supabase
+    .from('work_orders')
+    .update({
+      status: nextWoStatus,
+      allow_post_billing_costs: false,
+      closed_at: null
+    })
+    .in('id', targetWoIds)
+
+  if (woError) {
+    // Rollback best-effort si falló la actualización de cabecera
+    for (const prevItem of (itemsToRevert || [])) {
+      await supabase
+        .from('work_items')
+        .update({ status: prevItem.status, updated_at: nowIso })
+        .eq('id', prevItem.id)
+    }
+    throw woError
+  }
+
+  // 4. Trazabilidad obligatoria en audit_logs
+  const cleanReason = typeof reason === 'string' && reason.trim()
+    ? reason.trim()
+    : 'Reapertura manual por corrección de estado'
+
+  await auditService.logRowAction({
+    action: 'REOPEN_FACTURADA',
+    entityType: 'work_orders',
+    entityId: wo.id,
+    entityName: `Reapertura de OT · ${wo.ot_number || 'OT'} - ${wo.title}`,
+    details: {
+      previousWoStatus: wo.status || null,
+      previousClosedAt: wo.closed_at || null,
+      nextWoStatus,
+      targetItemStatus: safeTargetStatus,
+      reason: cleanReason,
+      totalItemsUpdated: itemIds.length,
+      tasks: (itemsToRevert || []).map((t) => t.description)
+    },
+    sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
+    user: user?.email || 'Supervisor'
+  })
+
+  return {
+    success: true,
+    targetStatus: safeTargetStatus,
+    nextWoStatus,
+    updatedCount: itemIds.length
+  }
+}
+
 // Guardar Observaciones en Terceros
 export async function saveThirdPartyEditService(editingThirdParty, user) {
   const { error } = await supabase
@@ -869,45 +977,6 @@ export async function saveThirdPartyEditService(editingThirdParty, user) {
     entityId: editingThirdParty.id,
     entityName: `Terceros Edit · ${editingThirdParty.voucher_number || editingThirdParty.id}`,
     details: { amount: editingThirdParty.amount_ars, status: editingThirdParty.status },
-    sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
-    user: user?.email || 'Supervisor'
-  })
-}
-
-// Guardar o Actualizar plantilla en el Catálogo OT.ABC
-export async function saveTemplateService(templateEdit, totalTemplates = 0, user) {
-  const payload = {
-    name: templateEdit.name.trim(),
-    description: templateEdit.description?.trim() || null,
-    category: templateEdit.category || null
-  }
-  const { error } = templateEdit.id
-    ? await supabase.from('ot_templates').update(payload).eq('id', templateEdit.id)
-    : await supabase.from('ot_templates').insert([{ ...payload, sort_order: totalTemplates + 1 }])
-  if (error) throw error
-
-  await auditService.logRowAction({
-    action: templateEdit.id ? 'UPDATE' : 'CREATE',
-    entityType: 'ot_templates',
-    entityId: templateEdit.id || 'NEW',
-    entityName: `Plantilla OT.ABC · ${payload.name}`,
-    details: payload,
-    sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
-    user: user?.email || 'Supervisor'
-  })
-}
-
-// Eliminar plantilla del Catálogo OT.ABC
-export async function deleteTemplateService(tplId, tplName, user) {
-  const { error } = await supabase.from('ot_templates').delete().eq('id', tplId)
-  if (error) throw error
-
-  await auditService.logRowAction({
-    action: 'DELETE',
-    entityType: 'ot_templates',
-    entityId: tplId,
-    entityName: `Plantilla Eliminada · ${tplName || tplId}`,
-    details: {},
     sheetName: 'Órdenes de Trabajo y Catálogo (OT.ABC)',
     user: user?.email || 'Supervisor'
   })

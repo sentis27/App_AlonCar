@@ -5,6 +5,7 @@ import { supabase } from './supabase.js'
  */
 export const AUDIT_ENTITY_CATALOG = {
   work_orders: { label: 'Órdenes de Trabajo (OTs)', route: '/ots', module: 'Órdenes de Trabajo' },
+  ot_templates: { label: 'Catálogo de Trabajos (OT.ABC)', route: '/ots', module: 'Órdenes de Trabajo' },
   work_order_tasks: { label: 'Catálogo de Trabajos / Tareas (OT.ABC)', route: '/ots', module: 'Órdenes de Trabajo' },
   workers: { label: 'Personal · Nómina de Operarios', route: '/personal', module: 'Personal y Tarifas' },
   rate_cards: { label: 'Personal · Tarifario Quincenal', route: '/personal', module: 'Personal y Tarifas' },
@@ -446,5 +447,4 @@ export const auditService = {
   getGlobalAuditLedger,
   computeAuditMetrics
 }
-
 export default auditService

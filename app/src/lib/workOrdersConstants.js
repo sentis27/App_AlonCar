@@ -8,7 +8,7 @@ import { matchesUniversalSearch } from './searchEngine.js'
 import { assignMonotonicFolios } from './monotonicFolioEngine.js'
 
 // Grupos del Catálogo de Trabajos (OT.ABC)
-export const GRUPOS_CATALOGO = ['Renovación', 'Intermediaria']
+export const GRUPOS_CATALOGO = ['Renovación', 'Intermedia', 'Ambas']
 
 // 8 Estados Oficiales del Ciclo de Vida de un Trabajo (GS-003 UNIFICADO)
 export const ESTADOS_TRABAJO = [

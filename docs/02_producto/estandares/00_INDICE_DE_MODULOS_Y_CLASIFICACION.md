@@ -55,7 +55,7 @@ Todos los módulos y submódulos listados a continuación son hojas de edición 
 | # | Módulo / Archivo | Ruta React | Submódulo / Pestaña (`activeTab`) | Tabla(s) Supabase | Identificador de Auditoría (`entity_type`) | Estado de Estandarización & Auditoría |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **1.1** | **`WorkOrders.jsx`** | `/ots` | **1. Vista Unificada / OTs Activas** (`unificado` / `ots`) | `work_orders` | `work_orders` | ✅ Estandarizado + Auditado |
-| **1.2** | **`WorkOrders.jsx`** | `/ots` | **2. Catálogo de Trabajos / Tareas (OT.ABC)** (`unificado` / modal plantilla) | `work_order_tasks` | `work_order_tasks` | ✅ Estandarizado + Auditado |
+| **1.2** | **`WorkOrders.jsx`** + **`OtCatalogModal.jsx`** | `/ots` | **2. Catálogo de Trabajos / Tarifario (OT.ABC)** (`OtCatalogModal` / `OtCatalogEditor`) | `ot_templates` | `ot_templates` | ✅ Estandarizado + Auditado |
 | **2.1** | **`Personal.jsx`** | `/personal` | **1. Nómina / Padrón de Operarios** (`nomina`) | `workers` | `workers` | ✅ Estandarizado + Auditado |
 | **2.2** | **`Personal.jsx`** | `/personal` | **2. Tarifario Quincenal** (`tarifario`) | `rate_cards` | `rate_cards` | ✅ Estandarizado + Auditado |
 | **2.3** | **`Personal.jsx`** | `/personal` | **3. Grupos de Trabajo / Cuadrillas** (modal/asignación) | `work_groups` | `work_groups` | ✅ Estandarizado + Auditado |
@@ -77,7 +77,7 @@ Todos los módulos y submódulos listados a continuación son hojas de edición 
 | **8.1** | **`AdminDashboard.jsx`** | `/admin` | **1. Gestión de Rubros & Oficios** (`rubros`) | `system_settings` (`master_trades`) | `system_settings` | ✅ Estandarizado + Auditado |
 | **8.2** | **`AdminDashboard.jsx`** | `/admin` | **2. Matriz de Puestos & Permisos** (`matriz`) | `user_roles`, `profiles` | `user_roles` | ✅ Estandarizado + Auditado |
 | **8.3** | **`AdminDashboard.jsx`** | `/admin` | **3. Variables Macroeconómicas** (`macro`) | `macro_variables` | `macro_variables` | ✅ Estandarizado + Auditado |
-| **9.1** | **`ResumenGerencial.jsx`** + **`RemitoComercialAlfaPanel.jsx`** | `/resumen-gerencial?tab=remito` | **3. Remito Comercial & Tarifario Nivel Alfa** (`remito` · Autoalimentado) | `system_settings` (`remito_comercial_por_buque`, `drydock_rate_card_alfa`) + lectura de `ship_stays`, `work_orders`, `inventory_transactions`, `labor_logs`, `third_party_services` | `remito_comercial` · `resumen_gerencial_config` | ✅ Estandarizado + Auditado |
+| **9.1** | **`ResumenGerencial.jsx`** + **`RemitoComercialAlfaPanel.jsx`** | `/resumen-gerencial?tab=remito` | **3. Remito Comercial & Tarifario Nivel Alfa** (`remito` · Autoalimentado) | `system_settings` (`remito_comercial_por_buque`, `drydock_rate_card_alfa`) + lectura de `ot_templates`, `ship_stays`, `work_orders`, `inventory_transactions`, `labor_logs`, `third_party_services` | `remito_comercial` · `resumen_gerencial_config` | ✅ Estandarizado + Auditado |
 
 ---
 

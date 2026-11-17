@@ -209,6 +209,7 @@ export default function ResumenGerencial() {
               materialRows={state.materialRows}
               craneHours={state.shipSummary?.craneHours || {}}
               alfaRateCard={state.data?.alfaRateCard || []}
+              otTemplates={state.data?.otTemplates || []}
               remitoState={state.data?.remitosByShip?.[state.selectedShipId] || null}
               onPersistCellChange={state.handlePersistRemitoCellChange}
               onPersistRowAction={state.handlePersistRemitoRowAction}

@@ -4,6 +4,8 @@
  * definiciones de pestañas de Zona 1, botones rápidos GS-004 y columnas del Remito Comercial Gallo.
  */
 
+import { OT_ABC_BILLING_TEMPLATES } from './otAbcRemitoAdapter.js'
+
 export const ALFA_RATES_SETTINGS_KEY = 'drydock_rate_card_alfa'
 export const REMITO_SETTINGS_KEY = 'remito_comercial_por_buque'
 export const OP_INPUTS_SETTINGS_KEY = 'resumen_gerencial_operational_inputs'
@@ -108,6 +110,7 @@ export const COST_SHEET_QUICK_LINKS = [
 ]
 
 export const BILLING_TEMPLATES = [
+  ...OT_ABC_BILLING_TEMPLATES,
   {
     id: 'PUESTA_SECO_30M',
     label: 'Plantilla Puesta en Seco (Hasta 30m)',
@@ -332,16 +335,7 @@ export const REMITO_SPREADSHEET_COLUMNS = [
   { key: 'observations', label: 'Notas / Criterio', readOnly: false }
 ]
 
-export const DONUT_PALETTE = [
-  '#22d3ee', // cyan
-  '#a78bfa', // violet
-  '#34d399', // emerald
-  '#f59e0b', // amber
-  '#f43f5e', // rose
-  '#38bdf8', // sky
-  '#e879f9', // fuchsia
-  '#fb923c'  // orange
-]
+export const DONUT_PALETTE = ['#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#f43f5e', '#38bdf8', '#e879f9', '#fb923c']
 
 export function formatUsd(value, decimals = 2) {
   const num = Number(value) || 0

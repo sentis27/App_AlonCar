@@ -39,22 +39,12 @@ import {
   buildThirdPartyHoverSummary,
   mapWorkTypeToHoverCode
 } from './resumenCostHoverHelpers.js'
+import { buildRemitoRowsFromOtCatalog } from './otAbcRemitoAdapter.js'
 
 export const RESUMEN_REALTIME_TABLES = [
-  'ships',
-  'ship_stays',
-  'owners',
-  'work_orders',
-  'work_items',
-  'labor_logs',
-  'rate_cards',
-  'inventory_transactions',
-  'materials',
-  'purchase_orders',
-  'third_party_services',
-  'workers',
-  'macro_variables',
-  'system_settings'
+  'ships', 'ship_stays', 'owners', 'work_orders', 'work_items', 'ot_templates', 'labor_logs',
+  'rate_cards', 'inventory_transactions', 'materials', 'purchase_orders', 'third_party_services',
+  'workers', 'macro_variables', 'system_settings'
 ]
 
 const HISTORICAL_SHIP_STATUSES = new Set(['TERMINADO', 'CERRADO', 'FACTURADO', 'FINALIZADO', 'INACTIVO'])
@@ -131,7 +121,8 @@ export async function fetchManagerialData() {
     tpsRes,
     workersRes,
     macroRes,
-    settingsRes
+    settingsRes,
+    otTemplatesRes
   ] = await Promise.all([
     supabase
       .from('ships')
@@ -182,7 +173,8 @@ export async function fetchManagerialData() {
       .select('*')
       .order('year', { ascending: false })
       .order('month', { ascending: false }),
-    supabase.from('system_settings').select('key, value, updated_at, updated_by')
+    supabase.from('system_settings').select('key, value, updated_at, updated_by'),
+    supabase.from('ot_templates').select('*').order('sort_order').order('name')
   ])
 
   const warnings = []
@@ -205,6 +197,7 @@ export async function fetchManagerialData() {
   const workers = check(workersRes, 'workers')
   const macroVariables = check(macroRes, 'macro_variables')
   const settingsRows = check(settingsRes, 'system_settings')
+  const otTemplates = check(otTemplatesRes, 'ot_templates')
 
   const settingsMap = {}
   settingsRows.forEach((row) => {
@@ -226,6 +219,7 @@ export async function fetchManagerialData() {
     workers,
     macroVariables,
     settingsMap,
+    otTemplates,
     alfaRateCard:
       Array.isArray(settingsMap[ALFA_RATES_SETTINGS_KEY]) && settingsMap[ALFA_RATES_SETTINGS_KEY].length > 0
         ? settingsMap[ALFA_RATES_SETTINGS_KEY]
@@ -1075,10 +1069,14 @@ export function buildRemitoAutoFeedRows({
   materialRows = [],
   craneHours = {},
   alfaRateCard = DEFAULT_DRYDOCK_RATE_CARD_ALFA,
+  otTemplates = [],
   templateId = 'PUESTA_SECO_30M',
   existingRows = []
 }) {
   if (!ship) return []
+  if (String(templateId || '').startsWith('OT_ABC_') && otTemplates.length > 0) {
+    return buildRemitoRowsFromOtCatalog({ ship, shipStays, craneHours, otTemplates, templateId, existingRows })
+  }
 
   const shipSpecificStays = shipStays.filter((st) => st.ship_id === ship.id)
   const varaderoDays = shipSpecificStays

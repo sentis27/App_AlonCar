@@ -1,18 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
-import {
-  CheckSquare,
-  Square,
-  RefreshCw,
-  Settings2,
-  Lock,
-  Undo2,
-  Trash2,
-  CopyPlus,
-  RotateCcw,
-  ShieldAlert
-} from 'lucide-react'
+import { CheckSquare, Square, RefreshCw, Settings2, Lock, Undo2, Trash2, CopyPlus, RotateCcw, ShieldAlert } from 'lucide-react'
 import KpiRadar from '../KpiRadar'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridRibbon from '../GridRibbon'
@@ -45,6 +34,7 @@ export default function RemitoComercialAlfaPanel({
   materialRows = [],
   craneHours = {},
   alfaRateCard = [],
+  otTemplates = [],
   remitoState = null,
   onPersistCellChange,
   onPersistRowAction,
@@ -64,15 +54,8 @@ export default function RemitoComercialAlfaPanel({
       return remitoState.rows
     }
     return buildRemitoAutoFeedRows({
-      ship,
-      shipStays,
-      workOrders,
-      shipSummary,
-      materialRows,
-      craneHours,
-      alfaRateCard,
-      templateId: 'PUESTA_SECO_30M',
-      existingRows: []
+      ship, shipStays, workOrders, shipSummary, materialRows, craneHours, alfaRateCard, otTemplates,
+      templateId: 'PUESTA_SECO_30M', existingRows: []
     })
   })
 
@@ -97,19 +80,10 @@ export default function RemitoComercialAlfaPanel({
     if (Array.isArray(remitoState?.rows) && remitoState.rows.length > 0) {
       setRows(remitoState.rows)
     } else if (ship) {
-      setRows(
-        buildRemitoAutoFeedRows({
-          ship,
-          shipStays,
-          workOrders,
-          shipSummary,
-          materialRows,
-          craneHours,
-          alfaRateCard,
-          templateId: nextTpl,
-          existingRows: []
-        })
-      )
+      setRows(buildRemitoAutoFeedRows({
+        ship, shipStays, workOrders, shipSummary, materialRows, craneHours, alfaRateCard, otTemplates,
+        templateId: nextTpl, existingRows: []
+      }))
     } else {
       setRows([])
     }
@@ -437,15 +411,8 @@ export default function RemitoComercialAlfaPanel({
 
   const handleResyncFromSheets = async (targetTpl = templateId) => {
     const synced = buildRemitoAutoFeedRows({
-      ship,
-      shipStays,
-      workOrders,
-      shipSummary,
-      materialRows,
-      craneHours,
-      alfaRateCard,
-      templateId: targetTpl,
-      existingRows: targetTpl === templateId ? rows : []
+      ship, shipStays, workOrders, shipSummary, materialRows, craneHours, alfaRateCard, otTemplates,
+      templateId: targetTpl, existingRows: targetTpl === templateId ? rows : []
     })
     await commitRowsUpdate({
       nextRows: synced,
