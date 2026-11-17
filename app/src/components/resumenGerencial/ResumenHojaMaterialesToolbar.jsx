@@ -29,7 +29,8 @@ export default function ResumenHojaMaterialesToolbar({
   onlyKgPositive,
   setOnlyKgPositive,
   hasFilters,
-  onClearFilters
+  onClearFilters,
+  viewsController
 }) {
   return (
     <div className="alon-zone-toolbar p-3 bg-slate-900/70 flex flex-wrap items-center gap-2">
@@ -38,6 +39,7 @@ export default function ResumenHojaMaterialesToolbar({
         value={searchQuery}
         onChange={setSearchQuery}
         onClear={() => setSearchQuery('')}
+        viewsController={viewsController}
         placeholder="Buscar material, rubro, OT, solicitante, vale o factura... (Ctrl+F)"
       />
 

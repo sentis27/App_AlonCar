@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Download, Shield, Package, Users, Layers, CheckCircle2, Info } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import HighlightText from '../HighlightText'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
@@ -18,11 +20,25 @@ export default function TesoreriaDeduccionesPanel({
   selectedPeriod,
   onPeriodChange
 }) {
+  const { user, profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'tesoreria_deducciones'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [subView, setSubView] = useState('consolidado') // 'consolidado' | 'detalle' | 'exentos'
-  const [searchTerm, setSearchTerm] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('ALL') // 'ALL' | 'CONSUMIBLES' | 'ELEM.SEGURIDAD'
-  const [selectedContractor, setSelectedContractor] = useState('ALL')
+  const [searchTerm, setSearchTerm] = useState(initialFilters.searchTerm)
+  const [categoryFilter, setCategoryFilter] = useState(initialFilters.categoryFilter) // 'ALL' | 'CONSUMIBLES' | 'ELEM.SEGURIDAD'
+  const [selectedContractor, setSelectedContractor] = useState(initialFilters.selectedContractor)
   const searchRef = useRef(null)
+
+  const tesoreriaViewsController = useModuleFilterMemory({
+    moduleKey: 'tesoreria_deducciones',
+    currentFilters: { searchTerm, categoryFilter, selectedContractor },
+    setters: { searchTerm: setSearchTerm, categoryFilter: setCategoryFilter, selectedContractor: setSelectedContractor },
+    hasActiveFilters: Boolean(searchTerm || categoryFilter !== 'ALL' || selectedContractor !== 'ALL')
+  })
 
   const periods = data?.availablePeriods || [selectedPeriod]
   const summaryRows = useMemo(() => data?.summaryByContractor || [], [data?.summaryByContractor])
@@ -217,6 +233,7 @@ export default function TesoreriaDeduccionesPanel({
           value={searchTerm}
           onChange={setSearchTerm}
           onClear={clearFilters}
+          viewsController={tesoreriaViewsController}
           placeholder="Buscar contratista, operario, material, barco o OT... [Ctrl+F | Esc limpia]"
           hasActiveFilters={Boolean(searchTerm || categoryFilter !== 'ALL' || selectedContractor !== 'ALL')}
         />

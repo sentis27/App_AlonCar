@@ -29,7 +29,8 @@ export default function WorkOrdersToolbar({
   hasActiveFilters,
   onClearAllFilters,
   activeMainTab,
-  woGrid
+  woGrid,
+  viewsController
 }) {
   const standardOtOptions = resolveOtFilterOptions(workOrders, workItems, selectedShipFilter)
 
@@ -39,6 +40,7 @@ export default function WorkOrdersToolbar({
         value={searchQuery}
         onChange={setSearchQuery}
         inputRef={searchInputRef}
+        viewsController={viewsController}
         placeholder="Buscar por barco, OT, trabajo, contratista... [Ctrl+F | Esc limpia]"
       />
 

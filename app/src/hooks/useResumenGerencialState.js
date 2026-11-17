@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { resolveFilterUserKey, loadModuleFilterMemory, saveModuleFilterMemory } from '../lib/filterViewsService'
 import {
   COMPARATOR_VIEWS_SETTINGS_KEY,
   ADHOC_METRICS_SETTINGS_KEY
@@ -24,14 +26,38 @@ import { useSupabaseRealtimeRefresh } from './useSupabaseRealtimeRefresh'
  * Hook orquestador del estado, datos enriquecidos, sincronización Realtime en vivo
  * y mutaciones auditadas (únicamente en sub-herramientas editables como Remito / Comparador).
  */
+const RESUMEN_CONTEXT_DEFAULTS = {
+  scope: 'activas',
+  yearFilter: 'TODOS',
+  selectedShipId: '',
+  selectedOtId: ''
+}
+
 export function useResumenGerencialState({ actorName = 'Dirección' }) {
+  const { user, profile } = useAuth()
+  const filterUserKey = useMemo(() => resolveFilterUserKey(user, profile), [user, profile])
+  const initialResumenContext = useMemo(
+    () => loadModuleFilterMemory(filterUserKey, 'resumen_context', RESUMEN_CONTEXT_DEFAULTS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [feedback, setFeedback] = useState(null)
-  const [scope, setScope] = useState('activas')
-  const [yearFilter, setYearFilter] = useState('TODOS')
-  const [selectedShipId, setSelectedShipId] = useState('')
-  const [selectedOtId, setSelectedOtId] = useState('')
+  const [scope, setScope] = useState(initialResumenContext.scope)
+  const [yearFilter, setYearFilter] = useState(initialResumenContext.yearFilter)
+  const [selectedShipId, setSelectedShipId] = useState(initialResumenContext.selectedShipId)
+  const [selectedOtId, setSelectedOtId] = useState(initialResumenContext.selectedOtId)
+
+  useEffect(() => {
+    saveModuleFilterMemory(filterUserKey, 'resumen_context', {
+      scope,
+      yearFilter,
+      selectedShipId,
+      selectedOtId
+    })
+  }, [filterUserKey, scope, yearFilter, selectedShipId, selectedOtId])
 
   const showFeedback = useCallback((type, text) => {
     setFeedback({ type, text })
@@ -48,7 +74,7 @@ export function useResumenGerencialState({ actorName = 'Dirección' }) {
         setData(res)
         markSyncedRef.current?.()
         setSelectedShipId((prevId) => {
-          if (prevId) return prevId
+          if (prevId && res.ships.some((s) => String(s.id) === String(prevId))) return prevId
           const actives = filterSelectableShipsByScope(res.ships, 'activas')
           const first = actives[0] || res.ships.find((s) => s.name?.toUpperCase() !== 'ASTILLERO') || res.ships[0]
           return first?.id || ''

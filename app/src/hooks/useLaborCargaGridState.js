@@ -1,6 +1,8 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSpreadsheetGrid } from './useSpreadsheetGrid.js'
 import { useGridContextMenu } from './useGridContextMenu.js'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from './useModuleFilterMemory.js'
+import { useAuth } from '../context/AuthContext.jsx'
 import { buildPasteRowHandler, duplicateRecord } from '../lib/gridRowActions.js'
 import { calculateHoursStats, buildLocalRelationsForLog } from '../lib/laborConstants.js'
 import { buildLaborEligibleCatalog } from '../lib/laborWorkerCatalog.js'
@@ -37,13 +39,20 @@ export function useLaborCargaGridState({
   setStatusMessage,
   user
 }) {
-  const [filterWorker, setFilterWorker] = useState('')
-  const [filterDate, setFilterDate] = useState('')
-  const [filterShip, setFilterShip] = useState('')
-  const [filterOt, setFilterOt] = useState('todas')
-  const [filterContractor, setFilterContractor] = useState('todos')
-  const [filterRubro, setFilterRubro] = useState('todos')
-  const [filterModality, setFilterModality] = useState('todas')
+  const { profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'labor_carga', activeKpiFilter && activeKpiFilter !== 'todos' ? { activeKpiFilter } : {}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
+  const [filterWorker, setFilterWorker] = useState(initialFilters.filterWorker)
+  const [filterDate, setFilterDate] = useState(initialFilters.filterDate)
+  const [filterShip, setFilterShip] = useState(initialFilters.filterShip)
+  const [filterOt, setFilterOt] = useState(initialFilters.filterOt)
+  const [filterContractor, setFilterContractor] = useState(initialFilters.filterContractor)
+  const [filterRubro, setFilterRubro] = useState(initialFilters.filterRubro)
+  const [filterModality, setFilterModality] = useState(initialFilters.filterModality)
   const [inlineLogEdit, setInlineLogEdit] = useState({ id: null, field: null, value: '' })
   const [contractorPickerModal, setContractorPickerModal] = useState({
     isOpen: false,
@@ -257,10 +266,18 @@ export function useLaborCargaGridState({
   const clearAllFilters = () => { setFilterWorker(''); setFilterDate(''); setFilterShip(''); setFilterOt('todas'); setFilterContractor('todos'); setFilterRubro('todos'); setFilterModality('todas'); setActiveKpiFilter('todos') }
   const hoursStats = useMemo(() => calculateHoursStats(filteredLogs, selectedLogIds), [filteredLogs, selectedLogIds])
 
+  const viewsController = useModuleFilterMemory({
+    moduleKey: 'labor_carga',
+    currentFilters: { filterWorker, filterDate, filterShip, filterOt, filterContractor, filterRubro, filterModality, activeKpiFilter: activeKpiFilter || 'todos' },
+    setters: { filterWorker: setFilterWorker, filterDate: setFilterDate, filterShip: setFilterShip, filterOt: setFilterOt, filterContractor: setFilterContractor, filterRubro: setFilterRubro, filterModality: setFilterModality, activeKpiFilter: setActiveKpiFilter },
+    summaryContext: { ships, workOrders },
+    hasActiveFilters
+  })
+
   return {
     filterWorker, setFilterWorker, filterDate, setFilterDate, filterShip, setFilterShip,
     filterOt, setFilterOt, filterContractor, setFilterContractor, filterRubro, setFilterRubro, filterModality, setFilterModality,
-    contractorOptions, rubroOptions, hasActiveFilters, inlineLogEdit, setInlineLogEdit, logSearchInputRef,
+    contractorOptions, rubroOptions, hasActiveFilters, viewsController, inlineLogEdit, setInlineLogEdit, logSearchInputRef,
     menuTarget, openMenu, closeMenu, filteredLogs, horasGrid, getHorasCellProps, activateHorasCell,
     saveInlineLogEdit, handleInsertRow, handleDuplicateRow, contractorPickerModal, setContractorPickerModal,
     contractorPickerOptions, clearAllFilters, hoursStats

@@ -15,6 +15,8 @@ import {
   X
 } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -43,8 +45,22 @@ export default function ShipsArmadoresPanel({
   setStatusMessage,
   loadInitialData
 }) {
+  const { profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'ships_armadores'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [viewModeOwners, setViewModeOwners] = useState('tabla')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState(initialFilters.searchTerm)
+
+  const armadoresViewsController = useModuleFilterMemory({
+    moduleKey: 'ships_armadores',
+    currentFilters: { searchTerm },
+    setters: { searchTerm: setSearchTerm },
+    hasActiveFilters: Boolean(searchTerm)
+  })
   const [inlineOwnerEdit, setInlineOwnerEdit] = useState(null)
   const searchInputRef = useRef(null)
   const ownersPasteRef = useRef(null)
@@ -280,6 +296,7 @@ export default function ShipsArmadoresPanel({
           inputRef={searchInputRef}
           value={searchTerm}
           onChange={setSearchTerm}
+          viewsController={armadoresViewsController}
           placeholder="Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)"
         />
 

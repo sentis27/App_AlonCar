@@ -10,6 +10,7 @@ import {
   X
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { cleanLocation, computeShipOtMetrics, PREDEFINED_VESSEL_TYPES, cleanShipName } from '../lib/shipsConstants'
 import {
@@ -24,7 +25,12 @@ import ShipsArmadoresPanel from '../components/ships/ShipsArmadoresPanel'
 import ShipsModalsContainer from '../components/ships/ShipsModals'
 
 export default function Ships() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
+  const initialShipsShared = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'ships_buques'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
 
   // Datos maestros de Supabase
   const [ships, setShips] = useState([])
@@ -40,9 +46,9 @@ export default function Ships() {
   // Pestaña, filtros y perspectiva activa
   const [activeTab, setActiveTab] = useState('buques') // 'buques' | 'movimientos' | 'armadores'
   const [activeRolePerspective, setActiveRolePerspective] = useState('admin') // 'admin' | 'jefe_obra' | 'maria_jose'
-  const [locationFilter, setLocationFilter] = useState('todos')
-  const [requestFilter, setRequestFilter] = useState('todos')
-  const [roleQuickFilter, setRoleQuickFilter] = useState('todos')
+  const [locationFilter, setLocationFilter] = useState(initialShipsShared.locationFilter)
+  const [requestFilter, setRequestFilter] = useState(initialShipsShared.requestFilter)
+  const [roleQuickFilter, setRoleQuickFilter] = useState(initialShipsShared.roleQuickFilter)
 
   // Estados de apertura de Modales
   const [selectedShip360, setSelectedShip360] = useState(null)

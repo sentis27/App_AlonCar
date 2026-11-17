@@ -42,7 +42,8 @@ export default function ComprasPedidosToolbar({
   canUndo,
   onUndo,
   canRedo,
-  onRedo
+  onRedo,
+  viewsController
 }) {
   const otOptions = resolveOtFilterOptions(workOrders, workItems, filterShip)
 
@@ -53,6 +54,7 @@ export default function ComprasPedidosToolbar({
         onChange={setSearchQuery}
         onClear={onClearAllFilters}
         inputRef={searchInputRef}
+        viewsController={viewsController}
         placeholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F | Esc limpia todo)"
       />
 

@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useSpreadsheetGrid } from './useSpreadsheetGrid'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from './useModuleFilterMemory'
 import {
   computeFortnightFromDate,
   computeAvailableFortnights,
@@ -19,17 +20,23 @@ export function useComprasPedidosState(props) {
     viewMode, user, profile, showFeedbackMsg, fetchData, initialKpiFilter = null, onClearUrlKpi
   } = props
 
-  const [searchQuery, setSearchQuery] = useState('')
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'compras_pedidos', initialKpiFilter ? { activeKpiFilter: initialKpiFilter } : {}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
+  const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery)
   const searchInputRef = useRef(null)
-  const [filterShip, setFilterShip] = useState('TODOS')
-  const [filterOt, setFilterOt] = useState('TODAS')
-  const [filterSupplier, setFilterSupplier] = useState('TODOS')
-  const [filterStatus, setFilterStatus] = useState('TODOS')
-  const [filterFortnight, setFilterFortnight] = useState('TODAS')
-  const [filterChargeType, setFilterChargeType] = useState('TODOS')
-  const [filterNewOnly, setFilterNewOnly] = useState(false)
-  const [hideReconciled, setHideReconciled] = useState(false)
-  const [activeKpiFilter, setActiveKpiFilter] = useState(initialKpiFilter)
+  const [filterShip, setFilterShip] = useState(initialFilters.filterShip)
+  const [filterOt, setFilterOt] = useState(initialFilters.filterOt)
+  const [filterSupplier, setFilterSupplier] = useState(initialFilters.filterSupplier)
+  const [filterStatus, setFilterStatus] = useState(initialFilters.filterStatus)
+  const [filterFortnight, setFilterFortnight] = useState(initialFilters.filterFortnight)
+  const [filterChargeType, setFilterChargeType] = useState(initialFilters.filterChargeType)
+  const [filterNewOnly, setFilterNewOnly] = useState(Boolean(initialFilters.filterNewOnly))
+  const [hideReconciled, setHideReconciled] = useState(Boolean(initialFilters.hideReconciled))
+  const [activeKpiFilter, setActiveKpiFilter] = useState(initialFilters.activeKpiFilter)
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set())
 
   useEffect(() => {
@@ -96,6 +103,14 @@ export function useComprasPedidosState(props) {
     setActiveKpiFilter(null)
     if (onClearUrlKpi) onClearUrlKpi()
   }, [onClearUrlKpi])
+
+  const viewsController = useModuleFilterMemory({
+    moduleKey: 'compras_pedidos',
+    currentFilters: { searchQuery, filterShip, filterOt, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter },
+    setters: { searchQuery: setSearchQuery, filterShip: setFilterShip, filterOt: setFilterOt, filterSupplier: setFilterSupplier, filterStatus: setFilterStatus, filterFortnight: setFilterFortnight, filterChargeType: setFilterChargeType, filterNewOnly: setFilterNewOnly, hideReconciled: setHideReconciled, activeKpiFilter: setActiveKpiFilter },
+    summaryContext: { ships, workOrders, suppliers },
+    hasActiveFilters
+  })
 
   const toggleKpiFilter = useCallback((filterKey) => {
     if (activeKpiFilter === filterKey) {
@@ -268,7 +283,7 @@ export function useComprasPedidosState(props) {
   }, [selectedOrderIds, filteredOrders, purchaseOrders, macroVariables])
 
   return {
-    filters: { searchQuery, setSearchQuery, searchInputRef, filterShip, setFilterShip, filterOt, setFilterOt, filterSupplier, setFilterSupplier, filterStatus, setFilterStatus, filterFortnight, setFilterFortnight, filterChargeType, setFilterChargeType, filterNewOnly, setFilterNewOnly, hideReconciled, setHideReconciled, activeKpiFilter, setActiveKpiFilter, hasActiveFilters, clearAllFilters, toggleKpiFilter },
+    filters: { searchQuery, setSearchQuery, searchInputRef, filterShip, setFilterShip, filterOt, setFilterOt, filterSupplier, setFilterSupplier, filterStatus, setFilterStatus, filterFortnight, setFilterFortnight, filterChargeType, setFilterChargeType, filterNewOnly, setFilterNewOnly, hideReconciled, setHideReconciled, activeKpiFilter, setActiveKpiFilter, hasActiveFilters, clearAllFilters, toggleKpiFilter, viewsController },
     selection: { selectedOrderIds, setSelectedOrderIds, isAllFilteredSelected, toggleSelectAll, toggleSelectRow, batchTargetStatus, setBatchTargetStatus },
     modals: { shipPickerModal, setShipPickerModal, contractorPickerModal, setContractorPickerModal, showNewMaterialModal, setShowNewMaterialModal, pendingMaterialOrder, setPendingMaterialOrder, showOrderDocsModal, setShowOrderDocsModal, selectedOrderForDocs, setSelectedOrderForDocs, showPartialModal, setShowPartialModal, partialDeliveryOrder, setPartialDeliveryOrder, showSeCompraModal, setShowSeCompraModal, seCompraAlertOrder, setSeCompraAlertOrder, showAssignSupplierModal, setShowAssignSupplierModal, seCompraAlertSettings, showReconcileModal, setShowReconcileModal, reconcileTarget, setReconcileTarget, showFreightModal, setShowFreightModal, freightTargetOrder, setFreightTargetOrder, showBatchOrderModal, setShowBatchOrderModal, showSupplierHelperModal, setShowSupplierHelperModal, supplierHelperTarget, setSupplierHelperTarget, showMandadosModal, setShowMandadosModal, mandadosPreselectedIds, setMandadosPreselectedIds },
     inlineEdit, setInlineEdit, rowMenuTarget, setRowMenuTarget,

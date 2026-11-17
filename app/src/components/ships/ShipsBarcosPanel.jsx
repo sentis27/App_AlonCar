@@ -13,6 +13,8 @@ import {
   X
 } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import ShipsBarcosToolbar from './ShipsBarcosToolbar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -57,12 +59,19 @@ export default function ShipsBarcosPanel({
   setStatusMessage,
   loadInitialData
 }) {
+  const { profile } = useAuth()
+  const initialShipsFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'ships_buques'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [viewModeShips, setViewModeShips] = useState('tabla')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [localLocationFilter, setLocalLocationFilter] = useState('todos')
-  const [localRequestFilter, setLocalRequestFilter] = useState('todos')
-  const [ownerFilter, setOwnerFilter] = useState('todos')
-  const [localRoleQuickFilter, setLocalRoleQuickFilter] = useState('todos')
+  const [searchTerm, setSearchTerm] = useState(initialShipsFilters.searchTerm)
+  const [localLocationFilter, setLocalLocationFilter] = useState(initialShipsFilters.locationFilter)
+  const [localRequestFilter, setLocalRequestFilter] = useState(initialShipsFilters.requestFilter)
+  const [ownerFilter, setOwnerFilter] = useState(initialShipsFilters.ownerFilter)
+  const [localRoleQuickFilter, setLocalRoleQuickFilter] = useState(initialShipsFilters.roleQuickFilter)
   const locationFilter = propLocationFilter ?? localLocationFilter
   const setLocationFilter = propSetLocationFilter ?? setLocalLocationFilter
   const requestFilter = propRequestFilter ?? localRequestFilter
@@ -325,6 +334,15 @@ export default function ShipsBarcosPanel({
   const isAllShipsSelected = filteredShips.length > 0 && filteredShips.every((s) => shipsGrid.selectedRowIds.has(s.id))
   const hasActiveFilter = Boolean(searchTerm || locationFilter !== 'todos' || requestFilter !== 'todos' || ownerFilter !== 'todos' || roleQuickFilter !== 'todos')
   const clearAllFilters = () => { setLocationFilter('todos'); setRequestFilter('todos'); setOwnerFilter('todos'); setRoleQuickFilter('todos'); setSearchTerm('') }
+
+  const shipsViewsController = useModuleFilterMemory({
+    moduleKey: 'ships_buques',
+    currentFilters: { searchTerm, locationFilter, requestFilter, ownerFilter, roleQuickFilter },
+    setters: { searchTerm: setSearchTerm, locationFilter: setLocationFilter, requestFilter: setRequestFilter, ownerFilter: setOwnerFilter, roleQuickFilter: setRoleQuickFilter },
+    summaryContext: { owners },
+    hasActiveFilters: hasActiveFilter
+  })
+
   const renderFillHandle = (cp) =>
     cp.renderHandle ? (
       <div
@@ -356,6 +374,7 @@ export default function ShipsBarcosPanel({
         shipsGrid={shipsGrid}
         viewModeShips={viewModeShips}
         setViewModeShips={setViewModeShips}
+        viewsController={shipsViewsController}
       />
 
       {/* VISTA 1: TABLA EDITABLE (ZONA 4) */}

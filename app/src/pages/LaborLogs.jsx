@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import {
   fetchLaborData,
@@ -20,7 +21,7 @@ import { buildQuincenaDays, FALLBACK_SHIPS, FALLBACK_WOS } from '../lib/laborCon
 const LABOR_REALTIME_TABLES = ['labor_logs', 'ships', 'ship_stays', 'work_orders', 'work_items', 'workers', 'rate_cards']
 
 export default function LaborLogs() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [activeTab, setActiveTab] = useState('carga')
   const [activeLoadModal, setActiveLoadModal] = useState(null) // null | 'texto' | 'reloj' | 'cuadrilla'
   const [loading, setLoading] = useState(true)
@@ -33,7 +34,12 @@ export default function LaborLogs() {
   const [dbWorkers, setDbWorkers] = useState([])
 
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeKpiFilter, setActiveKpiFilter] = useState(() => searchParams.get('kpi') || 'todos')
+  const [activeKpiFilter, setActiveKpiFilter] = useState(() => {
+    const kpiParam = searchParams.get('kpi')
+    if (kpiParam) return kpiParam
+    const restored = resolveInitialModuleFilters(user, profile, 'labor_carga')
+    return restored.activeKpiFilter || 'todos'
+  })
 
   useEffect(() => {
     const kpiParam = searchParams.get('kpi')

@@ -98,6 +98,7 @@ export default function LaborCargaPanel({
           contractorOptions={gridState.contractorOptions}
           rubroOptions={gridState.rubroOptions}
           hasActiveFilters={gridState.hasActiveFilters}
+          viewsController={gridState.viewsController}
           activeKpiFilter={activeKpiFilter}
           onClearAllFilters={gridState.clearAllFilters}
           logSearchInputRef={gridState.logSearchInputRef}

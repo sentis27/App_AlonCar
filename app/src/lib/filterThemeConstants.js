@@ -137,3 +137,23 @@ export function matchesMaterialQuickType(row, quickType = '') {
   }
   return true
 }
+
+/**
+ * Resuelve nombre legible de un barco para el tooltip de vistas de filtro guardadas.
+ */
+export function resolveShipFilterLabel(ships = [], shipId = '') {
+  if (!shipId || shipId === 'todos' || shipId === 'TODOS') return ''
+  const found = ships.find((s) => String(s.id) === String(shipId))
+  return found?.name || String(shipId)
+}
+
+/**
+ * Resuelve etiqueta legible de una OT para el tooltip de vistas de filtro guardadas.
+ */
+export function resolveOtFilterLabel(workOrders = [], otId = '') {
+  if (!otId || otId === 'todas' || otId === 'TODAS' || otId === 'ALL') return ''
+  if (otId === 'SIN_OT') return 'Sin OT'
+  const found = workOrders.find((w) => String(w.id) === String(otId))
+  if (!found) return String(otId)
+  return found.ot_number ? `${found.ot_number} · ${found.title || ''}`.trim() : (found.title || String(otId))
+}

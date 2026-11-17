@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../hooks/useGridContextMenu'
-import { duplicateRecord } from '../lib/gridRowActions'
 import WorkOrdersHeader from '../components/workOrders/WorkOrdersHeader'
 import WorkOrdersKpiRadar from '../components/workOrders/WorkOrdersKpiRadar'
 import WorkOrdersToolbar from '../components/workOrders/WorkOrdersToolbar'
@@ -12,14 +12,21 @@ import WorkOrdersOtsPanel from '../components/workOrders/WorkOrdersOtsPanel'
 import WorkOrdersTercerosPanel from '../components/workOrders/WorkOrdersTercerosPanel'
 import { WorkOrdersModalsContainer } from '../components/workOrders/WorkOrdersModals'
 import CloseWorkOrderTreeModal from '../components/workOrders/CloseWorkOrderTreeModal'
+import ReopenWorkOrderModal from '../components/workOrders/ReopenWorkOrderModal'
 import WorkOrderUnifyModal from '../components/workOrders/WorkOrderUnifyModal'
-import { fetchWorkOrdersData, applyWoSinglePatchService, deleteWorkItemService, deleteWoService, closeEntireWorkOrderTreeService } from '../lib/workOrdersService.js'
-import { WO_GRID_COLUMNS, WORK_ITEM_CLONE_FIELDS, filterUnifiedRows, calculateWorkOrderStats, computeOtMetricsAndDates, buildContractorCatalog, buildUnifiedRows, isRowLockedDec011, hasThirdPartyPermission } from '../lib/workOrdersConstants.js'
+import { fetchWorkOrdersData, applyWoSinglePatchService, deleteWorkItemService, deleteWoService, closeEntireWorkOrderTreeService, reopenWorkOrderService } from '../lib/workOrdersService.js'
+import { duplicateWorkItemWithSyncService } from '../lib/workOrderHeaderSync.js'
+import { WO_GRID_COLUMNS, filterUnifiedRows, calculateWorkOrderStats, computeOtMetricsAndDates, buildContractorCatalog, buildUnifiedRows, isRowLockedDec011, hasThirdPartyPermission } from '../lib/workOrdersConstants.js'
 import { isMergedWorkOrder } from '../lib/workOrderUnificationEngine.js'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 export default function WorkOrders() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
+  const initialWoFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'work_orders'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
 
   // Datos principales
   const [ships, setShips] = useState([])
@@ -36,13 +43,13 @@ export default function WorkOrders() {
 
   // Navegación y Filtros
   const [activeMainTab, setActiveMainTab] = useState('unificado')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(initialWoFilters.searchQuery)
   const searchInputRef = useRef(null)
-  const [selectedShipFilter, setSelectedShipFilter] = useState('todos')
-  const [selectedOtFilter, setSelectedOtFilter] = useState('todas')
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState('todos')
-  const [selectedForemanFilter, setSelectedForemanFilter] = useState('todos')
-  const [selectedContractorFilter, setSelectedContractorFilter] = useState('todos')
+  const [selectedShipFilter, setSelectedShipFilter] = useState(initialWoFilters.selectedShipFilter)
+  const [selectedOtFilter, setSelectedOtFilter] = useState(initialWoFilters.selectedOtFilter)
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState(initialWoFilters.selectedStatusFilter)
+  const [selectedForemanFilter, setSelectedForemanFilter] = useState(initialWoFilters.selectedForemanFilter)
+  const [selectedContractorFilter, setSelectedContractorFilter] = useState(initialWoFilters.selectedContractorFilter)
 
   // Triggers de Modales
   const [isWorkModalOpen, setIsWorkModalOpen] = useState(false)
@@ -56,8 +63,10 @@ export default function WorkOrders() {
   const [templatePickerFromForm, setTemplatePickerFromForm] = useState(false)
   const [inlineWoEdit, setInlineWoEdit] = useState(null)
   const [closingTreeWo, setClosingTreeWo] = useState(null)
+  const [reopeningWo, setReopeningWo] = useState(null)
   const [unifyingWo, setUnifyingWo] = useState(null)
   const [submittingCloseTree, setSubmittingCloseTree] = useState(false)
+  const [submittingReopen, setSubmittingReopen] = useState(false)
 
   const showWoGridFeedback = useCallback((type, text) => {
     setStatusMessage({ type, text }); setTimeout(() => setStatusMessage(null), 3500)
@@ -79,7 +88,7 @@ export default function WorkOrders() {
     channelName: 'work_orders_live',
     tables: ['work_orders', 'work_items', 'ships', 'workers', 'ot_templates', 'third_party_services', 'labor_logs', 'inventory_transactions', 'purchase_orders'],
     onSync: () => loadData({ silent: true }),
-    pauseWhen: Boolean(inlineWoEdit || isWorkModalOpen || separatingRow || isThirdPartyCascadeOpen || editingThirdParty || isTemplateModalOpen || closingTreeWo || unifyingWo)
+    pauseWhen: Boolean(inlineWoEdit || isWorkModalOpen || separatingRow || isThirdPartyCascadeOpen || editingThirdParty || isTemplateModalOpen || closingTreeWo || reopeningWo || unifyingWo)
   })
 
   useEffect(() => { loadData({ silent: false }) }, [loadData])
@@ -111,33 +120,45 @@ export default function WorkOrders() {
     setSearchQuery(''); setSelectedShipFilter('todos'); setSelectedOtFilter('todas'); setSelectedStatusFilter('todos'); setSelectedForemanFilter('todos'); setSelectedContractorFilter('todos')
   }, [])
 
+  const woViewsController = useModuleFilterMemory({
+    moduleKey: 'work_orders',
+    currentFilters: { searchQuery, selectedShipFilter, selectedOtFilter, selectedStatusFilter, selectedForemanFilter, selectedContractorFilter },
+    setters: { searchQuery: setSearchQuery, selectedShipFilter: setSelectedShipFilter, selectedOtFilter: setSelectedOtFilter, selectedStatusFilter: setSelectedStatusFilter, selectedForemanFilter: setSelectedForemanFilter, selectedContractorFilter: setSelectedContractorFilter },
+    summaryContext: { ships, workOrders },
+    hasActiveFilters
+  })
+
   // Disparadores de modales
   const handleOpenNewWorkModal = (preWo = null) => { setEditingWorkItem(null); setPreselectedWo(preWo); setIsWorkModalOpen(true) }
   const handleOpenEditWorkModal = (row) => { setEditingWorkItem(row.isPlaceholder ? null : row); setPreselectedWo(row.wo || null); setIsWorkModalOpen(true) }
   const handleOpenSeparateModal = (row) => { if (row && !row.isPlaceholder) setSeparatingRow(row) }
   const handleOpenCloseTreeModal = (wo) => { if (wo) setClosingTreeWo(wo) }
+  const handleOpenReopenModal = (wo) => { if (wo) setReopeningWo(wo) }
+
+  const handleConfirmReopenWo = async ({ targetStatus, reason }) => {
+    if (!reopeningWo) return
+    setSubmittingReopen(true)
+    try {
+      const res = await reopenWorkOrderService({ wo: reopeningWo, targetStatus, reason, user })
+      await loadData()
+      showWoGridFeedback('success', `${reopeningWo.ot_number} reabierta a "${targetStatus}" (${res.updatedCount} subtareas actualizadas).`)
+      setReopeningWo(null)
+    } catch (err) {
+      showWoGridFeedback('error', `Error al reabrir OT: ${err.message}`)
+      throw err
+    } finally { setSubmittingReopen(false) }
+  }
 
   const handleConfirmCloseTree = async ({ targetStatus, allowPostBillingCosts }) => {
     if (!closingTreeWo) return
     setSubmittingCloseTree(true)
     try {
-      const res = await closeEntireWorkOrderTreeService({
-        wo: closingTreeWo,
-        targetStatus,
-        allowPostBillingCosts,
-        user
-      })
+      const res = await closeEntireWorkOrderTreeService({ wo: closingTreeWo, targetStatus, allowPostBillingCosts, user })
       await loadData()
-      showWoGridFeedback(
-        'success',
-        `Árbol de la ${closingTreeWo.ot_number} cerrado (${res.updatedCount} subtareas a ${targetStatus}).`
-      )
+      showWoGridFeedback('success', `Árbol de la ${closingTreeWo.ot_number} cerrado (${res.updatedCount} subtareas a ${targetStatus}).`)
       setClosingTreeWo(null)
-    } catch (err) {
-      showWoGridFeedback('error', `Error al cerrar árbol de OT: ${err.message}`)
-    } finally {
-      setSubmittingCloseTree(false)
-    }
+    } catch (err) { showWoGridFeedback('error', `Error al cerrar árbol de OT: ${err.message}`) }
+    finally { setSubmittingCloseTree(false) }
   }
 
   // Mutaciones del SpreadsheetGrid
@@ -172,8 +193,12 @@ export default function WorkOrders() {
 
   const handleDuplicateWorkItem = async (row) => {
     if (!row || row.isPlaceholder) return
+    if (isRowLockedDec011(row)) {
+      showWoGridFeedback('error', `🔒 Bloqueo DEC-011: Reabrí la ${row.wo?.ot_number || 'OT'} antes de duplicar trabajos.`)
+      return
+    }
     try {
-      await duplicateRecord({ table: 'work_items', entityType: 'work_orders', source: row, fields: WORK_ITEM_CLONE_FIELDS, overrides: { updated_at: new Date().toISOString() }, nameOf: (r) => `${row.wo?.ot_number || 'OT'} · ${r.description || ''}`, user: user?.email })
+      await duplicateWorkItemWithSyncService(row, user)
       showWoGridFeedback('success', 'Trabajo duplicado.'); await loadData()
     } catch (err) { showWoGridFeedback('error', 'Error al duplicar: ' + err.message) }
   }
@@ -221,7 +246,7 @@ export default function WorkOrders() {
           selectedForemanFilter={selectedForemanFilter} setSelectedForemanFilter={setSelectedForemanFilter}
           selectedContractorFilter={selectedContractorFilter} setSelectedContractorFilter={setSelectedContractorFilter}
           ships={ships} workOrders={workOrders} workItems={workItems} foremenList={foremenList} contractorCatalog={contractorCatalog}
-          hasActiveFilters={hasActiveFilters} onClearAllFilters={clearAllFilters} activeMainTab={activeMainTab} woGrid={woGrid}
+          hasActiveFilters={hasActiveFilters} onClearAllFilters={clearAllFilters} activeMainTab={activeMainTab} woGrid={woGrid} viewsController={woViewsController}
         />
 
         {activeMainTab === 'unificado' && (
@@ -231,7 +256,7 @@ export default function WorkOrders() {
             isRowLockedDec011={isRowLockedDec011} hasThirdPartyPermission={checkContractor3ros}
             inlineWoEdit={inlineWoEdit} setInlineWoEdit={setInlineWoEdit} commitInlineWoEdit={commitInlineWoEdit}
             onOpenNewWorkModal={handleOpenNewWorkModal} onOpenEditWorkModal={handleOpenEditWorkModal}
-            onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal}
+            onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal} onOpenReopenModal={handleOpenReopenModal}
             onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} onDuplicateWorkItem={handleDuplicateWorkItem}
             onDeleteWorkItem={handleDeleteWorkItem} setSelectedWoDetail={setSelectedWoDetail}
             setEditingThirdParty={setEditingThirdParty} menuTarget={menuTarget} openMenu={openMenu} closeMenu={closeMenu}
@@ -244,7 +269,7 @@ export default function WorkOrders() {
             workOrders={workOrders} itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap}
             thirdPartyByItemMap={thirdPartyByItemMap} selectedShipFilter={selectedShipFilter} searchQuery={searchQuery}
             onOpenNewWorkModal={handleOpenNewWorkModal} onOpenEditWorkModal={handleOpenEditWorkModal}
-            onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal}
+            onOpenSeparateModal={handleOpenSeparateModal} onOpenCloseTreeModal={handleOpenCloseTreeModal} onOpenReopenModal={handleOpenReopenModal}
             onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} setSelectedWoDetail={setSelectedWoDetail} onDeleteWo={handleDeleteWo}
           />
         )}
@@ -258,8 +283,9 @@ export default function WorkOrders() {
         )}
       </div>
 
-      {/* MODAL CANÓNICO DE CIERRE DE ÁRBOL & UNIFICACIÓN */}
+      {/* MODAL CANÓNICO DE CIERRE DE ÁRBOL, REAPERTURA & UNIFICACIÓN */}
       <CloseWorkOrderTreeModal isOpen={Boolean(closingTreeWo)} onClose={() => setClosingTreeWo(null)} wo={closingTreeWo} items={closingTreeWo ? (itemsByWoMap[closingTreeWo.id] || []) : []} onConfirm={handleConfirmCloseTree} loading={submittingCloseTree} />
+      <ReopenWorkOrderModal isOpen={Boolean(reopeningWo)} onClose={() => setReopeningWo(null)} wo={reopeningWo} items={reopeningWo ? (itemsByWoMap[reopeningWo.id] || []) : []} onConfirm={handleConfirmReopenWo} loading={submittingReopen} />
       {unifyingWo && (
         <WorkOrderUnifyModal key={unifyingWo.id} sourceWo={unifyingWo} ships={ships} workOrders={workOrders} workItems={workItems} user={user} onClose={() => setUnifyingWo(null)} onSuccess={() => loadData()} showFeedback={showWoGridFeedback} />
       )}

@@ -25,7 +25,8 @@ export default function ShipsBarcosToolbar({
   clearAllFilters,
   shipsGrid,
   viewModeShips,
-  setViewModeShips
+  setViewModeShips,
+  viewsController
 }) {
   return (
     <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg flex flex-col gap-2.5">
@@ -33,6 +34,7 @@ export default function ShipsBarcosToolbar({
         inputRef={searchInputRef}
         value={searchTerm}
         onChange={setSearchTerm}
+        viewsController={viewsController}
         placeholder="Buscar por nombre de buque, matrícula, tipo, locación o empresa armadora... (Ctrl+F | Esc limpia todo)"
       />
 

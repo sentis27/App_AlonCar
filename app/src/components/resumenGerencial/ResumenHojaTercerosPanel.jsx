@@ -1,5 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { X } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import KpiRadar from '../KpiRadar'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -28,14 +30,23 @@ export default function ResumenHojaTercerosPanel({
   onSelectOt,
   onBackToSummary
 }) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
-  const [otFilter, setOtFilter] = useState('ALL')
-  const [contractorFilter, setContractorFilter] = useState('ALL')
-  const [voucherFilter, setVoucherFilter] = useState('ALL')
+  const { user, profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'resumen_terceros', initialKpiFilter && initialKpiFilter !== 'ALL' ? { kpiFilter: initialKpiFilter } : {}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
+  const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery)
+  const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
+  const [otFilter, setOtFilter] = useState(initialFilters.otFilter)
+  const [contractorFilter, setContractorFilter] = useState(initialFilters.contractorFilter)
+  const [voucherFilter, setVoucherFilter] = useState(initialFilters.voucherFilter)
 
   useEffect(() => {
-    setKpiFilter(initialKpiFilter || 'ALL')
+    if (initialKpiFilter && initialKpiFilter !== 'ALL') {
+      setKpiFilter(initialKpiFilter)
+    }
   }, [initialKpiFilter])
 
   const shipId = ship?.id || null
@@ -80,6 +91,14 @@ export default function ResumenHojaTercerosPanel({
     setVoucherFilter('ALL')
   }
 
+  const viewsController = useModuleFilterMemory({
+    moduleKey: 'resumen_terceros',
+    currentFilters: { searchQuery, kpiFilter, otFilter, contractorFilter, voucherFilter },
+    setters: { searchQuery: setSearchQuery, kpiFilter: setKpiFilter, otFilter: setOtFilter, contractorFilter: setContractorFilter, voucherFilter: setVoucherFilter },
+    summaryContext: { otRows },
+    hasActiveFilters: hasFilters
+  })
+
   return (
     <div className="space-y-3">
       <CostSheetHeaderBar
@@ -110,6 +129,7 @@ export default function ResumenHojaTercerosPanel({
           value={searchQuery}
           onChange={setSearchQuery}
           onClear={() => setSearchQuery('')}
+          viewsController={viewsController}
           placeholder="Buscar contratista, rubro, OT, comprobante o detalle... (Ctrl+F)"
         />
 

@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from './useModuleFilterMemory'
 import {
   DEFAULT_ORG_ROLES,
   KNOWN_CONTRACTORS,
@@ -22,8 +24,15 @@ export function usePersonalNominaState({
   dollarRate = 1500,
   rateOficial = 16365.76
 }) {
+  const { user, profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'personal_nomina'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [statusMessage, setStatusMessage] = useState(null)
-  const [kpiFilter, setKpiFilter] = useState(null)
+  const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
   const [customTrades, setCustomTrades] = useState([])
   const [isAddTradeModalOpen, setIsAddTradeModalOpen] = useState(false)
   const [newTradeInput, setNewTradeInput] = useState('')
@@ -34,11 +43,11 @@ export function usePersonalNominaState({
   const [rolesFormData, setRolesFormData] = useState({})
   const [savingRoles, setSavingRoles] = useState(false)
 
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterCenter, setFilterCenter] = useState('todos')
-  const [filterStatus, setFilterStatus] = useState('todos')
-  const [filterGroup, setFilterGroup] = useState('todos')
-  const [filterForemanOnly, setFilterForemanOnly] = useState(false)
+  const [searchTerm, setSearchTerm] = useState(initialFilters.searchTerm)
+  const [filterCenter, setFilterCenter] = useState(initialFilters.filterCenter)
+  const [filterStatus, setFilterStatus] = useState(initialFilters.filterStatus)
+  const [filterGroup, setFilterGroup] = useState(initialFilters.filterGroup)
+  const [filterForemanOnly, setFilterForemanOnly] = useState(Boolean(initialFilters.filterForemanOnly))
 
   const [editingWorker, setEditingWorker] = useState(null)
   const [isNewModalOpen, setIsNewModalOpen] = useState(false)
@@ -119,6 +128,13 @@ export function usePersonalNominaState({
     filterForemanOnly ||
     kpiFilter
   )
+
+  const viewsController = useModuleFilterMemory({
+    moduleKey: 'personal_nomina',
+    currentFilters: { searchTerm, kpiFilter, filterCenter, filterStatus, filterGroup, filterForemanOnly },
+    setters: { searchTerm: setSearchTerm, kpiFilter: setKpiFilter, filterCenter: setFilterCenter, filterStatus: setFilterStatus, filterGroup: setFilterGroup, filterForemanOnly: setFilterForemanOnly },
+    hasActiveFilters
+  })
 
   const filteredWorkers = useMemo(
     () => filterNominaWorkers(workers, {
@@ -211,7 +227,7 @@ export function usePersonalNominaState({
     nominaSearchInputRef, nominaPasteRef,
     uniqueWorkGroups, availableContractorGroups, availableTallerGroups,
     uniqueTrades, kpiStats, filteredWorkers, groupedSummary, centerCounts,
-    clearAllFilters, hasActiveFilters,
+    clearAllFilters, hasActiveFilters, viewsController,
     handleAdminCenterChange, handleOpenNew, handleEdit
   }
 }

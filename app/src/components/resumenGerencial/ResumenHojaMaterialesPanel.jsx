@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import KpiRadar from '../KpiRadar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
@@ -27,17 +29,26 @@ export default function ResumenHojaMaterialesPanel({
   onSelectOt,
   onBackToSummary
 }) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
-  const [otFilter, setOtFilter] = useState('ALL')
-  const [contractorFilter, setContractorFilter] = useState('ALL')
-  const [showMateriales, setShowMateriales] = useState(true)
-  const [showConsumibles, setShowConsumibles] = useState(true)
-  const [materialQuick, setMaterialQuick] = useState('')
-  const [onlyKgPositive, setOnlyKgPositive] = useState(false)
+  const { user, profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'resumen_materiales', initialKpiFilter && initialKpiFilter !== 'ALL' ? { kpiFilter: initialKpiFilter } : {}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
+  const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery)
+  const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
+  const [otFilter, setOtFilter] = useState(initialFilters.otFilter)
+  const [contractorFilter, setContractorFilter] = useState(initialFilters.contractorFilter)
+  const [showMateriales, setShowMateriales] = useState(initialFilters.showMateriales !== false)
+  const [showConsumibles, setShowConsumibles] = useState(initialFilters.showConsumibles !== false)
+  const [materialQuick, setMaterialQuick] = useState(initialFilters.materialQuick)
+  const [onlyKgPositive, setOnlyKgPositive] = useState(Boolean(initialFilters.onlyKgPositive))
 
   useEffect(() => {
-    setKpiFilter(initialKpiFilter || 'ALL')
+    if (initialKpiFilter && initialKpiFilter !== 'ALL') {
+      setKpiFilter(initialKpiFilter)
+    }
   }, [initialKpiFilter])
 
   const shipId = ship?.id || null
@@ -87,6 +98,14 @@ export default function ResumenHojaMaterialesPanel({
     setOnlyKgPositive(false)
   }
 
+  const viewsController = useModuleFilterMemory({
+    moduleKey: 'resumen_materiales',
+    currentFilters: { searchQuery, kpiFilter, otFilter, contractorFilter, showMateriales, showConsumibles, materialQuick, onlyKgPositive },
+    setters: { searchQuery: setSearchQuery, kpiFilter: setKpiFilter, otFilter: setOtFilter, contractorFilter: setContractorFilter, showMateriales: setShowMateriales, showConsumibles: setShowConsumibles, materialQuick: setMaterialQuick, onlyKgPositive: setOnlyKgPositive },
+    summaryContext: { otRows },
+    hasActiveFilters: hasFilters
+  })
+
   return (
     <div className="space-y-3">
       <CostSheetHeaderBar
@@ -133,6 +152,7 @@ export default function ResumenHojaMaterialesPanel({
         setOnlyKgPositive={setOnlyKgPositive}
         hasFilters={hasFilters}
         onClearFilters={handleClearFilters}
+        viewsController={viewsController}
       />
 
       {/* ZONA 4: GRILLA CANÓNICA DE SOLO LECTURA */}

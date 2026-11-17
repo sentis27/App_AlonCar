@@ -27,6 +27,8 @@ import {
   HelpCircle
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import { fetchMacroVariables } from '../../lib/macroVariablesService'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import CrawlerSearchBar from '../CrawlerSearchBar'
@@ -63,6 +65,13 @@ export const getCategoryBadgeStyle = (category = '') => {
 }
 
 export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriodKey, onPeriodChange, workers = [] }) {
+  const { user, profile } = useAuth()
+  const initialTarifarioFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'personal_tarifario'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [rateYear, setRateYear] = useState(2026)
   const [rateMonth, setRateMonth] = useState(10)
   const [rateQuincena, setRateQuincena] = useState(1)
@@ -72,9 +81,16 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
   const [allRateCardRecords, setAllRateCardRecords] = useState([])
   const [loadingRateCards, setLoadingRateCards] = useState(false)
   const [savingRateCard, setSavingRateCard] = useState(false)
-  const [filterTableCenter, setFilterTableCenter] = useState('todos')
-  const [rateTableSearch, setRateTableSearch] = useState('')
-  const [rateTableScope, setRateTableScope] = useState('current') // 'current' | 'all'
+  const [filterTableCenter, setFilterTableCenter] = useState(initialTarifarioFilters.filterTableCenter)
+  const [rateTableSearch, setRateTableSearch] = useState(initialTarifarioFilters.rateTableSearch)
+  const [rateTableScope, setRateTableScope] = useState(initialTarifarioFilters.rateTableScope) // 'current' | 'all'
+
+  const tarifarioViewsController = useModuleFilterMemory({
+    moduleKey: 'personal_tarifario',
+    currentFilters: { filterTableCenter, rateTableSearch, rateTableScope },
+    setters: { filterTableCenter: setFilterTableCenter, rateTableSearch: setRateTableSearch, rateTableScope: setRateTableScope },
+    hasActiveFilters: Boolean(rateTableSearch || filterTableCenter !== 'todos' || rateTableScope !== 'current')
+  })
   const [contextMenuTarget, setContextMenuTarget] = useState(null)
   const [statusMessage, setStatusMessage] = useState(null)
   const [inlineRateEdit, setInlineRateEdit] = useState(null)
@@ -1436,6 +1452,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
             onChange={setRateTableSearch}
             onClear={() => setRateTableSearch('')}
             inputRef={rateSearchInputRef}
+            viewsController={tarifarioViewsController}
             placeholder="Buscar por categoría, contratista, quincena, valor hora... (Ctrl+F | Esc limpia)"
           />
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-0.5">

@@ -37,7 +37,8 @@ export default function LaborLogsToolbar({
   canUndo,
   canRedo,
   onUndo,
-  onRedo
+  onRedo,
+  viewsController
 }) {
   const hasFilters = Boolean(
     hasActiveFilters ||
@@ -59,6 +60,7 @@ export default function LaborLogsToolbar({
         onChange={setFilterWorker}
         onClear={onClearAllFilters}
         inputRef={logSearchInputRef}
+        viewsController={viewsController}
         placeholder="Buscar operario, buque, OT, rubro, tarea... (Ctrl+F | Esc limpia todo)"
       />
 

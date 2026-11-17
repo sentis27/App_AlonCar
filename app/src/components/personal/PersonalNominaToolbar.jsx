@@ -21,7 +21,8 @@ export default function PersonalNominaToolbar({
   canRedo,
   onRedo,
   uniqueTrades,
-  groupedSummary
+  groupedSummary,
+  viewsController
 }) {
   const {
     totalCount,
@@ -41,6 +42,7 @@ export default function PersonalNominaToolbar({
           onChange={setSearchTerm}
           onClear={clearAllFilters}
           inputRef={nominaSearchInputRef}
+          viewsController={viewsController}
           placeholder="Buscar por operario, grupo, rubro, DNI, valor hora US$/AR$... (Ctrl+F | Esc limpia todo)"
         />
 

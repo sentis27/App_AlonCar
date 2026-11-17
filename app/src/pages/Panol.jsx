@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import PanolHeader from '../components/panol/PanolHeader'
 import PanolAlertasPanel from '../components/panol/PanolAlertasPanel'
@@ -42,16 +43,25 @@ export default function Panol() {
   const [workItems, setWorkItems] = useState([])
   const [pendingAlerts, setPendingAlerts] = useState([])
 
-  const [searchQuery, setSearchQuery] = useState('')
+  const initialPanolFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'panol', {
+      ...(searchParams.get('kpi') ? { activeKpiFilter: searchParams.get('kpi') } : {}),
+      ...(searchParams.get('con_barco') === '1' ? { onlyWithShipFilter: true } : {})
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
+  const [searchQuery, setSearchQuery] = useState(initialPanolFilters.searchQuery)
   const searchInputRef = useRef(null)
-  const [filterPeriod, setFilterPeriod] = useState('TODOS')
-  const [filterCategory, setFilterCategory] = useState('TODAS')
-  const [filterShip, setFilterShip] = useState('TODOS')
-  const [filterOt, setFilterOt] = useState('TODAS')
-  const [filterContractor, setFilterContractor] = useState('TODOS')
-  const [filterStockOnly, setFilterStockOnly] = useState(false)
-  const [activeKpiFilter, setActiveKpiFilter] = useState(() => searchParams.get('kpi') || null)
-  const [onlyWithShipFilter, setOnlyWithShipFilter] = useState(() => searchParams.get('con_barco') === '1')
+  const [filterPeriod, setFilterPeriod] = useState(initialPanolFilters.filterPeriod)
+  const [filterCategory, setFilterCategory] = useState(initialPanolFilters.filterCategory)
+  const [filterShip, setFilterShip] = useState(initialPanolFilters.filterShip)
+  const [filterOt, setFilterOt] = useState(initialPanolFilters.filterOt)
+  const [filterContractor, setFilterContractor] = useState(initialPanolFilters.filterContractor)
+  const [filterStockOnly, setFilterStockOnly] = useState(Boolean(initialPanolFilters.filterStockOnly))
+  const [activeKpiFilter, setActiveKpiFilter] = useState(initialPanolFilters.activeKpiFilter)
+  const [onlyWithShipFilter, setOnlyWithShipFilter] = useState(Boolean(initialPanolFilters.onlyWithShipFilter))
 
   // Estados de Modales
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
@@ -73,7 +83,7 @@ export default function Panol() {
     }
     const kpiParam = searchParams.get('kpi')
     if (kpiParam) setActiveKpiFilter(kpiParam)
-    setOnlyWithShipFilter(searchParams.get('con_barco') === '1')
+    if (searchParams.get('con_barco') === '1') setOnlyWithShipFilter(true)
   }, [searchParams])
 
   const changeTab = (tab) => {
@@ -138,11 +148,19 @@ export default function Panol() {
   )
 
   const panolTotals = useMemo(() => calculatePanolTotals(filteredTransactions), [filteredTransactions])
-  const hasActivePanolFilter = Boolean(searchQuery.trim() || activeKpiFilter || onlyWithShipFilter || filterShip !== 'TODOS' || filterOt !== 'TODAS' || filterContractor !== 'TODOS' || filterCategory !== 'TODAS' || filterPeriod !== 'TODOS')
+  const hasActivePanolFilter = Boolean(searchQuery.trim() || activeKpiFilter || onlyWithShipFilter || filterShip !== 'TODOS' || filterOt !== 'TODAS' || filterContractor !== 'TODOS' || filterCategory !== 'TODAS' || filterPeriod !== 'TODOS' || filterStockOnly)
   const clearAllPanolFilters = useCallback(() => {
     setSearchQuery(''); setActiveKpiFilter(null); setOnlyWithShipFilter(false); setFilterShip('TODOS'); setFilterOt('TODAS'); setFilterContractor('TODOS'); setFilterCategory('TODAS'); setFilterPeriod('TODOS'); setFilterStockOnly(false)
     if (searchParams.get('kpi') || searchParams.get('con_barco')) setSearchParams({ tab: activeTab }, { replace: true })
   }, [activeTab, searchParams, setSearchParams])
+
+  const panolViewsController = useModuleFilterMemory({
+    moduleKey: 'panol',
+    currentFilters: { searchQuery, filterPeriod, filterCategory, filterShip, filterOt, filterContractor, filterStockOnly, activeKpiFilter, onlyWithShipFilter },
+    setters: { searchQuery: setSearchQuery, filterPeriod: setFilterPeriod, filterCategory: setFilterCategory, filterShip: setFilterShip, filterOt: setFilterOt, filterContractor: setFilterContractor, filterStockOnly: setFilterStockOnly, activeKpiFilter: setActiveKpiFilter, onlyWithShipFilter: setOnlyWithShipFilter },
+    summaryContext: { ships, workOrders },
+    hasActiveFilters: hasActivePanolFilter
+  })
 
   const filteredMaterials = useMemo(
     () => filterPanolMaterials(materials, { activeKpiFilter, filterStockOnly, filterCategory, searchQuery }),
@@ -198,7 +216,7 @@ export default function Panol() {
           filterContractor={filterContractor} setFilterContractor={setFilterContractor}
           filterStockOnly={filterStockOnly} setFilterStockOnly={setFilterStockOnly}
           activeTab={activeTab} ships={ships} workOrders={workOrders} workItems={workItems}
-          contractorOptions={availableGroups} hasActiveFilters={hasActivePanolFilter} onClearAllFilters={clearAllPanolFilters}
+          contractorOptions={availableGroups} hasActiveFilters={hasActivePanolFilter} onClearAllFilters={clearAllPanolFilters} viewsController={panolViewsController}
         />
 
         {activeTab === 'planillas' && (

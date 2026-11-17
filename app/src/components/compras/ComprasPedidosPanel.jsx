@@ -85,6 +85,7 @@ export default function ComprasPedidosPanel(props) {
           onUndo={state.grid.undo}
           canRedo={state.grid.canRedo}
           onRedo={state.grid.redo}
+          viewsController={filters.viewsController}
         />
 
         <ComprasPedidosTable

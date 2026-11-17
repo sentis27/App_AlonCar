@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import {
   CheckSquare,
   Square,
@@ -49,6 +51,13 @@ export default function RemitoComercialAlfaPanel({
   onSaveAlfaRateCard,
   showFeedback
 }) {
+  const { user, profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'resumen_remito'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [templateId, setTemplateId] = useState(remitoState?.templateId || 'PUESTA_SECO_30M')
   const [rows, setRows] = useState(() => {
     if (Array.isArray(remitoState?.rows) && remitoState.rows.length > 0) {
@@ -67,12 +76,19 @@ export default function RemitoComercialAlfaPanel({
     })
   })
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const [kpiFilter, setKpiFilter] = useState('ALL')
-  const [taxFilter, setTaxFilter] = useState('ALL')
+  const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery)
+  const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
+  const [taxFilter, setTaxFilter] = useState(initialFilters.taxFilter)
   const [inlineEdit, setInlineEdit] = useState(null) // { rowId, field, value }
   const [showAlfaModal, setShowAlfaModal] = useState(false)
   const searchInputRef = useRef(null)
+
+  const remitoViewsController = useModuleFilterMemory({
+    moduleKey: 'resumen_remito',
+    currentFilters: { searchQuery, kpiFilter, taxFilter },
+    setters: { searchQuery: setSearchQuery, kpiFilter: setKpiFilter, taxFilter: setTaxFilter },
+    hasActiveFilters: Boolean(searchQuery || kpiFilter !== 'ALL' || taxFilter !== 'ALL')
+  })
 
   // Rehidratar filas cuando cambia el buque o los datos persistidos desde Supabase
   useEffect(() => {
@@ -572,6 +588,7 @@ export default function RemitoComercialAlfaPanel({
             value={searchQuery}
             onChange={setSearchQuery}
             onClear={() => setSearchQuery('')}
+            viewsController={remitoViewsController}
             placeholder="Buscar ítem, código Alfa, origen, notas... (Ctrl+F)"
           />
 

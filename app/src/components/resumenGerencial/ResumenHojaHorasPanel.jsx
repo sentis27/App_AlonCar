@@ -1,5 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { X } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import KpiRadar from '../KpiRadar'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -29,14 +31,23 @@ export default function ResumenHojaHorasPanel({
   onSelectOt,
   onBackToSummary
 }) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
-  const [otFilter, setOtFilter] = useState('ALL')
-  const [workerFilter, setWorkerFilter] = useState('ALL')
-  const [rubroFilter, setRubroFilter] = useState('ALL')
+  const { user, profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'resumen_horas', initialKpiFilter && initialKpiFilter !== 'ALL' ? { kpiFilter: initialKpiFilter } : {}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
+  const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery)
+  const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
+  const [otFilter, setOtFilter] = useState(initialFilters.otFilter)
+  const [workerFilter, setWorkerFilter] = useState(initialFilters.workerFilter)
+  const [rubroFilter, setRubroFilter] = useState(initialFilters.rubroFilter)
 
   useEffect(() => {
-    setKpiFilter(initialKpiFilter || 'ALL')
+    if (initialKpiFilter && initialKpiFilter !== 'ALL') {
+      setKpiFilter(initialKpiFilter)
+    }
   }, [initialKpiFilter])
 
   const shipId = ship?.id || null
@@ -82,6 +93,14 @@ export default function ResumenHojaHorasPanel({
     setRubroFilter('ALL')
   }
 
+  const viewsController = useModuleFilterMemory({
+    moduleKey: 'resumen_horas',
+    currentFilters: { searchQuery, kpiFilter, otFilter, workerFilter, rubroFilter },
+    setters: { searchQuery: setSearchQuery, kpiFilter: setKpiFilter, otFilter: setOtFilter, workerFilter: setWorkerFilter, rubroFilter: setRubroFilter },
+    summaryContext: { otRows },
+    hasActiveFilters: hasFilters
+  })
+
   return (
     <div className="space-y-3">
       <CostSheetHeaderBar
@@ -112,6 +131,7 @@ export default function ResumenHojaHorasPanel({
           value={searchQuery}
           onChange={setSearchQuery}
           onClear={() => setSearchQuery('')}
+          viewsController={viewsController}
           placeholder="Buscar operario, contratista, oficio, OT, PRC o notas... (Ctrl+F)"
         />
 

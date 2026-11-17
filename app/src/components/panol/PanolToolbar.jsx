@@ -28,7 +28,8 @@ export default function PanolToolbar({
   workItems = [],
   contractorOptions = [],
   hasActiveFilters = false,
-  onClearAllFilters
+  onClearAllFilters,
+  viewsController
 }) {
   const otOptions = resolveOtFilterOptions(workOrders, workItems, filterShip)
 
@@ -39,6 +40,7 @@ export default function PanolToolbar({
         onChange={setSearchQuery}
         onClear={onClearAllFilters}
         inputRef={searchInputRef}
+        viewsController={viewsController}
         placeholder="Buscar material, barco, OT, contratista, notas... [Ctrl+F | Esc limpia]"
       />
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">

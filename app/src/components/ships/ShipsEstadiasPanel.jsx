@@ -14,6 +14,8 @@ import {
   X
 } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
+import { useAuth } from '../../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -50,9 +52,23 @@ export default function ShipsEstadiasPanel({
   setStatusMessage,
   loadInitialData
 }) {
+  const { profile } = useAuth()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'ships_estadias'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [viewModeStays, setViewModeStays] = useState('tabla')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [locationFilter, setLocationFilter] = useState('todos')
+  const [searchTerm, setSearchTerm] = useState(initialFilters.searchTerm)
+  const [locationFilter, setLocationFilter] = useState(initialFilters.locationFilter)
+
+  const estadiasViewsController = useModuleFilterMemory({
+    moduleKey: 'ships_estadias',
+    currentFilters: { searchTerm, locationFilter },
+    setters: { searchTerm: setSearchTerm, locationFilter: setLocationFilter },
+    hasActiveFilters: Boolean(searchTerm || locationFilter !== 'todos')
+  })
   const [inlineStayEdit, setInlineStayEdit] = useState(null)
   const searchInputRef = useRef(null)
   const staysPasteRef = useRef(null)
@@ -360,6 +376,7 @@ export default function ShipsEstadiasPanel({
           inputRef={searchInputRef}
           value={searchTerm}
           onChange={setSearchTerm}
+          viewsController={estadiasViewsController}
           placeholder="Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)"
         />
 

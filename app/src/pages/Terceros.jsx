@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useModuleFilterMemory, resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../hooks/useGridContextMenu'
@@ -16,7 +17,7 @@ import { calculateTercerosKpis, calculateTercerosStats, filterTercerosServices, 
 import { AlertTriangle, CheckCircle2, Clock, Wrench } from 'lucide-react'
 
 export default function Terceros() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [activeRolePerspective, setActiveRolePerspective] = useState(() => localStorage.getItem('aloncar_terceros_terminal') || 'maria_jose')
   useEffect(() => { localStorage.setItem('aloncar_terceros_terminal', activeRolePerspective) }, [activeRolePerspective])
 
@@ -37,11 +38,20 @@ export default function Terceros() {
 
   // Filtros y vistas
   const [searchParams, setSearchParams] = useSearchParams()
+  const initialFilters = useMemo(
+    () => resolveInitialModuleFilters(user, profile, 'terceros', {
+      ...(searchParams.get('kpi') ? { kpiFilter: searchParams.get('kpi') } : {}),
+      ...(searchParams.get('shipId') ? { selectedShipFilter: searchParams.get('shipId') } : {})
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   const [viewMode, setViewMode] = useState('filas')
-  const [kpiFilter, setKpiFilter] = useState(() => searchParams.get('kpi') || 'todos')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
+  const [searchTerm, setSearchTerm] = useState(initialFilters.searchTerm)
   const searchInputRef = useRef(null)
-  const [selectedShipFilter, setSelectedShipFilter] = useState(() => searchParams.get('shipId') || 'todos')
+  const [selectedShipFilter, setSelectedShipFilter] = useState(initialFilters.selectedShipFilter)
 
   useEffect(() => {
     const kpiParam = searchParams.get('kpi')
@@ -49,10 +59,10 @@ export default function Terceros() {
     if (kpiParam) setKpiFilter(kpiParam)
     if (shipParam) setSelectedShipFilter(shipParam)
   }, [searchParams])
-  const [selectedOtFilter, setSelectedOtFilter] = useState('todas')
-  const [selectedContractorFilter, setSelectedContractorFilter] = useState('todos')
-  const [selectedTradeFilter, setSelectedTradeFilter] = useState('todos')
-  const [selectedVoucherFilter, setSelectedVoucherFilter] = useState('todos')
+  const [selectedOtFilter, setSelectedOtFilter] = useState(initialFilters.selectedOtFilter)
+  const [selectedContractorFilter, setSelectedContractorFilter] = useState(initialFilters.selectedContractorFilter)
+  const [selectedTradeFilter, setSelectedTradeFilter] = useState(initialFilters.selectedTradeFilter)
+  const [selectedVoucherFilter, setSelectedVoucherFilter] = useState(initialFilters.selectedVoucherFilter)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
@@ -103,6 +113,14 @@ export default function Terceros() {
     setSearchTerm(''); setSelectedShipFilter('todos'); setSelectedOtFilter('todas'); setSelectedContractorFilter('todos'); setSelectedTradeFilter('todos'); setSelectedVoucherFilter('todos'); setKpiFilter('todos')
     if (searchParams.toString()) setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams])
+
+  const tercerosViewsController = useModuleFilterMemory({
+    moduleKey: 'terceros',
+    currentFilters: { searchTerm, kpiFilter, selectedShipFilter, selectedOtFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter },
+    setters: { searchTerm: setSearchTerm, kpiFilter: setKpiFilter, selectedShipFilter: setSelectedShipFilter, selectedOtFilter: setSelectedOtFilter, selectedContractorFilter: setSelectedContractorFilter, selectedTradeFilter: setSelectedTradeFilter, selectedVoucherFilter: setSelectedVoucherFilter },
+    summaryContext: { ships, workOrders },
+    hasActiveFilters
+  })
 
   // Modales y acciones
   const handleOpenNewModal = () => { setEditingService(null); setIsModalOpen(true) }
@@ -210,7 +228,7 @@ export default function Terceros() {
           selectedTradeFilter={selectedTradeFilter} setSelectedTradeFilter={setSelectedTradeFilter}
           selectedVoucherFilter={selectedVoucherFilter} setSelectedVoucherFilter={setSelectedVoucherFilter}
           ships={ships} workOrders={workOrders} workItems={workItems} contractors={contractors} hasActiveFilters={hasActiveFilters} clearAllFilters={clearAllFilters}
-          grid={grid} viewMode={viewMode} setViewMode={setViewMode}
+          grid={grid} viewMode={viewMode} setViewMode={setViewMode} viewsController={tercerosViewsController}
         />
 
         {loading ? (

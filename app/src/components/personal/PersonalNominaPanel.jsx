@@ -46,7 +46,7 @@ export default function PersonalNominaPanel({
     nominaSearchInputRef,
     uniqueWorkGroups, availableContractorGroups, availableTallerGroups,
     uniqueTrades, kpiStats, filteredWorkers, groupedSummary, centerCounts,
-    clearAllFilters, hasActiveFilters,
+    clearAllFilters, hasActiveFilters, viewsController,
     handleAdminCenterChange, handleOpenNew, handleEdit
   } = state
 
@@ -168,6 +168,7 @@ export default function PersonalNominaPanel({
           onRedo={nominaGrid.redo}
           uniqueTrades={uniqueTrades}
           groupedSummary={groupedSummary}
+          viewsController={viewsController}
         />
 
         <PersonalNominaTable

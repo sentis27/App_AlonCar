@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react'
 import { Search, X, Sparkles } from 'lucide-react'
+import SavedFilterViewsDropdown from './SavedFilterViewsDropdown'
 
 /**
  * CrawlerSearchBar
@@ -15,7 +16,8 @@ export default function CrawlerSearchBar({
   className = '',
   inputRef = null,
   showCrawlerBadge = true,
-  compact = false
+  compact = false,
+  viewsController = null
 }) {
   const localRef = useRef(null)
   const effectiveRef = inputRef || localRef
@@ -54,8 +56,8 @@ export default function CrawlerSearchBar({
 
   const widthClass = compact ? 'min-w-[200px] max-w-sm' : 'min-w-[280px] max-w-2xl'
 
-  return (
-    <div className={`relative flex-1 ${widthClass} ${className}`}>
+  const searchInput = (
+    <div className={`relative flex-1 ${widthClass} ${viewsController ? '' : className}`}>
       {/* Icono de Lupa / Crawler */}
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
         {isSearching && showCrawlerBadge ? (
@@ -92,6 +94,19 @@ export default function CrawlerSearchBar({
           </button>
         </div>
       )}
+    </div>
+  )
+
+  if (!viewsController) return searchInput
+
+  return (
+    <div
+      className={`flex flex-wrap items-center justify-between gap-2 ${
+        compact ? 'flex-1 min-w-[260px]' : 'w-full'
+      } ${className}`}
+    >
+      {searchInput}
+      <SavedFilterViewsDropdown controller={viewsController} />
     </div>
   )
 }

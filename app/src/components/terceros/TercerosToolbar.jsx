@@ -35,7 +35,8 @@ export default function TercerosToolbar({
   clearAllFilters,
   grid,
   viewMode,
-  setViewMode
+  setViewMode,
+  viewsController
 }) {
   const otOptions = resolveOtFilterOptions(workOrders, workItems, selectedShipFilter)
 
@@ -47,6 +48,7 @@ export default function TercerosToolbar({
         onChange={setSearchTerm}
         onClear={clearAllFilters}
         inputRef={searchInputRef}
+        viewsController={viewsController}
         placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F | Esc limpia todo)"
       />
 

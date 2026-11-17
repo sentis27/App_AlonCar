@@ -7,6 +7,9 @@ Lista de trabajo activa priorizada por fase y criticidad.
 
 ## 📌 Pendientes Operativos y Módulos Futuros Acordados
 
+- [ ] **Atajos de Vistas de Filtro Guardadas en Dashboard por Usuario (`/`):**
+  - **Estado:** Pendiente de definición visual/UX por el usuario (cinta de atajos arriba vs. tarjetas por módulo vs. gaveta con detalle).
+  - **Base técnica:** Consumirá `filterViewsService.js` / `system_settings` (`user_saved_filter_views`, máx. 5 vistas por usuario y módulo) para abrir en 1 clic cualquier módulo con la vista favorita aplicada.
 - [ ] **Puerta General de Desorden de Materiales, Recuperados, Devueltos y Controles de Stock (`/panol`):**
   - Diseñar puerta única centralizada para registrar recuperaciones, devoluciones no estándar y conciliaciones de inventario físico/roturas, manteniendo separadas las adquisiciones comerciales en **Compras** y el patio de envases de **Gases**.
 - [ ] **Módulo Futuro de Dependientes / Vacaciones (Personal Astillero):**
