@@ -14,7 +14,8 @@ export default function CrawlerSearchBar({
   placeholder = 'Buscar por material, proveedor, buque, solicitante, factura, notas... (Ctrl+F | Esc limpia)',
   className = '',
   inputRef = null,
-  showCrawlerBadge = true
+  showCrawlerBadge = true,
+  compact = false
 }) {
   const localRef = useRef(null)
   const effectiveRef = inputRef || localRef
@@ -51,8 +52,10 @@ export default function CrawlerSearchBar({
 
   const isSearching = Boolean(value && value.trim().length > 0)
 
+  const widthClass = compact ? 'min-w-[200px] max-w-sm' : 'min-w-[280px] max-w-2xl'
+
   return (
-    <div className={`relative flex-1 min-w-[280px] max-w-2xl ${className}`}>
+    <div className={`relative flex-1 ${widthClass} ${className}`}>
       {/* Icono de Lupa / Crawler */}
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
         {isSearching && showCrawlerBadge ? (

@@ -1,7 +1,11 @@
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import { X, Undo2, Redo2 } from 'lucide-react'
 import { ESTADOS_TRABAJO } from '../../lib/workOrdersConstants'
-import { buildStandardShipWorkOrdersCatalog } from '../../lib/workOrderUnificationEngine'
+import {
+  CLEAR_FILTER_BTN_CLASS,
+  getFilterSelectClass,
+  resolveOtFilterOptions
+} from '../../lib/filterThemeConstants'
 
 export default function WorkOrdersToolbar({
   searchQuery,
@@ -27,11 +31,8 @@ export default function WorkOrdersToolbar({
   activeMainTab,
   woGrid
 }) {
-  const standardOtOptions = buildStandardShipWorkOrdersCatalog(workOrders, workItems, {
-    shipId: selectedShipFilter !== 'todos' ? selectedShipFilter : null,
-    includeEliminated: false,
-    includeClosed: true
-  })
+  const standardOtOptions = resolveOtFilterOptions(workOrders, workItems, selectedShipFilter)
+
   return (
     <div className="alon-zone-toolbar p-3 space-y-2.5 font-sans">
       <CrawlerSearchBar
@@ -43,92 +44,95 @@ export default function WorkOrdersToolbar({
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Selector de Barco */}
+          {/* 1. Barco (Cian) */}
           <select
             value={selectedShipFilter}
-            onChange={(e) => setSelectedShipFilter(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-cyan-400 font-semibold max-w-[150px]"
+            onChange={(e) => {
+              setSelectedShipFilter(e.target.value)
+              setSelectedOtFilter('todas')
+            }}
+            className={getFilterSelectClass('ship', selectedShipFilter !== 'todos', 'max-w-[160px]')}
             title="Filtrar por Barco"
           >
-            <option value="todos">Todos los Barcos</option>
+            <option value="todos" className="bg-slate-900">Todos los Barcos</option>
             {ships.map((s) => (
-              <option key={s.id} value={s.id}>
+              <option key={s.id} value={s.id} className="bg-slate-900">
                 {s.name}
               </option>
             ))}
           </select>
 
-          {/* Selector de OT */}
+          {/* 2. Orden de Trabajo (Esmeralda) */}
           <select
             value={selectedOtFilter}
             onChange={(e) => setSelectedOtFilter(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-cyan-400 font-semibold max-w-[160px]"
+            className={getFilterSelectClass('ot', selectedOtFilter !== 'todas', 'max-w-[180px]')}
             title="Filtrar por Orden de Trabajo"
           >
-            <option value="todas">Todas las OTs</option>
+            <option value="todas" className="bg-slate-900">Todas las OTs</option>
             {standardOtOptions.map((w) => (
-              <option key={w.id} value={w.id}>
+              <option key={w.id} value={w.id} className="bg-slate-900">
                 {w.ot_number} • {w.title}
               </option>
             ))}
           </select>
 
-          {/* Selector de Estado */}
+          {/* 3. Estado (Rosa) */}
           <select
             value={selectedStatusFilter}
             onChange={(e) => setSelectedStatusFilter(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-cyan-400 font-semibold max-w-[150px]"
+            className={getFilterSelectClass('status', selectedStatusFilter !== 'todos', 'max-w-[160px]')}
             title="Filtrar por Estado del Trabajo"
           >
-            <option value="todos">Todos los Estados</option>
+            <option value="todos" className="bg-slate-900">Todos los Estados</option>
             {ESTADOS_TRABAJO.map((st) => (
-              <option key={st.value} value={st.value}>
+              <option key={st.value} value={st.value} className="bg-slate-900">
                 {st.value}
               </option>
             ))}
           </select>
 
-          {/* Selector de Jefe de Obra */}
+          {/* 4. Jefe de Obra (Ámbar) */}
           <select
             value={selectedForemanFilter}
             onChange={(e) => setSelectedForemanFilter(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-cyan-400 font-semibold max-w-[150px]"
+            className={getFilterSelectClass('foreman', selectedForemanFilter !== 'todos', 'max-w-[160px]')}
             title="Filtrar por Jefe de Obra"
           >
-            <option value="todos">Todos los Jefes</option>
+            <option value="todos" className="bg-slate-900">Todos los Jefes</option>
             {foremenList.map((f) => (
-              <option key={f} value={f}>
+              <option key={f} value={f} className="bg-slate-900">
                 {f}
               </option>
             ))}
           </select>
 
-          {/* Selector de Contratista */}
+          {/* 5. Contratista (Ámbar) */}
           <select
             value={selectedContractorFilter}
             onChange={(e) => setSelectedContractorFilter(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-cyan-400 font-semibold max-w-[170px]"
+            className={getFilterSelectClass('contractor', selectedContractorFilter !== 'todos', 'max-w-[180px]')}
             title="Filtrar por Contratista o Taller"
           >
-            <option value="todos">Todos los Contratistas</option>
+            <option value="todos" className="bg-slate-900">Todos los Contratistas</option>
             {contractorCatalog.map((c) => (
-              <option key={c.name} value={c.name}>
+              <option key={c.name} value={c.name} className="bg-slate-900">
                 {c.name} {c.can_charge_third_party ? '[3ros]' : ''}
               </option>
             ))}
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           {hasActiveFilters && (
             <button
               type="button"
               onClick={onClearAllFilters}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+              className={CLEAR_FILTER_BTN_CLASS}
               title="Limpiar todos los filtros y búsqueda (Esc)"
             >
               <X className="w-3.5 h-3.5" />
-              <span>Limpiar</span>
+              <span>Limpiar filtro</span>
             </button>
           )}
 

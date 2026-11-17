@@ -79,12 +79,25 @@ export default function LaborCargaPanel({
       <div className="alon-workspace-block">
         <LaborLogsToolbar
           ships={ships}
+          workOrders={workOrders}
+          workItems={workItems}
           filterWorker={gridState.filterWorker}
           setFilterWorker={gridState.setFilterWorker}
           filterDate={gridState.filterDate}
           setFilterDate={gridState.setFilterDate}
           filterShip={gridState.filterShip}
           setFilterShip={gridState.setFilterShip}
+          filterOt={gridState.filterOt}
+          setFilterOt={gridState.setFilterOt}
+          filterContractor={gridState.filterContractor}
+          setFilterContractor={gridState.setFilterContractor}
+          filterRubro={gridState.filterRubro}
+          setFilterRubro={gridState.setFilterRubro}
+          filterModality={gridState.filterModality}
+          setFilterModality={gridState.setFilterModality}
+          contractorOptions={gridState.contractorOptions}
+          rubroOptions={gridState.rubroOptions}
+          hasActiveFilters={gridState.hasActiveFilters}
           activeKpiFilter={activeKpiFilter}
           onClearAllFilters={gridState.clearAllFilters}
           logSearchInputRef={gridState.logSearchInputRef}
@@ -104,6 +117,7 @@ export default function LaborCargaPanel({
           toggleSelectLog={toggleSelectLog}
           toggleSelectAllLogs={toggleSelectAllLogs}
           activeKpiFilter={activeKpiFilter}
+          hasActiveFilter={gridState.hasActiveFilters}
           filterWorker={gridState.filterWorker}
           filterDate={gridState.filterDate}
           filterShip={gridState.filterShip}

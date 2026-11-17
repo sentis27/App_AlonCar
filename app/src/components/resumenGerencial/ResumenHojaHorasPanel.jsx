@@ -1,10 +1,16 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { X } from 'lucide-react'
 import KpiRadar from '../KpiRadar'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
-import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { formatUsd } from '../../lib/drydockCatalogConstants'
+import { CLEAR_FILTER_BTN_CLASS, getFilterSelectClass } from '../../lib/filterThemeConstants'
+import {
+  scopeResumenRows,
+  extractUniqueSortedOptions,
+  computeHorasKpis,
+  filterResumenLaborRows
+} from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
 
 /**
@@ -25,105 +31,55 @@ export default function ResumenHojaHorasPanel({
 }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
-  const [workerTypeFilter, setWorkerTypeFilter] = useState('ALL')
+  const [otFilter, setOtFilter] = useState('ALL')
+  const [workerFilter, setWorkerFilter] = useState('ALL')
+  const [rubroFilter, setRubroFilter] = useState('ALL')
 
   useEffect(() => {
     setKpiFilter(initialKpiFilter || 'ALL')
   }, [initialKpiFilter])
 
-  const scopedBaseRows = useMemo(() => {
-    return laborRows.filter((r) => {
-      if (ship?.id && r.shipId !== ship.id) return false
-      if (costScope === 'OT' && activeOtId) {
-        if (activeOtId === 'SIN_OT') return !r.workOrderId
-        return r.workOrderId === activeOtId
-      }
-      return true
-    })
-  }, [laborRows, ship?.id, costScope, activeOtId])
+  const shipId = ship?.id || null
+  const scopedBaseRows = useMemo(
+    () => scopeResumenRows(laborRows, { shipId, costScope, activeOtId }),
+    [laborRows, shipId, costScope, activeOtId]
+  )
+  const workerOptions = useMemo(
+    () => extractUniqueSortedOptions(scopedBaseRows, (r) => r.workerName),
+    [scopedBaseRows]
+  )
+  const rubroOptions = useMemo(
+    () => extractUniqueSortedOptions(scopedBaseRows, (r) => r.rubro),
+    [scopedBaseRows]
+  )
+  const kpiCards = useMemo(() => computeHorasKpis(scopedBaseRows), [scopedBaseRows])
+  const filteredRows = useMemo(
+    () => filterResumenLaborRows(scopedBaseRows, { kpiFilter, costScope, otFilter, workerFilter, rubroFilter, searchQuery }),
+    [scopedBaseRows, kpiFilter, costScope, otFilter, workerFilter, rubroFilter, searchQuery]
+  )
+  const summaryStats = useMemo(
+    () => filteredRows.reduce((acc, r) => ({
+      hoursPhysical: acc.hoursPhysical + (r.hoursPhysical || 0),
+      hoursEquiv: acc.hoursEquiv + (r.hoursEquiv || 0),
+      totalUsd: acc.totalUsd + (r.costUsd || 0)
+    }), { hoursPhysical: 0, hoursEquiv: 0, totalUsd: 0 }),
+    [filteredRows]
+  )
 
-  const kpiCards = useMemo(() => {
-    const approved = scopedBaseRows.filter((r) => !r.isPendingR && !r.isPresupuesto)
-    const pendingR = scopedBaseRows.filter((r) => r.isPendingR && !r.isCorrectedRR)
-    const correctedRR = scopedBaseRows.filter((r) => r.isCorrectedRR)
-    const missingOt = scopedBaseRows.filter((r) => r.hasMissingOt)
-    const budgetDec013 = scopedBaseRows.filter((r) => r.isPresupuesto)
-
-    const sumHrs = (arr) => arr.reduce((acc, r) => acc + (r.hoursPhysical || 0), 0)
-    const sumCost = (arr, field = 'costUsd') => arr.reduce((acc, r) => acc + (r[field] || 0), 0)
-
-    return [
-      {
-        id: 'APPROVED',
-        label: 'Horas Aprobadas (S)',
-        count: formatUsd(sumCost(approved, 'approvedUsd'), 0),
-        subtext: `${sumHrs(approved).toFixed(1)} hs físicas (${approved.length} partes)`,
-        colorTheme: 'emerald'
-      },
-      {
-        id: 'PENDING_R',
-        label: 'Pendientes Revisión ("R")',
-        count: formatUsd(sumCost(pendingR, 'pendingRUsd'), 0),
-        subtext: `${sumHrs(pendingR).toFixed(1)} hs en revisión`,
-        colorTheme: 'amber'
-      },
-      {
-        id: 'CORRECTED_RR',
-        label: 'Corregidas ("RR")',
-        count: correctedRR.length,
-        subtext: `${sumHrs(correctedRR).toFixed(1)} hs corregidas`,
-        colorTheme: 'cyan'
-      },
-      {
-        id: 'SIN_OT',
-        label: 'Sin OT Asignada',
-        count: missingOt.length,
-        subtext: 'Partes pendientes de vincular OT',
-        colorTheme: 'rose'
-      },
-      {
-        id: 'DEC_013',
-        label: 'Presupuesto (DEC-013)',
-        count: budgetDec013.length,
-        subtext: `${sumHrs(budgetDec013).toFixed(1)} hs ($0 automático)`,
-        colorTheme: 'purple'
-      }
-    ]
-  }, [scopedBaseRows])
-
-  const filteredRows = useMemo(() => {
-    return scopedBaseRows.filter((row) => {
-      if (kpiFilter === 'APPROVED' && (row.isPendingR || row.isPresupuesto)) return false
-      if (kpiFilter === 'PENDING_R' && !(row.isPendingR && !row.isCorrectedRR)) return false
-      if (kpiFilter === 'CORRECTED_RR' && !row.isCorrectedRR) return false
-      if (kpiFilter === 'SIN_OT' && !row.hasMissingOt) return false
-      if (kpiFilter === 'DEC_013' && !row.isPresupuesto) return false
-      if (['GRUA_GRANDE', 'GRUA_CHICA', 'PALA'].includes(kpiFilter) && row.equipmentType !== kpiFilter) return false
-
-      if (workerTypeFilter !== 'ALL' && row.workerType !== workerTypeFilter) return false
-      if (searchQuery && !matchesUniversalSearch(row, searchQuery)) return false
-      return true
-    })
-  }, [scopedBaseRows, kpiFilter, workerTypeFilter, searchQuery])
-
-  const summaryStats = useMemo(() => {
-    return filteredRows.reduce(
-      (acc, r) => {
-        acc.hoursPhysical += r.hoursPhysical || 0
-        acc.hoursEquiv += r.hoursEquiv || 0
-        acc.totalUsd += r.costUsd || 0
-        return acc
-      },
-      { hoursPhysical: 0, hoursEquiv: 0, totalUsd: 0 }
-    )
-  }, [filteredRows])
-
-  const hasFilters = Boolean(searchQuery || kpiFilter !== 'ALL' || workerTypeFilter !== 'ALL')
+  const hasFilters = Boolean(
+    searchQuery ||
+    kpiFilter !== 'ALL' ||
+    (costScope === 'GENERAL' && otFilter !== 'ALL') ||
+    workerFilter !== 'ALL' ||
+    rubroFilter !== 'ALL'
+  )
 
   const handleClearFilters = () => {
     setSearchQuery('')
     setKpiFilter('ALL')
-    setWorkerTypeFilter('ALL')
+    setOtFilter('ALL')
+    setWorkerFilter('ALL')
+    setRubroFilter('ALL')
   }
 
   return (
@@ -150,47 +106,68 @@ export default function ResumenHojaHorasPanel({
         />
       </div>
 
-      <div className="alon-zone-toolbar p-3 bg-slate-900/70 flex flex-wrap items-center gap-2.5">
+      <div className="alon-zone-toolbar p-3 bg-slate-900/70 flex flex-wrap items-center gap-2">
         <CrawlerSearchBar
+          compact
           value={searchQuery}
           onChange={setSearchQuery}
           onClear={() => setSearchQuery('')}
           placeholder="Buscar operario, contratista, oficio, OT, PRC o notas... (Ctrl+F)"
         />
 
+        {costScope === 'GENERAL' && (
+          <select
+            value={otFilter}
+            onChange={(e) => setOtFilter(e.target.value)}
+            className={getFilterSelectClass('ot', otFilter !== 'ALL', 'max-w-[180px]')}
+            title="Filtrar por Orden de Trabajo"
+          >
+            <option value="ALL" className="bg-slate-900">OT: Todas</option>
+            {otRows.map((o) => (
+              <option key={o.id} value={o.id} className="bg-slate-900">
+                {o.otLabel || `${o.otNumber} · ${o.title}`}
+              </option>
+            ))}
+          </select>
+        )}
+
         <select
-          value={workerTypeFilter}
-          onChange={(e) => setWorkerTypeFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none"
+          value={workerFilter}
+          onChange={(e) => setWorkerFilter(e.target.value)}
+          className={getFilterSelectClass('contractor', workerFilter !== 'ALL', 'max-w-[200px]')}
+          title="Filtrar por Operario o Contratista"
         >
-          <option value="ALL">Centro: Todos</option>
-          <option value="Astillero">Astillero (Hs + Recargos)</option>
-          <option value="Contratista">Contratista (Tarifa Fija)</option>
+          <option value="ALL" className="bg-slate-900">Operario / Contr.: Todos</option>
+          {workerOptions.map((w) => (
+            <option key={w} value={w} className="bg-slate-900">
+              {w}
+            </option>
+          ))}
         </select>
 
         <select
-          value={['GRUA_GRANDE', 'GRUA_CHICA', 'PALA'].includes(kpiFilter) ? kpiFilter : 'ALL'}
-          onChange={(e) => setKpiFilter(e.target.value)}
-          className={`border rounded-lg px-2.5 py-1.5 text-xs outline-none ${
-            ['GRUA_GRANDE', 'GRUA_CHICA', 'PALA'].includes(kpiFilter)
-              ? 'bg-cyan-950/60 border-cyan-500/60 text-cyan-100 font-bold'
-              : 'bg-slate-950 border-slate-700 text-slate-200'
-          }`}
+          value={rubroFilter}
+          onChange={(e) => setRubroFilter(e.target.value)}
+          className={getFilterSelectClass('trade', rubroFilter !== 'ALL', 'max-w-[165px]')}
+          title="Filtrar por Rubro"
         >
-          <option value="ALL">Maquinaria: Todas</option>
-          <option value="GRUA_GRANDE">Solo Grúa Grande</option>
-          <option value="GRUA_CHICA">Solo Grúa Chica</option>
-          <option value="PALA">Solo Horas Pala</option>
+          <option value="ALL" className="bg-slate-900">Rubro: Todos</option>
+          {rubroOptions.map((r) => (
+            <option key={r} value={r} className="bg-slate-900">
+              {r}
+            </option>
+          ))}
         </select>
 
         {hasFilters && (
           <button
             type="button"
             onClick={handleClearFilters}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-200 border border-slate-600 cursor-pointer"
+            className={CLEAR_FILTER_BTN_CLASS}
+            title="Limpiar todos los filtros"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Restablecer
+            <X className="w-3.5 h-3.5" />
+            <span>Limpiar filtro</span>
           </button>
         )}
       </div>

@@ -176,6 +176,7 @@ export function calculateTercerosStats(targetItems = [], totalVisible = 0, isCus
 export function filterTercerosServices(services = [], {
   kpiFilter = 'todos',
   selectedShipFilter = 'todos',
+  selectedOtFilter = 'todas',
   selectedContractorFilter = 'todos',
   selectedTradeFilter = 'todos',
   selectedVoucherFilter = 'todos',
@@ -195,6 +196,12 @@ export function filterTercerosServices(services = [], {
 
     // 2. Filtro Buque
     if (selectedShipFilter !== 'todos' && srv.ship_id !== selectedShipFilter) return false
+
+    // 2b. Filtro Orden de Trabajo
+    if (selectedOtFilter && selectedOtFilter !== 'todas') {
+      if (selectedOtFilter === 'SIN_OT' && srv.work_order_id) return false
+      if (selectedOtFilter !== 'SIN_OT' && String(srv.work_order_id || '') !== String(selectedOtFilter)) return false
+    }
 
     // 3. Filtro Contratista
     if (selectedContractorFilter !== 'todos' && srv.contractor_name !== selectedContractorFilter) return false

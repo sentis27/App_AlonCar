@@ -1,5 +1,10 @@
 import CrawlerSearchBar from '../CrawlerSearchBar'
-import { Package } from 'lucide-react'
+import { Package, X } from 'lucide-react'
+import {
+  CLEAR_FILTER_BTN_CLASS,
+  getFilterSelectClass,
+  resolveOtFilterOptions
+} from '../../lib/filterThemeConstants'
 
 export default function PanolToolbar({
   searchQuery,
@@ -11,54 +16,113 @@ export default function PanolToolbar({
   setFilterCategory,
   filterShip,
   setFilterShip,
+  filterOt = 'TODAS',
+  setFilterOt,
+  filterContractor = 'TODOS',
+  setFilterContractor,
   filterStockOnly,
   setFilterStockOnly,
   activeTab,
-  ships
+  ships = [],
+  workOrders = [],
+  workItems = [],
+  contractorOptions = [],
+  hasActiveFilters = false,
+  onClearAllFilters
 }) {
+  const otOptions = resolveOtFilterOptions(workOrders, workItems, filterShip)
+
   return (
     <div className="alon-zone-toolbar p-3 space-y-2.5 font-sans">
       <CrawlerSearchBar
         value={searchQuery}
         onChange={setSearchQuery}
+        onClear={onClearAllFilters}
         inputRef={searchInputRef}
         placeholder="Buscar material, barco, OT, contratista, notas... [Ctrl+F | Esc limpia]"
       />
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
         <div className="flex flex-wrap items-center gap-2">
+          {/* 1. Período (Índigo) */}
           <select
             value={filterPeriod}
             onChange={(e) => setFilterPeriod(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
+            className={getFilterSelectClass('period', filterPeriod !== 'TODOS')}
+            title="Filtrar por Período"
           >
-            <option value="TODOS">Todos los Períodos</option>
-            <option value="HOY">Solo Hoy</option>
-            <option value="QUINCENA">Quincena Actual</option>
-            <option value="MES">Mes Actual</option>
+            <option value="TODOS" className="bg-slate-900">Todos los Períodos</option>
+            <option value="HOY" className="bg-slate-900">Solo Hoy</option>
+            <option value="QUINCENA" className="bg-slate-900">Quincena Actual</option>
+            <option value="MES" className="bg-slate-900">Mes Actual</option>
           </select>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
-          >
-            <option value="TODAS">Todas las Categorías</option>
-            <option value="MATERIALES">MATERIALES</option>
-            <option value="CONSUMIBLES">CONSUMIBLES</option>
-            <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
-            <option value="GASES">GASES</option>
-          </select>
+
+          {/* 2. Barco (Cian) */}
           <select
             value={filterShip}
-            onChange={(e) => setFilterShip(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-400 font-semibold"
+            onChange={(e) => {
+              setFilterShip(e.target.value)
+              setFilterOt?.('TODAS')
+            }}
+            className={getFilterSelectClass('ship', filterShip !== 'TODOS', 'max-w-[165px]')}
+            title="Filtrar por Barco"
           >
-            <option value="TODOS">Todos los Barcos</option>
+            <option value="TODOS" className="bg-slate-900">Todos los Barcos</option>
             {ships.map((s) => (
-              <option key={s.id} value={s.id}>
+              <option key={s.id} value={s.id} className="bg-slate-900">
                 {s.name}
               </option>
             ))}
           </select>
+
+          {/* 3. Orden de Trabajo (Esmeralda) */}
+          {setFilterOt && (
+            <select
+              value={filterOt}
+              onChange={(e) => setFilterOt(e.target.value)}
+              className={getFilterSelectClass('ot', filterOt !== 'TODAS', 'max-w-[175px]')}
+              title="Filtrar por Orden de Trabajo"
+            >
+              <option value="TODAS" className="bg-slate-900">Todas las OTs</option>
+              <option value="SIN_OT" className="bg-slate-900">⚠️ Sin OT</option>
+              {otOptions.map((w) => (
+                <option key={w.id} value={w.id} className="bg-slate-900">
+                  {w.ot_number} • {w.title}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* 4. Contratista / Operario (Ámbar) */}
+          {setFilterContractor && (
+            <select
+              value={filterContractor}
+              onChange={(e) => setFilterContractor(e.target.value)}
+              className={getFilterSelectClass('contractor', filterContractor !== 'TODOS', 'max-w-[180px]')}
+              title="Filtrar por Contratista u Operario"
+            >
+              <option value="TODOS" className="bg-slate-900">Todos los Contratistas</option>
+              {contractorOptions.map((c) => (
+                <option key={c} value={c} className="bg-slate-900">
+                  {c}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* 5. Categoría (Azul Cielo) */}
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className={getFilterSelectClass('category', filterCategory !== 'TODAS')}
+            title="Filtrar por Categoría"
+          >
+            <option value="TODAS" className="bg-slate-900">Todas las Categorías</option>
+            <option value="MATERIALES" className="bg-slate-900">MATERIALES</option>
+            <option value="CONSUMIBLES" className="bg-slate-900">CONSUMIBLES</option>
+            <option value="ELEM.SEGURIDAD" className="bg-slate-900">ELEM.SEGURIDAD</option>
+            <option value="GASES" className="bg-slate-900">GASES</option>
+          </select>
+
           {activeTab === 'catalogo' && (
             <button
               type="button"
@@ -72,6 +136,18 @@ export default function PanolToolbar({
             </button>
           )}
         </div>
+
+        {(hasActiveFilters || filterStockOnly) && onClearAllFilters && (
+          <button
+            type="button"
+            onClick={onClearAllFilters}
+            className={CLEAR_FILTER_BTN_CLASS}
+            title="Limpiar todos los filtros (Esc)"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Limpiar filtro</span>
+          </button>
+        )}
       </div>
     </div>
   )

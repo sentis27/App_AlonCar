@@ -3,9 +3,7 @@ import {
   getEnabledWorkersAndContractors,
   getShipEnabledContractors
 } from './allocationEngine.js'
-import { matchesUniversalSearch } from './searchEngine.js'
 import { formatWorkOrderTooltipCanonical } from './workOrdersConstants.js'
-import { isPanolTxZeroCost, isBillableShip } from './zeroCostAlertsRules.js'
 
 export { getEnabledWorkersAndContractors, getShipEnabledContractors }
 
@@ -315,31 +313,8 @@ export const MATERIALS_PASTE_FIELDS = [
   'notes'
 ]
 
-// Comprobar si una fecha cae en el periodo de filtro seleccionado
-export function isDateInFilterPeriod(dateStr, filterPeriod) {
-  if (filterPeriod === 'TODOS') return true
-  if (!dateStr) return false
-  const d = new Date(dateStr)
-  const now = new Date()
-  if (filterPeriod === 'HOY') {
-    return (
-      d.getDate() === now.getDate() &&
-      d.getMonth() === now.getMonth() &&
-      d.getFullYear() === now.getFullYear()
-    )
-  }
-  if (filterPeriod === 'QUINCENA') {
-    if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return false
-    const day = d.getDate()
-    const nowDay = now.getDate()
-    const isQ1 = nowDay <= 15
-    return isQ1 ? day <= 15 : day > 15
-  }
-  if (filterPeriod === 'MES') {
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-  }
-  return true
-}
+import { isDateInFilterPeriod, filterPanolTransactions, filterPanolMaterials } from './panolFilterHelpers.js'
+export { isDateInFilterPeriod, filterPanolTransactions, filterPanolMaterials }
 
 // Cálculo de estadísticas y balances de gases (P-01/P-02)
 export function calculateGasStats(suppliers = [], gasMovements = [], materials = []) {
@@ -778,73 +753,4 @@ export function calculatePanolTotals(filteredTransactions = []) {
 // Tooltip enriquecido para celdas de Orden de Trabajo (Delega al formateador canónico multi-línea)
 export function formatWorkOrderTooltip(wo, ship, workItems = [], allWorkOrders = []) {
   return formatWorkOrderTooltipCanonical(wo, ship, workItems, allWorkOrders)
-}
-
-export function filterPanolTransactions(inventoryTx = [], {
-  activeKpiFilter,
-  onlyWithShip = false,
-  filterPeriod,
-  filterShip,
-  filterCategory,
-  searchQuery,
-  materials = [],
-  ships = [],
-  workOrders = []
-}) {
-  const shipMap = new Map(ships.map((s) => [s.id, s]))
-  const woMap = new Map(workOrders.map((w) => [w.id, w]))
-
-  return inventoryTx.filter((t) => {
-    const mat = materials.find((m) => m.id === t.material_id)
-    if (activeKpiFilter === 'sin_ot' && t.work_order_id) return false
-    if (activeKpiFilter === 'hoy' && String(t.transaction_date).split('T')[0] !== new Date().toISOString().split('T')[0]) return false
-    if (activeKpiFilter === 'bajas_pendientes' && !t.is_deletion_requested) return false
-    if (activeKpiFilter === 'sin_precio') {
-      if (!isPanolTxZeroCost(t, mat)) return false
-      if (onlyWithShip) {
-        const wo = woMap.get(t.work_order_id)
-        const resolvedShipId = t.ship_id || wo?.ship_id || null
-        if (!isBillableShip(resolvedShipId, shipMap, { excludeAstillero: true })) return false
-      }
-    }
-    if (!isDateInFilterPeriod(t.transaction_date, filterPeriod)) return false
-    if (filterShip !== 'TODOS' && t.ship_id !== filterShip) return false
-    if (filterCategory !== 'TODAS') {
-      if (!mat) return false
-      if (filterCategory === 'GASES') {
-        if (mat.rubro !== 'GASES' && mat.category !== 'GASES') return false
-      } else if (mat.category !== filterCategory) return false
-    }
-    if (searchQuery && searchQuery.trim()) {
-      const ship = shipMap.get(t.ship_id)
-      const wo = woMap.get(t.work_order_id)
-      return matchesUniversalSearch(t, searchQuery, {
-        ship_name: ship?.name || '', work_order_title: wo?.title || '', work_order_description: wo?.description || '',
-        ot_number: wo?.ot_number || '', material_name: mat?.name || '', worker_name: t.worker_name || '', contractor_name: t.contractor_name || ''
-      })
-    }
-    return true
-  })
-}
-
-export function filterPanolMaterials(materials = [], {
-  activeKpiFilter,
-  filterStockOnly,
-  filterCategory,
-  searchQuery
-}) {
-  return materials.filter((m) => {
-    if (activeKpiFilter === 'critico' && (Number(m.current_stock) || 0) > (Number(m.minimum_stock) || 0)) return false
-    if (filterStockOnly && !m.requires_stock_control) return false
-    if (filterCategory !== 'TODAS') {
-      if (filterCategory === 'GASES') {
-        if (m.rubro !== 'GASES' && m.category !== 'GASES') return false
-      } else if (m.category !== filterCategory) return false
-    }
-    if (searchQuery && searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim()
-      return (m.name || '').toLowerCase().includes(q) || (m.rubro || '').toLowerCase().includes(q) || (m.category || '').toLowerCase().includes(q)
-    }
-    return true
-  })
 }

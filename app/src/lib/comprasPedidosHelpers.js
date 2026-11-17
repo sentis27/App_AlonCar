@@ -163,6 +163,8 @@ export function filterPurchaseOrders(
   purchaseOrders = [],
   {
     searchQuery = '',
+    filterShip = 'TODOS',
+    filterOt = 'TODAS',
     filterSupplier = 'TODOS',
     filterStatus = 'TODOS',
     filterFortnight = 'TODAS',
@@ -223,6 +225,15 @@ export function filterPurchaseOrders(
       if (!sup?.is_gas_supplier) return false
     }
 
+    if (filterShip && filterShip !== 'TODOS') {
+      const wo = workOrders.find((w) => w.id === po.work_order_id)
+      const resolvedShipId = po.ship_id || wo?.ship_id || null
+      if (String(resolvedShipId || '') !== String(filterShip)) return false
+    }
+    if (filterOt && filterOt !== 'TODAS') {
+      if (filterOt === 'SIN_OT' && po.work_order_id) return false
+      if (filterOt !== 'SIN_OT' && String(po.work_order_id || '') !== String(filterOt)) return false
+    }
     if (filterSupplier !== 'TODOS' && po.supplier_id !== filterSupplier) return false
     if (filterStatus !== 'TODOS' && po.status !== filterStatus && !(filterStatus === 'PEDIR' && po.status === 'SOLICITUD')) return false
     if (filterFortnight !== 'TODAS' && po.fortnight_period !== filterFortnight) return false

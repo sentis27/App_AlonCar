@@ -1,11 +1,15 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { RotateCcw } from 'lucide-react'
 import KpiRadar from '../KpiRadar'
-import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
-import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
+import {
+  scopeResumenRows,
+  extractUniqueSortedOptions,
+  computeMaterialesKpis,
+  filterResumenMaterialRows
+} from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
+import ResumenHojaMaterialesToolbar from './ResumenHojaMaterialesToolbar'
 
 /**
  * Hoja Solo Lectura: MATERIALES (MATERIALES GENERAL / MATERIALES POR O.T).
@@ -25,117 +29,61 @@ export default function ResumenHojaMaterialesPanel({
 }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
-  const [categoryFilter, setCategoryFilter] = useState('ALL')
+  const [otFilter, setOtFilter] = useState('ALL')
+  const [contractorFilter, setContractorFilter] = useState('ALL')
+  const [showMateriales, setShowMateriales] = useState(true)
+  const [showConsumibles, setShowConsumibles] = useState(true)
+  const [materialQuick, setMaterialQuick] = useState('')
   const [onlyKgPositive, setOnlyKgPositive] = useState(false)
 
   useEffect(() => {
     setKpiFilter(initialKpiFilter || 'ALL')
   }, [initialKpiFilter])
 
-  // Base según Buque + Alcance (GENERAL vs POR O.T)
-  const scopedBaseRows = useMemo(() => {
-    return materialRows.filter((r) => {
-      if (ship?.id && r.shipId !== ship.id) return false
-      if (costScope === 'OT' && activeOtId) {
-        if (activeOtId === 'SIN_OT') return !r.workOrderId
-        return r.workOrderId === activeOtId
-      }
-      return true
-    })
-  }, [materialRows, ship?.id, costScope, activeOtId])
+  const shipId = ship?.id || null
+  const scopedBaseRows = useMemo(
+    () => scopeResumenRows(materialRows, { shipId, costScope, activeOtId }),
+    [materialRows, shipId, costScope, activeOtId]
+  )
+  const contractorOptions = useMemo(
+    () => extractUniqueSortedOptions(scopedBaseRows, (r) => r.contractorLabel || r.workerName),
+    [scopedBaseRows]
+  )
+  const kpiCards = useMemo(() => computeMaterialesKpis(scopedBaseRows), [scopedBaseRows])
+  const filteredRows = useMemo(
+    () => filterResumenMaterialRows(scopedBaseRows, {
+      kpiFilter, costScope, otFilter, contractorFilter, showMateriales, showConsumibles, materialQuick, onlyKgPositive, searchQuery
+    }),
+    [scopedBaseRows, kpiFilter, costScope, otFilter, contractorFilter, showMateriales, showConsumibles, materialQuick, onlyKgPositive, searchQuery]
+  )
+  const summaryStats = useMemo(
+    () => filteredRows.reduce((acc, r) => ({
+      directUsd: acc.directUsd + (r.shipDirectUsd || 0),
+      refUsd: acc.refUsd + (r.referenceUsd || 0),
+      weightKg: acc.weightKg + (r.weightKg || 0)
+    }), { directUsd: 0, refUsd: 0, weightKg: 0 }),
+    [filteredRows]
+  )
 
-  const kpiCards = useMemo(() => {
-    const matsDirect = scopedBaseRows.filter((r) => r.category === 'MATERIALES')
-    const consumables = scopedBaseRows.filter((r) => r.category === 'CONSUMIBLES')
-    const eppRef = scopedBaseRows.filter((r) => r.isSafetyReference)
-    const withKg = scopedBaseRows.filter((r) => Number(r.weightKg) > 0)
-    const missingOt = scopedBaseRows.filter((r) => r.hasMissingOt)
-    const zeroPrice = scopedBaseRows.filter((r) => r.hasZeroPrice && !r.isDeletionRequested)
-
-    const sumUsd = (arr, key = 'shipDirectUsd') =>
-      arr.reduce((acc, item) => acc + (Number(item[key]) || 0), 0)
-    const sumKg = withKg.reduce((acc, item) => acc + (Number(item.weightKg) || 0), 0)
-
-    return [
-      {
-        id: 'MATERIALES',
-        label: 'Materiales Directos',
-        count: formatUsd(sumUsd(matsDirect), 0),
-        subtext: `${matsDirect.length} movs. cargados`,
-        colorTheme: 'blue'
-      },
-      {
-        id: 'CONSUMIBLES',
-        label: 'Consumibles Obra',
-        count: formatUsd(sumUsd(consumables), 0),
-        subtext: `${consumables.length} consumibles imputados`,
-        colorTheme: 'cyan'
-      },
-      {
-        id: 'EPP_REF',
-        label: 'Elem. Seguridad (Ref.)',
-        count: formatUsd(sumUsd(eppRef, 'referenceUsd'), 0),
-        subtext: `${eppRef.length} retiros EPP · No suman`,
-        colorTheme: 'amber'
-      },
-      {
-        id: 'PESO_KG',
-        label: 'Peso Total Instalado',
-        count: formatKg(sumKg, 1),
-        subtext: `${withKg.length} ítems con pesaje`,
-        colorTheme: 'purple'
-      },
-      {
-        id: 'SIN_OT',
-        label: 'Sin Cargar OT',
-        count: missingOt.length,
-        subtext: 'Movimientos sin OT vinculada',
-        colorTheme: 'rose'
-      },
-      {
-        id: 'PRECIO_0',
-        label: 'Precio US$ = $0',
-        count: zeroPrice.length,
-        subtext: 'Alertas sin valorización',
-        colorTheme: 'pink'
-      }
-    ]
-  }, [scopedBaseRows])
-
-  const filteredRows = useMemo(() => {
-    return scopedBaseRows.filter((row) => {
-      if (kpiFilter === 'MATERIALES' && row.category !== 'MATERIALES') return false
-      if (kpiFilter === 'CONSUMIBLES' && row.category !== 'CONSUMIBLES') return false
-      if (kpiFilter === 'EPP_REF' && !row.isSafetyReference) return false
-      if (kpiFilter === 'PESO_KG' && Number(row.weightKg) <= 0) return false
-      if (kpiFilter === 'SIN_OT' && !row.hasMissingOt) return false
-      if (kpiFilter === 'PRECIO_0' && (!row.hasZeroPrice || row.isDeletionRequested)) return false
-
-      if (categoryFilter !== 'ALL' && row.category !== categoryFilter) return false
-      if (onlyKgPositive && Number(row.weightKg) <= 0) return false
-      if (searchQuery && !matchesUniversalSearch(row, searchQuery)) return false
-      return true
-    })
-  }, [scopedBaseRows, kpiFilter, categoryFilter, onlyKgPositive, searchQuery])
-
-  const summaryStats = useMemo(() => {
-    return filteredRows.reduce(
-      (acc, r) => {
-        acc.directUsd += r.shipDirectUsd || 0
-        acc.refUsd += r.referenceUsd || 0
-        acc.weightKg += r.weightKg || 0
-        return acc
-      },
-      { directUsd: 0, refUsd: 0, weightKg: 0 }
-    )
-  }, [filteredRows])
-
-  const hasFilters = Boolean(searchQuery || kpiFilter !== 'ALL' || categoryFilter !== 'ALL' || onlyKgPositive)
+  const hasFilters = Boolean(
+    searchQuery ||
+    kpiFilter !== 'ALL' ||
+    (costScope === 'GENERAL' && otFilter !== 'ALL') ||
+    contractorFilter !== 'ALL' ||
+    !showMateriales ||
+    !showConsumibles ||
+    Boolean(materialQuick) ||
+    onlyKgPositive
+  )
 
   const handleClearFilters = () => {
     setSearchQuery('')
     setKpiFilter('ALL')
-    setCategoryFilter('ALL')
+    setOtFilter('ALL')
+    setContractorFilter('ALL')
+    setShowMateriales(true)
+    setShowConsumibles(true)
+    setMaterialQuick('')
     setOnlyKgPositive(false)
   }
 
@@ -164,47 +112,28 @@ export default function ResumenHojaMaterialesPanel({
         />
       </div>
 
-      {/* ZONA 3: CRAWLER SEARCH + FILTROS LIMPIOS */}
-      <div className="alon-zone-toolbar p-3 bg-slate-900/70 flex flex-wrap items-center gap-2.5">
-        <CrawlerSearchBar
-          value={searchQuery}
-          onChange={setSearchQuery}
-          onClear={() => setSearchQuery('')}
-          placeholder="Buscar material, rubro, OT, solicitante, vale o factura... (Ctrl+F)"
-        />
-
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none"
-        >
-          <option value="ALL">Categoría: Todas</option>
-          <option value="MATERIALES">Materiales</option>
-          <option value="CONSUMIBLES">Consumibles</option>
-          <option value="SEGURIDAD">Elem. Seguridad</option>
-        </select>
-
-        <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-300 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={onlyKgPositive}
-            onChange={(e) => setOnlyKgPositive(e.target.checked)}
-            className="rounded border-slate-600"
-          />
-          Solo KG &gt; 0
-        </label>
-
-        {hasFilters && (
-          <button
-            type="button"
-            onClick={handleClearFilters}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-200 border border-slate-600 cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Restablecer
-          </button>
-        )}
-      </div>
+      {/* ZONA 3: CRAWLER SEARCH COMPACTO + FILTROS RÁPIDOS + LIMPIAR EN ESQUINA */}
+      <ResumenHojaMaterialesToolbar
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        costScope={costScope}
+        otFilter={otFilter}
+        setOtFilter={setOtFilter}
+        otRows={otRows}
+        contractorFilter={contractorFilter}
+        setContractorFilter={setContractorFilter}
+        contractorOptions={contractorOptions}
+        showMateriales={showMateriales}
+        setShowMateriales={setShowMateriales}
+        showConsumibles={showConsumibles}
+        setShowConsumibles={setShowConsumibles}
+        materialQuick={materialQuick}
+        setMaterialQuick={setMaterialQuick}
+        onlyKgPositive={onlyKgPositive}
+        setOnlyKgPositive={setOnlyKgPositive}
+        hasFilters={hasFilters}
+        onClearFilters={handleClearFilters}
+      />
 
       {/* ZONA 4: GRILLA CANÓNICA DE SOLO LECTURA */}
       <div className="alon-zone-grid overflow-hidden bg-slate-900/75">

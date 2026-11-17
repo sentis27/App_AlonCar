@@ -50,8 +50,16 @@ export default function ComprasPedidosPanel(props) {
           searchQuery={filters.searchQuery}
           setSearchQuery={filters.setSearchQuery}
           searchInputRef={filters.searchInputRef}
+          hasActiveFilters={filters.hasActiveFilters}
           onClearAllFilters={filters.clearAllFilters}
           viewMode={viewMode}
+          filterShip={filters.filterShip}
+          setFilterShip={filters.setFilterShip}
+          filterOt={filters.filterOt}
+          setFilterOt={filters.setFilterOt}
+          ships={ships}
+          workOrders={workOrders}
+          workItems={workItems}
           filterSupplier={filters.filterSupplier}
           setFilterSupplier={filters.setFilterSupplier}
           suppliers={suppliers}

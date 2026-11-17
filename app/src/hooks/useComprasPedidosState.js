@@ -21,6 +21,8 @@ export function useComprasPedidosState(props) {
 
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef(null)
+  const [filterShip, setFilterShip] = useState('TODOS')
+  const [filterOt, setFilterOt] = useState('TODAS')
   const [filterSupplier, setFilterSupplier] = useState('TODOS')
   const [filterStatus, setFilterStatus] = useState('TODOS')
   const [filterFortnight, setFilterFortnight] = useState('TODAS')
@@ -76,12 +78,15 @@ export function useComprasPedidosState(props) {
   const kpis = useMemo(() => computePedidosKpis(purchaseOrders, ships), [purchaseOrders, ships])
 
   const hasActiveFilters = Boolean(
-    searchQuery.trim() || filterSupplier !== 'TODOS' || filterStatus !== 'TODOS' ||
+    searchQuery.trim() || filterShip !== 'TODOS' || filterOt !== 'TODAS' ||
+    filterSupplier !== 'TODOS' || filterStatus !== 'TODOS' ||
     filterFortnight !== 'TODAS' || filterChargeType !== 'TODOS' || filterNewOnly || hideReconciled || activeKpiFilter !== null
   )
 
   const clearAllFilters = useCallback(() => {
     setSearchQuery('')
+    setFilterShip('TODOS')
+    setFilterOt('TODAS')
     setFilterSupplier('TODOS')
     setFilterStatus('TODOS')
     setFilterFortnight('TODAS')
@@ -116,10 +121,10 @@ export function useComprasPedidosState(props) {
   const filteredOrders = useMemo(
     () => filterPurchaseOrders(
       purchaseOrders,
-      { searchQuery, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter },
+      { searchQuery, filterShip, filterOt, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter },
       { suppliers, ships, documents, workOrders }
     ),
-    [purchaseOrders, searchQuery, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter, suppliers, ships, documents, workOrders]
+    [purchaseOrders, searchQuery, filterShip, filterOt, filterSupplier, filterStatus, filterFortnight, filterChargeType, filterNewOnly, hideReconciled, activeKpiFilter, suppliers, ships, documents, workOrders]
   )
 
   const spreadsheetColumns = useMemo(() => buildPedidosSpreadsheetColumns(viewMode, ships, workOrders), [viewMode, ships, workOrders])
@@ -263,7 +268,7 @@ export function useComprasPedidosState(props) {
   }, [selectedOrderIds, filteredOrders, purchaseOrders, macroVariables])
 
   return {
-    filters: { searchQuery, setSearchQuery, searchInputRef, filterSupplier, setFilterSupplier, filterStatus, setFilterStatus, filterFortnight, setFilterFortnight, filterChargeType, setFilterChargeType, filterNewOnly, setFilterNewOnly, hideReconciled, setHideReconciled, activeKpiFilter, setActiveKpiFilter, hasActiveFilters, clearAllFilters, toggleKpiFilter },
+    filters: { searchQuery, setSearchQuery, searchInputRef, filterShip, setFilterShip, filterOt, setFilterOt, filterSupplier, setFilterSupplier, filterStatus, setFilterStatus, filterFortnight, setFilterFortnight, filterChargeType, setFilterChargeType, filterNewOnly, setFilterNewOnly, hideReconciled, setHideReconciled, activeKpiFilter, setActiveKpiFilter, hasActiveFilters, clearAllFilters, toggleKpiFilter },
     selection: { selectedOrderIds, setSelectedOrderIds, isAllFilteredSelected, toggleSelectAll, toggleSelectRow, batchTargetStatus, setBatchTargetStatus },
     modals: { shipPickerModal, setShipPickerModal, contractorPickerModal, setContractorPickerModal, showNewMaterialModal, setShowNewMaterialModal, pendingMaterialOrder, setPendingMaterialOrder, showOrderDocsModal, setShowOrderDocsModal, selectedOrderForDocs, setSelectedOrderForDocs, showPartialModal, setShowPartialModal, partialDeliveryOrder, setPartialDeliveryOrder, showSeCompraModal, setShowSeCompraModal, seCompraAlertOrder, setSeCompraAlertOrder, showAssignSupplierModal, setShowAssignSupplierModal, seCompraAlertSettings, showReconcileModal, setShowReconcileModal, reconcileTarget, setReconcileTarget, showFreightModal, setShowFreightModal, freightTargetOrder, setFreightTargetOrder, showBatchOrderModal, setShowBatchOrderModal, showSupplierHelperModal, setShowSupplierHelperModal, supplierHelperTarget, setSupplierHelperTarget, showMandadosModal, setShowMandadosModal, mandadosPreselectedIds, setMandadosPreselectedIds },
     inlineEdit, setInlineEdit, rowMenuTarget, setRowMenuTarget,

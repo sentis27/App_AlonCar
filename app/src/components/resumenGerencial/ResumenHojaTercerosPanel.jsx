@@ -1,10 +1,16 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { X } from 'lucide-react'
 import KpiRadar from '../KpiRadar'
 import CrawlerSearchBar from '../CrawlerSearchBar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
-import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { formatUsd, formatArs } from '../../lib/drydockCatalogConstants'
+import { CLEAR_FILTER_BTN_CLASS, getFilterSelectClass } from '../../lib/filterThemeConstants'
+import {
+  scopeResumenRows,
+  extractUniqueSortedOptions,
+  computeTercerosKpis,
+  filterResumenThirdPartyRows
+} from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
 
 /**
@@ -24,106 +30,53 @@ export default function ResumenHojaTercerosPanel({
 }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [kpiFilter, setKpiFilter] = useState(initialKpiFilter || 'ALL')
+  const [otFilter, setOtFilter] = useState('ALL')
+  const [contractorFilter, setContractorFilter] = useState('ALL')
   const [voucherFilter, setVoucherFilter] = useState('ALL')
 
   useEffect(() => {
     setKpiFilter(initialKpiFilter || 'ALL')
   }, [initialKpiFilter])
 
-  const scopedBaseRows = useMemo(() => {
-    return thirdPartyRows.filter((r) => {
-      if (ship?.id && r.shipId !== ship.id) return false
-      if (costScope === 'OT' && activeOtId) {
-        if (activeOtId === 'SIN_OT') return !r.workOrderId
-        return r.workOrderId === activeOtId
-      }
-      return true
-    })
-  }, [thirdPartyRows, ship?.id, costScope, activeOtId])
-
-  const voucherTypes = useMemo(
-    () => Array.from(new Set(scopedBaseRows.map((r) => r.voucherType).filter(Boolean))),
+  const shipId = ship?.id || null
+  const scopedBaseRows = useMemo(
+    () => scopeResumenRows(thirdPartyRows, { shipId, costScope, activeOtId }),
+    [thirdPartyRows, shipId, costScope, activeOtId]
+  )
+  const contractorOptions = useMemo(
+    () => extractUniqueSortedOptions(scopedBaseRows, (r) => r.contractorName),
     [scopedBaseRows]
   )
+  const voucherTypes = useMemo(
+    () => extractUniqueSortedOptions(scopedBaseRows, (r) => r.voucherType),
+    [scopedBaseRows]
+  )
+  const kpiCards = useMemo(() => computeTercerosKpis(scopedBaseRows), [scopedBaseRows])
+  const filteredRows = useMemo(
+    () => filterResumenThirdPartyRows(scopedBaseRows, { kpiFilter, costScope, otFilter, contractorFilter, voucherFilter, searchQuery }),
+    [scopedBaseRows, kpiFilter, costScope, otFilter, contractorFilter, voucherFilter, searchQuery]
+  )
+  const summaryStats = useMemo(
+    () => filteredRows.reduce((acc, r) => ({
+      totalUsd: acc.totalUsd + (r.amountUsd || 0),
+      totalArs: acc.totalArs + (r.amountArs || 0)
+    }), { totalUsd: 0, totalArs: 0 }),
+    [filteredRows]
+  )
 
-  const kpiCards = useMemo(() => {
-    const missingOt = scopedBaseRows.filter((r) => r.hasMissingOt)
-    const zeroCost = scopedBaseRows.filter((r) => r.hasZeroCost)
-    const rpf = scopedBaseRows.filter((r) => r.voucherType === 'RPF')
-    const fcr = scopedBaseRows.filter((r) => r.voucherType === 'FCR')
-    const prcRmo = scopedBaseRows.filter((r) => r.voucherType === 'PRC' || r.voucherType === 'RMO')
-
-    const sumUsd = (arr) => arr.reduce((acc, item) => acc + (item.amountUsd || 0), 0)
-
-    return [
-      {
-        id: 'FCR',
-        label: 'FCR Facturados',
-        count: formatUsd(sumUsd(fcr), 0),
-        subtext: `${fcr.length} facturas rendidas`,
-        colorTheme: 'emerald'
-      },
-      {
-        id: 'PRC_RMO',
-        label: 'PRC / RMO Vigentes',
-        count: formatUsd(sumUsd(prcRmo), 0),
-        subtext: `${prcRmo.length} comprobantes en obra`,
-        colorTheme: 'cyan'
-      },
-      {
-        id: 'RPF',
-        label: 'RPF Pdte. Factura',
-        count: formatUsd(sumUsd(rpf), 0),
-        subtext: `${rpf.length} remitos sin facturar`,
-        colorTheme: 'purple'
-      },
-      {
-        id: 'SIN_OT',
-        label: 'Falta Cargar OT',
-        count: missingOt.length,
-        subtext: 'Servicios sin OT asignada',
-        colorTheme: 'rose'
-      },
-      {
-        id: 'SIN_COSTO',
-        label: 'Sin Costo ($0)',
-        count: zeroCost.length,
-        subtext: 'Pendientes de cotización',
-        colorTheme: 'amber'
-      }
-    ]
-  }, [scopedBaseRows])
-
-  const filteredRows = useMemo(() => {
-    return scopedBaseRows.filter((row) => {
-      if (kpiFilter === 'FCR' && row.voucherType !== 'FCR') return false
-      if (kpiFilter === 'PRC_RMO' && !['PRC', 'RMO'].includes(row.voucherType)) return false
-      if (kpiFilter === 'RPF' && row.voucherType !== 'RPF') return false
-      if (kpiFilter === 'SIN_OT' && !row.hasMissingOt) return false
-      if (kpiFilter === 'SIN_COSTO' && !row.hasZeroCost) return false
-
-      if (voucherFilter !== 'ALL' && row.voucherType !== voucherFilter) return false
-      if (searchQuery && !matchesUniversalSearch(row, searchQuery)) return false
-      return true
-    })
-  }, [scopedBaseRows, kpiFilter, voucherFilter, searchQuery])
-
-  const summaryStats = useMemo(() => {
-    return filteredRows.reduce(
-      (acc, r) => {
-        acc.totalUsd += r.amountUsd || 0
-        acc.totalArs += r.amountArs || 0
-        return acc
-      },
-      { totalUsd: 0, totalArs: 0 }
-    )
-  }, [filteredRows])
-
-  const hasFilters = Boolean(searchQuery || kpiFilter !== 'ALL' || voucherFilter !== 'ALL')
+  const hasFilters = Boolean(
+    searchQuery ||
+    kpiFilter !== 'ALL' ||
+    (costScope === 'GENERAL' && otFilter !== 'ALL') ||
+    contractorFilter !== 'ALL' ||
+    voucherFilter !== 'ALL'
+  )
 
   const handleClearFilters = () => {
     setSearchQuery('')
     setKpiFilter('ALL')
+    setOtFilter('ALL')
+    setContractorFilter('ALL')
     setVoucherFilter('ALL')
   }
 
@@ -151,22 +104,54 @@ export default function ResumenHojaTercerosPanel({
         />
       </div>
 
-      <div className="alon-zone-toolbar p-3 bg-slate-900/70 flex flex-wrap items-center gap-2.5">
+      <div className="alon-zone-toolbar p-3 bg-slate-900/70 flex flex-wrap items-center gap-2">
         <CrawlerSearchBar
+          compact
           value={searchQuery}
           onChange={setSearchQuery}
           onClear={() => setSearchQuery('')}
           placeholder="Buscar contratista, rubro, OT, comprobante o detalle... (Ctrl+F)"
         />
 
+        {costScope === 'GENERAL' && (
+          <select
+            value={otFilter}
+            onChange={(e) => setOtFilter(e.target.value)}
+            className={getFilterSelectClass('ot', otFilter !== 'ALL', 'max-w-[180px]')}
+            title="Filtrar por Orden de Trabajo"
+          >
+            <option value="ALL" className="bg-slate-900">OT: Todas</option>
+            {otRows.map((o) => (
+              <option key={o.id} value={o.id} className="bg-slate-900">
+                {o.otLabel || `${o.otNumber} · ${o.title}`}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <select
+          value={contractorFilter}
+          onChange={(e) => setContractorFilter(e.target.value)}
+          className={getFilterSelectClass('contractor', contractorFilter !== 'ALL', 'max-w-[190px]')}
+          title="Filtrar por Contratista"
+        >
+          <option value="ALL" className="bg-slate-900">Contratista: Todos</option>
+          {contractorOptions.map((c) => (
+            <option key={c} value={c} className="bg-slate-900">
+              {c}
+            </option>
+          ))}
+        </select>
+
         <select
           value={voucherFilter}
           onChange={(e) => setVoucherFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none"
+          className={getFilterSelectClass('voucher', voucherFilter !== 'ALL')}
+          title="Filtrar por Comprobante"
         >
-          <option value="ALL">Comprobante: Todos</option>
+          <option value="ALL" className="bg-slate-900">Comprobante: Todos</option>
           {voucherTypes.map((vt) => (
-            <option key={vt} value={vt}>
+            <option key={vt} value={vt} className="bg-slate-900">
               {vt}
             </option>
           ))}
@@ -176,10 +161,11 @@ export default function ResumenHojaTercerosPanel({
           <button
             type="button"
             onClick={handleClearFilters}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-200 border border-slate-600 cursor-pointer"
+            className={CLEAR_FILTER_BTN_CLASS}
+            title="Limpiar todos los filtros"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Restablecer
+            <X className="w-3.5 h-3.5" />
+            <span>Limpiar filtro</span>
           </button>
         )}
       </div>
@@ -197,12 +183,11 @@ export default function ResumenHojaTercerosPanel({
             { key: 'otLabel', label: 'O.T' },
             { key: 'contractorName', label: 'Contratista' },
             { key: 'rubro', label: 'Rubro' },
-            { key: 'voucherType', label: 'Tipo' },
+            { key: 'voucherType', label: 'Comprobante' },
             { key: 'voucherNumber', label: 'Nro Comp.' },
             { key: 'amountArs', label: 'Importe ARS' },
             { key: 'usdRate', label: 'TC' },
             { key: 'amountUsd', label: 'Total US$' },
-            { key: 'auditStatus', label: 'Auditoría' },
             { key: 'observations', label: 'Observaciones' }
           ]}
         />
@@ -216,19 +201,18 @@ export default function ResumenHojaTercerosPanel({
                 <th className="px-2.5 py-2">O.T</th>
                 <th className="px-2.5 py-2">Contratista / Taller</th>
                 <th className="px-2.5 py-2">Rubro</th>
-                <th className="px-2.5 py-2">Tipo</th>
+                <th className="px-2.5 py-2">Comprobante</th>
                 <th className="px-2.5 py-2">N° Comp.</th>
                 <th className="px-2.5 py-2 text-right">Importe ARS</th>
                 <th className="px-2.5 py-2 text-right">TC</th>
                 <th className="px-2.5 py-2 text-right">Total US$</th>
-                <th className="px-2.5 py-2">Auditoría</th>
                 <th className="px-2.5 py-2">Observaciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
                     No hay comprobantes de terceros para los filtros actuales.
                   </td>
                 </tr>
@@ -256,11 +240,6 @@ export default function ResumenHojaTercerosPanel({
                     <td className="px-2.5 py-1.5 text-right tabular-nums text-slate-400">{r.usdRate}</td>
                     <td className="px-2.5 py-1.5 text-right tabular-nums font-bold text-emerald-300">
                       {formatUsd(r.amountUsd)}
-                    </td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300">
-                        {r.auditStatus}
-                      </span>
                     </td>
                     <td className="px-2.5 py-1.5 text-slate-400 truncate max-w-[200px]" title={r.observations}>
                       {r.observations || '—'}

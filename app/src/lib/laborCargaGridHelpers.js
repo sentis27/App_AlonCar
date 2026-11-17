@@ -96,15 +96,30 @@ export function filterLaborLogs(recentLogs = [], {
   filterWorker = '',
   filterDate = '',
   filterShip = '',
+  filterOt = 'todas',
+  filterContractor = 'todos',
+  filterRubro = 'todos',
+  filterModality = 'todas',
   activeKpiFilter = 'todos',
   incompleteWorkerDateKeys = new Set()
 }) {
   return recentLogs.filter(log => {
+    const resolvedShipId = log.ship_id || log.work_orders?.ship_id || ''
     const shipName = log.ships?.name || log.work_orders?.ships?.name || ''
     const matchWorker = !filterWorker || matchesUniversalSearch(log, filterWorker, ['worker_name', 'rubro', 'notes', 'work_orders.ot_number', 'ships.name'])
     const matchDate = !filterDate || log.date_logged === filterDate
-    const matchShip = !filterShip || shipName.toLowerCase().includes(filterShip.toLowerCase())
+    const matchShip = !filterShip || filterShip === 'todos' || (
+      String(resolvedShipId) === String(filterShip) ||
+      shipName.toLowerCase().includes(String(filterShip).toLowerCase())
+    )
     if (!matchWorker || !matchDate || !matchShip) return false
+
+    if (filterOt && filterOt !== 'todas') {
+      if (filterOt === 'SIN_OT' ? log.work_order_id : String(log.work_order_id || '') !== String(filterOt)) return false
+    }
+    if (filterContractor && filterContractor !== 'todos' && normalizeText(log.worker_name) !== normalizeText(filterContractor)) return false
+    if (filterRubro && filterRubro !== 'todos' && normalizeText(log.rubro) !== normalizeText(filterRubro)) return false
+    if (filterModality && filterModality !== 'todas' && normalizeLaborWorkType(log.work_type, '') !== filterModality) return false
 
     if (activeKpiFilter === 'sin_ot') return !log.work_order_id
     if (activeKpiFilter === 'revision_R') return log.approval_status === 'R'
@@ -231,6 +246,24 @@ export function buildBlankLaborLogPayload(todayStr = new Date().toISOString().sp
     approval_status: 'R',
     review_reason: 'Fila en blanco (Pendiente de carga)'
   }
+}
+
+export function extractLaborFilterOptions(recentLogs = []) {
+  const contractorMap = new Map()
+  const rubroSet = new Set()
+  recentLogs.forEach((l) => {
+    const name = String(l.worker_name || '').trim()
+    if (name && !contractorMap.has(name)) contractorMap.set(name, { name, workerType: l.worker_type || 'Astillero' })
+    const rub = String(l.rubro || '').trim()
+    if (rub) rubroSet.add(rub)
+  })
+  const contractorOptions = Array.from(contractorMap.values()).sort((a, b) => {
+    const aIsC = a.workerType !== 'Astillero' ? 0 : 1
+    const bIsC = b.workerType !== 'Astillero' ? 0 : 1
+    return aIsC !== bIsC ? aIsC - bIsC : a.name.localeCompare(b.name)
+  })
+  const rubroOptions = Array.from(rubroSet).sort((a, b) => a.localeCompare(b))
+  return { contractorOptions, rubroOptions }
 }
 
 export function buildHorasCellVisualProps(horasGrid, horasSpreadsheetColumns, rowIndex, colKey) {

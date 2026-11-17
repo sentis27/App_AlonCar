@@ -12,6 +12,7 @@ export default function LaborLogsTable({
   toggleSelectLog,
   toggleSelectAllLogs,
   activeKpiFilter,
+  hasActiveFilter,
   filterWorker,
   filterDate,
   filterShip,
@@ -161,7 +162,7 @@ export default function LaborLogsTable({
         filteredCount={filteredLogs.length}
         totalCount={recentLogs.length}
         entityName="imputaciones"
-        hasActiveFilter={Boolean(filterWorker || filterDate || filterShip || (activeKpiFilter && activeKpiFilter !== 'todos'))}
+        hasActiveFilter={Boolean(hasActiveFilter || filterWorker || filterDate || filterShip || (activeKpiFilter && activeKpiFilter !== 'todos'))}
         onClearFilters={clearAllFilters}
         selectionStats={horasGrid.selectionStats}
         onClearSelection={() => horasGrid.setSelectionRange(null)}

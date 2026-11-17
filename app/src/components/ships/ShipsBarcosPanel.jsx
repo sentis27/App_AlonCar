@@ -7,17 +7,12 @@ import {
   Eye,
   CheckSquare,
   Square,
-  Undo2,
-  Redo2,
-  Layers,
-  ClipboardList,
   AlertTriangle,
   BellRing,
-  CheckCircle,
-  X
+  CheckCircle
 } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import ShipsBarcosToolbar from './ShipsBarcosToolbar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
@@ -65,6 +60,7 @@ export default function ShipsBarcosPanel({
   const [searchTerm, setSearchTerm] = useState('')
   const [localLocationFilter, setLocalLocationFilter] = useState('todos')
   const [localRequestFilter, setLocalRequestFilter] = useState('todos')
+  const [ownerFilter, setOwnerFilter] = useState('todos')
   const [localRoleQuickFilter, setLocalRoleQuickFilter] = useState('todos')
   const locationFilter = propLocationFilter ?? localLocationFilter
   const setLocationFilter = propSetLocationFilter ?? setLocalLocationFilter
@@ -138,6 +134,12 @@ export default function ShipsBarcosPanel({
         if (ship.info_request_status && ship.info_request_status !== 'completo') return false
       }
 
+      // 3b. Filtro por armador / empresa
+      if (ownerFilter !== 'todos') {
+        if (ownerFilter === 'SIN_ASIGNAR' && ship.owner_id) return false
+        if (ownerFilter !== 'SIN_ASIGNAR' && String(ship.owner_id || '') !== String(ownerFilter)) return false
+      }
+
       // 4. Filtro por rol / perspectiva / alertas
       if (roleQuickFilter === 'sin_ot') {
         if ((getShipOtMetrics[ship.id]?.orphanTotal || 0) <= 0) return false
@@ -155,7 +157,7 @@ export default function ShipsBarcosPanel({
 
       return true
     })
-  }, [ships, owners, searchTerm, locationFilter, requestFilter, roleQuickFilter, activeRolePerspective, getShipOtMetrics])
+  }, [ships, owners, searchTerm, locationFilter, requestFilter, ownerFilter, roleQuickFilter, activeRolePerspective, getShipOtMetrics])
 
   // Mutación atómica en DB con auditoría
   const applyShipSinglePatch = useCallback(async (rowId, colKey, rawValue, { skipAudit = true } = {}) => {
@@ -320,8 +322,8 @@ export default function ShipsBarcosPanel({
   }
 
   const isAllShipsSelected = filteredShips.length > 0 && filteredShips.every((s) => shipsGrid.selectedRowIds.has(s.id))
-  const hasActiveFilter = Boolean(searchTerm || locationFilter !== 'todos' || requestFilter !== 'todos' || roleQuickFilter !== 'todos')
-  const clearAllFilters = () => { setLocationFilter('todos'); setRequestFilter('todos'); setRoleQuickFilter('todos'); setSearchTerm('') }
+  const hasActiveFilter = Boolean(searchTerm || locationFilter !== 'todos' || requestFilter !== 'todos' || ownerFilter !== 'todos' || roleQuickFilter !== 'todos')
+  const clearAllFilters = () => { setLocationFilter('todos'); setRequestFilter('todos'); setOwnerFilter('todos'); setRoleQuickFilter('todos'); setSearchTerm('') }
   const renderFillHandle = (cp) =>
     cp.renderHandle ? (
       <div
@@ -334,118 +336,26 @@ export default function ShipsBarcosPanel({
 
   return (
     <div className="space-y-4">
-      {/* ZONA 3 (TOOLBAR CORPORATIVA): BUSCADOR, FILTROS Y CAMBIO DE VISTA */}
-      <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg flex flex-col gap-2.5">
-        <CrawlerSearchBar
-          inputRef={searchInputRef}
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="Buscar por nombre de buque, matrícula, tipo, locación o empresa armadora... (Ctrl+F | Esc limpia todo)"
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
-            >
-              <option value="todos">Todas las Locaciones</option>
-              <option value="VARADERO">Varadero</option>
-              <option value="MUELLE">Muelle</option>
-              <option value="PUERTO">Puertos Aldana</option>
-            </select>
-
-            <select
-              value={requestFilter}
-              onChange={(e) => setRequestFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
-            >
-              <option value="todos">Todos los Estados</option>
-              <option value="pendientes">⚠️ Con Solicitud Activa</option>
-              <option value="completos">✅ Datos Completos</option>
-            </select>
-
-            {(activeRolePerspective !== 'admin' || roleQuickFilter !== 'todos') && (
-              <select
-                value={roleQuickFilter}
-                onChange={(e) => setRoleQuickFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 focus:outline-none focus:border-amber-400 font-bold cursor-pointer"
-              >
-                <option value="todos">Todos los Buques</option>
-                {activeRolePerspective !== 'admin' && <option value="mis_tareas">⚡ Mis Tareas Pendientes</option>}
-                <option value="sin_ot">⚠️ Costos sin OT</option>
-              </select>
-            )}
-
-            {hasActiveFilter && (
-              <button
-                type="button"
-                onClick={clearAllFilters}
-                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
-                title="Limpiar filtros"
-              >
-                <X className="w-3.5 h-3.5" />
-                <span>Limpiar</span>
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Deshacer / Rehacer */}
-            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5">
-              <button
-                type="button"
-                disabled={!shipsGrid.canUndo}
-                onClick={shipsGrid.undo}
-                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                title="Deshacer (Ctrl + Z)"
-              >
-                <Undo2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                disabled={!shipsGrid.canRedo}
-                onClick={shipsGrid.redo}
-                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                title="Rehacer (Ctrl + Y)"
-              >
-                <Redo2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* SWITCHER DE VISTA: FILAS (TABLA) VS FICHAS (TARJETAS) */}
-            <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 p-1 rounded-xl text-xs">
-              <button
-                type="button"
-                onClick={() => setViewModeShips('tabla')}
-                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                  viewModeShips === 'tabla'
-                    ? 'bg-primary text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Vista tipo planilla editable"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Filas</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewModeShips('tarjetas')}
-                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                  viewModeShips === 'tarjetas'
-                    ? 'bg-primary text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Vista de fichas / tarjetas"
-              >
-                <ClipboardList className="w-3.5 h-3.5" />
-                <span>Fichas</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ShipsBarcosToolbar
+        searchInputRef={searchInputRef}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        locationFilter={locationFilter}
+        setLocationFilter={setLocationFilter}
+        requestFilter={requestFilter}
+        setRequestFilter={setRequestFilter}
+        ownerFilter={ownerFilter}
+        setOwnerFilter={setOwnerFilter}
+        owners={owners}
+        activeRolePerspective={activeRolePerspective}
+        roleQuickFilter={roleQuickFilter}
+        setRoleQuickFilter={setRoleQuickFilter}
+        hasActiveFilter={hasActiveFilter}
+        clearAllFilters={clearAllFilters}
+        shipsGrid={shipsGrid}
+        viewModeShips={viewModeShips}
+        setViewModeShips={setViewModeShips}
+      />
 
       {/* VISTA 1: TABLA EDITABLE (ZONA 4) */}
       {viewModeShips === 'tabla' && (

@@ -49,6 +49,7 @@ export default function Terceros() {
     if (kpiParam) setKpiFilter(kpiParam)
     if (shipParam) setSelectedShipFilter(shipParam)
   }, [searchParams])
+  const [selectedOtFilter, setSelectedOtFilter] = useState('todas')
   const [selectedContractorFilter, setSelectedContractorFilter] = useState('todos')
   const [selectedTradeFilter, setSelectedTradeFilter] = useState('todos')
   const [selectedVoucherFilter, setSelectedVoucherFilter] = useState('todos')
@@ -93,13 +94,13 @@ export default function Terceros() {
   const { shipMap, otMap, contractorMap } = useMemo(() => buildTercerosMaps(ships, workOrders, contractors), [ships, workOrders, contractors])
   const kpiCounts = useMemo(() => calculateTercerosKpis(services), [services])
   const filteredServices = useMemo(() => filterTercerosServices(services, {
-    kpiFilter, selectedShipFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm
-  }, { shipMap, otMap, contractorMap }), [services, kpiFilter, selectedShipFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm, shipMap, otMap, contractorMap])
+    kpiFilter, selectedShipFilter, selectedOtFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm
+  }, { shipMap, otMap, contractorMap }), [services, kpiFilter, selectedShipFilter, selectedOtFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm, shipMap, otMap, contractorMap])
 
   const stats = useMemo(() => calculateTercerosStats(selectedIds.size > 0 ? filteredServices.filter((s) => selectedIds.has(s.id)) : filteredServices, filteredServices.length, selectedIds.size > 0), [selectedIds, filteredServices])
-  const hasActiveFilters = Boolean(searchTerm || selectedShipFilter !== 'todos' || selectedContractorFilter !== 'todos' || selectedTradeFilter !== 'todos' || selectedVoucherFilter !== 'todos' || (kpiFilter && kpiFilter !== 'todos'))
+  const hasActiveFilters = Boolean(searchTerm || selectedShipFilter !== 'todos' || selectedOtFilter !== 'todas' || selectedContractorFilter !== 'todos' || selectedTradeFilter !== 'todos' || selectedVoucherFilter !== 'todos' || (kpiFilter && kpiFilter !== 'todos'))
   const clearAllFilters = useCallback(() => {
-    setSearchTerm(''); setSelectedShipFilter('todos'); setSelectedContractorFilter('todos'); setSelectedTradeFilter('todos'); setSelectedVoucherFilter('todos'); setKpiFilter('todos')
+    setSearchTerm(''); setSelectedShipFilter('todos'); setSelectedOtFilter('todas'); setSelectedContractorFilter('todos'); setSelectedTradeFilter('todos'); setSelectedVoucherFilter('todos'); setKpiFilter('todos')
     if (searchParams.toString()) setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams])
 
@@ -204,10 +205,11 @@ export default function Terceros() {
         <TercerosToolbar
           searchTerm={searchTerm} setSearchTerm={setSearchTerm} searchInputRef={searchInputRef}
           selectedShipFilter={selectedShipFilter} setSelectedShipFilter={setSelectedShipFilter}
+          selectedOtFilter={selectedOtFilter} setSelectedOtFilter={setSelectedOtFilter}
           selectedContractorFilter={selectedContractorFilter} setSelectedContractorFilter={setSelectedContractorFilter}
           selectedTradeFilter={selectedTradeFilter} setSelectedTradeFilter={setSelectedTradeFilter}
           selectedVoucherFilter={selectedVoucherFilter} setSelectedVoucherFilter={setSelectedVoucherFilter}
-          ships={ships} contractors={contractors} hasActiveFilters={hasActiveFilters} clearAllFilters={clearAllFilters}
+          ships={ships} workOrders={workOrders} workItems={workItems} contractors={contractors} hasActiveFilters={hasActiveFilters} clearAllFilters={clearAllFilters}
           grid={grid} viewMode={viewMode} setViewMode={setViewMode}
         />
 

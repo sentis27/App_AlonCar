@@ -9,6 +9,7 @@ import {
   LOG_PASTE_FIELDS,
   buildHorasSpreadsheetColumns,
   computeIncompleteWorkerDateKeys,
+  extractLaborFilterOptions,
   filterLaborLogs,
   applyLocalHorasBatchUpdate,
   prepareInlineLogPatch,
@@ -39,6 +40,10 @@ export function useLaborCargaGridState({
   const [filterWorker, setFilterWorker] = useState('')
   const [filterDate, setFilterDate] = useState('')
   const [filterShip, setFilterShip] = useState('')
+  const [filterOt, setFilterOt] = useState('todas')
+  const [filterContractor, setFilterContractor] = useState('todos')
+  const [filterRubro, setFilterRubro] = useState('todos')
+  const [filterModality, setFilterModality] = useState('todas')
   const [inlineLogEdit, setInlineLogEdit] = useState({ id: null, field: null, value: '' })
   const [contractorPickerModal, setContractorPickerModal] = useState({
     isOpen: false,
@@ -66,11 +71,17 @@ export function useLaborCargaGridState({
       filterWorker,
       filterDate,
       filterShip,
+      filterOt,
+      filterContractor,
+      filterRubro,
+      filterModality,
       activeKpiFilter,
       incompleteWorkerDateKeys
     }),
-    [recentLogs, filterWorker, filterDate, filterShip, activeKpiFilter, incompleteWorkerDateKeys]
+    [recentLogs, filterWorker, filterDate, filterShip, filterOt, filterContractor, filterRubro, filterModality, activeKpiFilter, incompleteWorkerDateKeys]
   )
+
+  const { contractorOptions, rubroOptions } = useMemo(() => extractLaborFilterOptions(recentLogs), [recentLogs])
 
   const horasSpreadsheetColumns = useMemo(() => buildHorasSpreadsheetColumns(), [])
 
@@ -242,42 +253,16 @@ export function useLaborCargaGridState({
     }
   }
 
-  const clearAllFilters = () => {
-    setFilterWorker('')
-    setFilterDate('')
-    setFilterShip('')
-    setActiveKpiFilter('todos')
-  }
-
-  const hoursStats = useMemo(
-    () => calculateHoursStats(filteredLogs, selectedLogIds),
-    [filteredLogs, selectedLogIds]
-  )
+  const hasActiveFilters = Boolean(filterWorker || filterDate || filterShip || filterOt !== 'todas' || filterContractor !== 'todos' || filterRubro !== 'todos' || filterModality !== 'todas' || (activeKpiFilter && activeKpiFilter !== 'todos'))
+  const clearAllFilters = () => { setFilterWorker(''); setFilterDate(''); setFilterShip(''); setFilterOt('todas'); setFilterContractor('todos'); setFilterRubro('todos'); setFilterModality('todas'); setActiveKpiFilter('todos') }
+  const hoursStats = useMemo(() => calculateHoursStats(filteredLogs, selectedLogIds), [filteredLogs, selectedLogIds])
 
   return {
-    filterWorker,
-    setFilterWorker,
-    filterDate,
-    setFilterDate,
-    filterShip,
-    setFilterShip,
-    inlineLogEdit,
-    setInlineLogEdit,
-    logSearchInputRef,
-    menuTarget,
-    openMenu,
-    closeMenu,
-    filteredLogs,
-    horasGrid,
-    getHorasCellProps,
-    activateHorasCell,
-    saveInlineLogEdit,
-    handleInsertRow,
-    handleDuplicateRow,
-    contractorPickerModal,
-    setContractorPickerModal,
-    contractorPickerOptions,
-    clearAllFilters,
-    hoursStats
+    filterWorker, setFilterWorker, filterDate, setFilterDate, filterShip, setFilterShip,
+    filterOt, setFilterOt, filterContractor, setFilterContractor, filterRubro, setFilterRubro, filterModality, setFilterModality,
+    contractorOptions, rubroOptions, hasActiveFilters, inlineLogEdit, setInlineLogEdit, logSearchInputRef,
+    menuTarget, openMenu, closeMenu, filteredLogs, horasGrid, getHorasCellProps, activateHorasCell,
+    saveInlineLogEdit, handleInsertRow, handleDuplicateRow, contractorPickerModal, setContractorPickerModal,
+    contractorPickerOptions, clearAllFilters, hoursStats
   }
 }
