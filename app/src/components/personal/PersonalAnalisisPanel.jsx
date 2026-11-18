@@ -6,7 +6,7 @@ import {
   BarChart3,
   AlertCircle
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
+import { loadPersonalAnalysisComparisonService } from '../../services/personalTarifarioService'
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -31,14 +31,9 @@ export default function PersonalAnalisisPanel({ workers = [] }) {
   async function loadComparisonData() {
     try {
       setLoadingComparison(true)
-      const [cardsRes, macroRes] = await Promise.all([
-        supabase.from('rate_cards').select('*').order('year', { ascending: true }).order('month', { ascending: true }).order('quincena', { ascending: true }),
-        supabase.from('macro_variables').select('*').order('year', { ascending: true }).order('month', { ascending: true })
-      ])
-
-      const cards = cardsRes.data || []
+      const { cards, macroVariables: freshMacro } = await loadPersonalAnalysisComparisonService()
       setComparisonCards(cards)
-      if (macroRes.data) setMacroVariables(macroRes.data)
+      if (freshMacro) setMacroVariables(freshMacro)
 
       // Inicializar períodos de comparación con las dos últimas quincenas disponibles
       const map = new Map()

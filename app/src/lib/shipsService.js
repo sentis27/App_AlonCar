@@ -1,24 +1,41 @@
-import { supabase } from './supabase.js'
 import { logCellChange, logRowAction } from './auditService.js'
 import { assignMonotonicFolios } from './monotonicFolioEngine.js'
 import { cleanShipName, cleanLocation } from './shipsConstants.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { ownersRepository } from '../repositories/ownersRepository.js'
+import { shipStaysRepository } from '../repositories/shipStaysRepository.js'
+import { laborLogsRepository } from '../repositories/laborLogsRepository.js'
+import { thirdPartyServicesRepository } from '../repositories/thirdPartyServicesRepository.js'
+import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
 
 const MODULE_ROUTE = '/barcos'
 
+const REPOS_BY_TABLE = {
+  ships: shipsRepository,
+  ship_stays: shipStaysRepository,
+  owners: ownersRepository,
+}
+
 export async function fetchShipsModuleData() {
   const [shipsRes, ownersRes, staysRes, wosRes, itemsRes, oLabRes, oTercRes, oCompRes] = await Promise.all([
-    supabase.from('ships').select('*, owners(*)').order('name', { ascending: true }),
-    supabase.from('owners').select('*').order('name', { ascending: true }),
-    supabase.from('ship_stays').select('*, ships(id, name)').order('start_date', { ascending: false }),
-    supabase.from('work_orders').select('id, ship_id, ot_number, title, status, description, created_at, merged_into_wo_id, notes').order('created_at', { ascending: false }),
-    supabase.from('work_items').select('id, work_order_id, status, description, contractors, work_type').order('created_at', { ascending: true }),
-    supabase.from('labor_logs').select('id, ship_id').is('work_order_id', null),
-    supabase.from('third_party_services').select('id, ship_id').is('work_order_id', null),
-    supabase.from('purchase_orders').select('id, ship_id').is('work_order_id', null)
+    shipsRepository.listShips({ select: '*, owners(*)', orderBy: [{ column: 'name', ascending: true }] }),
+    ownersRepository.listOwners({ select: '*', orderBy: [{ column: 'name', ascending: true }] }),
+    shipStaysRepository.listStays({ select: '*, ships(id, name)', orderBy: [{ column: 'start_date', ascending: false }] }),
+    workOrdersRepository.listWorkOrders({
+      select: 'id, ship_id, ot_number, title, status, description, created_at, merged_into_wo_id, notes',
+    }),
+    workItemsRepository.listWorkItems({
+      select: 'id, work_order_id, status, description, contractors, work_type',
+    }),
+    laborLogsRepository.findAll({ select: 'id, ship_id', isNull: ['work_order_id'] }),
+    thirdPartyServicesRepository.listServices({ select: 'id, ship_id', isNull: ['work_order_id'], orderBy: [] }),
+    purchaseOrdersRepository.listOrders({ select: 'id, ship_id', isNull: ['work_order_id'], orderBy: [] }),
   ])
 
-  const failed = [shipsRes, ownersRes, staysRes, wosRes, itemsRes, oLabRes, oTercRes, oCompRes].find((r) => r.error)
-  if (failed?.error) throw failed.error
+  const firstErr = [shipsRes.error, ownersRes.error, staysRes.error, wosRes.error, itemsRes.error, oLabRes.error, oTercRes.error, oCompRes.error].find(Boolean)
+  if (firstErr) throw new Error(firstErr)
 
   return {
     ships: assignMonotonicFolios(shipsRes.data || [], { dateField: 'created_at' }),
@@ -28,7 +45,7 @@ export async function fetchShipsModuleData() {
     workItems: itemsRes.data || [],
     orphanLabor: oLabRes.data || [],
     orphanTerceros: oTercRes.data || [],
-    orphanCompras: oCompRes.data || []
+    orphanCompras: oCompRes.data || [],
   }
 }
 
@@ -51,7 +68,7 @@ export function buildShipFieldPatch(colKey, rawValue, owners = []) {
     const nextOwner = nextId ? (owners.find((o) => o.id === nextId) || null) : null
     const dbPatch = {
       owner_id: nextId,
-      ...(nextId ? { orphan_owner_alert: false, orphan_owner_previous_name: null } : {})
+      ...(nextId ? { orphan_owner_alert: false, orphan_owner_previous_name: null } : {}),
     }
     return { dbPatch, localPatch: { ...dbPatch, owners: nextOwner }, normalizedValue: nextId || '' }
   }
@@ -100,13 +117,15 @@ export async function updateGridEntityRowsService({
   ids,
   dbPatch,
   auditMeta = null,
-  user = null
+  user = null,
 }) {
-  const query = ids.length === 1
-    ? supabase.from(table).update(dbPatch).eq('id', ids[0])
-    : supabase.from(table).update(dbPatch).in('id', ids)
-  const { error } = await query
-  if (error) throw error
+  const repo = REPOS_BY_TABLE[table]
+  if (!repo) throw new Error(`Tabla no soportada en shipsService: ${table}`)
+
+  const { error } = ids.length === 1
+    ? await repo.updateById(ids[0], dbPatch, { select: null })
+    : await repo.updateByIds(ids, dbPatch, { select: null })
+  if (error) throw new Error(error)
 
   if (auditMeta?.mode === 'cell') {
     await logCellChange({
@@ -120,7 +139,7 @@ export async function updateGridEntityRowsService({
       sheetName,
       moduleRoute: MODULE_ROUTE,
       changeOrigin: auditMeta.changeOrigin || 'INLINE_CELL',
-      user
+      user,
     })
   } else if (auditMeta?.mode === 'batch') {
     await logRowAction({
@@ -132,7 +151,7 @@ export async function updateGridEntityRowsService({
       sheetName,
       moduleRoute: MODULE_ROUTE,
       changeOrigin: 'DRAG_FILL',
-      user
+      user,
     })
   }
 }
@@ -140,13 +159,16 @@ export async function updateGridEntityRowsService({
 export async function syncShipLocationFromStayService({ shipId, location }) {
   if (!shipId || !location) return
   const cleanLoc = cleanLocation(location).toUpperCase()
-  const { error } = await supabase.from('ships').update({ current_location: cleanLoc }).eq('id', shipId)
-  if (error) throw error
+  const { error } = await shipsRepository.updateById(shipId, { current_location: cleanLoc }, { select: null })
+  if (error) throw new Error(error)
 }
 
 async function updateSingleAndAudit({ table, id, patch, action = 'STATUS_CHANGE', entityType, entityName, sheetName, changes, user }) {
-  const { error } = await supabase.from(table).update(patch).eq('id', id)
-  if (error) throw error
+  const repo = REPOS_BY_TABLE[table]
+  if (!repo) throw new Error(`Tabla no soportada: ${table}`)
+  const { error } = await repo.updateById(id, patch, { select: null })
+  if (error) throw new Error(error)
+
   await logRowAction({
     action,
     entityType,
@@ -156,7 +178,7 @@ async function updateSingleAndAudit({ table, id, patch, action = 'STATUS_CHANGE'
     sheetName,
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'QUICK_ACTION',
-    user
+    user,
   })
 }
 
@@ -170,7 +192,7 @@ export async function toggleShipActiveService({ ship, user }) {
     entityType: 'ships',
     entityName: cleanShipName(ship.name),
     sheetName: 'Barcos · Padrón de Buques',
-    user
+    user,
   })
   return nextStatus
 }
@@ -184,7 +206,7 @@ export async function markShipRequestCompleteService({ ship, user }) {
     entityName: cleanShipName(ship.name),
     sheetName: 'Barcos · Padrón de Buques',
     changes: { info_request_status: 'completo' },
-    user
+    user,
   })
 }
 
@@ -196,7 +218,7 @@ export async function dismissShipOrphanAlertService({ ship, user }) {
     entityType: 'ships',
     entityName: cleanShipName(ship.name),
     sheetName: 'Barcos · Padrón de Buques',
-    user
+    user,
   })
 }
 
@@ -208,6 +230,6 @@ export async function closeStayQuickService({ stay, today, user }) {
     entityType: 'ship_stays',
     entityName: `Cierre estadía ${cleanShipName(stay.ships?.name) || stay.id}`,
     sheetName: 'Barcos · Estadías y Movimientos',
-    user
+    user,
   })
 }

@@ -5,8 +5,13 @@ import {
   Clock,
   AlertCircle
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import {
+  loadAdminAlertsComplianceService,
+  resolveAdminComplianceAlertService,
+  approveWorkerPanolPermissionService,
+  approveMaterialRubroHomologationService
+} from '../../services/adminGovernanceService.js'
 import MariaJoseBudgetAlertsCard from '../workOrders/MariaJoseBudgetAlertsCard.jsx'
 import MariaJoseContractAlertsCard from '../personal/MariaJoseContractAlertsCard.jsx'
 
@@ -31,13 +36,7 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
   async function loadAlertData() {
     try {
       setLoading(true)
-      const [pendingMatsRes, complianceRes] = await Promise.all([
-        supabase.from('materials').select('*').eq('rubro_status', 'PENDIENTE_HOMOLOGACION').order('created_at', { ascending: false }),
-        supabase.from('compliance_alerts').select('*, ships(name), workers(name)').eq('status', 'PENDIENTE').order('created_at', { ascending: false })
-      ])
-
-      const pendingMats = pendingMatsRes.data || []
-      const compAlerts = complianceRes.data || []
+      const { pendingMaterials: pendingMats, complianceAlerts: compAlerts } = await loadAdminAlertsComplianceService()
 
       setPendingRubroMaterials(pendingMats)
       setComplianceAlerts(compAlerts)
@@ -62,17 +61,12 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
   async function handleResolveComplianceAlert(alertItem, resolutionNotes = 'Resuelto por Administrador') {
     try {
       const userIdentifier = profile?.full_name || user?.email || 'Jorge Sentis'
-      const { error } = await supabase
-        .from('compliance_alerts')
-        .update({
-          status: 'COMPLETADO',
-          completed_at: new Date().toISOString(),
-          completed_by: userIdentifier,
-          notes: alertItem.notes ? `${alertItem.notes} - [${resolutionNotes}]` : resolutionNotes
-        })
-        .eq('id', alertItem.id)
-
-      if (error) throw error
+      await resolveAdminComplianceAlertService(alertItem.id, {
+        status: 'COMPLETADO',
+        completed_at: new Date().toISOString(),
+        completed_by: userIdentifier,
+        notes: alertItem.notes ? `${alertItem.notes} - [${resolutionNotes}]` : resolutionNotes
+      })
 
       setComplianceAlerts((prev) => {
         const next = prev.filter((a) => a.id !== alertItem.id)
@@ -95,11 +89,7 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
   async function handleApproveWorkerPermission(alertItem) {
     try {
       if (alertItem.entity_id) {
-        const { error: workerErr } = await supabase
-          .from('workers')
-          .update({ can_withdraw_materials: true })
-          .eq('id', alertItem.entity_id)
-        if (workerErr) throw workerErr
+        await approveWorkerPanolPermissionService(alertItem.entity_id)
       }
       await handleResolveComplianceAlert(alertItem, 'Permiso de retiro en Pañol habilitado')
     } catch (err) {
@@ -110,14 +100,7 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
   async function handleApproveMaterialRubro(materialId, finalRubro) {
     if (!finalRubro || !finalRubro.trim()) return alert('Debe indicar el rubro definitivo.')
     try {
-      const { error } = await supabase
-        .from('materials')
-        .update({
-          rubro: finalRubro.trim().toUpperCase(),
-          rubro_status: 'APROBADO'
-        })
-        .eq('id', materialId)
-      if (error) throw error
+      await approveMaterialRubroHomologationService(materialId, finalRubro)
 
       setPendingRubroMaterials((prev) => {
         const next = prev.filter((m) => m.id !== materialId)

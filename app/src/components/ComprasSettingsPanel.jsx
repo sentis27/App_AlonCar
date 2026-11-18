@@ -17,7 +17,10 @@ import {
   Flame,
   ExternalLink
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import {
+  loadComprasSettingsService,
+  saveComprasSettingsService
+} from '../services/comprasOcrSettingsService'
 
 export default function ComprasSettingsPanel() {
   const [loading, setLoading] = useState(true)
@@ -81,12 +84,7 @@ export default function ComprasSettingsPanel() {
   async function fetchSettings() {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('system_settings')
-        .select('*')
-        .in('key', ['compras_whatsapp', 'se_compra_alertas', 'gases_p02_alerta'])
-
-      if (error) throw error
+      const data = await loadComprasSettingsService()
       if (data) {
         const whats = data.find((d) => d.key === 'compras_whatsapp')
         if (whats?.value) {
@@ -118,41 +116,14 @@ export default function ComprasSettingsPanel() {
     e.preventDefault()
     setSaving(true)
     try {
-      const payloadWhats = {
-        key: 'compras_whatsapp',
-        value: settings,
-        updated_at: new Date().toISOString(),
-        updated_by: 'Administrador'
-      }
-
-      const payloadAlerts = {
-        key: 'se_compra_alertas',
-        value: seCompraAlerts,
-        updated_at: new Date().toISOString(),
-        updated_by: 'Administrador'
-      }
-
-            const payloadGases = {
-        key: 'gases_p02_alerta',
-        value: gasesAlert,
-        updated_at: new Date().toISOString(),
-        updated_by: 'Administrador'
-      }
-
-      const { error: err1 } = await supabase
-        .from('system_settings')
-        .upsert(payloadWhats, { onConflict: 'key' })
-      if (err1) throw err1
-
-      const { error: err2 } = await supabase
-        .from('system_settings')
-        .upsert(payloadAlerts, { onConflict: 'key' })
-      if (err2) throw err2
-
-      const { error: err3 } = await supabase
-        .from('system_settings')
-        .upsert(payloadGases, { onConflict: 'key' })
-      if (err3) throw err3
+      await saveComprasSettingsService(
+        [
+          { key: 'compras_whatsapp', value: settings },
+          { key: 'se_compra_alertas', value: seCompraAlerts },
+          { key: 'gases_p02_alerta', value: gasesAlert },
+        ],
+        'Administrador'
+      )
 
       showFeedback('success', 'Configuración de Compras y Alertas guardada correctamente.')
     } catch (err) {

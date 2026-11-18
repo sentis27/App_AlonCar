@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { Brain, Save, Play, RotateCcw, KeyRound, Eye, EyeOff, ScrollText, Cpu } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import {
   DEFAULT_SYSTEM_PROMPTS,
   loadAiProviderConfig,
@@ -8,6 +7,7 @@ import {
   loadSystemPrompts,
   saveSystemPrompt,
   loadAiProcessingLogs,
+  loadAiSandboxCatalogs,
   tabulateCrewMessage
 } from '../lib/aiLaborEngine'
 
@@ -88,17 +88,12 @@ export default function AiGovernancePanel() {
     setRunning(true)
     setSandboxResult(null)
     try {
-      const [w, s, wo, wi] = await Promise.all([
-        supabase.from('workers').select('*'),
-        supabase.from('ships').select('*'),
-        supabase.from('work_orders').select('*'),
-        supabase.from('work_items').select('*')
-      ])
+      const { workers, ships, workOrders, workItems } = await loadAiSandboxCatalogs()
       const result = await tabulateCrewMessage(sandboxText, {
-        workers: w.data || [],
-        ships: s.data || [],
-        workOrders: wo.data || [],
-        workItems: wi.data || [],
+        workers,
+        ships,
+        workOrders,
+        workItems,
         dateLogged: new Date().toISOString().slice(0, 10),
         userEmail: 'Administrador (sandbox)'
       })

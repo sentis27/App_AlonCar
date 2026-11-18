@@ -4,8 +4,9 @@
  * Cumple Candado #3 (Cero SQL en Vista) y Candado #4 (Trazabilidad en audit_logs).
  */
 
-import { supabase } from '../lib/supabase.js'
 import { auditService } from '../lib/auditService.js'
+import { purchaseOrdersRepository, purchaseDocumentsRepository } from '../repositories/purchaseOrdersRepository.js'
+import { materialsRepository } from '../repositories/materialsRepository.js'
 
 const SHEET_PEDIDOS = 'Compras · Pedidos'
 const SHEET_DOCS = 'Compras · Documentos'
@@ -16,11 +17,12 @@ export async function emitWhatsAppOrdersService({ items = [], supplierName = '' 
   const nowIso = new Date().toISOString()
 
   for (const id of ids) {
-    const { error } = await supabase
-      .from('purchase_orders')
-      .update({ status: 'PEDIDO', updated_at: nowIso })
-      .eq('id', id)
-    if (error) throw error
+    const { error } = await purchaseOrdersRepository.updateById(
+      id,
+      { status: 'PEDIDO', updated_at: nowIso },
+      { select: null }
+    )
+    if (error) throw new Error(error)
 
     await auditService.logRowAction({
       action: 'STATUS_CHANGE',
@@ -29,7 +31,7 @@ export async function emitWhatsAppOrdersService({ items = [], supplierName = '' 
       entityName: items.find((it) => it.id === id)?.material_name_raw,
       sheetName: SHEET_PEDIDOS,
       moduleRoute: MODULE_ROUTE,
-      details: { newStatus: 'PEDIDO', channel: 'WhatsApp', supplier: supplierName }
+      details: { newStatus: 'PEDIDO', channel: 'WhatsApp', supplier: supplierName },
     })
   }
 
@@ -40,7 +42,7 @@ export async function uploadPurchaseAttachmentsService({
   order,
   supplierName = 'Proveedor',
   rows = [],
-  extractPdfFn = null
+  extractPdfFn = null,
 }) {
   const year = new Date().getFullYear()
   const rubro = order.work_type || 'General'
@@ -53,10 +55,8 @@ export async function uploadPurchaseAttachmentsService({
     const normalizedName = `${safeDesc}_${safeProv}.${ext}`
     const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${normalizedName}`
 
-    const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, row.file)
-    if (uploadError) throw uploadError
-
-    const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
+    const { data: urlData, error: uploadError } = await purchaseDocumentsRepository.uploadToStorage(storagePath, row.file)
+    if (uploadError) throw new Error(uploadError)
 
     let extractedText = null
     if (
@@ -83,15 +83,11 @@ export async function uploadPurchaseAttachmentsService({
       file_size_bytes: row.file.size,
       doc_type: row.docType,
       is_confidential_labor: row.docType === 'COTIZACION_MANO_OBRA',
-      extracted_text: extractedText
+      extracted_text: extractedText,
     }
 
-    const { data: newDoc, error: dbError } = await supabase
-      .from('purchase_documents')
-      .insert([docPayload])
-      .select()
-      .single()
-    if (dbError) throw dbError
+    const { data: newDoc, error: dbError } = await purchaseDocumentsRepository.insertOne(docPayload)
+    if (dbError) throw new Error(dbError)
 
     await auditService.logRowAction({
       action: 'CREATE',
@@ -100,7 +96,7 @@ export async function uploadPurchaseAttachmentsService({
       entityName: newDoc.original_filename,
       sheetName: SHEET_DOCS,
       moduleRoute: MODULE_ROUTE,
-      details: { orderId: order.id, docType: row.docType }
+      details: { orderId: order.id, docType: row.docType },
     })
 
     uploadedDocs.push(newDoc)
@@ -115,7 +111,7 @@ export async function registerPartialDeliveryService({
   missingQty,
   remitoNumber,
   notes,
-  evidenceFiles = []
+  evidenceFiles = [],
 }) {
   const originalQty = Number(order.quantity) || 1
   const cleanRemito = remitoNumber.trim()
@@ -128,28 +124,23 @@ export async function registerPartialDeliveryService({
     remito_number: cleanRemito,
     status: receivedStatus,
     notes: `${order.notes ? `${order.notes} | ` : ''}Recepción parcial (${receivedQty}/${originalQty}) s/Remito ${cleanRemito}. ${notes}`,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   }
 
   if (order.charge_type === 'VIA_PANOL' && order.material_id) {
-    const { data: matData } = await supabase
-      .from('materials')
-      .select('current_stock')
-      .eq('id', order.material_id)
-      .single()
+    const { data: matData } = await materialsRepository.findById(order.material_id, { select: 'current_stock' })
     if (matData) {
       const newStock = (matData.current_stock || 0) + Number(receivedQty)
-      await supabase.from('materials').update({ current_stock: newStock }).eq('id', order.material_id)
+      await materialsRepository.updateStock(order.material_id, newStock)
     }
   }
 
-  const { data: updatedOriginal, error: errOrig } = await supabase
-    .from('purchase_orders')
-    .update(originalUpdates)
-    .eq('id', order.id)
-    .select()
-    .single()
-  if (errOrig) throw errOrig
+  const { data: updatedOriginal, error: errOrig } = await purchaseOrdersRepository.updateById(
+    order.id,
+    originalUpdates,
+    { select: '*' }
+  )
+  if (errOrig) throw new Error(errOrig)
 
   const childPayload = {
     charge_type: order.charge_type,
@@ -175,15 +166,11 @@ export async function registerPartialDeliveryService({
     parent_order_id: order.id,
     remito_number: cleanRemito,
     fortnight_period: order.fortnight_period,
-    notes: `Saldo faltante de orden anterior. Remito parcial: ${cleanRemito}. ${notes}`
+    notes: `Saldo faltante de orden anterior. Remito parcial: ${cleanRemito}. ${notes}`,
   }
 
-  const { data: childOrder, error: errChild } = await supabase
-    .from('purchase_orders')
-    .insert([childPayload])
-    .select()
-    .single()
-  if (errChild) throw errChild
+  const { data: childOrder, error: errChild } = await purchaseOrdersRepository.insertOne(childPayload)
+  if (errChild) throw new Error(errChild)
 
   const newDocs = []
   if (evidenceFiles.length > 0) {
@@ -191,10 +178,9 @@ export async function registerPartialDeliveryService({
     for (const f of evidenceFiles) {
       const ext = f.name.split('.').pop()
       const storagePath = `cotizaciones/${year}/remitos/${Date.now()}_remito_${cleanRemito.replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`
-      const { error: upErr } = await supabase.storage.from('compras').upload(storagePath, f)
-      if (!upErr) {
-        const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
-        const docPayload = {
+      const { data: urlData, error: upErr } = await purchaseDocumentsRepository.uploadToStorage(storagePath, f)
+      if (!upErr && urlData?.publicUrl) {
+        const { data: docRes } = await purchaseDocumentsRepository.insertOne({
           purchase_order_id: order.id,
           supplier_id: order.supplier_id || null,
           original_filename: f.name,
@@ -205,9 +191,8 @@ export async function registerPartialDeliveryService({
           year,
           file_size_bytes: f.size,
           doc_type: 'REMITO',
-          is_confidential_labor: false
-        }
-        const { data: docRes } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
+          is_confidential_labor: false,
+        })
         if (docRes) newDocs.push(docRes)
       }
     }
@@ -220,19 +205,19 @@ export async function registerPartialDeliveryService({
     entityName: order.material_name_raw,
     sheetName: SHEET_PEDIDOS,
     moduleRoute: MODULE_ROUTE,
-    details: { receivedQty, missingQty, remitoNumber: cleanRemito, childId: childOrder.id }
+    details: { receivedQty, missingQty, remitoNumber: cleanRemito, childId: childOrder.id },
   })
 
   return { originalOrder: updatedOriginal, childOrder, newDocs }
 }
 
 export async function assignSupplierBatchService({ orderIds = [], supplierId, supplierName = 'Proveedor' }) {
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ supplier_id: supplierId, updated_at: new Date().toISOString() })
-    .in('id', orderIds)
-
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.updateByIds(
+    orderIds,
+    { supplier_id: supplierId, updated_at: new Date().toISOString() },
+    { select: null }
+  )
+  if (error) throw new Error(error)
 
   for (const id of orderIds) {
     await auditService.logCellChange({
@@ -243,18 +228,14 @@ export async function assignSupplierBatchService({ orderIds = [], supplierId, su
       oldValue: null,
       newValue: supplierName,
       entityName: supplierName,
-      moduleRoute: MODULE_ROUTE
+      moduleRoute: MODULE_ROUTE,
     })
   }
 }
 
 export async function dispatchMandadosService({ dispatchedIds = [], dispatchInfo, candidateOrders = [], workerName = '' }) {
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update(dispatchInfo)
-    .in('id', dispatchedIds)
-
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.updateByIds(dispatchedIds, dispatchInfo, { select: null })
+  if (error) throw new Error(error)
 
   for (const id of dispatchedIds) {
     await auditService.logRowAction({
@@ -264,7 +245,7 @@ export async function dispatchMandadosService({ dispatchedIds = [], dispatchInfo
       entityName: candidateOrders.find((it) => it.id === id)?.material_name_raw,
       sheetName: SHEET_PEDIDOS,
       moduleRoute: MODULE_ROUTE,
-      details: { worker: workerName, dispatchedAt: dispatchInfo.courier_dispatched_at }
+      details: { worker: workerName, dispatchedAt: dispatchInfo.courier_dispatched_at },
     })
   }
 }

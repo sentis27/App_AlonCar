@@ -12,7 +12,12 @@ import {
   Eye,
   ExternalLink
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
+import {
+  createPurchaseDocumentWithUploadService,
+  updatePurchaseDocumentService,
+  replacePurchaseDocumentFileService,
+  deletePurchaseDocumentService
+} from '../../services/comprasOcrSettingsService'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CrawlerSearchBar from '../CrawlerSearchBar'
@@ -58,11 +63,6 @@ export function UploadDocModal({ order, supplier, onClose, onSuccess }) {
         const normalizedName = `${safeDesc}_${safeProv}.${ext}`
         const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${normalizedName}`
 
-        const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, row.file)
-        if (uploadError) throw uploadError
-
-        const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
-
         let extractedText = null
         if (row.file && (row.file.type === 'application/pdf' || row.file.name.toLowerCase().endsWith('.pdf'))) {
           try {
@@ -72,23 +72,24 @@ export function UploadDocModal({ order, supplier, onClose, onSuccess }) {
           }
         }
 
-        const docPayload = {
-          purchase_order_id: order?.id || null,
-          supplier_id: supplier?.id || null,
-          original_filename: row.file.name,
-          normalized_filename: normalizedName,
-          storage_path: urlData.publicUrl,
-          category: rubro,
-          description: row.description || 'Documento adjunto',
-          year,
-          file_size_bytes: row.file.size,
-          doc_type: row.docType,
-          is_confidential_labor: row.docType === 'COTIZACION_MANO_OBRA',
-          extracted_text: extractedText
-        }
-
-        const { data: newDoc, error: dbError } = await supabase.from('purchase_documents').insert([docPayload]).select().single()
-        if (dbError) throw dbError
+        const newDoc = await createPurchaseDocumentWithUploadService({
+          storagePath,
+          file: row.file,
+          buildPayload: (publicUrl) => ({
+            purchase_order_id: order?.id || null,
+            supplier_id: supplier?.id || null,
+            original_filename: row.file.name,
+            normalized_filename: normalizedName,
+            storage_path: publicUrl,
+            category: rubro,
+            description: row.description || 'Documento adjunto',
+            year,
+            file_size_bytes: row.file.size,
+            doc_type: row.docType,
+            is_confidential_labor: row.docType === 'COTIZACION_MANO_OBRA',
+            extracted_text: extractedText
+          })
+        })
         createdDocs.push(newDoc)
       }
 
@@ -219,8 +220,7 @@ export function DocActionModal({ doc, onClose, onSuccess }) {
         doc_type: docType,
         is_confidential_labor: docType === 'COTIZACION_MANO_OBRA'
       }
-      const { data, error } = await supabase.from('purchase_documents').update(updates).eq('id', doc.id).select().single()
-      if (error) throw error
+      const data = await updatePurchaseDocumentService(doc.id, updates)
       onSuccess({ action: 'update', updatedDoc: data })
     } catch (err) {
       alert('Error actualizando metadatos: ' + err.message)
@@ -242,20 +242,17 @@ export function DocActionModal({ doc, onClose, onSuccess }) {
       const normalizedName = `${safeDesc}_reemplazo.${ext}`
       const storagePath = `cotizaciones/${year}/${rubro}/${Date.now()}_${normalizedName}`
 
-      const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, newFile)
-      if (uploadError) throw uploadError
-
-      const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
-
-      const updates = {
-        original_filename: newFile.name,
-        normalized_filename: normalizedName,
-        storage_path: urlData.publicUrl,
-        file_size_bytes: newFile.size
-      }
-
-      const { data, error } = await supabase.from('purchase_documents').update(updates).eq('id', doc.id).select().single()
-      if (error) throw error
+      const data = await replacePurchaseDocumentFileService({
+        docId: doc.id,
+        storagePath,
+        file: newFile,
+        buildUpdates: (publicUrl) => ({
+          original_filename: newFile.name,
+          normalized_filename: normalizedName,
+          storage_path: publicUrl,
+          file_size_bytes: newFile.size
+        })
+      })
 
       onSuccess({ action: 'replace', updatedDoc: data })
     } catch (err) {
@@ -269,8 +266,7 @@ export function DocActionModal({ doc, onClose, onSuccess }) {
     if (!confirm(`¿Eliminar definitivamente el documento "${doc.original_filename}"? Se borrará el archivo de la nube.`)) return
     setProcessing(true)
     try {
-      const { error: dbError } = await supabase.from('purchase_documents').delete().eq('id', doc.id)
-      if (dbError) throw dbError
+      await deletePurchaseDocumentService(doc.id)
 
       onSuccess({ action: 'delete', deletedId: doc.id })
     } catch (err) {

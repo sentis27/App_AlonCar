@@ -15,10 +15,18 @@ import {
   AlertCircle,
   X
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { assignMonotonicFolios } from '../../lib/monotonicFolioEngine.js'
 import { saveMacroVariables } from '../../lib/macroVariablesService.js'
+import {
+  loadAdminMacroBoardDataService,
+  quickSaveAdminMacroMonthService,
+  adjustAdminQuincenaDollarService,
+  deleteAdminMacroRecordService,
+  toggleAdminPeriodLockService,
+  deleteAdminRateCardsByPeriodService,
+  deleteAdminRateCardsByPeriodsService
+} from '../../services/adminGovernanceService.js'
 
 export const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
@@ -74,15 +82,10 @@ export default function AdminMacroPanel() {
   async function loadMacroData() {
     try {
       setLoadingMacro(true)
-      const [macroRes, ratesRes] = await Promise.all([
-        supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
-        supabase.from('rate_cards').select('period, year, month, quincena, dollar_rate, monthly_inflation_pct, is_locked, entity_name, admin_center').order('year', { ascending: false }).order('month', { ascending: false }).order('quincena', { ascending: false })
-      ])
+      const { macroVariables: rawMacro, rateCards: ratesList } = await loadAdminMacroBoardDataService()
 
-      const macroList = assignMonotonicFolios(macroRes.data || [], { dateField: 'created_at' })
+      const macroList = assignMonotonicFolios(rawMacro, { dateField: 'created_at' })
       setMacroVariables(macroList)
-
-      const ratesList = ratesRes.data || []
       
       // Construir mapa unificado de quincenas:
       const periodMap = new Map()
@@ -215,29 +218,13 @@ export default function AdminMacroPanel() {
       const dRate = parseFloat(macroForm.dollar_rate) || 1500
       const infPct = parseFloat(macroForm.monthly_inflation_pct) || 0
 
-      const { error: macroErr } = await supabase
-        .from('macro_variables')
-        .upsert({
-          year: yr,
-          month: mo,
-          dollar_rate: dRate,
-          dollar_rate_1q: dRate,
-          dollar_rate_2q: dRate,
-          monthly_inflation_pct: infPct,
-          updated_by: profile?.full_name || user?.email || 'Administrador',
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'year,month' })
-
-      if (macroErr) throw macroErr
-
-      await supabase
-        .from('rate_cards')
-        .update({
-          dollar_rate: dRate,
-          monthly_inflation_pct: infPct
-        })
-        .eq('year', yr)
-        .eq('month', mo)
+      await quickSaveAdminMacroMonthService({
+        year: yr,
+        month: mo,
+        dollar_rate: dRate,
+        monthly_inflation_pct: infPct,
+        updated_by: profile?.full_name || user?.email || 'Administrador'
+      })
 
       setMessage({
         type: 'success',
@@ -334,17 +321,13 @@ export default function AdminMacroPanel() {
       const { period, year, month, quincena, dollar_rate } = quincenaDollarModal
       const newD = parseFloat(dollar_rate) || 1500
 
-      const col = quincena === 1 ? 'dollar_rate_1q' : 'dollar_rate_2q'
-      await supabase
-        .from('macro_variables')
-        .update({ [col]: newD, updated_at: new Date().toISOString() })
-        .eq('year', year)
-        .eq('month', month)
-
-      await supabase
-        .from('rate_cards')
-        .update({ dollar_rate: newD })
-        .eq('period', period)
+      await adjustAdminQuincenaDollarService({
+        period,
+        year,
+        month,
+        quincena,
+        dollar_rate: newD
+      })
 
       setMessage({
         type: 'success',
@@ -363,12 +346,7 @@ export default function AdminMacroPanel() {
     const monthName = MONTH_NAMES[item.month - 1]
     if (!window.confirm(`¿Estás seguro de eliminar el registro macroeconómico de ${monthName} ${item.year}?`)) return
     try {
-      const { error } = await supabase
-        .from('macro_variables')
-        .delete()
-        .eq('id', item.id)
-
-      if (error) throw error
+      await deleteAdminMacroRecordService(item.id)
 
       setMessage({
         type: 'info',
@@ -389,17 +367,13 @@ export default function AdminMacroPanel() {
     setRatePeriods(prev => prev.map(p => p.period === periodKey ? { ...p, is_locked: newLockState } : p))
 
     try {
-      const col = periodItem.quincena === 1 ? 'is_locked_1q' : 'is_locked_2q'
-      await supabase
-        .from('macro_variables')
-        .update({ [col]: newLockState })
-        .eq('year', periodItem.year)
-        .eq('month', periodItem.month)
-
-      await supabase
-        .from('rate_cards')
-        .update({ is_locked: newLockState })
-        .eq('period', periodKey)
+      await toggleAdminPeriodLockService({
+        period: periodKey,
+        year: periodItem.year,
+        month: periodItem.month,
+        quincena: periodItem.quincena,
+        isLocked: newLockState
+      })
 
       setMessage({
         type: 'info',
@@ -432,12 +406,7 @@ export default function AdminMacroPanel() {
   async function handleDeleteSinglePeriod(p) {
     if (!window.confirm(`¿Confirmas eliminar las tarifas y registros de la quincena "${p.period}"?`)) return
     try {
-      const { error } = await supabase
-        .from('rate_cards')
-        .delete()
-        .eq('period', p.period)
-
-      if (error) throw error
+      await deleteAdminRateCardsByPeriodService(p.period)
 
       setMessage({
         type: 'info',
@@ -458,12 +427,7 @@ export default function AdminMacroPanel() {
     try {
       const periodsArr = Array.from(selectedPeriods)
 
-      const { error } = await supabase
-        .from('rate_cards')
-        .delete()
-        .in('period', periodsArr)
-
-      if (error) throw error
+      await deleteAdminRateCardsByPeriodsService(periodsArr)
 
       setMessage({
         type: 'success',

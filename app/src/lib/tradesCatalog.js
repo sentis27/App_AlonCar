@@ -1,4 +1,6 @@
-import { supabase } from './supabase.js'
+import { logRowAction } from './auditService.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { systemSettingsRepository } from '../repositories/systemSettingsRepository.js'
 
 // ============================================================================
 // CATÁLOGO OFICIAL UNIFICADO DE RUBROS Y OFICIOS (ALON CAR ERP)
@@ -116,26 +118,23 @@ export function parseWorkerTrades(tradeStr = '') {
  * Fuente única de verdad consumida tanto por el Panel de Administración como por Personal.
  */
 export async function fetchTradesCatalog() {
-  // 1. Obtener operarios de la base de datos con columnas reales verificadas
-  const { data: workersData, error: workersErr } = await supabase
-    .from('workers')
-    .select('id, name, trade, admin_center, status')
+  const { data: workersData, error: workersErr } = await workersRepository.listWorkers({
+    select: 'id, name, trade, admin_center, status',
+    orderBy: [],
+  })
 
   if (workersErr) {
     console.error('Error cargando operarios en tradesCatalog:', workersErr)
-    throw workersErr
+    throw new Error(workersErr)
   }
 
   const workers = workersData || []
 
-  // 2. Cargar lista maestra persistida en system_settings si existe
   let savedCustom = []
   try {
-    const { data: settingsData, error: settingsErr } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'master_trades')
-      .maybeSingle()
+    const { data: settingsData, error: settingsErr } = await systemSettingsRepository.getByKey('master_trades', {
+      select: 'value',
+    })
 
     if (!settingsErr && Array.isArray(settingsData?.value)) {
       savedCustom = settingsData.value
@@ -205,16 +204,11 @@ export async function createMasterTrade(newTradeName, currentTrades) {
 
   const updatedList = Array.from(new Set([...currentTrades, clean])).sort()
 
-  const { error } = await supabase
-    .from('system_settings')
-    .upsert({
-      key: 'master_trades',
-      value: updatedList,
-      updated_at: new Date().toISOString(),
-      updated_by: 'Administrador'
-    }, { onConflict: 'key' })
+  const { error } = await systemSettingsRepository.saveByKey('master_trades', updatedList, {
+    updatedBy: 'Administrador',
+  })
 
-  if (error) throw error
+  if (error) throw new Error(error)
   return updatedList
 }
 
@@ -226,41 +220,26 @@ export async function renameMasterTrade(oldName, newName, currentTrades, affecte
   if (!cleanNew) throw new Error('El nuevo nombre del rubro no puede estar vacío.')
   if (oldName === cleanNew) return currentTrades
 
-  // 1. Propagación masiva en workers
   if (affectedCount > 0) {
-    const { error: workersErr } = await supabase
-      .from('workers')
-      .update({ trade: cleanNew })
-      .eq('trade', oldName)
-
-    if (workersErr) throw workersErr
+    const { error: workersErr } = await workersRepository.updateWorkersByTrade(oldName, { trade: cleanNew })
+    if (workersErr) throw new Error(workersErr)
   }
 
-  // 2. Actualizar system_settings
-  const updatedList = currentTrades.map(t => t === oldName ? cleanNew : t).sort()
-  const { error: settingsErr } = await supabase
-    .from('system_settings')
-    .upsert({
-      key: 'master_trades',
-      value: updatedList,
-      updated_at: new Date().toISOString(),
-      updated_by: 'Administrador'
-    }, { onConflict: 'key' })
+  const updatedList = currentTrades.map((t) => (t === oldName ? cleanNew : t)).sort()
+  const { error: settingsErr } = await systemSettingsRepository.saveByKey('master_trades', updatedList, {
+    updatedBy: 'Administrador',
+  })
+  if (settingsErr) throw new Error(settingsErr)
 
-  if (settingsErr) throw settingsErr
-
-  // 3. Registrar auditoría
-  try {
-    await supabase.from('audit_logs').insert({
-      action: 'RENAME_TRADE',
-      entity: 'trades',
-      entity_id: cleanNew,
-      details: { oldName, newName: cleanNew, affectedWorkers: affectedCount },
-      created_at: new Date().toISOString()
-    })
-  } catch (logErr) {
-    console.warn('No se pudo registrar log de auditoría:', logErr)
-  }
+  await logRowAction({
+    action: 'RENAME_TRADE',
+    entityType: 'system_settings',
+    entityId: cleanNew,
+    entityName: `Rubro ${oldName} -> ${cleanNew}`,
+    details: { oldName, newName: cleanNew, affectedWorkers: affectedCount },
+    sheetName: 'Admin · Gestión de Rubros & Oficios',
+    moduleRoute: '/admin',
+  })
 
   return updatedList
 }
@@ -273,41 +252,28 @@ export async function deleteMasterTrade(tradeToDelete, reassignToTrade, currentT
     throw new Error('Debe especificar un rubro de destino para reasignar a los operarios asignados.')
   }
 
-  // 1. Reasignar operarios en workers si hay asignados
   if (affectedCount > 0) {
-    const { error: reassignErr } = await supabase
-      .from('workers')
-      .update({ trade: reassignToTrade })
-      .eq('trade', tradeToDelete)
-
-    if (reassignErr) throw reassignErr
-  }
-
-  // 2. Actualizar system_settings
-  const updatedList = currentTrades.filter(t => t !== tradeToDelete)
-  const { error: settingsErr } = await supabase
-    .from('system_settings')
-    .upsert({
-      key: 'master_trades',
-      value: updatedList,
-      updated_at: new Date().toISOString(),
-      updated_by: 'Administrador'
-    }, { onConflict: 'key' })
-
-  if (settingsErr) throw settingsErr
-
-  // 3. Auditoría
-  try {
-    await supabase.from('audit_logs').insert({
-      action: 'DELETE_TRADE',
-      entity: 'trades',
-      entity_id: tradeToDelete,
-      details: { tradeToDelete, reassignTo: reassignToTrade || null, affectedWorkers: affectedCount },
-      created_at: new Date().toISOString()
+    const { error: reassignErr } = await workersRepository.updateWorkersByTrade(tradeToDelete, {
+      trade: reassignToTrade,
     })
-  } catch (logErr) {
-    console.warn('No se pudo registrar log de auditoría:', logErr)
+    if (reassignErr) throw new Error(reassignErr)
   }
+
+  const updatedList = currentTrades.filter((t) => t !== tradeToDelete)
+  const { error: settingsErr } = await systemSettingsRepository.saveByKey('master_trades', updatedList, {
+    updatedBy: 'Administrador',
+  })
+  if (settingsErr) throw new Error(settingsErr)
+
+  await logRowAction({
+    action: 'DELETE_TRADE',
+    entityType: 'system_settings',
+    entityId: tradeToDelete,
+    entityName: `Baja de rubro ${tradeToDelete}`,
+    details: { tradeToDelete, reassignTo: reassignToTrade || null, affectedWorkers: affectedCount },
+    sheetName: 'Admin · Gestión de Rubros & Oficios',
+    moduleRoute: '/admin',
+  })
 
   return updatedList
 }

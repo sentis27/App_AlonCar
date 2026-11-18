@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
 import { deduceUnitMeasure } from '../../lib/comprasConstants'
-import { auditService } from '../../lib/auditService'
+import { savePurchaseOrdersFromModalService } from '../../services/comprasOcrSettingsService'
 import { buildStandardShipWorkOrdersCatalog } from '../../lib/workOrderUnificationEngine'
 import { resolveWorkerIdFromCatalog } from '../../lib/workerIdentity'
 
@@ -177,35 +176,11 @@ export default function OrderFormModal({
         updated_at: new Date().toISOString()
       }))
 
-      if (order?.id) {
-        const { data, error } = await supabase.from('purchase_orders').update(payloads[0]).eq('id', order.id).select().single()
-        if (error) throw error
-        await auditService.logRowAction({
-          action: 'UPDATE',
-          entityType: 'purchase_orders',
-          entityId: order.id,
-          entityName: payloads[0].material_name_raw,
-          sheetName: 'Compras · Pedidos',
-          moduleRoute: '/compras',
-          details: { updatedOrder: payloads[0] }
-        })
-        onSuccess([data])
-      } else {
-        const { data, error } = await supabase.from('purchase_orders').insert(payloads).select()
-        if (error) throw error
-        for (const inserted of (data || [])) {
-          await auditService.logRowAction({
-            action: 'CREATE',
-            entityType: 'purchase_orders',
-            entityId: inserted.id,
-            entityName: inserted.material_name_raw,
-            sheetName: 'Compras · Pedidos',
-            moduleRoute: '/compras',
-            details: { newOrder: inserted }
-          })
-        }
-        onSuccess(data)
-      }
+      const savedRows = await savePurchaseOrdersFromModalService({
+        orderId: order?.id || null,
+        payloads
+      })
+      onSuccess(savedRows)
     } catch (err) {
       console.error('Error guardando pedido:', err)
       alert('Error guardando pedido: ' + err.message)

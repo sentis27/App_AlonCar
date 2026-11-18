@@ -25,16 +25,32 @@ export function createRateCardsRepository({ client = defaultClient, audit = { lo
   return {
     ...base,
 
-    async listRateCards({ period, adminCenter, page, pageSize } = {}) {
+    async listRateCards({ select = '*', period, adminCenter, year, month, page, pageSize, limit } = {}) {
       return base.findAll({
+        select,
         orderBy: DEFAULT_ORDER,
         filters: {
           period,
           admin_center: adminCenter,
+          year,
+          month,
         },
         page,
         pageSize,
+        limit,
       })
+    },
+
+    async getLatestPeriodRate() {
+      return base.findOne({
+        select: 'period, dollar_rate, year, month, quincena',
+        orderBy: DEFAULT_ORDER,
+      })
+    },
+
+    async updateByPeriod(period, patch, opts = {}) {
+      if (!period) return { data: null, error: 'period requerido para actualizar rate_cards' }
+      return base.updateWhere({ filters: { period } }, patch, opts)
     },
 
     async saveRateCard(rateCard, { isNew = false, changedBy = 'Operador Web', validate = true } = {}) {

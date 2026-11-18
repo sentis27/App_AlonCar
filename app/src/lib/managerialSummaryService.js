@@ -11,10 +11,24 @@
  * - Toda mutación del Remito Comercial o parámetros audita en `audit_logs` via `auditService.js`.
  */
 
-import { supabase } from './supabase.js'
 import { computeManagerialCostSummary, classifyWithdrawalCost } from './workCostRules.js'
 import { matchTransactionWorker } from './contractorDeductionsService.js'
 import { getDollarRateForDate } from './tercerosConstants.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { shipStaysRepository } from '../repositories/shipStaysRepository.js'
+import { ownersRepository } from '../repositories/ownersRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
+import { laborLogsRepository } from '../repositories/laborLogsRepository.js'
+import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
+import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
+import { materialsRepository } from '../repositories/materialsRepository.js'
+import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
+import { thirdPartyServicesRepository } from '../repositories/thirdPartyServicesRepository.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
+import { systemSettingsRepository } from '../repositories/systemSettingsRepository.js'
+import { otTemplatesRepository } from '../repositories/otTemplatesRepository.js'
 import {
   isThirdPartyZeroCost,
   isPanolTxZeroCost,
@@ -122,64 +136,56 @@ export async function fetchManagerialData() {
     workersRes,
     macroRes,
     settingsRes,
-    otTemplatesRes
+    otTemplatesRes,
   ] = await Promise.all([
-    supabase
-      .from('ships')
-      .select('id, name, client_name, status, owner_id, vessel_type, eslora_mts, manga_mts, puntal_mts, superficie_casco_m2, current_location, is_active, created_at')
-      .order('name'),
-    supabase.from('ship_stays').select('*').order('start_date', { ascending: false }),
-    supabase.from('owners').select('id, name, cuit, armador_name'),
-    supabase
-      .from('work_orders')
-      .select('id, ship_id, ot_number, title, description, work_type, assignment_type, budget_code, foreman_name, contractor_name, start_date, estimated_end_date, closed_at, status, is_tabulated, created_at, merged_into_wo_id, notes')
-      .order('ot_number'),
-    supabase
-      .from('work_items')
-      .select('id, work_order_id, description, contractors, trade, foreman_name, work_type, assignment_type, specific_budget_id, status, voucher_type, voucher_number, created_at'),
-    supabase
-      .from('labor_logs')
-      .select('id, ship_id, work_order_id, work_item_id, worker_id, worker_name, worker_type, rubro, work_type, cost_center, hours_worked, hours_normal, hours_extra_50, hours_extra_100, approval_status, review_reason, notes, date_logged, created_at')
-      .order('date_logged', { ascending: false })
-      .limit(4000),
-    supabase
-      .from('rate_cards')
-      .select('id, period, year, month, quincena, admin_center, entity_name, rate_oficial_ars, rate_oficial_usd, has_ayudante, rate_ayudante_ars, rate_ayudante_usd, dollar_rate')
-      .order('year', { ascending: false })
-      .order('month', { ascending: false })
-      .order('quincena', { ascending: false }),
-    supabase
-      .from('inventory_transactions')
-      .select('id, material_id, work_order_id, work_item_id, ship_id, worker_id, worker_name, contractor_name, movement_type, quantity_withdrawn, unit_cost_ars_snapshot, unit_cost_usd_snapshot, weight_total, cost_center, voucher_number, notes, transaction_date, is_deletion_requested')
-      .order('transaction_date', { ascending: false })
-      .limit(3000),
-    supabase
-      .from('materials')
-      .select('id, name, category, rubro, cost_ars, cost_usd, weight_kg, current_stock, minimum_stock, unit_measure, requires_stock_control'),
-    supabase
-      .from('purchase_orders')
-      .select('id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, unit_measure, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, invoice_number, remito_number, requested_by_name, observations')
-      .order('order_date', { ascending: false })
-      .limit(2000),
-    supabase
-      .from('third_party_services')
-      .select('id, ship_id, work_order_id, work_item_id, contractor_name, trade, voucher_type, voucher_number, invoice_number, supplier_remito_number, budget_number, internal_remito_number, amount_ars, usd_rate, amount_usd, service_date, entry_date, voucher_date, direct_observations, specific_observations, is_active, audit_status, created_at')
-      .order('service_date', { ascending: false }),
-    supabase
-      .from('workers')
-      .select('id, name, work_group, trade, admin_center, category, hourly_rate_ars, hourly_rate_usd, consumables, consumables_discount_pct, safety_items, status'),
-    supabase
-      .from('macro_variables')
-      .select('*')
-      .order('year', { ascending: false })
-      .order('month', { ascending: false }),
-    supabase.from('system_settings').select('key, value, updated_at, updated_by'),
-    supabase.from('ot_templates').select('*').order('sort_order').order('name')
+    shipsRepository.listShips({ select: 'id, name, client_name, status, owner_id, vessel_type, eslora_mts, manga_mts, puntal_mts, superficie_casco_m2, current_location, is_active, created_at' }),
+    shipStaysRepository.listStays(),
+    ownersRepository.listOwners({ select: 'id, name, cuit, armador_name', orderBy: [] }),
+    workOrdersRepository.listWorkOrders({
+      select: 'id, ship_id, ot_number, title, description, work_type, assignment_type, budget_code, foreman_name, contractor_name, start_date, estimated_end_date, closed_at, status, is_tabulated, created_at, merged_into_wo_id, notes',
+      orderBy: [{ column: 'ot_number', ascending: true }],
+    }),
+    workItemsRepository.listWorkItems({
+      select: 'id, work_order_id, description, contractors, trade, foreman_name, work_type, assignment_type, specific_budget_id, status, voucher_type, voucher_number, created_at',
+      orderBy: [],
+    }),
+    laborLogsRepository.listLaborLogs({
+      select: 'id, ship_id, work_order_id, work_item_id, worker_id, worker_name, worker_type, rubro, work_type, cost_center, hours_worked, hours_normal, hours_extra_50, hours_extra_100, approval_status, review_reason, notes, date_logged, created_at',
+      orderBy: [{ column: 'date_logged', ascending: false }],
+      limit: 4000,
+    }),
+    rateCardsRepository.listRateCards({
+      select: 'id, period, year, month, quincena, admin_center, entity_name, rate_oficial_ars, rate_oficial_usd, has_ayudante, rate_ayudante_ars, rate_ayudante_usd, dollar_rate',
+    }),
+    inventoryTransactionsRepository.listTransactions({
+      select: 'id, material_id, work_order_id, work_item_id, ship_id, worker_id, worker_name, contractor_name, movement_type, quantity_withdrawn, unit_cost_ars_snapshot, unit_cost_usd_snapshot, weight_total, cost_center, voucher_number, notes, transaction_date, is_deletion_requested',
+      limit: 3000,
+    }),
+    materialsRepository.listMaterials({
+      select: 'id, name, category, rubro, cost_ars, cost_usd, weight_kg, current_stock, minimum_stock, unit_measure, requires_stock_control',
+      orderBy: [],
+    }),
+    purchaseOrdersRepository.listOrders({
+      select: 'id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, unit_measure, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, invoice_number, remito_number, requested_by_name, observations',
+      orderBy: [{ column: 'order_date', ascending: false }],
+      limit: 2000,
+    }),
+    thirdPartyServicesRepository.listServices({
+      select: 'id, ship_id, work_order_id, work_item_id, contractor_name, trade, voucher_type, voucher_number, invoice_number, supplier_remito_number, budget_number, internal_remito_number, amount_ars, usd_rate, amount_usd, service_date, entry_date, voucher_date, direct_observations, specific_observations, is_active, audit_status, created_at',
+      orderBy: [{ column: 'service_date', ascending: false }],
+    }),
+    workersRepository.listWorkers({
+      select: 'id, name, work_group, trade, admin_center, category, hourly_rate_ars, hourly_rate_usd, consumables, consumables_discount_pct, safety_items, status',
+      orderBy: [],
+    }),
+    macroVariablesRepository.listMacroVariables(),
+    systemSettingsRepository.listSettings(),
+    otTemplatesRepository.listTemplates(),
   ])
 
   const warnings = []
   const check = (res, name) => {
-    if (res?.error) warnings.push(`${name}: ${res.error.message}`)
+    if (res?.error) warnings.push(`${name}: ${res.error}`)
     return res?.data || []
   }
 
@@ -1194,20 +1200,11 @@ export async function saveSystemSettingJson(key, value, updatedBy = 'Dirección'
   if (!key) throw new Error('Clave de configuración requerida.')
   if (isInvalidEventOrObjectScalar(key)) throw new Error('Clave inválida.')
 
-  const payload = {
-    key: String(key),
-    value,
-    updated_at: new Date().toISOString(),
-    updated_by: String(updatedBy || 'Dirección')
-  }
+  const { data, error } = await systemSettingsRepository.saveByKey(key, value, {
+    updatedBy: String(updatedBy || 'Dirección'),
+  })
 
-  const { data, error } = await supabase
-    .from('system_settings')
-    .upsert([payload], { onConflict: 'key' })
-    .select()
-    .single()
-
-  if (error) throw error
+  if (error) throw new Error(error)
   return data
 }
 

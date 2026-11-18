@@ -4,11 +4,13 @@
  * Cumple Candado #3 (Cero SQL en vistas/hooks) y Candado #4 (Trazabilidad en audit_logs).
  */
 
-import { supabase } from '../lib/supabase.js'
 import { auditService } from '../lib/auditService.js'
 import { HOUR_NUMERIC_FIELDS } from '../lib/laborCargaGridHelpers.js'
 import { resolveSingleWorkItemId } from '../lib/workOrderUnificationEngine.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog, stampWorkerIdOnRecord } from '../lib/workerIdentity.js'
+import { laborLogsRepository } from '../repositories/laborLogsRepository.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 
 const SHEET_NAME = 'Carga e Imputación de Horas'
 const MODULE_ROUTE = '/horas'
@@ -20,20 +22,20 @@ export async function insertLaborBatchService({
   payload = [],
   totalHorasGenerales = 0,
   changeOrigin = 'BATCH_CREW_FORM',
-  userEmail = null
+  userEmail = null,
 }) {
   if (!Array.isArray(payload) || payload.length === 0) {
     throw new Error('El lote de imputaciones está vacío.')
   }
 
   let safePayload = payload
-  if (safePayload.some(row => !row.worker_id && row.worker_name)) {
-    const workersCatalog = await getWorkersLookupCached(supabase)
-    safePayload = safePayload.map(row => stampWorkerIdOnRecord(row, workersCatalog))
+  if (safePayload.some((row) => !row.worker_id && row.worker_name)) {
+    const workersCatalog = await getWorkersLookupCached()
+    safePayload = safePayload.map((row) => stampWorkerIdOnRecord(row, workersCatalog))
   }
 
-  const { error } = await supabase.from('labor_logs').insert(safePayload)
-  if (error) throw error
+  const { error } = await laborLogsRepository.insertMany(safePayload, { select: null })
+  if (error) throw new Error(error)
 
   await auditService.logRowAction({
     action: 'ROW_INSERT',
@@ -44,7 +46,7 @@ export async function insertLaborBatchService({
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
     changeOrigin,
-    user: userEmail
+    user: userEmail,
   })
 
   return { ok: true, count: payload.length }
@@ -59,7 +61,7 @@ export async function batchUpdateLaborLogsService({
   targetIds = [],
   recentLogs = [],
   workItems = [],
-  userEmail = null
+  userEmail = null,
 }) {
   if (!targetIds || targetIds.length === 0) return { ok: true, count: 0 }
 
@@ -67,15 +69,16 @@ export async function batchUpdateLaborLogsService({
     const num = parseFloat(newValue) || 0
     await Promise.all(
       targetIds.map(async (id) => {
-        const targetLog = recentLogs.find(x => x.id === id)
+        const targetLog = recentLogs.find((x) => x.id === id)
         const n = colKey === 'hours_normal' ? num : (parseFloat(targetLog?.hours_normal) || 0)
         const h50 = colKey === 'hours_extra_50' ? num : (parseFloat(targetLog?.hours_extra_50) || 0)
         const h100 = colKey === 'hours_extra_100' ? num : (parseFloat(targetLog?.hours_extra_100) || 0)
-        const { error } = await supabase
-          .from('labor_logs')
-          .update({ [colKey]: num, hours_worked: n + h50 + h100 })
-          .eq('id', id)
-        if (error) throw error
+        const { error } = await laborLogsRepository.updateById(
+          id,
+          { [colKey]: num, hours_worked: n + h50 + h100 },
+          { select: null }
+        )
+        if (error) throw new Error(error)
       })
     )
   } else {
@@ -91,13 +94,13 @@ export async function batchUpdateLaborLogsService({
       payload.work_type = ['HORA', 'PRESUPUESTO', 'CONTROL'].includes(upperWt) ? upperWt : 'HORA'
     } else if (colKey === 'worker_name') {
       payload.worker_name = newValue
-      const workersCatalog = await getWorkersLookupCached(supabase)
+      const workersCatalog = await getWorkersLookupCached()
       payload.worker_id = resolveWorkerIdFromCatalog(newValue, workersCatalog)
     } else {
       payload[colKey] = newValue
     }
-    const { error } = await supabase.from('labor_logs').update(payload).in('id', targetIds)
-    if (error) throw error
+    const { error } = await laborLogsRepository.updateByIds(targetIds, payload, { select: null })
+    if (error) throw new Error(error)
   }
 
   await auditService.logRowAction({
@@ -109,7 +112,7 @@ export async function batchUpdateLaborLogsService({
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'GRID_BATCH_EDIT',
-    user: userEmail
+    user: userEmail,
   })
 
   return { ok: true, count: targetIds.length }
@@ -124,20 +127,20 @@ export async function updateInlineLaborLogService({
   cleanedVal,
   extraPayload = {},
   targetLog = {},
-  userEmail = null
+  userEmail = null,
 }) {
   const finalExtra = { ...extraPayload }
   if (field === 'worker_name' && !finalExtra.worker_id) {
-    const workersCatalog = await getWorkersLookupCached(supabase)
+    const workersCatalog = await getWorkersLookupCached()
     finalExtra.worker_id = resolveWorkerIdFromCatalog(cleanedVal, workersCatalog)
   }
 
-  const { error } = await supabase
-    .from('labor_logs')
-    .update({ [field]: cleanedVal, ...finalExtra })
-    .eq('id', logId)
-
-  if (error) throw error
+  const { error } = await laborLogsRepository.updateById(
+    logId,
+    { [field]: cleanedVal, ...finalExtra },
+    { select: null }
+  )
+  if (error) throw new Error(error)
 
   await auditService.logCellChange({
     entityType: 'daily_labor_logs',
@@ -150,7 +153,7 @@ export async function updateInlineLaborLogService({
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'INLINE_CELL',
-    user: userEmail
+    user: userEmail,
   })
 
   return { ok: true }
@@ -160,13 +163,8 @@ export async function updateInlineLaborLogService({
  * Inserta una fila en blanco al inicio de la grilla y devuelve el registro con relaciones.
  */
 export async function insertBlankLaborLogService({ newPayload, userEmail = null }) {
-  const { data, error } = await supabase
-    .from('labor_logs')
-    .insert([newPayload])
-    .select('*, ships(id, name), work_orders(id, ot_number, title, ship_id, work_type)')
-    .single()
-
-  if (error) throw error
+  const { data, error } = await laborLogsRepository.insertBlankRow(newPayload)
+  if (error) throw new Error(error)
 
   await auditService.logRowAction({
     action: 'ROW_INSERT',
@@ -177,7 +175,7 @@ export async function insertBlankLaborLogService({ newPayload, userEmail = null 
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'GRID_RIBBON_INSERT',
-    user: userEmail
+    user: userEmail,
   })
 
   return data
@@ -190,33 +188,29 @@ export async function quickCreateShipAndWoService({
   shipNameClean,
   existingShip = null,
   workerName = 'cuadrilla',
-  userEmail = null
+  userEmail = null,
 }) {
   let targetShip = existingShip
   if (!targetShip) {
-    const { data: shipData, error: shipErr } = await supabase
-      .from('ships')
-      .insert([{ name: shipNameClean, client_name: shipNameClean, status: 'Activo' }])
-      .select()
-      .single()
-    if (shipErr) throw shipErr
+    const { data: shipData, error: shipErr } = await shipsRepository.insertOne({
+      name: shipNameClean,
+      client_name: shipNameClean,
+      status: 'Activo',
+    })
+    if (shipErr) throw new Error(shipErr)
     targetShip = shipData
   }
 
   const otNumber = `OT-${Date.now().toString().slice(-4)}`
-  const { data: woData, error: woErr } = await supabase
-    .from('work_orders')
-    .insert([{
-      ship_id: targetShip.id,
-      ot_number: otNumber,
-      title: `${otNumber}: Apertura Urgente (${shipNameClean})`,
-      description: `Creada automáticamente desde parte diario para imputación de ${workerName || 'cuadrilla'}.`,
-      status: 'En ejecución'
-    }])
-    .select()
-    .single()
+  const { data: woData, error: woErr } = await workOrdersRepository.insertOne({
+    ship_id: targetShip.id,
+    ot_number: otNumber,
+    title: `${otNumber}: Apertura Urgente (${shipNameClean})`,
+    description: `Creada automáticamente desde parte diario para imputación de ${workerName || 'cuadrilla'}.`,
+    status: 'En ejecución',
+  })
 
-  if (woErr) throw woErr
+  if (woErr) throw new Error(woErr)
 
   await auditService.logRowAction({
     action: 'ROW_INSERT',
@@ -227,7 +221,7 @@ export async function quickCreateShipAndWoService({
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'QUICK_CREATE_FROM_LABOR',
-    user: userEmail
+    user: userEmail,
   })
 
   return { targetShip, woData, otNumber }
@@ -244,7 +238,7 @@ export async function updateLaborShipWoService({
   workItems = [],
   targetLog = {},
   inferredWorkType = null,
-  userEmail = null
+  userEmail = null,
 }) {
   const currentWt = String(targetLog.work_type || '').trim().toUpperCase()
   const validInferred = ['HORA', 'PRESUPUESTO', 'CONTROL'].includes(String(inferredWorkType || '').trim().toUpperCase())
@@ -261,10 +255,10 @@ export async function updateLaborShipWoService({
     ...(shouldInheritWorkType ? { work_type: validInferred } : {}),
     ...(workOrderId
       ? { approval_status: 'Aprobado', review_reason: null }
-      : { approval_status: 'R', review_reason: 'Falta Cargar OT' })
+      : { approval_status: 'R', review_reason: 'Falta Cargar OT' }),
   }
-  const { error } = await supabase.from('labor_logs').update(payload).eq('id', logId)
-  if (error) throw error
+  const { error } = await laborLogsRepository.updateById(logId, payload, { select: null })
+  if (error) throw new Error(error)
 
   await auditService.logRowAction({
     action: 'CELL_EDIT',
@@ -273,12 +267,12 @@ export async function updateLaborShipWoService({
     entityName: `${targetLog.worker_name || 'Operario'} ${targetLog.date_logged || ''}`.trim(),
     changes: {
       ship_id: { from: targetLog.ship_id || null, to: payload.ship_id },
-      work_order_id: { from: targetLog.work_order_id || null, to: payload.work_order_id }
+      work_order_id: { from: targetLog.work_order_id || null, to: payload.work_order_id },
     },
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'SHIP_WO_PICKER',
-    user: userEmail
+    user: userEmail,
   })
 
   return payload

@@ -13,10 +13,10 @@ import {
   Search,
   Check
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
 import { buildLocalRelationsForLog, getEnabledWosForWorkerInShip } from '../../lib/laborConstants'
 import { updateLaborShipWoService } from '../../services/laborCargaService'
+import { patchLaborLogService, createLaborLogWithRelationsService } from '../../services/laborService'
 import { deduplicateWorkOrdersWithScope, TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants'
 import { normalizeLaborWorkType } from '../../lib/laborCargaGridHelpers'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
@@ -1180,8 +1180,7 @@ export function LaborModalsContainer({
         approval_status: editingForm.work_order_id ? editingForm.approval_status : 'R',
         review_reason: editingForm.work_order_id ? editingForm.review_reason : 'Falta Cargar OT'
       }
-      const { error } = await supabase.from('labor_logs').update(payload).eq('id', editingForm.id)
-      if (error) throw error
+      await patchLaborLogService(editingForm.id, payload)
       setRecentLogs(prev => prev.map(l => l.id === editingForm.id ? { ...l, ...payload, ...buildLocalRelationsForLog(payload.ship_id, payload.work_order_id, ships, workOrders) } : l))
       setEditingLog(null)
       showFeedbackMsg?.('success', 'Imputación actualizada.')
@@ -1218,8 +1217,7 @@ export function LaborModalsContainer({
         approval_status: isMissing ? 'R' : 'Aprobado',
         review_reason: isMissing ? 'Falta Cargar OT' : null
       }
-      const { data, error } = await supabase.from('labor_logs').insert([payload]).select('*, ships(id, name), work_orders(id, ot_number, title, ship_id, work_type)').single()
-      if (error) throw error
+      const data = await createLaborLogWithRelationsService(payload)
       setRecentLogs(prev => [data, ...prev])
       setQuickLogWorker(null)
       showFeedbackMsg?.('success', `Horas cargadas para ${quickLogWorker.worker_name}.`)
@@ -1233,8 +1231,7 @@ export function LaborModalsContainer({
   const handleConfirmReviewModal = async (reason) => {
     if (!reviewReasonModal.logId) return
     try {
-      const { error } = await supabase.from('labor_logs').update({ approval_status: 'R', review_reason: reason }).eq('id', reviewReasonModal.logId)
-      if (error) throw error
+      await patchLaborLogService(reviewReasonModal.logId, { approval_status: 'R', review_reason: reason })
       setRecentLogs(prev => prev.map(l => l.id === reviewReasonModal.logId ? { ...l, approval_status: 'R', review_reason: reason } : l))
       setReviewReasonModal({ isOpen: false, logId: null, initialReason: '' })
       showFeedbackMsg?.('success', 'Observación guardada.')

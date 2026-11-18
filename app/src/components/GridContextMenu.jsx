@@ -16,8 +16,7 @@ import {
   FileSpreadsheet,
   ArrowRight
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-import { AUDIT_ACTION_LABELS, AUDIT_ENTITY_CATALOG } from '../lib/auditService'
+import { AUDIT_ACTION_LABELS, AUDIT_ENTITY_CATALOG, getHistoryForEntity } from '../lib/auditService'
 
 /**
  * GridContextMenu
@@ -95,15 +94,8 @@ export default function GridContextMenu({
         return
       }
 
-      // Consultar audit_logs por entity_id o entity_type
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .eq('entity_id', targetId)
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      if (error) throw error
+      // Consultar audit_logs por entity_id vía auditService
+      const data = await getHistoryForEntity(targetId, null, 50)
       setAuditLogs(data || [])
     } catch (err) {
       console.error('Error consultando audit_logs:', err)

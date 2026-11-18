@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js'
+import { workersRepository } from '../repositories/workersRepository.js'
 import { deduplicateWorkOrdersWithScope } from './workOrdersConstants.js'
 
 /**
@@ -33,16 +33,16 @@ export function getAllocationWorkersCache() {
  */
 export async function fetchDynamicWorkersRoster() {
   try {
-    const { data, error } = await supabase
-      .from('workers')
-      .select('id, name, trade, admin_center, status, work_group, can_withdraw_materials, can_impute_hours, can_charge_third_party')
-      .order('name', { ascending: true })
+    const { data, error } = await workersRepository.listWorkers({
+      select: 'id, name, trade, admin_center, status, work_group, can_withdraw_materials, can_impute_hours, can_charge_third_party',
+      orderBy: [{ column: 'name', ascending: true }],
+    })
 
     if (!error && Array.isArray(data) && data.length > 0) {
       _globalWorkersCache = data
       return data
     }
-    if (error) console.warn('Advertencia en fetchDynamicWorkersRoster:', error.message)
+    if (error) console.warn('Advertencia en fetchDynamicWorkersRoster:', error)
   } catch (err) {
     console.warn('Error leyendo workers dinámicos:', err)
   }

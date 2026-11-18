@@ -4,9 +4,17 @@
  * Cumple Candado Mecánico #3 (Cero SQL en Vista) y #4 (Trazabilidad en audit_logs).
  */
 
-import { supabase } from '../lib/supabase.js'
 import { logCellChange, logRowAction } from '../lib/auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from '../lib/monotonicFolioEngine.js'
+import { purchaseOrdersRepository, purchaseDocumentsRepository } from '../repositories/purchaseOrdersRepository.js'
+import { suppliersRepository } from '../repositories/suppliersRepository.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
+import { systemSettingsRepository } from '../repositories/systemSettingsRepository.js'
+import { materialsRepository } from '../repositories/materialsRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
 
 /**
  * Carga completa de órdenes de compra, catálogo de proveedores, materiales y metadatos navales.
@@ -22,22 +30,18 @@ export async function fetchComprasData() {
     workersRes,
     macroRes,
     docsRes,
-    whatsappSettingRes
+    whatsappSettingRes,
   ] = await Promise.all([
-    supabase
-      .from('purchase_orders')
-      .select('*')
-      .order('order_date', { ascending: false })
-      .order('created_at', { ascending: false }),
-    supabase.from('suppliers').select('*').order('name'),
-    supabase.from('materials').select('*').order('name'),
-    supabase.from('ships').select('id, name, vessel_type').order('name'),
-    supabase.from('work_orders').select('id, ot_number, title, description, ship_id, status').order('created_at', { ascending: false }),
-    supabase.from('work_items').select('id, work_order_id, contractors, description'),
-    supabase.from('workers').select('id, name, trade, can_withdraw_materials, phone').order('name'),
-    supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
-    supabase.from('purchase_documents').select('*').order('created_at', { ascending: false }),
-    supabase.from('system_settings').select('*').eq('key', 'compras_whatsapp').maybeSingle()
+    purchaseOrdersRepository.listOrders(),
+    suppliersRepository.listSuppliers(),
+    materialsRepository.listMaterials(),
+    shipsRepository.listShips({ select: 'id, name, vessel_type' }),
+    workOrdersRepository.listWorkOrders({ select: 'id, ot_number, title, description, ship_id, status' }),
+    workItemsRepository.listWorkItems({ select: 'id, work_order_id, contractors, description', orderBy: [] }),
+    workersRepository.listWorkers({ select: 'id, name, trade, can_withdraw_materials, phone', orderBy: [{ column: 'name', ascending: true }] }),
+    macroVariablesRepository.listMacroVariables(),
+    purchaseDocumentsRepository.listDocuments(),
+    systemSettingsRepository.getByKey('compras_whatsapp'),
   ])
 
   if (ordersRes.error) {
@@ -58,7 +62,7 @@ export async function fetchComprasData() {
     workers: workersRes.data || [],
     macroVariables: macroRes.data || [],
     purchaseDocuments: docsRes.data || [],
-    whatsappSetting: whatsappSettingRes.data?.value || null
+    whatsappSetting: whatsappSettingRes.data?.value || null,
   }
 }
 
@@ -73,17 +77,11 @@ export async function savePurchaseOrderService({ order, isNew = false, changedBy
     payload = stampNewRecordWithFolio(payload, 'purchase_orders')
   }
 
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .upsert([payload], { onConflict: 'id' })
-    .select()
-
+  const { data: savedRecord, error } = await purchaseOrdersRepository.upsertOne(payload, { onConflict: 'id' })
   if (error) {
     console.error('[comprasService] Error guardando pedido de compra:', error)
-    throw error
+    throw new Error(error)
   }
-
-  const savedRecord = data?.[0] || payload
 
   logRowAction({
     action: isNew ? 'CREATE' : 'UPDATE',
@@ -95,8 +93,8 @@ export async function savePurchaseOrderService({ order, isNew = false, changedBy
       supplier_id: savedRecord.supplier_id,
       ship_id: savedRecord.ship_id,
       status: savedRecord.status,
-      supplier_quoted_price: savedRecord.supplier_quoted_price
-    }
+      supplier_quoted_price: savedRecord.supplier_quoted_price,
+    },
   })
 
   return { ok: true, order: savedRecord }
@@ -108,14 +106,10 @@ export async function savePurchaseOrderService({ order, isNew = false, changedBy
 export async function deletePurchaseOrderService({ orderId, orderName = 'Orden de Compra', changedBy = 'Operador Web' }) {
   if (!orderId) throw new Error('ID de pedido requerido para eliminación.')
 
-  const { error } = await supabase
-    .from('purchase_orders')
-    .delete()
-    .eq('id', orderId)
-
+  const { error } = await purchaseOrdersRepository.deleteById(orderId)
   if (error) {
     console.error('[comprasService] Error eliminando pedido de compra:', error)
-    throw error
+    throw new Error(error)
   }
 
   logRowAction({
@@ -124,7 +118,7 @@ export async function deletePurchaseOrderService({ orderId, orderName = 'Orden d
     entityId: orderId,
     entityName: orderName,
     performedBy: changedBy,
-    details: { deletedAt: new Date().toISOString() }
+    details: { deletedAt: new Date().toISOString() },
   })
 
   return { ok: true }
@@ -136,17 +130,11 @@ export async function deletePurchaseOrderService({ orderId, orderName = 'Orden d
 export async function saveSupplierService({ supplier, isNew = false, changedBy = 'Operador Web' }) {
   if (!supplier) throw new Error('Datos de proveedor requeridos.')
 
-  const { data, error } = await supabase
-    .from('suppliers')
-    .upsert([supplier], { onConflict: 'id' })
-    .select()
-
+  const { data: savedRecord, error } = await suppliersRepository.upsertOne(supplier, { onConflict: 'id' })
   if (error) {
     console.error('[comprasService] Error guardando proveedor:', error)
-    throw error
+    throw new Error(error)
   }
-
-  const savedRecord = data?.[0] || supplier
 
   logRowAction({
     action: isNew ? 'CREATE' : 'UPDATE',
@@ -154,7 +142,7 @@ export async function saveSupplierService({ supplier, isNew = false, changedBy =
     entityId: savedRecord.id,
     entityName: savedRecord.name || 'Proveedor',
     performedBy: changedBy,
-    details: { cuit: savedRecord.cuit, rubro: savedRecord.rubro, phone: savedRecord.phone }
+    details: { cuit: savedRecord.cuit, rubro: savedRecord.rubro, phone: savedRecord.phone },
   })
 
   return { ok: true, supplier: savedRecord }
@@ -169,27 +157,23 @@ export async function batchUpdatePurchaseOrdersService({
   targetIds = [],
   revertMap = null,
   isRevert = false,
-  changedBy = 'Operador Web'
+  changedBy = 'Operador Web',
 }) {
   if (!colKey) throw new Error('colKey requerida para actualización batch.')
 
   if (isRevert && revertMap) {
     for (const [rId, val] of Object.entries(revertMap)) {
-      await supabase.from('purchase_orders').update({ [colKey]: val }).eq('id', rId)
+      await purchaseOrdersRepository.updateById(rId, { [colKey]: val }, { select: null })
     }
     return { ok: true }
   }
 
   if (targetIds.length === 0) return { ok: true, count: 0 }
 
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ [colKey]: newValue })
-    .in('id', targetIds)
-
+  const { error } = await purchaseOrdersRepository.updateByIds(targetIds, { [colKey]: newValue }, { select: null })
   if (error) {
     console.error('[comprasService] Error en actualización batch:', error)
-    throw error
+    throw new Error(error)
   }
 
   targetIds.forEach((tId) => {
@@ -202,7 +186,7 @@ export async function batchUpdatePurchaseOrdersService({
       oldValue: '—',
       newValue,
       changeOrigin: 'BATCH_ACTION',
-      performedBy: changedBy
+      performedBy: changedBy,
     })
   })
 

@@ -4,9 +4,12 @@
  * Cumple Candado #3 (Cero SQL en vistas/hooks) y Candado #4 (Trazabilidad en audit_logs).
  */
 
-import { supabase } from '../lib/supabase.js'
 import { auditService } from '../lib/auditService.js'
 import { assignMonotonicFolios } from '../lib/monotonicFolioEngine.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
+import { systemSettingsRepository } from '../repositories/systemSettingsRepository.js'
+import { organizationRolesRepository } from '../repositories/organizationRolesRepository.js'
 
 const SHEET_NAME = 'Personal · Nómina de Operarios'
 const MODULE_ROUTE = '/personal'
@@ -16,15 +19,15 @@ const MODULE_ROUTE = '/personal'
  */
 export async function fetchPersonalBaseDataService() {
   const [workersRes, rateRes] = await Promise.all([
-    supabase.from('workers').select('*').order('admin_center').order('work_group').order('name'),
-    supabase.from('rate_cards').select('period, dollar_rate, year, month, quincena').order('year', { ascending: false }).order('month', { ascending: false }).order('quincena', { ascending: false }).limit(1)
+    workersRepository.listWorkers(),
+    rateCardsRepository.getLatestPeriodRate(),
   ])
-  if (workersRes.error) throw workersRes.error
-  const latestRate = rateRes.data?.[0] || null
+  if (workersRes.error) throw new Error(workersRes.error)
+  const latestRate = rateRes.data || null
   return {
     workers: workersRes.data?.length ? assignMonotonicFolios(workersRes.data, { dateField: 'created_at' }) : [],
     periodKey: latestRate?.period || null,
-    dollarRate: latestRate?.dollar_rate ? (parseFloat(latestRate.dollar_rate) || 1500) : null
+    dollarRate: latestRate?.dollar_rate ? (parseFloat(latestRate.dollar_rate) || 1500) : null,
   }
 }
 
@@ -32,7 +35,7 @@ const PERM_FIELD_MAP = {
   P: 'can_withdraw_materials',
   H: 'can_impute_hours',
   '3ros': 'can_charge_third_party',
-  JO: 'is_foreman'
+  JO: 'is_foreman',
 }
 
 /**
@@ -43,8 +46,8 @@ export async function fetchNominaAuxDataService() {
   let orgRolesMap = {}
 
   const [tradesRes, rolesRes] = await Promise.all([
-    supabase.from('system_settings').select('value').eq('key', 'master_trades').maybeSingle(),
-    supabase.from('organization_roles').select('*')
+    systemSettingsRepository.getByKey('master_trades', { select: 'value' }),
+    organizationRolesRepository.listRoles({ orderBy: [] }),
   ])
 
   if (!tradesRes.error && Array.isArray(tradesRes.data?.value)) {
@@ -67,7 +70,7 @@ export async function persistWorkerWithSchemaFallbackService({
   mode = 'insert',
   targetId = null,
   payload,
-  syncGroup = null
+  syncGroup = null,
 }) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Payload de operario requerido.')
@@ -75,33 +78,29 @@ export async function persistWorkerWithSchemaFallbackService({
 
   const execQuery = async (body) => {
     if (mode === 'update') {
-      return supabase.from('workers').update(body).eq('id', targetId).select()
+      return workersRepository.updateById(targetId, body, { select: '*' })
     }
-    return supabase.from('workers').insert([body]).select()
+    return workersRepository.insertOne(body, { select: '*' })
   }
 
   let res = await execQuery(payload)
   let missingContractCols = false
-  if (res.error && String(res.error.message || '').includes('contract_')) {
+  if (res.error && String(res.error).includes('contract_')) {
     missingContractCols = true
     const { contract_type: _ct, contract_start_date: _cs, ...safePayload } = payload
     res = await execQuery(safePayload)
   }
-  if (res.error) throw res.error
+  if (res.error) throw new Error(res.error)
 
   if (mode === 'update' && syncGroup && syncGroup !== 'ASTILLERO') {
-    const { error: groupErr } = await supabase
-      .from('workers')
-      .update({
-        can_charge_third_party: payload.can_charge_third_party,
-        trade: payload.trade
-      })
-      .eq('work_group', syncGroup)
-
-    if (groupErr) throw groupErr
+    const { error: groupErr } = await workersRepository.updateWorkersByWorkGroup(syncGroup, {
+      can_charge_third_party: payload.can_charge_third_party,
+      trade: payload.trade,
+    })
+    if (groupErr) throw new Error(groupErr)
   }
 
-  return { data: res.data, missingContractCols }
+  return { data: res.data ? [res.data] : [], missingContractCols }
 }
 
 /**
@@ -115,7 +114,7 @@ export async function logWorkerModalSaveAuditService({ isEdit, workerId, payload
     entityName: payload.name,
     ...(isEdit ? { changes: payload } : { rowData }),
     sheetName: SHEET_NAME,
-    moduleRoute: MODULE_ROUTE
+    moduleRoute: MODULE_ROUTE,
   })
 }
 
@@ -124,12 +123,8 @@ export async function logWorkerModalSaveAuditService({ isEdit, workerId, payload
  */
 export async function toggleWorkerStatusNominaService({ worker }) {
   const newStatus = worker.status === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
-  const { error } = await supabase
-    .from('workers')
-    .update({ status: newStatus })
-    .eq('id', worker.id)
-
-  if (error) throw error
+  const { error } = await workersRepository.updateById(worker.id, { status: newStatus }, { select: null })
+  if (error) throw new Error(error)
 
   await auditService.logCellChange({
     entityType: 'workers',
@@ -140,7 +135,7 @@ export async function toggleWorkerStatusNominaService({ worker }) {
     oldValue: worker.status,
     newValue: newStatus,
     sheetName: SHEET_NAME,
-    moduleRoute: MODULE_ROUTE
+    moduleRoute: MODULE_ROUTE,
   })
 
   return { newStatus }
@@ -158,12 +153,11 @@ export async function toggleWorkerPermissionNominaService({ worker, permType }) 
   const newVal = !currentVal
   const isGroup3ros = permType === '3ros' && worker.work_group && worker.work_group !== 'ASTILLERO'
 
-  const query = isGroup3ros
-    ? supabase.from('workers').update({ [field]: newVal }).eq('work_group', worker.work_group)
-    : supabase.from('workers').update({ [field]: newVal }).eq('id', worker.id)
+  const { error } = isGroup3ros
+    ? await workersRepository.updateWorkersByWorkGroup(worker.work_group, { [field]: newVal })
+    : await workersRepository.updateById(worker.id, { [field]: newVal }, { select: null })
 
-  const { error } = await query
-  if (error) throw error
+  if (error) throw new Error(error)
 
   await auditService.logCellChange({
     entityType: 'workers',
@@ -174,7 +168,7 @@ export async function toggleWorkerPermissionNominaService({ worker, permType }) 
     oldValue: currentVal ? 'HABILITADO' : 'BLOQUEADO',
     newValue: newVal ? 'HABILITADO' : 'BLOQUEADO',
     sheetName: SHEET_NAME,
-    moduleRoute: MODULE_ROUTE
+    moduleRoute: MODULE_ROUTE,
   })
 
   return { field, newVal, isGroup3ros }
@@ -184,8 +178,8 @@ export async function toggleWorkerPermissionNominaService({ worker, permType }) 
  * Elimina un operario individual de workers con registro en audit_logs.
  */
 export async function deleteWorkerNominaService({ worker }) {
-  const { error } = await supabase.from('workers').delete().eq('id', worker.id)
-  if (error) throw error
+  const { error } = await workersRepository.deleteById(worker.id)
+  if (error) throw new Error(error)
 
   await auditService.logRowAction({
     action: 'ROW_DELETE',
@@ -194,7 +188,7 @@ export async function deleteWorkerNominaService({ worker }) {
     entityName: worker.name,
     rowData: worker,
     sheetName: SHEET_NAME,
-    moduleRoute: MODULE_ROUTE
+    moduleRoute: MODULE_ROUTE,
   })
 }
 
@@ -203,8 +197,8 @@ export async function deleteWorkerNominaService({ worker }) {
  */
 export async function batchUpdateWorkersStatusNominaService({ selectedIds = [], targetStatus, workers = [] }) {
   if (selectedIds.length === 0) return
-  const { error } = await supabase.from('workers').update({ status: targetStatus }).in('id', selectedIds)
-  if (error) throw error
+  const { error } = await workersRepository.updateWorkersByIds(selectedIds, { status: targetStatus })
+  if (error) throw new Error(error)
 
   await Promise.all(
     selectedIds.map((id) => {
@@ -219,7 +213,7 @@ export async function batchUpdateWorkersStatusNominaService({ selectedIds = [], 
         newValue: targetStatus,
         changeOrigin: 'BATCH_ACTION',
         sheetName: SHEET_NAME,
-        moduleRoute: MODULE_ROUTE
+        moduleRoute: MODULE_ROUTE,
       })
     })
   )
@@ -230,8 +224,8 @@ export async function batchUpdateWorkersStatusNominaService({ selectedIds = [], 
  */
 export async function batchDeleteWorkersNominaService({ selectedIds = [], workers = [] }) {
   if (selectedIds.length === 0) return
-  const { error } = await supabase.from('workers').delete().in('id', selectedIds)
-  if (error) throw error
+  const { error } = await workersRepository.deleteWorkersByIds(selectedIds)
+  if (error) throw new Error(error)
 
   await Promise.all(
     selectedIds.map((id) => {
@@ -244,7 +238,7 @@ export async function batchDeleteWorkersNominaService({ selectedIds = [], worker
         rowData: w || { id },
         changeOrigin: 'BATCH_ACTION',
         sheetName: SHEET_NAME,
-        moduleRoute: MODULE_ROUTE
+        moduleRoute: MODULE_ROUTE,
       })
     })
   )
@@ -254,8 +248,8 @@ export async function batchDeleteWorkersNominaService({ selectedIds = [], worker
  * Persiste una edición de celda individual en workers y registra audit_logs.
  */
 export async function updateWorkerCellNominaService({ rowId, colKey, colLabel, oldValue, dbPatch, entityName }) {
-  const { error } = await supabase.from('workers').update(dbPatch).eq('id', rowId)
-  if (error) throw error
+  const { error } = await workersRepository.updateById(rowId, dbPatch, { select: null })
+  if (error) throw new Error(error)
 
   await auditService.logCellChange({
     entityType: 'workers',
@@ -266,7 +260,7 @@ export async function updateWorkerCellNominaService({ rowId, colKey, colLabel, o
     oldValue,
     newValue: dbPatch[colKey],
     sheetName: SHEET_NAME,
-    moduleRoute: MODULE_ROUTE
+    moduleRoute: MODULE_ROUTE,
   })
 }
 
@@ -275,15 +269,16 @@ export async function updateWorkerCellNominaService({ rowId, colKey, colLabel, o
  */
 export async function saveOrganizationRolesService({ rolesFormData }) {
   for (const [key, val] of Object.entries(rolesFormData || {})) {
-    const { error } = await supabase
-      .from('organization_roles')
-      .update({ holder_name: val.holder, role_title: val.title })
-      .eq('role_key', key)
-    if (error) throw error
+    const { error } = await organizationRolesRepository.updateRoleByKey(
+      key,
+      { holder_name: val.holder, role_title: val.title },
+      { select: null }
+    )
+    if (error) throw new Error(error)
   }
 
-  const { data, error } = await supabase.from('organization_roles').select('*')
-  if (error) throw error
+  const { data, error } = await organizationRolesRepository.listRoles({ orderBy: [] })
+  if (error) throw new Error(error)
 
   const map = {}
   ;(data || []).forEach((r) => {

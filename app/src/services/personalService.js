@@ -4,27 +4,20 @@
  * Cumple Candado Mecánico #3 (Cero SQL en Vista) y #4 (Trazabilidad en audit_logs).
  */
 
-import { supabase } from '../lib/supabase.js'
 import { logCellChange, logRowAction } from '../lib/auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from '../lib/monotonicFolioEngine.js'
 import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { organizationRolesRepository } from '../repositories/organizationRolesRepository.js'
 
 /**
  * Carga completa del padrón de personal, tarifarios y roles organizacionales.
  */
 export async function fetchPersonalData() {
   const [workersRes, rateCardsRes, rolesRes] = await Promise.all([
-    supabase
-      .from('workers')
-      .select('*')
-      .order('admin_center', { ascending: true })
-      .order('work_group', { ascending: true })
-      .order('name', { ascending: true }),
+    workersRepository.listWorkers(),
     rateCardsRepository.listRateCards(),
-    supabase
-      .from('organization_roles')
-      .select('*')
-      .order('department', { ascending: true })
+    organizationRolesRepository.listRoles(),
   ])
 
   if (workersRes.error) {
@@ -38,7 +31,7 @@ export async function fetchPersonalData() {
   return {
     workers,
     rateCards: rateCardsRes.data || [],
-    organizationRoles: rolesRes.data || []
+    organizationRoles: rolesRes.data || [],
   }
 }
 
@@ -53,17 +46,11 @@ export async function saveWorkerService({ worker, isNew = false, changedBy = 'Op
     payload = stampNewRecordWithFolio(payload, 'workers')
   }
 
-  const { data, error } = await supabase
-    .from('workers')
-    .upsert([payload], { onConflict: 'id' })
-    .select()
-
+  const { data: savedRecord, error } = await workersRepository.upsertOne(payload, { onConflict: 'id' })
   if (error) {
     console.error('[personalService] Error guardando operario:', error)
-    throw error
+    throw new Error(error)
   }
-
-  const savedRecord = data?.[0] || payload
 
   logRowAction({
     action: isNew ? 'CREATE' : 'UPDATE',
@@ -71,7 +58,7 @@ export async function saveWorkerService({ worker, isNew = false, changedBy = 'Op
     entityId: savedRecord.id,
     entityName: savedRecord.name || 'Operario',
     performedBy: changedBy,
-    details: { admin_center: savedRecord.admin_center, trade: savedRecord.trade, status: savedRecord.status }
+    details: { admin_center: savedRecord.admin_center, trade: savedRecord.trade, status: savedRecord.status },
   })
 
   return { ok: true, worker: savedRecord }
@@ -83,14 +70,10 @@ export async function saveWorkerService({ worker, isNew = false, changedBy = 'Op
 export async function deleteWorkerService({ workerId, workerName = 'Operario', changedBy = 'Operador Web' }) {
   if (!workerId) throw new Error('ID de operario requerido para eliminación.')
 
-  const { error } = await supabase
-    .from('workers')
-    .delete()
-    .eq('id', workerId)
-
+  const { error } = await workersRepository.deleteById(workerId)
   if (error) {
     console.error('[personalService] Error eliminando operario:', error)
-    throw error
+    throw new Error(error)
   }
 
   logRowAction({
@@ -99,7 +82,7 @@ export async function deleteWorkerService({ workerId, workerName = 'Operario', c
     entityId: workerId,
     entityName: workerName,
     performedBy: changedBy,
-    details: { deletedAt: new Date().toISOString() }
+    details: { deletedAt: new Date().toISOString() },
   })
 
   return { ok: true }
@@ -111,14 +94,10 @@ export async function deleteWorkerService({ workerId, workerName = 'Operario', c
 export async function batchUpdateWorkerStatusService({ workerIds = [], targetStatus = 'ACTIVO', changedBy = 'Operador Web' }) {
   if (workerIds.length === 0) return { ok: true, count: 0 }
 
-  const { error } = await supabase
-    .from('workers')
-    .update({ status: targetStatus })
-    .in('id', workerIds)
-
+  const { error } = await workersRepository.updateWorkersByIds(workerIds, { status: targetStatus })
   if (error) {
     console.error('[personalService] Error actualizando estado en lote:', error)
-    throw error
+    throw new Error(error)
   }
 
   workerIds.forEach((wId) => {
@@ -131,7 +110,7 @@ export async function batchUpdateWorkerStatusService({ workerIds = [], targetSta
       oldValue: targetStatus === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO',
       newValue: targetStatus,
       changeOrigin: 'BATCH_ACTION',
-      performedBy: changedBy
+      performedBy: changedBy,
     })
   })
 

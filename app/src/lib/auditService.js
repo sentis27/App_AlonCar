@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js'
 import { REDACTED, isSecretKey, redactSecrets } from './security/piiMask.js'
+import { auditLogsRepository } from '../repositories/auditLogsRepository.js'
 
 /**
  * Diccionario Canónico de Módulos y Submódulos Auditables (Padrón 2.A)
@@ -157,9 +158,9 @@ export async function logCellChange({
       performed_by: performedBy
     }
 
-    const { data, error } = await supabase.from('audit_logs').insert(redactSecrets(payload)).select().single()
+    const { data, error } = await auditLogsRepository.insertLog(redactSecrets(payload))
     if (error) {
-      console.error('[auditService.logCellChange] Error:', error.message)
+      console.error('[auditService.logCellChange] Error:', error)
       return null
     }
     return data
@@ -207,9 +208,9 @@ export async function logRowAction({
       performed_by: performedBy
     }
 
-    const { data, error } = await supabase.from('audit_logs').insert(redactSecrets(payload)).select().single()
+    const { data, error } = await auditLogsRepository.insertLog(redactSecrets(payload))
     if (error) {
-      console.error('[auditService.logRowAction] Error:', error.message)
+      console.error('[auditService.logRowAction] Error:', error)
       return null
     }
     return data
@@ -248,9 +249,9 @@ export async function logEvent({
       performed_by: performedBy
     }
 
-    const { data, error } = await supabase.from('audit_logs').insert(redactSecrets(payload)).select().single()
+    const { data, error } = await auditLogsRepository.insertLog(redactSecrets(payload))
     if (error) {
-      console.error('[auditService.logEvent] Error:', error.message)
+      console.error('[auditService.logEvent] Error:', error)
       return null
     }
     return data
@@ -305,9 +306,9 @@ export async function logBatchPaste({
 
     if (rowsToInsert.length === 0) return []
 
-    const { data, error } = await supabase.from('audit_logs').insert(redactSecrets(rowsToInsert)).select()
+    const { data, error } = await auditLogsRepository.insertLogsBatch(redactSecrets(rowsToInsert))
     if (error) {
-      console.error('[auditService.logBatchPaste] Error:', error.message)
+      console.error('[auditService.logBatchPaste] Error:', error)
       return []
     }
     return data || []
@@ -322,19 +323,8 @@ export async function logBatchPaste({
  */
 export async function getHistoryForEntity(entityId, entityType = null, limit = 50) {
   if (!entityId) return []
-  let query = supabase
-    .from('audit_logs')
-    .select('*')
-    .eq('entity_id', String(entityId))
-    .order('created_at', { ascending: false })
-    .limit(limit)
-
-  if (entityType) {
-    query = query.eq('entity_type', String(entityType))
-  }
-
-  const { data, error } = await query
-  if (error) throw error
+  const { data, error } = await auditLogsRepository.listForEntity(entityId, { entityType, limit })
+  if (error) throw new Error(error)
   return data || []
 }
 
@@ -349,30 +339,15 @@ export async function getGlobalAuditLedger({
   dateTo = '',
   limit = 300
 } = {}) {
-  let query = supabase
-    .from('audit_logs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit)
-
-  if (entityType && entityType !== 'ALL') {
-    query = query.eq('entity_type', entityType)
-  }
-  if (actionFilter && actionFilter !== 'ALL') {
-    query = query.eq('action', actionFilter)
-  }
-  if (userFilter && userFilter !== 'ALL') {
-    query = query.eq('performed_by', userFilter)
-  }
-  if (dateFrom) {
-    query = query.gte('created_at', `${dateFrom}T00:00:00`)
-  }
-  if (dateTo) {
-    query = query.lte('created_at', `${dateTo}T23:59:59`)
-  }
-
-  const { data, error } = await query
-  if (error) throw error
+  const { data, error } = await auditLogsRepository.listGlobalLedger({
+    entityType,
+    actionFilter,
+    userFilter,
+    dateFrom,
+    dateTo,
+    limit,
+  })
+  if (error) throw new Error(error)
   return data || []
 }
 

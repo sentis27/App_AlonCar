@@ -21,7 +21,11 @@ import {
   Undo2,
   Redo2
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
+import {
+  saveSupplierFromModalService,
+  patchSupplierInlineService,
+  deleteSupplierRecordService
+} from '../../services/comprasOcrSettingsService'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CrawlerSearchBar from '../CrawlerSearchBar'
@@ -134,33 +138,8 @@ export function SupplierModal({ supplier, onClose, onSuccess }) {
         updated_at: new Date().toISOString()
       }
 
-      if (supplier?.id) {
-        const { data, error } = await supabase.from('suppliers').update(payload).eq('id', supplier.id).select().single()
-        if (error) throw error
-        await auditService.logRowAction({
-          action: 'MODAL_SAVE',
-          entityType: 'suppliers',
-          entityId: supplier.id,
-          entityName: payload.name,
-          changes: payload,
-          sheetName: 'Compras · Proveedores',
-          moduleRoute: '/compras'
-        })
-        onSuccess(data)
-      } else {
-        const { data, error } = await supabase.from('suppliers').insert([payload]).select().single()
-        if (error) throw error
-        await auditService.logRowAction({
-          action: 'ROW_INSERT',
-          entityType: 'suppliers',
-          entityId: data.id,
-          entityName: payload.name,
-          rowData: payload,
-          sheetName: 'Compras · Proveedores',
-          moduleRoute: '/compras'
-        })
-        onSuccess(data)
-      }
+      const data = await saveSupplierFromModalService({ supplierId: supplier?.id || null, payload })
+      onSuccess(data)
     } catch (err) {
       console.error('Error guardando proveedor:', err)
       alert('Error guardando proveedor: ' + err.message)
@@ -516,8 +495,7 @@ export default function ComprasProveedoresPanel({
 
     try {
       setSuppliers?.((prev) => prev.map((s) => (s.id === supplierId ? { ...s, ...updates } : s)))
-      const { error } = await supabase.from('suppliers').update(updates).eq('id', supplierId)
-      if (error) throw error
+      await patchSupplierInlineService(supplierId, updates)
 
       await auditService.logCellChange({
         entityType: 'suppliers',
@@ -610,8 +588,7 @@ export default function ComprasProveedoresPanel({
     if (!confirm(`¿Eliminar al proveedor "${sup.name}"? Esta acción no se puede deshacer.`)) return
     try {
       setSuppliers?.((prev) => prev.filter((s) => s.id !== sup.id))
-      const { error } = await supabase.from('suppliers').delete().eq('id', sup.id)
-      if (error) throw error
+      await deleteSupplierRecordService(sup.id)
 
       await auditService.logRowAction({
         action: 'ROW_DELETE',

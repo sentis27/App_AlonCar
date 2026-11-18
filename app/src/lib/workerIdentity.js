@@ -4,6 +4,8 @@
  * sin adivinar homónimos y respetando siempre IDs explícitos.
  */
 
+import { createWorkersRepository, workersRepository } from '../repositories/workersRepository.js'
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const WORKER_NAME_ALIASES = Object.freeze({
@@ -76,12 +78,13 @@ const CACHE_TTL_MS = 30_000
  * Obtiene y cachea brevemente (30s) la lista mínima (id, name) de workers
  * para servicios que no reciben el catálogo por props.
  */
-export async function getWorkersLookupCached(supabase) {
+export async function getWorkersLookupCached(client = null) {
   const now = Date.now()
   if (_workersCache && now - _workersCacheTs < CACHE_TTL_MS) {
     return _workersCache
   }
-  const { data, error } = await supabase.from('workers').select('id, name')
+  const repo = client ? createWorkersRepository({ client }) : workersRepository
+  const { data, error } = await repo.listLookup()
   if (error || !Array.isArray(data)) return _workersCache || []
   _workersCache = data
   _workersCacheTs = now

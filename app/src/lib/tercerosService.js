@@ -4,36 +4,47 @@
  * el módulo de Servicios de Terceros, Contratistas y Talleres Externos (M5).
  */
 
-import { supabase } from './supabase.js'
 import { logCellChange, logRowAction } from './auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { setAllocationWorkersCache } from './allocationEngine.js'
 import { getDollarRateForDate } from './tercerosConstants.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { resolveWorkerIdFromCatalog } from './workerIdentity.js'
+import {
+  thirdPartyServicesRepository,
+  thirdPartyVoucherHistoryRepository,
+} from '../repositories/thirdPartyServicesRepository.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
 
-// 1. Carga inicial sincronizada desde Supabase
 export async function fetchTercerosData() {
   const [srvRes, shpRes, woRes, wiRes, wkrRes, mvRes, vhRes] = await Promise.all([
-    supabase.from('third_party_services').select('*').order('created_at', { ascending: false }),
-    supabase.from('ships').select('id, name, vessel_type, current_location').order('name'),
-    supabase.from('work_orders').select('id, ot_number, title, description, ship_id, status, is_tabulated').order('ot_number'),
-    supabase.from('work_items').select('id, work_order_id, contractors, description'),
-    supabase.from('workers').select('id, name, trade, work_group, admin_center, can_charge_third_party').eq('can_charge_third_party', true).order('name'),
-    supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
-    supabase.from('third_party_voucher_history').select('*').order('created_at', { ascending: false })
+    thirdPartyServicesRepository.listServices(),
+    shipsRepository.listShips({ select: 'id, name, vessel_type, current_location' }),
+    workOrdersRepository.listWorkOrders({
+      select: 'id, ot_number, title, description, ship_id, status, is_tabulated',
+      orderBy: [{ column: 'ot_number', ascending: true }],
+    }),
+    workItemsRepository.listWorkItems({
+      select: 'id, work_order_id, contractors, description',
+      orderBy: [],
+    }),
+    workersRepository.listThirdPartyEnabled(),
+    macroVariablesRepository.listMacroVariables(),
+    thirdPartyVoucherHistoryRepository.listHistory(),
   ])
 
-  if (srvRes.error) console.warn('Aviso third_party_services:', srvRes.error.message)
-  if (shpRes.error) console.warn('Aviso ships:', shpRes.error.message)
-  if (woRes.error) console.warn('Aviso work_orders:', woRes.error.message)
-  if (wkrRes.error) console.warn('Aviso workers:', wkrRes.error.message)
-  if (mvRes.error) console.warn('Aviso macro_variables:', mvRes.error.message)
-  if (vhRes.error) console.warn('Aviso third_party_voucher_history:', vhRes.error.message)
+  if (srvRes.error) console.warn('Aviso third_party_services:', srvRes.error)
+  if (shpRes.error) console.warn('Aviso ships:', shpRes.error)
+  if (woRes.error) console.warn('Aviso work_orders:', woRes.error)
+  if (wkrRes.error) console.warn('Aviso workers:', wkrRes.error)
+  if (mvRes.error) console.warn('Aviso macro_variables:', mvRes.error)
+  if (vhRes.error) console.warn('Aviso third_party_voucher_history:', vhRes.error)
 
-  if (wkrRes.data) {
-    setAllocationWorkersCache(wkrRes.data)
-  }
+  if (wkrRes.data) setAllocationWorkersCache(wkrRes.data)
 
   return {
     services: assignMonotonicFolios(srvRes.data || [], { dateField: 'service_date' }),
@@ -42,11 +53,10 @@ export async function fetchTercerosData() {
     workItems: wiRes?.data || [],
     contractors: wkrRes.data || [],
     macroVariables: mvRes.data || [],
-    voucherHistory: vhRes.data || []
+    voucherHistory: vhRes.data || [],
   }
 }
 
-// 2. Guardar Servicio (Alta o Modificación completa desde Modal)
 export async function saveServiceService({ formData, editingService, canEditAmounts, contractors = [], macroVariables = [], workItems = [], actor = 'MARIA JOSE' }) {
   if (!formData.ship_id) throw new Error('Debe seleccionar un buque/embarcación.')
   if (!formData.contractor_name) throw new Error('Debe seleccionar un contratista o taller autorizado.')
@@ -100,67 +110,48 @@ export async function saveServiceService({ formData, editingService, canEditAmou
     specific_observations: formData.specific_observations ? formData.specific_observations.trim() : null,
     status: formData.voucher_type,
     audit_status: formData.audit_status || 'PENDIENTE',
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   }
 
   if (editingService) {
-    const { error: updErr } = await supabase
-      .from('third_party_services')
-      .update(payload)
-      .eq('id', editingService.id)
-
-    if (updErr) throw updErr
+    const { error: updErr } = await thirdPartyServicesRepository.updateById(editingService.id, payload, { select: null })
+    if (updErr) throw new Error(updErr)
 
     await logRowAction({
       action: 'MODAL_SAVE',
       entityType: 'third_party_services',
       entityId: editingService.id,
       entityName: formData.contractor_name,
-      changes: {
-        ...payload,
-        previous_amount_ars: editingService.amount_ars,
-        new_amount_ars: parsedArs
-      },
+      changes: { ...payload, previous_amount_ars: editingService.amount_ars, new_amount_ars: parsedArs },
       sheetName: 'Terceros · Servicios y Facturación',
       moduleRoute: '/terceros',
       changeOrigin: 'MODAL_FORM',
-      user: actor
+      user: actor,
     })
     return { isNew: false, id: editingService.id }
-  } else {
-    payload.created_by = actor
-
-    const { data: insData, error: insErr } = await supabase
-      .from('third_party_services')
-      .insert(payload)
-      .select()
-      .single()
-
-    if (insErr) throw insErr
-
-    await logRowAction({
-      action: 'ROW_INSERT',
-      entityType: 'third_party_services',
-      entityId: insData?.id || 'new',
-      entityName: formData.contractor_name,
-      rowData: payload,
-      sheetName: 'Terceros · Servicios y Facturación',
-      moduleRoute: '/terceros',
-      changeOrigin: 'MODAL_FORM',
-      user: actor
-    })
-    return { isNew: true, id: insData?.id }
   }
+
+  payload.created_by = actor
+  const { data: insData, error: insErr } = await thirdPartyServicesRepository.insertOne(payload)
+  if (insErr) throw new Error(insErr)
+
+  await logRowAction({
+    action: 'ROW_INSERT',
+    entityType: 'third_party_services',
+    entityId: insData?.id || 'new',
+    entityName: formData.contractor_name,
+    rowData: payload,
+    sheetName: 'Terceros · Servicios y Facturación',
+    moduleRoute: '/terceros',
+    changeOrigin: 'MODAL_FORM',
+    user: actor,
+  })
+  return { isNew: true, id: insData?.id }
 }
 
-// 3. Eliminar Servicio con Auditoría
 export async function deleteServiceService({ service, actor = 'MARIA JOSE' }) {
-  const { error: delErr } = await supabase
-    .from('third_party_services')
-    .delete()
-    .eq('id', service.id)
-
-  if (delErr) throw delErr
+  const { error: delErr } = await thirdPartyServicesRepository.deleteById(service.id)
+  if (delErr) throw new Error(delErr)
 
   await logRowAction({
     action: 'ROW_DELETE',
@@ -171,16 +162,15 @@ export async function deleteServiceService({ service, actor = 'MARIA JOSE' }) {
       voucher_type: service.voucher_type,
       voucher_number: service.voucher_number,
       amount_ars: service.amount_ars,
-      amount_usd: service.amount_usd
+      amount_usd: service.amount_usd,
     },
     sheetName: 'Terceros · Servicios y Facturación',
     moduleRoute: '/terceros',
     changeOrigin: 'GRID_ACTION',
-    user: actor
+    user: actor,
   })
 }
 
-// 4. Insertar Fila en Blanco
 export async function insertBlankRowService({ services = [], macroVariables = [], actor = 'MARIA JOSE' }) {
   const todayStr = new Date().toISOString().split('T')[0]
   const rate = getDollarRateForDate(todayStr, macroVariables) || 1500
@@ -203,17 +193,12 @@ export async function insertBlankRowService({ services = [], macroVariables = []
     status: 'RMO',
     audit_status: 'PENDIENTE',
     created_by: actor,
-    is_active: true
+    is_active: true,
   }
 
   const stampedService = stampNewRecordWithFolio(newService, services)
-  const { data, error } = await supabase
-    .from('third_party_services')
-    .insert([newService])
-    .select()
-    .single()
-
-  if (error) throw error
+  const { data, error } = await thirdPartyServicesRepository.insertBlankRow(newService)
+  if (error) throw new Error(error)
 
   await logRowAction({
     action: 'ROW_INSERT',
@@ -224,13 +209,12 @@ export async function insertBlankRowService({ services = [], macroVariables = []
     sheetName: 'Terceros · Servicios y Facturación',
     moduleRoute: '/terceros',
     changeOrigin: 'RIBBON_INSERT',
-    user: actor
+    user: actor,
   })
 
   return { ...data, _rowSeq: stampedService._rowSeq }
 }
 
-// 5. Confirmar Evolución de Comprobante (DEC-017)
 export async function confirmEvolutionService({ evolvingService, evolutionForm, actor = 'MARIA JOSE' }) {
   if (!evolvingService) throw new Error('No hay comprobante seleccionado para evolucionar.')
   if (evolutionForm.target_voucher_type === 'FCR' && !evolutionForm.new_voucher_number) {
@@ -241,24 +225,22 @@ export async function confirmEvolutionService({ evolvingService, evolutionForm, 
   const rate = evolvingService.usd_rate > 0 ? evolvingService.usd_rate : 1500
   const parsedUsd = Number((parsedArs / rate).toFixed(2))
 
-  // 1. Actualizar el servicio
-  const { error: updErr } = await supabase
-    .from('third_party_services')
-    .update({
+  const { error: updErr } = await thirdPartyServicesRepository.updateById(
+    evolvingService.id,
+    {
       voucher_type: evolutionForm.target_voucher_type,
       status: evolutionForm.target_voucher_type,
       voucher_number: evolutionForm.new_voucher_number.trim(),
       voucher_date: evolutionForm.voucher_date,
       amount_ars: parsedArs,
       amount_usd: parsedUsd,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', evolvingService.id)
+      updated_at: new Date().toISOString(),
+    },
+    { select: null }
+  )
+  if (updErr) throw new Error(updErr)
 
-  if (updErr) throw updErr
-
-  // 2. Registrar en historial de comprobantes
-  await supabase.from('third_party_voucher_history').insert({
+  const { error: histErr } = await thirdPartyVoucherHistoryRepository.insertOne({
     third_party_service_id: evolvingService.id,
     from_voucher_type: evolvingService.voucher_type,
     to_voucher_type: evolutionForm.target_voucher_type,
@@ -266,10 +248,10 @@ export async function confirmEvolutionService({ evolvingService, evolutionForm, 
     to_amount_ars: parsedArs,
     voucher_number: evolutionForm.new_voucher_number.trim(),
     notes: evolutionForm.evolution_notes,
-    changed_by: actor
+    changed_by: actor,
   })
+  if (histErr) console.warn('[tercerosService] Aviso historial:', histErr)
 
-  // 3. Registrar en auditoría canónica
   await logRowAction({
     action: 'STATUS_CHANGE',
     entityType: 'third_party_services',
@@ -279,30 +261,29 @@ export async function confirmEvolutionService({ evolvingService, evolutionForm, 
       from_voucher_type: evolvingService.voucher_type,
       to_voucher_type: evolutionForm.target_voucher_type,
       invoice_number: evolutionForm.new_voucher_number,
-      notes: evolutionForm.evolution_notes
+      notes: evolutionForm.evolution_notes,
     },
     sheetName: 'Terceros · Servicios y Facturación',
     moduleRoute: '/terceros',
     changeOrigin: 'MODAL_EVOLUTION',
-    user: actor
+    user: actor,
   })
 }
 
-// 6. Guardar Conformidad Técnica de Jefe de Obra
 export async function saveAuditService({ auditingService, auditForm, auditorName = 'JEFE DE OBRA' }) {
   if (!auditingService) throw new Error('No hay comprobante para auditar.')
 
-  const { error: updErr } = await supabase
-    .from('third_party_services')
-    .update({
+  const { error: updErr } = await thirdPartyServicesRepository.updateById(
+    auditingService.id,
+    {
       audit_status: auditForm.audit_status,
       audit_notes: auditForm.audit_notes.trim(),
       audited_by: auditorName,
-      audited_at: new Date().toISOString()
-    })
-    .eq('id', auditingService.id)
-
-  if (updErr) throw updErr
+      audited_at: new Date().toISOString(),
+    },
+    { select: null }
+  )
+  if (updErr) throw new Error(updErr)
 
   await logRowAction({
     action: 'STATUS_CHANGE',
@@ -311,16 +292,15 @@ export async function saveAuditService({ auditingService, auditForm, auditorName
     entityName: auditingService.contractor_name,
     changes: {
       audit_status: auditForm.audit_status,
-      audit_notes: auditForm.audit_notes.trim()
+      audit_notes: auditForm.audit_notes.trim(),
     },
     sheetName: 'Terceros · Servicios y Facturación',
     moduleRoute: '/terceros',
     changeOrigin: 'MODAL_TECHNICAL_AUDIT',
-    user: auditorName
+    user: auditorName,
   })
 }
 
-// 7. Guardar Edición Inline de Celda con Auditoría
 export async function saveInlineEditService({ serviceId, field, newValue, services = [], macroVariables = [], contractors = [], actor = 'MARIA JOSE' }) {
   const targetService = services.find((s) => s.id === serviceId)
   if (!targetService) return null
@@ -348,12 +328,8 @@ export async function saveInlineEditService({ serviceId, field, newValue, servic
   }
 
   const updateData = { [field]: cleanedValue, ...extraFields, updated_at: new Date().toISOString() }
-  const { error } = await supabase
-    .from('third_party_services')
-    .update(updateData)
-    .eq('id', serviceId)
-
-  if (error) throw error
+  const { error } = await thirdPartyServicesRepository.updateById(serviceId, updateData, { select: null })
+  if (error) throw new Error(error)
 
   await logCellChange({
     entityType: 'third_party_services',
@@ -366,24 +342,23 @@ export async function saveInlineEditService({ serviceId, field, newValue, servic
     sheetName: 'Terceros · Servicios y Facturación',
     moduleRoute: '/terceros',
     changeOrigin: 'INLINE_CELL',
-    user: actor
+    user: actor,
   })
 
   return { cleanedValue, extraFields }
 }
 
-// 8. Guardar Asignación de Buque / OT desde Modal Picker
 export async function saveShipWoPickerService({ serviceId, shipId, workOrderId, workItemId = null, workItems = [], services = [], actor = 'MARIA JOSE' }) {
   const target = services.find((s) => s.id === serviceId)
   if (!target) return
   const resolvedWiId = workOrderId ? (workItemId ?? resolveSingleWorkItemId(workOrderId, workItems)) : null
 
-  const { error } = await supabase
-    .from('third_party_services')
-    .update({ ship_id: shipId, work_order_id: workOrderId, work_item_id: resolvedWiId, updated_at: new Date().toISOString() })
-    .eq('id', serviceId)
-
-  if (error) throw error
+  const { error } = await thirdPartyServicesRepository.updateById(
+    serviceId,
+    { ship_id: shipId, work_order_id: workOrderId, work_item_id: resolvedWiId, updated_at: new Date().toISOString() },
+    { select: null }
+  )
+  if (error) throw new Error(error)
 
   await logCellChange({
     entityType: 'third_party_services',
@@ -396,11 +371,10 @@ export async function saveShipWoPickerService({ serviceId, shipId, workOrderId, 
     sheetName: 'Terceros · Servicios y Facturación',
     moduleRoute: '/terceros',
     changeOrigin: 'MODAL_PICKER',
-    user: actor
+    user: actor,
   })
 }
 
-// 9. Actualización Batch para Hoja de Cálculo (Drag Fill / Paste / Undo / Redo)
 export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds, revertMap, isRevert, services = [], workItems = [], contractors = [], macroVariables = [] }) {
   if (isRevert && revertMap) {
     await Promise.all(
@@ -425,7 +399,7 @@ export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds,
         } else {
           payload[colKey] = oldVal
         }
-        return supabase.from('third_party_services').update(payload).eq('id', id)
+        return thirdPartyServicesRepository.updateById(id, payload, { select: null })
       })
     )
     return
@@ -462,7 +436,7 @@ export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds,
           rowPayload.usd_rate = rate
           rowPayload.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
         }
-        return supabase.from('third_party_services').update(rowPayload).eq('id', id)
+        return thirdPartyServicesRepository.updateById(id, rowPayload, { select: null })
       })
     )
   } else {
@@ -480,10 +454,7 @@ export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds,
     } else {
       updatePayload[colKey] = newValue
     }
-    const { error } = await supabase
-      .from('third_party_services')
-      .update(updatePayload)
-      .in('id', targetIds)
-    if (error) throw error
+    const { error } = await thirdPartyServicesRepository.updateByIds(targetIds, updatePayload, { select: null })
+    if (error) throw new Error(error)
   }
 }

@@ -4,7 +4,11 @@ import {
   RateCardSchema,
   WorkOrderSchema,
   LaborLogSchema,
+  SystemSettingSchema,
+  OrganizationRoleSchema,
+  MacroVariableSchema,
   validatePayload,
+  validatePartialPayload,
 } from '../../src/schemas/index.js'
 
 describe('WorkerSchema (workers)', () => {
@@ -122,5 +126,62 @@ describe('LaborLogSchema (labor_logs)', () => {
     })
     expect(trap.success).toBe(false)
     expect(trap.error).toContain('profile_id')
+  })
+})
+
+describe('Etapa 1 Schemas (system_settings, organization_roles, macro_variables) y validatePartialPayload', () => {
+  it('SystemSettingSchema acepta PK key con value JSONB y rechaza columna trampa id', () => {
+    const ok = validatePayload(SystemSettingSchema, {
+      key: 'master_trades',
+      value: ['SOLDADURA', 'PINTURA'],
+    })
+    expect(ok.success).toBe(true)
+
+    const trap = validatePayload(SystemSettingSchema, {
+      id: '123',
+      key: 'master_trades',
+      value: [],
+    })
+    expect(trap.success).toBe(false)
+    expect(trap.error).toContain('id')
+  })
+
+  it('OrganizationRoleSchema exige role_key y role_title y rechaza trampa id', () => {
+    const ok = validatePayload(OrganizationRoleSchema, {
+      role_key: 'JEFE_OBRA',
+      role_title: 'Jefe de Obra',
+      holder_name: 'CAMADELLI',
+    })
+    expect(ok.success).toBe(true)
+
+    const trap = validatePayload(OrganizationRoleSchema, {
+      id: '123',
+      role_key: 'JEFE_OBRA',
+      role_title: 'Jefe de Obra',
+    })
+    expect(trap.success).toBe(false)
+  })
+
+  it('MacroVariableSchema valida año, mes y dólar positivo', () => {
+    const ok = validatePayload(MacroVariableSchema, {
+      year: 2026,
+      month: 11,
+      dollar_rate: 1500,
+      monthly_inflation_pct: 3.2,
+    })
+    expect(ok.success).toBe(true)
+
+    const bad = validatePayload(MacroVariableSchema, { year: 2026, month: 13, dollar_rate: 0 })
+    expect(bad.success).toBe(false)
+  })
+
+  it('validatePartialPayload valida PATCH sin inyectar defaults de otros campos', () => {
+    const res = validatePartialPayload(WorkerSchema, { hourly_rate_ars: '18500' })
+    expect(res.success).toBe(true)
+    expect(res.data).toEqual({ hourly_rate_ars: 18500 })
+
+    const trapPartial = validatePartialPayload(LaborLogSchema, { hours_worked: 8, profile_id: 'abc' })
+    expect(trapPartial.success).toBe(false)
+    expect(trapPartial.error).toContain('profile_id')
   })
 })

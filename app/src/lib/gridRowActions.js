@@ -1,5 +1,33 @@
-import { supabase } from './supabase.js'
 import { logRowAction, sanitizeAuditValue } from './auditService.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
+import { thirdPartyServicesRepository } from '../repositories/thirdPartyServicesRepository.js'
+import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { shipStaysRepository } from '../repositories/shipStaysRepository.js'
+import { ownersRepository } from '../repositories/ownersRepository.js'
+import { laborLogsRepository } from '../repositories/laborLogsRepository.js'
+
+const GRID_REPOS_BY_TABLE = {
+  workers: workersRepository,
+  work_items: workItemsRepository,
+  work_orders: workOrdersRepository,
+  purchase_orders: purchaseOrdersRepository,
+  third_party_services: thirdPartyServicesRepository,
+  inventory_transactions: inventoryTransactionsRepository,
+  ships: shipsRepository,
+  ship_stays: shipStaysRepository,
+  owners: ownersRepository,
+  labor_logs: laborLogsRepository,
+}
+
+function getRepoForTable(table) {
+  const repo = GRID_REPOS_BY_TABLE[table]
+  if (!repo) throw new Error(`[gridRowActions] Tabla no registrada en repositorios: ${table}`)
+  return repo
+}
 
 /**
  * gridRowActions
@@ -29,8 +57,8 @@ function toAuditScalar(val) {
 
 /** Update directo de campos (usado también por Undo/Redo). */
 export async function updateRecordFields({ table, id, patch }) {
-  const { error } = await supabase.from(table).update(patch).eq('id', id)
-  if (error) throw error
+  const { error } = await getRepoForTable(table).updateById(id, patch, { select: null })
+  if (error) throw new Error(error)
 }
 
 /**
@@ -48,8 +76,8 @@ export async function duplicateRecord({
 }) {
   if (!source) throw new Error('No hay registro origen para duplicar.')
   const payload = { ...pickFields(source, fields), ...overrides }
-  const { data, error } = await supabase.from(table).insert([payload]).select().single()
-  if (error) throw error
+  const { data, error } = await getRepoForTable(table).insertOne(payload, { select: '*' })
+  if (error) throw new Error(error)
 
   await logRowAction({
     action: 'ROW_DUPLICATE',

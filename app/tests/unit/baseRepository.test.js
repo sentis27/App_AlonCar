@@ -5,33 +5,62 @@ import {
   createBaseRepository,
 } from '../../src/repositories/_baseRepository.js'
 import { createRateCardsRepository } from '../../src/repositories/rateCardsRepository.js'
+import { WorkerSchema } from '../../src/schemas/index.js'
 
 function createMockSupabaseClient({ rows = [], error = null } = {}) {
-  const calls = { eq: [], order: [], range: null, upserted: null, deletedId: null }
+  const calls = {
+    eq: [], inCalls: [], orCalls: [], order: [], range: null,
+    inserted: null, upserted: null, updated: null, deletedId: null, deletedCalled: false,
+  }
   const builder = {
     select: () => builder,
     eq: (col, val) => {
       calls.eq.push([col, val])
       return builder
     },
+    in: (col, arr) => {
+      calls.inCalls.push([col, arr])
+      return builder
+    },
+    or: (expr) => {
+      calls.orCalls.push(expr)
+      return builder
+    },
     order: (col, opts) => {
       calls.order.push([col, opts])
       return builder
     },
+    limit: () => builder,
     range: (from, to) => {
       calls.range = [from, to]
       return builder
     },
     maybeSingle: async () => ({ data: rows[0] || null, error }),
+    insert: (payload) => {
+      calls.inserted = payload
+      return {
+        select: async () => ({ data: payload, error }),
+        then: (resolve) => resolve({ data: payload, error }),
+      }
+    },
     upsert: (payload) => {
       calls.upserted = payload
       return {
         select: async () => ({ data: payload, error }),
       }
     },
+    update: (payload) => {
+      calls.updated = payload
+      return builder
+    },
     delete: () => ({
       eq: async (_pk, id) => {
         calls.deletedId = id
+        return { error }
+      },
+      in: async (col, arr) => {
+        calls.deletedCalled = true
+        calls.inCalls.push([col, arr])
         return { error }
       },
     }),
@@ -143,5 +172,39 @@ describe('createBaseRepository + createRateCardsRepository', () => {
     expect(good.error).toBe(null)
     expect(calls.upserted).toHaveLength(1)
     expect(logRowAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('updateById valida parcialmente sin inyectar defaults de columnas omitidas y bloquea trampas/eventos', async () => {
+    const { client, calls } = createMockSupabaseClient({ rows: [{ id: 'w-1', status: 'INACTIVO' }] })
+    const repo = createBaseRepository({ table: 'workers', schema: WorkerSchema, client })
+
+    const ok = await repo.updateById('w-1', { status: 'INACTIVO' })
+    expect(ok.error).toBe(null)
+    expect(calls.updated).toEqual({ status: 'INACTIVO' })
+    expect('hourly_rate_ars' in calls.updated).toBe(false)
+
+    const trap = await repo.updateById('w-1', { status: 'ACTIVO', first_name: 'Juan' })
+    expect(trap.error).toContain('first_name')
+
+    const domEvt = await repo.updateById('w-1', { name: { nativeEvent: {}, target: {} } })
+    expect(domEvt.error).toContain('Event')
+  })
+
+  it('updateWhere y deleteWhere exigen al menos un filtro (fail-fast) y soportan orFilter', async () => {
+    const { client, calls } = createMockSupabaseClient()
+    const repo = createBaseRepository({ table: 'workers', schema: WorkerSchema, client })
+
+    const emptyUpd = await repo.updateWhere({}, { status: 'ACTIVO' })
+    expect(emptyUpd.error).toContain('filtro')
+
+    const emptyDel = await repo.deleteWhere({})
+    expect(emptyDel.error).toContain('filtro')
+
+    const withOr = await repo.updateWhere(
+      { filters: { admin_center: 'CONTRATISTA' }, orFilter: 'work_group.eq.ALDO AYUDANTE,category.eq.ALDO AYUDANTE' },
+      { hourly_rate_ars: 14000 }
+    )
+    expect(withOr.error).toBe(null)
+    expect(calls.orCalls).toEqual(['work_group.eq.ALDO AYUDANTE,category.eq.ALDO AYUDANTE'])
   })
 })

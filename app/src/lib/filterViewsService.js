@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js'
+import { systemSettingsRepository } from '../repositories/systemSettingsRepository.js'
 
 export const MAX_SAVED_VIEWS_PER_MODULE = 5
 export const FILTER_MEMORY_STORAGE_PREFIX = 'aloncar_filter_memory_v1'
@@ -203,13 +203,11 @@ export function buildGenericFilterSummary(filters = {}, defaults = {}, labelMap 
  * Lee el mapa completo de vistas guardadas desde Supabase (`system_settings`).
  */
 export async function fetchRemoteSavedFilterViewsMap() {
-  const { data, error } = await supabase
-    .from('system_settings')
-    .select('value')
-    .eq('key', SAVED_VIEWS_SYSTEM_SETTING_KEY)
-    .maybeSingle()
+  const { data, error } = await systemSettingsRepository.getByKey(SAVED_VIEWS_SYSTEM_SETTING_KEY, {
+    select: 'value',
+  })
 
-  if (error) throw error
+  if (error) throw new Error(error)
   const raw = data?.value
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
 }
@@ -263,19 +261,12 @@ export async function persistModuleSavedViewsToSupabase(userKey, moduleKey, view
     [userKey]: nextUserMap
   }
 
-  const payload = {
-    key: SAVED_VIEWS_SYSTEM_SETTING_KEY,
-    value: nextRootValue,
-    updated_at: new Date().toISOString(),
-    updated_by: String(updatedBy || 'Usuario')
-  }
+  const { data, error } = await systemSettingsRepository.saveByKey(
+    SAVED_VIEWS_SYSTEM_SETTING_KEY,
+    nextRootValue,
+    { updatedBy: String(updatedBy || 'Usuario') }
+  )
 
-  const { data, error } = await supabase
-    .from('system_settings')
-    .upsert([payload], { onConflict: 'key' })
-    .select()
-    .single()
-
-  if (error) throw error
+  if (error) throw new Error(error)
   return data
 }

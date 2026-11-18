@@ -10,7 +10,10 @@
 
 // Servicios de Dominio
 export * from './personalService.js'
+export * from './personalTarifarioService.js'
 export * from './comprasService.js'
+export * from './comprasOcrSettingsService.js'
+export * from './adminGovernanceService.js'
 export * from './laborService.js'
 export * from './shipsService.js'
 

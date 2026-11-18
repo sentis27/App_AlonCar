@@ -28,7 +28,6 @@ import { MaterialAutocompleteInput } from './MaterialAutocompleteInput.jsx'
 import { GasDeliveryInlinePanel } from './GasDeliveryInlinePanel.jsx'
 import { GasFinalReturnModal } from './GasFinalReturnModal.jsx'
 import { GasSupplierMovementModal } from './GasSupplierMovementModal.jsx'
-import { supabase } from '../../lib/supabase'
 import {
   saveMultiWithdrawalService,
   saveInlineMaterialService,
@@ -36,6 +35,7 @@ import {
   createDirectPurchaseOrderService,
   submitRequestOtService,
   submitWorkerPermissionService,
+  fetchPendingPanolAlertsService,
   registerGasFinalReturnService,
   saveSupplierGasBatchService,
   createQuickGasMaterialService,
@@ -1861,7 +1861,7 @@ export function PanolModalsContainer({
       await submitRequestOtService({ requestOtModal, ships })
       setRequestOtModal({ isOpen: false, txId: null, shipId: '', targetWorkerOrContractor: '', reason: '' })
       showFeedback('success', '🔔 Alerta enviada a Jorge Sentis para apertura de OT.')
-      const { data: updatedAlerts } = await supabase.from('compliance_alerts').select('*').eq('status', 'PENDIENTE')
+      const updatedAlerts = await fetchPendingPanolAlertsService()
       if (updatedAlerts && setPendingAlerts) setPendingAlerts(updatedAlerts)
     } catch (e) {
       showFeedback('error', 'Error al solicitar OT: ' + e.message)
@@ -1873,7 +1873,7 @@ export function PanolModalsContainer({
       await submitWorkerPermissionService({ workerPermissionModal, workers, user })
       setWorkerPermissionModal({ isOpen: false, workerId: '', reason: '' })
       showFeedback('success', '🔔 Alerta enviada a Jorge Sentis para habilitar operario en Pañol.')
-      const { data: updatedAlerts } = await supabase.from('compliance_alerts').select('*').eq('status', 'PENDIENTE')
+      const updatedAlerts = await fetchPendingPanolAlertsService()
       if (updatedAlerts && setPendingAlerts) setPendingAlerts(updatedAlerts)
     } catch (e) {
       showFeedback('error', 'Error al solicitar habilitación: ' + e.message)

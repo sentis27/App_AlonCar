@@ -1,20 +1,28 @@
-import { supabase } from './supabase.js'
 import { logRowAction } from './auditService.js'
 import { cleanShipName, cleanLocation } from './shipsConstants.js'
 import { syncShipLocationFromStayService } from './shipsService.js'
+import { shipsRepository, shipDocumentsRepository } from '../repositories/shipsRepository.js'
+import { shipStaysRepository } from '../repositories/shipStaysRepository.js'
+import { ownersRepository } from '../repositories/ownersRepository.js'
 
 const MODULE_ROUTE = '/barcos'
 
+const REPOS_BY_TABLE = {
+  ships: shipsRepository,
+  ship_stays: shipStaysRepository,
+  owners: ownersRepository,
+}
+
 async function upsertAndAuditRecord({ table, entityType, id, payload, entityName, sheetName, user }) {
-  let savedId = id
-  if (id) {
-    const { error } = await supabase.from(table).update(payload).eq('id', id)
-    if (error) throw error
-  } else {
-    const { data, error } = await supabase.from(table).insert([payload]).select().single()
-    if (error) throw error
-    savedId = data?.id
-  }
+  const repo = REPOS_BY_TABLE[table]
+  if (!repo) throw new Error(`Tabla no soportada en shipsModalService: ${table}`)
+
+  const res = id
+    ? await repo.updateById(id, payload, { select: '*' })
+    : await repo.insertOne(payload, { select: '*' })
+
+  if (res.error) throw new Error(res.error)
+  const savedId = id || res.data?.id
 
   await logRowAction({
     action: id ? 'MODAL_SAVE' : 'ROW_INSERT',
@@ -25,7 +33,7 @@ async function upsertAndAuditRecord({ table, entityType, id, payload, entityName
     sheetName,
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'MODAL_FORM',
-    user
+    user,
   })
   return savedId
 }
@@ -50,7 +58,7 @@ export async function saveShipService({ ship, isCustomVesselType, customVesselTy
     notes: ship.notes || null,
     technical_specs: ship.technical_specs || {},
     info_request_status: ship.info_request_status || 'completo',
-    is_active: ship.is_active !== false
+    is_active: ship.is_active !== false,
   }
 
   const savedId = await upsertAndAuditRecord({
@@ -60,7 +68,7 @@ export async function saveShipService({ ship, isCustomVesselType, customVesselTy
     payload,
     entityName: cleanName,
     sheetName: 'Barcos · Padrón de Buques',
-    user
+    user,
   })
   return { cleanName, savedId }
 }
@@ -72,7 +80,7 @@ export async function saveStayService({ stay, user }) {
     location: cleanLoc,
     start_date: stay.start_date,
     end_date: stay.end_date || null,
-    notes: stay.notes || null
+    notes: stay.notes || null,
   }
   const savedId = await upsertAndAuditRecord({
     table: 'ship_stays',
@@ -81,7 +89,7 @@ export async function saveStayService({ stay, user }) {
     payload,
     entityName: `Estadía ${cleanLoc}`,
     sheetName: 'Barcos · Estadías y Movimientos',
-    user
+    user,
   })
   if (!payload.end_date) {
     await syncShipLocationFromStayService({ shipId: payload.ship_id, location: cleanLoc })
@@ -99,7 +107,7 @@ export async function saveOwnerService({ owner, user }) {
     email_secundario: owner.email_secundario?.trim() || null,
     cuit: owner.cuit?.trim() || null,
     notes: owner.notes?.trim() || null,
-    is_active: true
+    is_active: true,
   }
   await upsertAndAuditRecord({
     table: 'owners',
@@ -108,44 +116,47 @@ export async function saveOwnerService({ owner, user }) {
     payload,
     entityName: payload.name,
     sheetName: 'Barcos · Padrón de Armadores',
-    user
+    user,
   })
 }
 
 export async function deleteOwnerWithAuditService({ owner, linkedShips = [], user }) {
-  const { error: auditErr } = await supabase.from('audit_logs').insert([{
+  await logRowAction({
     action: 'DELETE_OWNER',
-    entity_type: 'owners',
-    entity_id: owner.id,
-    entity_name: owner.name,
+    entityType: 'owners',
+    entityId: owner.id,
+    entityName: owner.name,
     details: {
       cuit: owner.cuit,
       armador_name: owner.armador_name,
       armador_phone: owner.armador_phone,
       email_principal: owner.email_principal,
       email_secundario: owner.email_secundario,
-      affected_ships: linkedShips.map((s) => ({ id: s.id, name: s.name }))
+      affected_ships: linkedShips.map((s) => ({ id: s.id, name: s.name })),
     },
-    performed_by: user || 'Administración'
-  }])
-  if (auditErr) throw auditErr
+    sheetName: 'Barcos · Padrón de Armadores',
+    moduleRoute: MODULE_ROUTE,
+    changeOrigin: 'MODAL_DELETE',
+    user: user || 'Administración',
+  })
 
   if (linkedShips.length > 0) {
-    const { error: shipErr } = await supabase
-      .from('ships')
-      .update({ owner_id: null, orphan_owner_alert: true, orphan_owner_previous_name: owner.name })
-      .in('id', linkedShips.map((s) => s.id))
-    if (shipErr) throw shipErr
+    const { error: shipErr } = await shipsRepository.updateByIds(
+      linkedShips.map((s) => s.id),
+      { owner_id: null, orphan_owner_alert: true, orphan_owner_previous_name: owner.name },
+      { select: null }
+    )
+    if (shipErr) throw new Error(shipErr)
   }
 
-  const { error } = await supabase.from('owners').delete().eq('id', owner.id)
-  if (error) throw error
+  const { error } = await ownersRepository.deleteById(owner.id)
+  if (error) throw new Error(error)
 }
 
 export async function assignOrphanOwnerService({ ship, selectedOwnerId, owners = [], user }) {
   const patch = { owner_id: selectedOwnerId, orphan_owner_alert: false, orphan_owner_previous_name: null }
-  const { error } = await supabase.from('ships').update(patch).eq('id', ship.id)
-  if (error) throw error
+  const { error } = await shipsRepository.updateById(ship.id, patch, { select: null })
+  if (error) throw new Error(error)
   const ownerObj = owners.find((o) => o.id === selectedOwnerId) || null
   await logRowAction({
     action: 'MODAL_SAVE',
@@ -156,19 +167,23 @@ export async function assignOrphanOwnerService({ ship, selectedOwnerId, owners =
     sheetName: 'Barcos · Padrón de Buques',
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'MODAL_FORM',
-    user
+    user,
   })
   return { ...patch, owners: ownerObj }
 }
 
 export async function sendShipInfoRequestService({ ship, requestType, notes, user }) {
-  const { error } = await supabase.from('ships').update({
-    info_request_status: requestType,
-    info_request_notes: notes?.trim() || null,
-    info_requested_at: new Date().toISOString(),
-    info_requested_by: user || 'Jorge Sentis (Admin)'
-  }).eq('id', ship.id)
-  if (error) throw error
+  const { error } = await shipsRepository.updateById(
+    ship.id,
+    {
+      info_request_status: requestType,
+      info_request_notes: notes?.trim() || null,
+      info_requested_at: new Date().toISOString(),
+      info_requested_by: user || 'Jorge Sentis (Admin)',
+    },
+    { select: null }
+  )
+  if (error) throw new Error(error)
   await logRowAction({
     action: 'STATUS_CHANGE',
     entityType: 'ships',
@@ -178,36 +193,35 @@ export async function sendShipInfoRequestService({ ship, requestType, notes, use
     sheetName: 'Barcos · Padrón de Buques',
     moduleRoute: MODULE_ROUTE,
     changeOrigin: 'MODAL_FORM',
-    user
+    user,
   })
 }
 
 export async function uploadShipNavalDocService({ shipId, docType, file, user }) {
   const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const filePath = `${shipId}/${docType}_${Date.now()}_${cleanFileName}`
-  const { error: uploadError } = await supabase.storage.from('ship-documents').upload(filePath, file, { upsert: true })
-  if (uploadError) throw uploadError
+  const { data: uploadData, error: uploadError } = await shipDocumentsRepository.uploadToStorage(filePath, file)
+  if (uploadError) throw new Error(uploadError)
 
-  const { data: urlData } = supabase.storage.from('ship-documents').getPublicUrl(filePath)
-  const fileUrl = urlData?.publicUrl
+  const fileUrl = uploadData?.publicUrl
   const nowIso = new Date().toISOString()
   const updateFields = docType === 'plano_anguilera'
     ? { plan_anguilera_url: fileUrl, plan_anguilera_name: file.name, plan_anguilera_uploaded_at: nowIso }
     : { informe_pintado_url: fileUrl, informe_pintado_name: file.name, informe_pintado_uploaded_at: nowIso }
 
-  const { error: dbErr } = await supabase.from('ships').update(updateFields).eq('id', shipId)
-  if (dbErr) throw dbErr
+  const { error: dbErr } = await shipsRepository.updateById(shipId, updateFields, { select: null })
+  if (dbErr) throw new Error(dbErr)
 
-  const { error: docErr } = await supabase.from('ship_documents').insert([{
+  const { error: docErr } = await shipDocumentsRepository.insertOne({
     ship_id: shipId,
     doc_type: docType,
     title: docType === 'plano_anguilera' ? 'Plano de Diseño de Anguilera' : 'Informe de Pintado de Casco',
     file_name: file.name,
     file_url: fileUrl,
     file_size_bytes: file.size,
-    uploaded_by: user || 'Jefe de Obra'
-  }])
-  if (docErr) console.warn('[ship_documents] Error registrando historial:', docErr.message)
+    uploaded_by: user || 'Jefe de Obra',
+  })
+  if (docErr) console.warn('[ship_documents] Error registrando historial:', docErr)
 
   return updateFields
 }
@@ -216,7 +230,7 @@ export async function deleteShipNavalDocService({ shipId, docType }) {
   const updateFields = docType === 'plano_anguilera'
     ? { plan_anguilera_url: null, plan_anguilera_name: null, plan_anguilera_uploaded_at: null }
     : { informe_pintado_url: null, informe_pintado_name: null, informe_pintado_uploaded_at: null }
-  const { error } = await supabase.from('ships').update(updateFields).eq('id', shipId)
-  if (error) throw error
+  const { error } = await shipsRepository.updateById(shipId, updateFields, { select: null })
+  if (error) throw new Error(error)
   return updateFields
 }

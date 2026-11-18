@@ -1,4 +1,10 @@
-import { supabase } from './supabase.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { materialsRepository } from '../repositories/materialsRepository.js'
+import { laborLogsRepository } from '../repositories/laborLogsRepository.js'
+import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
+import { organizationRolesRepository } from '../repositories/organizationRolesRepository.js'
+import { complianceAlertsRepository } from '../repositories/complianceAlertsRepository.js'
 
 export const DASHBOARD_REALTIME_TABLES = [
   'ships',
@@ -11,7 +17,7 @@ export const DASHBOARD_REALTIME_TABLES = [
   'workers',
   'inventory_transactions',
   'purchase_orders',
-  'third_party_services'
+  'third_party_services',
 ]
 
 export const ADMIN_DASHBOARD_REALTIME_TABLES = [
@@ -23,7 +29,7 @@ export const ADMIN_DASHBOARD_REALTIME_TABLES = [
   'third_party_services',
   'work_orders',
   'workers',
-  'macro_variables'
+  'macro_variables',
 ]
 
 /**
@@ -32,42 +38,37 @@ export const ADMIN_DASHBOARD_REALTIME_TABLES = [
  */
 export async function fetchDashboardStatsService() {
   const [shipsRes, otsRes, materialsRes, hoursRes] = await Promise.all([
-    supabase.from('ships').select('id', { count: 'exact', head: true }),
-    supabase.from('work_orders').select('id', { count: 'exact', head: true }),
-    supabase.from('materials').select('id', { count: 'exact', head: true }),
-    supabase.from('labor_logs').select('id', { count: 'exact', head: true })
+    shipsRepository.countShips(),
+    workOrdersRepository.countWorkOrders(),
+    materialsRepository.countMaterials(),
+    laborLogsRepository.countLaborLogs(),
   ])
 
   const firstErr = [shipsRes.error, otsRes.error, materialsRes.error, hoursRes.error].find(Boolean)
-  if (firstErr) throw firstErr
+  if (firstErr) throw new Error(firstErr)
 
   return {
     shipsCount: shipsRes.count || 0,
     otsCount: otsRes.count || 0,
     materialsCount: materialsRes.count || 0,
-    hoursCount: hoursRes.count || 0
+    hoursCount: hoursRes.count || 0,
   }
 }
 
 export async function fetchMacroVariablesService() {
-  const { data, error } = await supabase
-    .from('macro_variables')
-    .select('*')
-    .order('year', { ascending: false })
-    .order('month', { ascending: false })
-
-  if (error) throw error
+  const { data, error } = await macroVariablesRepository.listMacroVariables()
+  if (error) throw new Error(error)
   return data || []
 }
 
 export async function fetchAdminDashboardCountsService() {
   const [rolesRes, complianceRes] = await Promise.all([
-    supabase.from('organization_roles').select('role_key', { count: 'exact', head: true }),
-    supabase.from('compliance_alerts').select('id, entity_type').eq('status', 'PENDIENTE')
+    organizationRolesRepository.countRoles(),
+    complianceAlertsRepository.listPending({ select: 'id, entity_type' }),
   ])
 
   return {
     rolesCount: rolesRes.count ?? null,
-    pendingAlerts: complianceRes.data || []
+    pendingAlerts: complianceRes.data || [],
   }
 }

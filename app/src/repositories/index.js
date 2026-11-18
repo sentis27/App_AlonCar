@@ -1,0 +1,26 @@
+/**
+ * repositories/index.js
+ * Barril central de repositorios de acceso a datos de AlonCar ERP.
+ */
+export * from './_baseRepository.js'
+export * from './rateCardsRepository.js'
+export * from './workersRepository.js'
+export * from './systemSettingsRepository.js'
+export * from './organizationRolesRepository.js'
+export * from './macroVariablesRepository.js'
+export * from './laborLogsRepository.js'
+export * from './otTemplatesRepository.js'
+export * from './aiGovernanceRepository.js'
+export * from './shipsRepository.js'
+export * from './shipStaysRepository.js'
+export * from './ownersRepository.js'
+export * from './purchaseOrdersRepository.js'
+export * from './suppliersRepository.js'
+export * from './thirdPartyServicesRepository.js'
+export * from './workOrdersRepository.js'
+export * from './workItemsRepository.js'
+export * from './materialsRepository.js'
+export * from './inventoryTransactionsRepository.js'
+export * from './gasMovementsRepository.js'
+export * from './complianceAlertsRepository.js'
+export * from './auditLogsRepository.js'

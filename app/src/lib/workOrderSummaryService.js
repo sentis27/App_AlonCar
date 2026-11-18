@@ -4,32 +4,63 @@
  * y validación servidor contra duplicados de título de OT por buque.
  */
 
-import { supabase } from './supabase.js'
 import { classifyWithdrawalCost } from './workCostRules.js'
 import { matchTransactionWorker } from './contractorDeductionsService.js'
 import { getDollarRateForDate } from './tercerosConstants.js'
 import { resolveDollarReference, enrichLaborLogs, enrichThirdPartyServices } from './managerialSummaryService.js'
 import { normalizeOtTitleKey, findDuplicateOtNameConflict } from './workOrderUnificationEngine.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
+import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
+import { thirdPartyServicesRepository } from '../repositories/thirdPartyServicesRepository.js'
+import { purchaseOrdersRepository, purchaseDocumentsRepository } from '../repositories/purchaseOrdersRepository.js'
+import { laborLogsRepository } from '../repositories/laborLogsRepository.js'
+import { gasMovementsRepository } from '../repositories/gasMovementsRepository.js'
+import { materialsRepository } from '../repositories/materialsRepository.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
+import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 
 const EMPTY_ROWS = [
   { key: 'panol', label: 'PAÑOL', count: 0, totalUsd: 0 },
   { key: 'terceros', label: 'TERCEROS', count: 0, totalUsd: 0 },
   { key: 'compras', label: 'COMPRAS', count: 0, totalUsd: 0 },
-  { key: 'horas', label: 'HORAS', count: 0, totalUsd: 0 }
+  { key: 'horas', label: 'HORAS', count: 0, totalUsd: 0 },
 ]
 
 async function fetchWoScopedRecords(woId) {
   const [wiRes, invRes, tpRes, poRes, logRes, gasRes, docRes] = await Promise.all([
-    supabase.from('work_items').select('id, work_order_id, description, status, work_type').eq('work_order_id', woId),
-    supabase.from('inventory_transactions').select('id, material_id, work_order_id, work_item_id, ship_id, worker_id, worker_name, contractor_name, movement_type, quantity_withdrawn, unit_cost_ars_snapshot, unit_cost_usd_snapshot, cost_center, transaction_date, is_deletion_requested').eq('work_order_id', woId),
-    supabase.from('third_party_services').select('id, ship_id, work_order_id, work_item_id, contractor_name, trade, voucher_type, voucher_number, invoice_number, supplier_remito_number, budget_number, internal_remito_number, amount_ars, usd_rate, amount_usd, service_date, entry_date, created_at, is_active').eq('work_order_id', woId),
-    supabase.from('purchase_orders').select('id, ship_id, work_order_id, charge_type, status, material_id, quantity, received_quantity, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, created_at').eq('work_order_id', woId),
-    supabase.from('labor_logs').select('id, ship_id, work_order_id, work_item_id, worker_id, worker_name, worker_type, rubro, work_type, cost_center, hours_worked, hours_normal, hours_extra_50, hours_extra_100, approval_status, date_logged, notes').eq('work_order_id', woId),
-    supabase.from('gas_cylinder_movements').select('id').eq('work_order_id', woId),
-    supabase.from('purchase_documents').select('id').eq('work_order_id', woId)
+    workItemsRepository.listWorkItems({
+      select: 'id, work_order_id, description, status, work_type',
+      filters: { work_order_id: woId },
+      orderBy: [],
+    }),
+    inventoryTransactionsRepository.listTransactions({
+      select: 'id, material_id, work_order_id, work_item_id, ship_id, worker_id, worker_name, contractor_name, movement_type, quantity_withdrawn, unit_cost_ars_snapshot, unit_cost_usd_snapshot, cost_center, transaction_date, is_deletion_requested',
+      filters: { work_order_id: woId },
+      orderBy: [],
+    }),
+    thirdPartyServicesRepository.listServices({
+      select: 'id, ship_id, work_order_id, work_item_id, contractor_name, trade, voucher_type, voucher_number, invoice_number, supplier_remito_number, budget_number, internal_remito_number, amount_ars, usd_rate, amount_usd, service_date, entry_date, created_at, is_active',
+      filters: { work_order_id: woId },
+      orderBy: [],
+    }),
+    purchaseOrdersRepository.listOrders({
+      select: 'id, ship_id, work_order_id, charge_type, status, material_id, quantity, received_quantity, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, created_at',
+      filters: { work_order_id: woId },
+      orderBy: [],
+    }),
+    laborLogsRepository.listLaborLogs({
+      select: 'id, ship_id, work_order_id, work_item_id, worker_id, worker_name, worker_type, rubro, work_type, cost_center, hours_worked, hours_normal, hours_extra_50, hours_extra_100, approval_status, date_logged, notes',
+      filters: { work_order_id: woId },
+      orderBy: [],
+      limit: null,
+    }),
+    gasMovementsRepository.listGasMovements({ select: 'id', filters: { work_order_id: woId }, orderBy: [], limit: null }),
+    purchaseDocumentsRepository.listDocuments({ select: 'id', filters: { work_order_id: woId }, orderBy: [] }),
   ])
   const firstErr = [wiRes.error, invRes.error, tpRes.error, poRes.error, logRes.error].find(Boolean)
-  if (firstErr) throw firstErr
+  if (firstErr) throw new Error(firstErr)
   return {
     workItems: wiRes.data || [],
     inventoryTx: invRes.data || [],
@@ -37,23 +68,29 @@ async function fetchWoScopedRecords(woId) {
     purchaseOrders: poRes.data || [],
     laborLogs: logRes.data || [],
     gasMovements: gasRes.data || [],
-    purchaseDocuments: docRes.data || []
+    purchaseDocuments: docRes.data || [],
   }
 }
 
-/**
- * Calcula los 4 totales simples (cantidad + US$) de movimientos vinculados a una OT.
- */
 export async function fetchWorkOrderTransferSummaryService(workOrderId) {
   if (!workOrderId) return { rows: EMPTY_ROWS, workItemsCount: 0, totalMovements: 0 }
 
   const [scoped, matRes, wkrRes, rcRes, mvRes, woRes] = await Promise.all([
     fetchWoScopedRecords(workOrderId),
-    supabase.from('materials').select('id, name, category, cost_ars, cost_usd'),
-    supabase.from('workers').select('id, name, work_group, trade, admin_center, category, hourly_rate_ars, hourly_rate_usd, consumables, consumables_discount_pct, safety_items'),
-    supabase.from('rate_cards').select('id, period, year, month, quincena, admin_center, entity_name, rate_oficial_ars, rate_oficial_usd, has_ayudante, rate_ayudante_ars, rate_ayudante_usd, dollar_rate').order('year', { ascending: false }).order('month', { ascending: false }).order('quincena', { ascending: false }),
-    supabase.from('macro_variables').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
-    supabase.from('work_orders').select('id, ship_id, ot_number, title, description, work_type').eq('id', workOrderId)
+    materialsRepository.listMaterials({ select: 'id, name, category, cost_ars, cost_usd', orderBy: [] }),
+    workersRepository.listWorkers({
+      select: 'id, name, work_group, trade, admin_center, category, hourly_rate_ars, hourly_rate_usd, consumables, consumables_discount_pct, safety_items',
+      orderBy: [],
+    }),
+    rateCardsRepository.listRateCards({
+      select: 'id, period, year, month, quincena, admin_center, entity_name, rate_oficial_ars, rate_oficial_usd, has_ayudante, rate_ayudante_ars, rate_ayudante_usd, dollar_rate',
+    }),
+    macroVariablesRepository.listMacroVariables(),
+    workOrdersRepository.listWorkOrders({
+      select: 'id, ship_id, ot_number, title, description, work_type',
+      filters: { id: workOrderId },
+      orderBy: [],
+    }),
   ])
 
   const materials = matRes.data || []
@@ -98,7 +135,7 @@ export async function fetchWorkOrderTransferSummaryService(workOrderId) {
     rateCards,
     workOrders,
     workItems: scoped.workItems,
-    defaultDollarRate
+    defaultDollarRate,
   })
   const horasUsd = enrichedLogs.reduce((acc, l) => acc + (Number(l.costUsd) || 0), 0)
 
@@ -106,33 +143,31 @@ export async function fetchWorkOrderTransferSummaryService(workOrderId) {
     { key: 'panol', label: 'PAÑOL', count: activeInv.length, totalUsd: Math.round(panolUsd) },
     { key: 'terceros', label: 'TERCEROS', count: activeTps.length, totalUsd: Math.round(tercerosUsd) },
     { key: 'compras', label: 'COMPRAS', count: scoped.purchaseOrders.length, totalUsd: Math.round(comprasUsd) },
-    { key: 'horas', label: 'HORAS', count: scoped.laborLogs.length, totalUsd: Math.round(horasUsd) }
+    { key: 'horas', label: 'HORAS', count: scoped.laborLogs.length, totalUsd: Math.round(horasUsd) },
   ]
 
   return {
     rows,
     workItemsCount: scoped.workItems.length,
-    totalMovements: rows.reduce((s, r) => s + r.count, 0)
+    totalMovements: rows.reduce((s, r) => s + r.count, 0),
   }
 }
 
-/**
- * Validación en servidor contra Supabase antes de crear o renombrar una OT.
- */
 export async function assertNoDuplicateOtTitleInDb({ shipId, title, excludeWoId = null }) {
   const norm = normalizeOtTitleKey(title)
   if (!shipId || !norm) return
 
-  const { data: shipWos, error: woErr } = await supabase
-    .from('work_orders')
-    .select('id, ship_id, ot_number, title, status, notes, merged_into_wo_id')
-    .eq('ship_id', shipId)
-  if (woErr) throw woErr
+  const { data: shipWos, error: woErr } = await workOrdersRepository.listWorkOrders({
+    select: 'id, ship_id, ot_number, title, status, notes, merged_into_wo_id',
+    filters: { ship_id: shipId },
+    orderBy: [],
+  })
+  if (woErr) throw new Error(woErr)
 
   const woIds = (shipWos || []).map((w) => w.id)
   let items = []
   if (woIds.length > 0) {
-    const { data: itemRows } = await supabase.from('work_items').select('id, work_order_id, status, comments').in('work_order_id', woIds)
+    const { data: itemRows } = await workItemsRepository.listByWorkOrderIds(woIds)
     items = itemRows || []
   }
 

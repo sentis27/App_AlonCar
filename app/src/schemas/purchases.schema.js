@@ -1,0 +1,108 @@
+/**
+ * purchases.schema.js
+ * Contratos Zod para `purchase_orders`, `suppliers` y `purchase_documents`.
+ */
+import { z } from 'zod'
+
+export const PurchaseOrderSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    charge_type: z.string().nullable().optional(),
+    order_date: z.string().nullable().optional(),
+    ship_id: z.string().uuid().nullable().optional(),
+    work_order_id: z.string().uuid().nullable().optional(),
+    requested_by: z.string().uuid().nullable().optional(),
+    requested_by_name: z.string().nullable().optional(),
+    work_type: z.string().nullable().optional(),
+    material_id: z.string().uuid().nullable().optional(),
+    material_name_raw: z.string().nullable().optional(),
+    is_new_material: z.boolean().optional(),
+    quantity: z.coerce.number().min(0, 'quantity no puede ser negativa').nullable().optional(),
+    unit_measure: z.string().nullable().optional(),
+    supplier_id: z.string().uuid().nullable().optional(),
+    supplier_quoted_price: z.coerce.number().min(0).nullable().optional(),
+    system_unit_price: z.coerce.number().min(0).nullable().optional(),
+    currency: z.string().nullable().optional(),
+    estimated_delivery: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
+    stock_condition: z.string().nullable().optional(),
+    is_reconciled: z.boolean().optional(),
+    reconciled_at: z.string().nullable().optional(),
+    reconciled_by: z.string().nullable().optional(),
+    invoice_number: z.string().nullable().optional(),
+    fortnight_period: z.string().nullable().optional(),
+    created_by_automation: z.boolean().optional(),
+    observations: z.string().nullable().optional(),
+    created_by: z.string().nullable().optional(),
+    urgency: z.string().nullable().optional(),
+    remito_number: z.string().nullable().optional(),
+    parent_order_id: z.string().uuid().nullable().optional(),
+    received_quantity: z.coerce.number().min(0).nullable().optional(),
+    missing_quantity: z.coerce.number().min(0).nullable().optional(),
+    no_catalog_required: z.boolean().optional(),
+    delivery_date: z.string().nullable().optional(),
+    freight_transport_name: z.string().nullable().optional(),
+    freight_request_date: z.string().nullable().optional(),
+    freight_estimated_date: z.string().nullable().optional(),
+    courier_dispatched: z.boolean().optional(),
+    courier_dispatched_at: z.string().nullable().optional(),
+    courier_worker_id: z.string().uuid().nullable().optional(),
+    courier_worker_name: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    created_at: z.string().optional(),
+    updated_at: z.string().optional(),
+  })
+  .passthrough()
+
+export const SupplierSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    name: z.string().trim().min(1, 'El nombre del proveedor es obligatorio'),
+    cuit_cuil: z.string().nullable().optional(),
+    trade: z.string().nullable().optional(),
+    payment_method: z.string().nullable().optional(),
+    billing_timing: z.string().nullable().optional(),
+    billing_medium: z.string().nullable().optional(),
+    late_billing_alert: z.boolean().optional(),
+    contact_name: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    address: z.string().nullable().optional(),
+    observations: z.string().nullable().optional(),
+    is_gas_supplier: z.boolean().optional(),
+    client_number: z.string().nullable().optional(),
+    order_cutoff_day: z.string().nullable().optional(),
+    delivery_day: z.string().nullable().optional(),
+    order_channel: z.string().nullable().optional(),
+    enabled_purchases: z.boolean().optional(),
+    enabled_third_party: z.boolean().optional(),
+    enabled_materials: z.boolean().optional(),
+    is_active: z.boolean().optional(),
+    trades: z.any().optional(),
+    is_local_supplier: z.boolean().optional(),
+    created_at: z.string().optional(),
+    updated_at: z.string().optional(),
+  })
+  .passthrough()
+
+export const PurchaseDocumentSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    work_order_id: z.string().uuid().nullable().optional(),
+    material_id: z.string().uuid().nullable().optional(),
+    uploaded_by: z.string().nullable().optional(),
+    original_filename: z.string().trim().min(1, 'original_filename es obligatorio'),
+    storage_path: z.string().trim().min(1, 'storage_path es obligatorio'),
+    category: z.string().nullable().optional(),
+    purchase_order_id: z.string().uuid().nullable().optional(),
+    supplier_id: z.string().uuid().nullable().optional(),
+    description: z.string().nullable().optional(),
+    normalized_filename: z.string().nullable().optional(),
+    year: z.coerce.number().int().optional(),
+    file_size_bytes: z.coerce.number().min(0).optional(),
+    doc_type: z.string().nullable().optional(),
+    is_confidential_labor: z.boolean().optional(),
+    extracted_text: z.string().nullable().optional(),
+    created_at: z.string().optional(),
+  })
+  .passthrough()

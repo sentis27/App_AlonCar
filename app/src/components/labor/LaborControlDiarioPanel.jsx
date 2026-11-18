@@ -12,7 +12,7 @@ import {
   Trash2
 } from 'lucide-react'
 import HighlightText from '../HighlightText'
-import { supabase } from '../../lib/supabase'
+import { patchLaborLogService } from '../../services/laborService'
 import {
   cleanShipName,
   NOMINA_ASTILLERO_BASE,
@@ -96,8 +96,7 @@ export default function LaborControlDiarioPanel({
         const h100 = field === 'hours_extra_100' ? numVal : (parseFloat(targetLog.hours_extra_100) || 0)
         payload.hours_worked = n + h50 + h100
       }
-      const { error } = await supabase.from('labor_logs').update(payload).eq('id', logId)
-      if (error) throw error
+      await patchLaborLogService(logId, payload)
     } catch (err) {
       console.error('Error guardando celda inline en Control Diario:', err)
     }

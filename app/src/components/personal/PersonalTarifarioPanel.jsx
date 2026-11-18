@@ -26,8 +26,16 @@ import {
   Calendar,
   HelpCircle
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import {
+  loadTarifarioOrgRolesService,
+  loadAllTarifarioRateCardsService,
+  loadTarifarioScopeRateCardsService,
+  upsertTarifarioRateCardsBatchService,
+  saveAstilleroCategoryRateService,
+  saveContractorRateAndSyncWorkersService,
+  patchTarifarioRateCardCellService
+} from '../../services/personalTarifarioService'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import { fetchMacroVariables } from '../../lib/macroVariablesService'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
@@ -170,8 +178,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
 
   async function loadOrgRoles() {
     try {
-      const { data, error } = await supabase.from('organization_roles').select('*')
-      if (error) throw error
+      const data = await loadTarifarioOrgRolesService()
       if (data && data.length > 0) {
         const map = {}
         data.forEach(r => {
@@ -186,8 +193,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
 
   async function loadRecordedPeriods() {
     try {
-      const { data, error } = await supabase.from('rate_cards').select('*')
-      if (error) throw error
+      const data = await loadAllTarifarioRateCardsService()
       if (data) {
         setAllRateCardRecords(data)
         const map = new Map()
@@ -218,19 +224,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
   async function loadRateCards(periodToLoad, scope = rateTableScope) {
     try {
       setLoadingRateCards(true)
-      let query = supabase.from('rate_cards').select('*')
-      if (scope === 'current') {
-        query = query.eq('period', periodToLoad)
-      }
-
-      const { data, error } = await query
-        .order('year', { ascending: false })
-        .order('month', { ascending: false })
-        .order('quincena', { ascending: false })
-        .order('admin_center', { ascending: true })
-        .order('entity_name', { ascending: true })
-
-      if (error) throw error
+      const data = await loadTarifarioScopeRateCardsService(periodToLoad, scope)
 
       if (data && data.length > 0) {
         setRateCards(assignMonotonicFolios(data, { dateField: 'created_at' }))
@@ -456,8 +450,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
             updated_by: userHolder,
             updated_at: new Date().toISOString()
           }))
-          const { error } = await supabase.from('rate_cards').upsert(rowsToInsert, { onConflict: 'period,admin_center,entity_name' })
-          if (error) throw error
+          await upsertTarifarioRateCardsBatchService(rowsToInsert)
         }
       } else {
         const baseAstilleroRows = ASTILLERO_BASE_CATEGORIES.map(cat => ({
@@ -474,8 +467,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
           updated_by: userHolder,
           updated_at: new Date().toISOString()
         }))
-        const { error } = await supabase.from('rate_cards').upsert(baseAstilleroRows, { onConflict: 'period,admin_center,entity_name' })
-        if (error) throw error
+        await upsertTarifarioRateCardsBatchService(baseAstilleroRows)
 
         const zeroAstilleroForm = {}
         ASTILLERO_BASE_CATEGORIES.forEach(cat => {
@@ -543,9 +535,8 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
         const ars = parseFloat(astilleroForm[cat]?.ars) || 0
         const usd = dollarRate > 0 ? Number((ars / dollarRate).toFixed(2)) : 0
 
-        const { error } = await supabase
-          .from('rate_cards')
-          .upsert({
+        await saveAstilleroCategoryRateService(
+          {
             period: currentPeriodKey,
             year: rateYear,
             month: rateMonth,
@@ -560,17 +551,9 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
             dollar_rate: dollarRate,
             updated_by: orgRoles['LIQUIDACION_SUELDOS']?.holder || 'María José',
             updated_at: new Date().toISOString()
-          }, { onConflict: 'period,admin_center,entity_name' })
-
-        if (error) throw error
-
-        if (ars > 0) {
-          await supabase
-            .from('workers')
-            .update({ hourly_rate_ars: ars, hourly_rate_usd: usd })
-            .eq('admin_center', 'ASTILLERO')
-            .eq('category', cat)
-        }
+          },
+          { syncWorkers: ars > 0, category: cat, ars, usd }
+        )
       }
 
       await loadRateCards(currentPeriodKey)
@@ -603,9 +586,8 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
       const ayArs = contractorHasAyudante ? (parseFloat(contractorAyudanteArs) || 0) : null
       const ayUsd = contractorHasAyudante && dollarRate > 0 && ayArs ? Number((ayArs / dollarRate).toFixed(2)) : null
 
-      const { error } = await supabase
-        .from('rate_cards')
-        .upsert({
+      await saveContractorRateAndSyncWorkersService(
+        {
           period: currentPeriodKey,
           year: rateYear,
           month: rateMonth,
@@ -620,30 +602,16 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
           dollar_rate: dollarRate,
           updated_by: orgRoles['LIQUIDACION_SUELDOS']?.holder || 'María José',
           updated_at: new Date().toISOString()
-        }, { onConflict: 'period,admin_center,entity_name' })
-
-      if (error) throw error
-
-      if (contractorHasAyudante && ayArs > 0) {
-        await supabase
-          .from('workers')
-          .update({ hourly_rate_ars: ayArs, hourly_rate_usd: ayUsd })
-          .eq('admin_center', 'CONTRATISTA')
-          .or(`work_group.eq.${selectedContractor} AYUDANTE,category.eq.${selectedContractor} AYUDANTE`)
-
-        await supabase
-          .from('workers')
-          .update({ hourly_rate_ars: ofArs, hourly_rate_usd: ofUsd })
-          .eq('admin_center', 'CONTRATISTA')
-          .eq('work_group', selectedContractor)
-          .neq('category', `${selectedContractor} AYUDANTE`)
-      } else if (ofArs > 0) {
-        await supabase
-          .from('workers')
-          .update({ hourly_rate_ars: ofArs, hourly_rate_usd: ofUsd })
-          .eq('admin_center', 'CONTRATISTA')
-          .eq('work_group', selectedContractor)
-      }
+        },
+        {
+          contractorName: selectedContractor,
+          hasAyudante: contractorHasAyudante,
+          ofArs,
+          ofUsd,
+          ayArs,
+          ayUsd
+        }
+      )
 
       await loadRateCards(currentPeriodKey)
       await loadRecordedPeriods()
@@ -743,8 +711,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
 
     setRateCards(prev => prev.map(r => r.id === rowId ? { ...r, ...dbPatch } : r))
 
-    const { error } = await supabase.from('rate_cards').update(dbPatch).eq('id', rowId)
-    if (error) throw error
+    await patchTarifarioRateCardCellService(rowId, dbPatch)
 
     await auditService.logCellChange({
       entityType: 'rate_cards',

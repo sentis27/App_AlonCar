@@ -1,4 +1,7 @@
-import { supabase } from './supabase.js'
+import {
+  systemPromptsRepository,
+  aiProcessingLogsRepository,
+} from '../repositories/aiGovernanceRepository.js'
 
 // ============================================================================
 // PROMPTS DEL SISTEMA POR DEFECTO (Basados en SDD v3.0 + DEC-004 a DEC-007)
@@ -159,11 +162,19 @@ export const STORAGE_KEY_PROMPTS = 'aloncar_system_prompts_v1'
 export const STORAGE_KEY_AI_CONFIG = 'aloncar_ai_provider_config_v1'
 export const STORAGE_KEY_AI_LOGS = 'aloncar_ai_processing_logs_v1'
 
+function getSafeStorage() {
+  try {
+    const s = globalThis?.localStorage
+    if (s && typeof s.getItem === 'function' && typeof s.setItem === 'function') return s
+  } catch { /* entorno Node sin storage */ }
+  return null
+}
+
 // ============================================================================
 // CONFIGURACIÓN DEL PROVEEDOR DE IA (OpenAI / Gemini / Groq / Local)
 // ============================================================================
 export function loadAiProviderConfig() {
-  const envOpenAiKey = import.meta.env.VITE_OPENAI_API_KEY || ''
+  const envOpenAiKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OPENAI_API_KEY) || ''
   const defaultConfig = {
     mode: 'hybrid', // 'hybrid' (OpenAI + Respaldo Local) | 'openai' | 'gemini' | 'local'
     provider: 'openai',
@@ -176,7 +187,7 @@ export function loadAiProviderConfig() {
   }
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_AI_CONFIG)
+    const raw = getSafeStorage()?.getItem(STORAGE_KEY_AI_CONFIG)
     if (!raw) return defaultConfig
     const parsed = JSON.parse(raw)
     return {
@@ -196,7 +207,7 @@ export function saveAiProviderConfig(newConfig) {
     ...newConfig,
     updatedAt: new Date().toISOString()
   }
-  localStorage.setItem(STORAGE_KEY_AI_CONFIG, JSON.stringify(merged))
+  getSafeStorage()?.setItem(STORAGE_KEY_AI_CONFIG, JSON.stringify(merged))
   return merged
 }
 
@@ -204,34 +215,29 @@ export function saveAiProviderConfig(newConfig) {
 // GESTIÓN DE PROMPTS EN SUPABASE + RESPALDO LOCAL
 // ============================================================================
 export async function loadSystemPrompts() {
+  const storage = getSafeStorage()
   try {
-    const { data, error } = await supabase
-      .from('system_prompts')
-      .select('*')
-      .order('slug', { ascending: true })
+    const { data, error } = await systemPromptsRepository.listPrompts()
 
     if (!error) {
       if (data && data.length > 0) {
-        // Asegurar que estén los 4 prompts base
-        const merged = DEFAULT_SYSTEM_PROMPTS.map(def => {
-          const found = data.find(d => d.slug === def.slug)
+        const merged = DEFAULT_SYSTEM_PROMPTS.map((def) => {
+          const found = data.find((d) => d.slug === def.slug)
           return found ? { ...def, ...found } : def
         })
-        localStorage.setItem(STORAGE_KEY_PROMPTS, JSON.stringify(merged))
+        storage?.setItem(STORAGE_KEY_PROMPTS, JSON.stringify(merged))
         return { prompts: merged, source: 'supabase' }
-      } else {
-        // Tabla recién creada vacía: sembrar automáticamente en Supabase
-        await supabase.from('system_prompts').upsert(DEFAULT_SYSTEM_PROMPTS, { onConflict: 'slug' })
-        localStorage.setItem(STORAGE_KEY_PROMPTS, JSON.stringify(DEFAULT_SYSTEM_PROMPTS))
-        return { prompts: DEFAULT_SYSTEM_PROMPTS, source: 'supabase' }
       }
+      await systemPromptsRepository.seedDefaultPrompts(DEFAULT_SYSTEM_PROMPTS)
+      storage?.setItem(STORAGE_KEY_PROMPTS, JSON.stringify(DEFAULT_SYSTEM_PROMPTS))
+      return { prompts: DEFAULT_SYSTEM_PROMPTS, source: 'supabase' }
     }
   } catch (err) {
     console.warn('Usando prompts desde caché local:', err)
   }
 
   try {
-    const localRaw = localStorage.getItem(STORAGE_KEY_PROMPTS)
+    const localRaw = storage?.getItem(STORAGE_KEY_PROMPTS)
     if (localRaw) {
       const parsed = JSON.parse(localRaw)
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -242,57 +248,48 @@ export async function loadSystemPrompts() {
     // ignore
   }
 
-  // Intentar sembrar en Supabase silenciosamente la primera vez
   try {
-    await supabase.from('system_prompts').upsert(DEFAULT_SYSTEM_PROMPTS, { onConflict: 'slug' })
+    await systemPromptsRepository.seedDefaultPrompts(DEFAULT_SYSTEM_PROMPTS)
   } catch {
     // ignore
   }
 
-  localStorage.setItem(STORAGE_KEY_PROMPTS, JSON.stringify(DEFAULT_SYSTEM_PROMPTS))
+  storage?.setItem(STORAGE_KEY_PROMPTS, JSON.stringify(DEFAULT_SYSTEM_PROMPTS))
   return { prompts: DEFAULT_SYSTEM_PROMPTS, source: 'default' }
 }
 
 export async function saveSystemPrompt(promptObj) {
   const updated = {
     ...promptObj,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   }
 
-  // 1. Guardar en caché local inmediatamente
   const current = (await loadSystemPrompts()).prompts
-  const nextList = current.map(p => (p.slug === updated.slug ? updated : p))
-  if (!nextList.some(p => p.slug === updated.slug)) {
+  const nextList = current.map((p) => (p.slug === updated.slug ? updated : p))
+  if (!nextList.some((p) => p.slug === updated.slug)) {
     nextList.push(updated)
   }
-  localStorage.setItem(STORAGE_KEY_PROMPTS, JSON.stringify(nextList))
+  getSafeStorage()?.setItem(STORAGE_KEY_PROMPTS, JSON.stringify(nextList))
 
-  // 2. Persistir en Supabase
-  try {
-    const { error } = await supabase
-      .from('system_prompts')
-      .upsert(
-        {
-          slug: updated.slug,
-          title: updated.title,
-          category: updated.category || 'HORAS',
-          description: updated.description || '',
-          prompt_template: updated.prompt_template,
-          version: updated.version || 'v2.4',
-          model: updated.model || 'gpt-4o-mini',
-          temperature: Number(updated.temperature ?? 0),
-          is_active: updated.is_active ?? true,
-          updated_by: updated.updated_by || 'Administrador',
-          updated_at: updated.updated_at
-        },
-        { onConflict: 'slug' }
-      )
-    if (error) throw error
+  const { error } = await systemPromptsRepository.upsertPrompt({
+    slug: updated.slug,
+    title: updated.title,
+    category: updated.category || 'HORAS',
+    description: updated.description || '',
+    prompt_template: updated.prompt_template,
+    version: updated.version || 'v2.4',
+    model: updated.model || 'gpt-4o-mini',
+    temperature: Number(updated.temperature ?? 0),
+    is_active: updated.is_active ?? true,
+    updated_by: updated.updated_by || 'Administrador',
+    updated_at: updated.updated_at,
+  })
+
+  if (!error) {
     return { ok: true, syncedToDb: true, prompt: updated }
-  } catch (err) {
-    console.warn('Prompt guardado localmente (tabla remota pendiente de migración):', err)
-    return { ok: true, syncedToDb: false, prompt: updated, warning: err.message }
   }
+  console.warn('Prompt guardado localmente (tabla remota pendiente de migración):', error)
+  return { ok: true, syncedToDb: false, prompt: updated, warning: error }
 }
 
 // ============================================================================
@@ -300,12 +297,7 @@ export async function saveSystemPrompt(promptObj) {
 // ============================================================================
 export async function loadAiProcessingLogs() {
   try {
-    const { data, error } = await supabase
-      .from('ai_processing_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(30)
-
+    const { data, error } = await aiProcessingLogsRepository.listRecentLogs(30)
     if (!error && data && data.length > 0) {
       return data
     }
@@ -314,7 +306,7 @@ export async function loadAiProcessingLogs() {
   }
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_AI_LOGS)
+    const raw = getSafeStorage()?.getItem(STORAGE_KEY_AI_LOGS)
     return raw ? JSON.parse(raw) : []
   } catch {
     return []
@@ -326,35 +318,33 @@ export async function recordAiProcessingLog(entry) {
     id: `log-${Date.now()}`,
     mensaje_id: `MSG-${Date.now()}`,
     fecha_procesamiento: new Date().toISOString(),
-    ...entry
+    ...entry,
   }
 
   try {
     const prev = await loadAiProcessingLogs()
     const next = [fullEntry, ...prev].slice(0, 40)
-    localStorage.setItem(STORAGE_KEY_AI_LOGS, JSON.stringify(next))
+    getSafeStorage()?.setItem(STORAGE_KEY_AI_LOGS, JSON.stringify(next))
   } catch {
     // ignore
   }
 
   try {
-    await supabase.from('ai_processing_logs').insert([
-      {
-        mensaje_id: fullEntry.mensaje_id,
-        fecha_reportada: fullEntry.fecha_reportada || null,
-        usuario_emisor: fullEntry.usuario_emisor || 'Operador Web',
-        mensaje_literal: fullEntry.mensaje_literal || '',
-        canal_detectado: fullEntry.canal_detectado || 'astillero_general',
-        engine_used: fullEntry.engine_used || 'hybrid',
-        prompt_version: fullEntry.prompt_version || 'v2.4',
-        total_filas: fullEntry.total_filas || 0,
-        filas_review: fullEntry.filas_review || 0,
-        tokens_in: fullEntry.tokens_in || 0,
-        tokens_out: fullEntry.tokens_out || 0,
-        resumen_agente: fullEntry.resumen_agente || '',
-        raw_output: fullEntry.raw_output || null
-      }
-    ])
+    await aiProcessingLogsRepository.insertOne({
+      mensaje_id: fullEntry.mensaje_id,
+      fecha_reportada: fullEntry.fecha_reportada || null,
+      usuario_emisor: fullEntry.usuario_emisor || 'Operador Web',
+      mensaje_literal: fullEntry.mensaje_literal || '',
+      canal_detectado: fullEntry.canal_detectado || 'astillero_general',
+      engine_used: fullEntry.engine_used || 'hybrid',
+      prompt_version: fullEntry.prompt_version || 'v2.4',
+      total_filas: fullEntry.total_filas || 0,
+      filas_review: fullEntry.filas_review || 0,
+      tokens_in: fullEntry.tokens_in || 0,
+      tokens_out: fullEntry.tokens_out || 0,
+      resumen_agente: fullEntry.resumen_agente || '',
+      raw_output: fullEntry.raw_output || null,
+    })
   } catch {
     // ignore
   }

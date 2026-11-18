@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { ShieldAlert } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
 import {
   CATALOG_RUBROS,
   OFFICIAL_UNITS,
   SECURITY_FACTORS,
   deduceUnitMeasure
 } from '../../lib/comprasConstants'
-import { auditService } from '../../lib/auditService'
+import {
+  dismissOrderCatalogRequirementService,
+  createCatalogMaterialWithImageService
+} from '../../services/comprasOcrSettingsService'
 
 export default function NewMaterialModal({ order, onClose, onDismissed, onSuccess }) {
   const [noCatalogRequired, setNoCatalogRequired] = useState(false)
@@ -35,20 +37,7 @@ export default function NewMaterialModal({ order, onClose, onDismissed, onSucces
     if (noCatalogRequired) {
       setSaving(true)
       try {
-        const { error } = await supabase
-          .from('purchase_orders')
-          .update({ no_catalog_required: true, updated_at: new Date().toISOString() })
-          .eq('id', order.id)
-        if (error) throw error
-        await auditService.logRowAction({
-          action: 'UPDATE',
-          entityType: 'purchase_orders',
-          entityId: order.id,
-          entityName: order.material_name_raw,
-          sheetName: 'Compras · Pedidos',
-          moduleRoute: '/compras',
-          details: { no_catalog_required: true }
-        })
+        await dismissOrderCatalogRequirementService({ order })
         if (onDismissed) onDismissed(order.id)
         else onClose()
       } catch (err) {
@@ -67,43 +56,30 @@ export default function NewMaterialModal({ order, onClose, onDismissed, onSucces
 
     setSaving(true)
     try {
-      let imageUrl = null
+      let storagePath = null
       if (imageFile) {
         const ext = imageFile.name.split('.').pop()
         const safeName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
-        const storagePath = `catalogo_materiales/${Date.now()}_${safeName}.${ext}`
-        const { error: uploadError } = await supabase.storage.from('compras').upload(storagePath, imageFile)
-        if (uploadError) throw uploadError
-        const { data: urlData } = supabase.storage.from('compras').getPublicUrl(storagePath)
-        imageUrl = urlData.publicUrl
+        storagePath = `catalogo_materiales/${Date.now()}_${safeName}.${ext}`
       }
 
-      const payload = {
-        name: name.trim(),
-        category,
-        rubro: requestNewRubro ? null : rubro,
-        rubro_status: requestNewRubro ? 'PENDIENTE_HOMOLOGACION' : 'APROBADO',
-        suggested_rubro: requestNewRubro ? suggestedRubro.trim().toUpperCase() : null,
-        unit_measure: unitMeasure,
-        security_factor: Number(securityFactor) || 1.06,
-        cost_ars: Number(costArs),
-        cost_usd: Number(costArs) / 1500,
-        current_stock: 0,
-        minimum_stock: Number(minimumStock),
-        image_url: imageUrl
-      }
-
-      const { data, error } = await supabase.from('materials').insert([payload]).select().single()
-      if (error) throw error
-
-      await auditService.logRowAction({
-        action: 'CREATE',
-        entityType: 'materials',
-        entityId: data.id,
-        entityName: data.name,
-        sheetName: 'Compras · Catálogo',
-        moduleRoute: '/compras',
-        details: { newMaterial: data }
+      const data = await createCatalogMaterialWithImageService({
+        storagePath,
+        imageFile,
+        buildPayload: (imageUrl) => ({
+          name: name.trim(),
+          category,
+          rubro: requestNewRubro ? null : rubro,
+          rubro_status: requestNewRubro ? 'PENDIENTE_HOMOLOGACION' : 'APROBADO',
+          suggested_rubro: requestNewRubro ? suggestedRubro.trim().toUpperCase() : null,
+          unit_measure: unitMeasure,
+          security_factor: Number(securityFactor) || 1.06,
+          cost_ars: Number(costArs),
+          cost_usd: Number(costArs) / 1500,
+          current_stock: 0,
+          minimum_stock: Number(minimumStock),
+          image_url: imageUrl
+        })
       })
 
       onSuccess(data)

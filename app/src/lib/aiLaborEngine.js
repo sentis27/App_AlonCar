@@ -1,4 +1,8 @@
 import { supabase } from './supabase.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
 import {
   OFFICIAL_RUBROS_CATALOG,
   normalizeText,
@@ -210,5 +214,20 @@ export async function tabulateCrewMessage(
     tokensOut,
     summary: parsedPayload.resumen_agente || `Se tabularon ${validatedRows.length} filas en la Cuadrilla.`,
     logEntry
+  }
+}
+
+export async function loadAiSandboxCatalogs() {
+  const [w, s, wo, wi] = await Promise.all([
+    workersRepository.findAll({ orderBy: [] }),
+    shipsRepository.findAll({ orderBy: [] }),
+    workOrdersRepository.findAll({ orderBy: [] }),
+    workItemsRepository.findAll({ orderBy: [] }),
+  ])
+  return {
+    workers: w.data || [],
+    ships: s.data || [],
+    workOrders: wo.data || [],
+    workItems: wi.data || [],
   }
 }

@@ -25,7 +25,12 @@ import {
   ShieldCheck,
   AlertCircle
 } from 'lucide-react'
-import { supabase } from '../../lib/supabase.js'
+import {
+  loadAdminRolesMatrixService,
+  patchOrganizationRoleService,
+  deleteOrganizationRoleService,
+  upsertOrganizationRoleService
+} from '../../services/adminGovernanceService.js'
 import HighlightText from '../HighlightText.jsx'
 
 // Módulos del sistema controlables en la matriz de seguridad
@@ -232,13 +237,7 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
   async function loadRoles() {
     try {
       setLoadingRoles(true)
-      const { data, error } = await supabase
-        .from('organization_roles')
-        .select('*')
-        .order('role_title', { ascending: true })
-
-      if (error) throw error
-      const list = data || []
+      const list = await loadAdminRolesMatrixService()
       setRoles(list)
       onRoleCountChange?.(list.length)
     } catch (err) {
@@ -260,15 +259,10 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
     setRoles(prev => prev.map(r => r.role_key === role.role_key ? { ...r, allowed_sections: newSections } : r))
 
     try {
-      const { error } = await supabase
-        .from('organization_roles')
-        .update({
-          allowed_sections: newSections,
-          updated_at: new Date().toISOString()
-        })
-        .eq('role_key', role.role_key)
-
-      if (error) throw error
+      await patchOrganizationRoleService(role.role_key, {
+        allowed_sections: newSections,
+        updated_at: new Date().toISOString()
+      })
     } catch (err) {
       console.error('Error actualizando permiso:', err)
       loadRoles()
@@ -281,12 +275,10 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
     setRoles(prev => prev.map(r => r.role_key === role.role_key ? { ...r, status: newStatus } : r))
 
     try {
-      const { error } = await supabase
-        .from('organization_roles')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('role_key', role.role_key)
-
-      if (error) throw error
+      await patchOrganizationRoleService(role.role_key, {
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
     } catch (err) {
       console.error('Error alternando estado de rol:', err)
       loadRoles()
@@ -342,12 +334,7 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
     if (!window.confirm(`¿Estás seguro de eliminar el puesto de "${role.role_title}"?`)) return
     try {
       setRoles(prev => prev.filter(r => r.role_key !== role.role_key))
-      const { error } = await supabase
-        .from('organization_roles')
-        .delete()
-        .eq('role_key', role.role_key)
-
-      if (error) throw error
+      await deleteOrganizationRoleService(role.role_key)
       setRoleMessage({ type: 'info', text: `Se eliminó el puesto "${role.role_title}".` })
       setTimeout(() => setRoleMessage(null), 3000)
     } catch (err) {
@@ -387,11 +374,7 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
         updated_at: new Date().toISOString()
       }
 
-      const { error } = await supabase
-        .from('organization_roles')
-        .upsert(payload, { onConflict: 'role_key' })
-
-      if (error) throw error
+      await upsertOrganizationRoleService(payload)
 
       setRoleMessage({
         type: 'success',

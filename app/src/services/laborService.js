@@ -4,27 +4,36 @@
  * Cumple Candado Mecánico #3 (Cero SQL en Vista) y #4 (Trazabilidad en audit_logs).
  */
 
-import { supabase } from '../lib/supabase.js'
 import { logCellChange, logRowAction } from '../lib/auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from '../lib/monotonicFolioEngine.js'
 import { getWorkersLookupCached, stampWorkerIdOnRecord } from '../lib/workerIdentity.js'
+import { laborLogsRepository } from '../repositories/laborLogsRepository.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { shipStaysRepository } from '../repositories/shipStaysRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
 
 /**
  * Carga completa de imputaciones de mano de obra, buques, OTs y personal habilitado.
  */
 export async function fetchLaborData() {
   const [logsRes, shipsRes, staysRes, woRes, workItemsRes, workersRes] = await Promise.all([
-    supabase
-      .from('labor_logs')
-      .select('*, ships(id, name), work_orders(id, ot_number, title, ship_id, work_type)')
-      .order('date_logged', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(2000),
-    supabase.from('ships').select('id, name, status, current_location, is_active').order('name'),
-    supabase.from('ship_stays').select('id, ship_id, location, start_date, end_date').order('start_date', { ascending: false }),
-    supabase.from('work_orders').select('id, ot_number, title, ship_id, status, work_type').order('ot_number'),
-    supabase.from('work_items').select('id, work_order_id, contractors, description, status, work_type'),
-    supabase.from('workers').select('id, name, category, trade, work_group, admin_center, status, can_impute_hours').order('name')
+    laborLogsRepository.listLaborLogs(),
+    shipsRepository.listShips({ select: 'id, name, status, current_location, is_active' }),
+    shipStaysRepository.listStays({ select: 'id, ship_id, location, start_date, end_date' }),
+    workOrdersRepository.listWorkOrders({
+      select: 'id, ot_number, title, ship_id, status, work_type',
+      orderBy: [{ column: 'ot_number', ascending: true }],
+    }),
+    workItemsRepository.listWorkItems({
+      select: 'id, work_order_id, contractors, description, status, work_type',
+      orderBy: [],
+    }),
+    workersRepository.listWorkers({
+      select: 'id, name, category, trade, work_group, admin_center, status, can_impute_hours',
+      orderBy: [{ column: 'name', ascending: true }],
+    }),
   ])
 
   if (logsRes.error) {
@@ -41,7 +50,7 @@ export async function fetchLaborData() {
     shipStays: staysRes.data || [],
     workOrders: woRes.data || [],
     workItems: workItemsRes.data || [],
-    workers: workersRes.data || []
+    workers: workersRes.data || [],
   }
 }
 
@@ -56,26 +65,19 @@ export async function saveLaborLogService({ log, isNew = false, changedBy = 'Ope
     payload = stampNewRecordWithFolio(payload, 'labor_logs')
   }
 
-  // Descartar joins para evitar errores de mutación en PostgREST
   delete payload.ships
   delete payload.work_orders
 
   if (!payload.worker_id && payload.worker_name) {
-    const workersCatalog = await getWorkersLookupCached(supabase)
+    const workersCatalog = await getWorkersLookupCached()
     payload = stampWorkerIdOnRecord(payload, workersCatalog)
   }
 
-  const { data, error } = await supabase
-    .from('labor_logs')
-    .upsert([payload], { onConflict: 'id' })
-    .select()
-
+  const { data: savedRecord, error } = await laborLogsRepository.upsertOne(payload, { onConflict: 'id' })
   if (error) {
     console.error('[laborService] Error guardando labor_log:', error)
-    throw error
+    throw new Error(error)
   }
-
-  const savedRecord = data?.[0] || payload
 
   await logRowAction({
     action: isNew ? 'ROW_INSERT' : 'MODAL_SAVE',
@@ -91,8 +93,8 @@ export async function saveLaborLogService({ log, isNew = false, changedBy = 'Ope
       hours_normal: savedRecord.hours_normal,
       hours_extra_50: savedRecord.hours_extra_50,
       hours_extra_100: savedRecord.hours_extra_100,
-      rubro: savedRecord.rubro
-    }
+      rubro: savedRecord.rubro,
+    },
   })
 
   return { ok: true, log: savedRecord }
@@ -104,14 +106,10 @@ export async function saveLaborLogService({ log, isNew = false, changedBy = 'Ope
 export async function deleteLaborLogService({ logId, workerName = 'Operario', shipName = 'Buque', changedBy = 'Operador Web' }) {
   if (!logId) throw new Error('ID de imputación requerido para eliminación.')
 
-  const { error } = await supabase
-    .from('labor_logs')
-    .delete()
-    .eq('id', logId)
-
+  const { error } = await laborLogsRepository.deleteById(logId)
   if (error) {
     console.error('[laborService] Error eliminando labor_log:', error)
-    throw error
+    throw new Error(error)
   }
 
   await logRowAction({
@@ -122,7 +120,7 @@ export async function deleteLaborLogService({ logId, workerName = 'Operario', sh
     sheetName: 'Carga e Imputación de Horas',
     moduleRoute: '/horas',
     user: changedBy,
-    changes: { deletedAt: new Date().toISOString() }
+    changes: { deletedAt: new Date().toISOString() },
   })
 
   return { ok: true }
@@ -134,14 +132,10 @@ export async function deleteLaborLogService({ logId, workerName = 'Operario', sh
 export async function updateLaborApprovalStatusService({ logId, approvalStatus, oldStatus = '', workerName = 'Operario', changedBy = 'Operador Web' }) {
   if (!logId) throw new Error('ID requerido.')
 
-  const { error } = await supabase
-    .from('labor_logs')
-    .update({ approval_status: approvalStatus })
-    .eq('id', logId)
-
+  const { error } = await laborLogsRepository.updateById(logId, { approval_status: approvalStatus }, { select: null })
   if (error) {
     console.error('[laborService] Error actualizando approval_status:', error)
-    throw error
+    throw new Error(error)
   }
 
   await logCellChange({
@@ -155,7 +149,7 @@ export async function updateLaborApprovalStatusService({ logId, approvalStatus, 
     sheetName: 'Carga e Imputación de Horas',
     moduleRoute: '/horas',
     changeOrigin: 'APPROVAL_ACTION',
-    user: changedBy
+    user: changedBy,
   })
 
   return { ok: true }
@@ -167,26 +161,22 @@ export async function updateLaborApprovalStatusService({ logId, approvalStatus, 
 export async function batchSaveLaborLogsService({ logs = [], changedBy = 'Operador Web' }) {
   if (logs.length === 0) return { ok: true, count: 0 }
 
-  let cleanLogs = logs.map(l => {
+  let cleanLogs = logs.map((l) => {
     const copy = { ...l }
     delete copy.ships
     delete copy.work_orders
     return copy
   })
 
-  if (cleanLogs.some(l => !l.worker_id && l.worker_name)) {
-    const workersCatalog = await getWorkersLookupCached(supabase)
-    cleanLogs = cleanLogs.map(l => stampWorkerIdOnRecord(l, workersCatalog))
+  if (cleanLogs.some((l) => !l.worker_id && l.worker_name)) {
+    const workersCatalog = await getWorkersLookupCached()
+    cleanLogs = cleanLogs.map((l) => stampWorkerIdOnRecord(l, workersCatalog))
   }
 
-  const { data, error } = await supabase
-    .from('labor_logs')
-    .insert(cleanLogs)
-    .select()
-
+  const { data, error } = await laborLogsRepository.insertMany(cleanLogs)
   if (error) {
     console.error('[laborService] Error insertando lote de labor_logs:', error)
-    throw error
+    throw new Error(error)
   }
 
   logRowAction({
@@ -195,10 +185,38 @@ export async function batchSaveLaborLogsService({ logs = [], changedBy = 'Operad
     entityId: `batch_${Date.now()}`,
     entityName: `Lote de ${cleanLogs.length} partes diarios`,
     performedBy: changedBy,
-    details: { total_filas: cleanLogs.length }
+    details: { total_filas: cleanLogs.length },
   })
 
   return { ok: true, count: data?.length || cleanLogs.length, logs: data || cleanLogs }
+}
+
+/**
+ * Actualiza un parte diario de horas puntual (Control Diario / Modales) sin SQL en JSX.
+ */
+export async function patchLaborLogService(logId, payload) {
+  if (!logId) throw new Error('ID de imputación requerido.')
+  const { error } = await laborLogsRepository.updateById(logId, payload, { select: null })
+  if (error) throw new Error(error)
+  return { ok: true }
+}
+
+/**
+ * Crea un parte rápido de Control Diario devolviendo relaciones Buque/OT para la UI.
+ */
+export async function createLaborLogWithRelationsService(payload) {
+  let clean = { ...payload }
+  delete clean.ships
+  delete clean.work_orders
+  if (!clean.worker_id && clean.worker_name) {
+    const workersCatalog = await getWorkersLookupCached()
+    clean = stampWorkerIdOnRecord(clean, workersCatalog)
+  }
+  const { data, error } = await laborLogsRepository.insertOne(clean, {
+    select: '*, ships(id, name), work_orders(id, ot_number, title, ship_id, work_type)',
+  })
+  if (error) throw new Error(error)
+  return data
 }
 
 export * from './laborCargaService.js'

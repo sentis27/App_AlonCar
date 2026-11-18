@@ -4,24 +4,33 @@
  * Cumple Candado Mecánico #3 (Cero SQL en Vista) y #4 (Trazabilidad en audit_logs).
  */
 
-import { supabase } from './supabase.js'
 import { logCellChange, logRowAction } from './auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { normalizeText, setAllocationWorkersCache } from './allocationEngine.js'
 import { isGasMaterial, stripGasTagFromNotes, findLinkedGasMovement } from './panolConstants.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog } from './workerIdentity.js'
+import { materialsRepository, materialRubrosRepository } from '../repositories/materialsRepository.js'
+import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
+import { gasMovementsRepository } from '../repositories/gasMovementsRepository.js'
+import { suppliersRepository } from '../repositories/suppliersRepository.js'
+import { shipsRepository } from '../repositories/shipsRepository.js'
+import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
+import { workersRepository } from '../repositories/workersRepository.js'
+import { workItemsRepository } from '../repositories/workItemsRepository.js'
+import {
+  dataRequirementsRepository,
+  complianceAlertsRepository,
+  workerPermissionRequestsRepository,
+} from '../repositories/complianceAlertsRepository.js'
+import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
 
 let _hasGasTxLinkCache = null
 
 export async function supportsGasTxLink() {
   if (_hasGasTxLinkCache !== null) return _hasGasTxLinkCache
   try {
-    const { error } = await supabase
-      .from('gas_cylinder_movements')
-      .select('inventory_transaction_id')
-      .limit(1)
-    _hasGasTxLinkCache = !error
+    _hasGasTxLinkCache = await gasMovementsRepository.hasTxLinkColumn()
   } catch {
     _hasGasTxLinkCache = false
   }
@@ -141,47 +150,28 @@ const PANOL_REQUIREMENT_DEFS = {
 
 export async function ensurePanolRequirementId(code) {
   if (_requirementIdCache.has(code)) return _requirementIdCache.get(code)
-  const { data: existing, error: selErr } = await supabase
-    .from('data_requirements')
-    .select('id')
-    .eq('code', code)
-    .maybeSingle()
-
-  if (!selErr && existing?.id) {
-    _requirementIdCache.set(code, existing.id)
-    return existing.id
-  }
-
   const def = PANOL_REQUIREMENT_DEFS[code]
-  if (!def) throw new Error(`Requisito de cumplimiento desconocido: ${code}`)
-
-  const { data: upserted, error: upsErr } = await supabase
-    .from('data_requirements')
-    .upsert([def], { onConflict: 'code' })
-    .select('id')
-    .single()
-
-  if (upsErr || !upserted?.id) {
-    throw new Error(upsErr?.message || `No se pudo resolver requirement_id para ${code}`)
+  const { data, error } = await dataRequirementsRepository.ensureByCode(code, def)
+  if (error || !data?.id) {
+    throw new Error(error || `No se pudo resolver requirement_id para ${code}`)
   }
-
-  _requirementIdCache.set(code, upserted.id)
-  return upserted.id
+  _requirementIdCache.set(code, data.id)
+  return data.id
 }
 
 export async function fetchPanolData() {
   const [matRes, invRes, gasRes, rubrosRes, supRes, shipsRes, woRes, workersRes, workItemsRes, alertsRes] =
     await Promise.all([
-      supabase.from('materials').select('*').order('name'),
-      supabase.from('inventory_transactions').select('*').order('transaction_date', { ascending: false }).limit(800),
-      supabase.from('gas_cylinder_movements').select('*').order('movement_date', { ascending: false }).limit(800),
-      supabase.from('material_rubros').select('*').order('name'),
-      supabase.from('suppliers').select('*').order('name'),
-      supabase.from('ships').select('*').order('name'),
-      supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
-      supabase.from('workers').select('*').order('name'),
-      supabase.from('work_items').select('id, work_order_id, contractors, description, status, foreman_name').order('created_at', { ascending: true }),
-      supabase.from('compliance_alerts').select('*').eq('status', 'PENDIENTE')
+      materialsRepository.listMaterials(),
+      inventoryTransactionsRepository.listTransactions({ limit: 800 }),
+      gasMovementsRepository.listGasMovements({ limit: 800 }),
+      materialRubrosRepository.listRubros(),
+      suppliersRepository.listSuppliers(),
+      shipsRepository.listShips(),
+      workOrdersRepository.listWorkOrders(),
+      workersRepository.listWorkers({ orderBy: [{ column: 'name', ascending: true }] }),
+      workItemsRepository.listWorkItems({ select: 'id, work_order_id, contractors, description, status, foreman_name' }),
+      complianceAlertsRepository.listPending(),
     ])
 
   if (workersRes.data) {
@@ -226,7 +216,7 @@ export async function saveShipAndWorkOrderService({
 
   if (cleanShipId && !cleanWoId) {
     const reqId = await ensurePanolRequirementId('REQ_PANOL_RETIRO_SIN_OT')
-    const { error: alertErr } = await supabase.from('compliance_alerts').insert({
+    const { error: alertErr } = await complianceAlertsRepository.insertOne({
       requirement_id: reqId,
       entity_type: 'inventory_transactions',
       entity_id: txId,
@@ -236,11 +226,11 @@ export async function saveShipAndWorkOrderService({
       alert_message: `Retiro registrado (⚠️ Sin OT) en buque ${ships.find(s => s.id === cleanShipId)?.name || cleanShipId} por ${currentWorkerOrContractor || 'Personal'}.`,
       status: 'PENDIENTE'
     })
-    if (alertErr) throw alertErr
+    if (alertErr) throw new Error(alertErr)
   }
 
-  const { error } = await supabase.from('inventory_transactions').update(updates).eq('id', txId)
-  if (error) throw error
+  const { error } = await inventoryTransactionsRepository.updateById(txId, updates, { select: null })
+  if (error) throw new Error(error)
 
   logCellChange({
     entityType: 'inventory_transactions',
@@ -268,8 +258,8 @@ export async function saveInlineTxService({ txId, field, value, tx, materials, u
     }
   }
 
-  const { error } = await supabase.from('inventory_transactions').update(updates).eq('id', txId)
-  if (error) throw error
+  const { error } = await inventoryTransactionsRepository.updateById(txId, updates, { select: null })
+  if (error) throw new Error(error)
 
   logCellChange({
     entityType: 'inventory_transactions',
@@ -296,8 +286,8 @@ export async function saveInlineMaterialService({ matId, field, value, materials
     : value
 
   const updates = { [field]: parsedValue }
-  const { error } = await supabase.from('materials').update(updates).eq('id', matId)
-  if (error) throw error
+  const { error } = await materialsRepository.updateById(matId, updates, { select: null })
+  if (error) throw new Error(error)
 
   const mat = materials.find((m) => m.id === matId)
   logCellChange({
@@ -398,15 +388,12 @@ export async function saveMultiWithdrawalService({
       transaction_date: date ? new Date(`${date}T12:00:00`).toISOString() : new Date().toISOString()
     }
 
-    const { error: updErr } = await supabase.from('inventory_transactions').update(updates).eq('id', editId)
-    if (updErr) throw updErr
+    const { error: updErr } = await inventoryTransactionsRepository.updateById(editId, updates, { select: null })
+    if (updErr) throw new Error(updErr)
 
     for (const mUpd of matUpdates) {
-      const { error: stErr } = await supabase
-        .from('materials')
-        .update({ current_stock: mUpd.newStock })
-        .eq('id', mUpd.id)
-      if (stErr) throw stErr
+      const { error: stErr } = await materialsRepository.updateStock(mUpd.id, mUpd.newStock)
+      if (stErr) throw new Error(stErr)
     }
 
     let createdGasMovements = []
@@ -415,13 +402,12 @@ export async function saveMultiWithdrawalService({
 
     if (rowIsGas) {
       if (existingGasMov?.id) {
-        const { data: gUpd, error: gUpdErr } = await supabase
-          .from('gas_cylinder_movements')
-          .update(gasPayload.gasRecord)
-          .eq('id', existingGasMov.id)
-          .select()
-          .single()
-        if (gUpdErr) throw gUpdErr
+        const { data: gUpd, error: gUpdErr } = await gasMovementsRepository.updateById(
+          existingGasMov.id,
+          gasPayload.gasRecord,
+          { select: '*' }
+        )
+        if (gUpdErr) throw new Error(gUpdErr)
         updatedGasMovement = gUpd
 
         logRowAction({
@@ -436,12 +422,8 @@ export async function saveMultiWithdrawalService({
           user: user?.email
         })
       } else {
-        const { data: gIns, error: gInsErr } = await supabase
-          .from('gas_cylinder_movements')
-          .insert([gasPayload.gasRecord])
-          .select()
-          .single()
-        if (gInsErr) throw gInsErr
+        const { data: gIns, error: gInsErr } = await gasMovementsRepository.insertOne(gasPayload.gasRecord)
+        if (gInsErr) throw new Error(gInsErr)
         createdGasMovements = gIns ? [gIns] : []
 
         logRowAction({
@@ -457,11 +439,8 @@ export async function saveMultiWithdrawalService({
         })
       }
     } else if (existingGasMov?.id) {
-      const { error: gDelErr } = await supabase
-        .from('gas_cylinder_movements')
-        .delete()
-        .eq('id', existingGasMov.id)
-      if (gDelErr) throw gDelErr
+      const { error: gDelErr } = await gasMovementsRepository.deleteById(existingGasMov.id)
+      if (gDelErr) throw new Error(gDelErr)
       deletedGasMovementId = existingGasMov.id
 
       logRowAction({
@@ -556,24 +535,21 @@ export async function saveMultiWithdrawalService({
     throw new Error('No hay materiales válidos para registrar.')
   }
 
-  const { data: createdTxs, error: txErr } = await supabase.from('inventory_transactions').insert(txInserts).select()
-  if (txErr) throw txErr
+  const { data: createdTxs, error: txErr } = await inventoryTransactionsRepository.insertMany(txInserts)
+  if (txErr) throw new Error(txErr)
 
   const rollbackCreatedTxs = async () => {
     const ids = (createdTxs || []).map((t) => t.id).filter(Boolean)
     if (ids.length > 0) {
-      await supabase.from('inventory_transactions').delete().in('id', ids)
+      await inventoryTransactionsRepository.deleteByIds(ids)
     }
   }
 
   const appliedStockRollbacks = []
   try {
     for (const upd of matUpdates) {
-      const { error: stockErr } = await supabase
-        .from('materials')
-        .update({ current_stock: upd.newStock })
-        .eq('id', upd.id)
-      if (stockErr) throw stockErr
+      const { error: stockErr } = await materialsRepository.updateStock(upd.id, upd.newStock)
+      if (stockErr) throw new Error(stockErr)
       appliedStockRollbacks.push(upd)
     }
 
@@ -586,11 +562,8 @@ export async function saveMultiWithdrawalService({
         return gasRecord
       })
 
-      const { data: gasData, error: gasErr } = await supabase
-        .from('gas_cylinder_movements')
-        .insert(gasPayloadRows)
-        .select()
-      if (gasErr) throw gasErr
+      const { data: gasData, error: gasErr } = await gasMovementsRepository.insertMany(gasPayloadRows)
+      if (gasErr) throw new Error(gasErr)
       createdGasMovements = gasData || []
 
       logRowAction({
@@ -618,11 +591,10 @@ export async function saveMultiWithdrawalService({
       user: user?.email
     })
 
-    // Si el retiro se registró bajo bypass (⚠️ Sin OT) en un buque, generar alerta visible para Jorge Sentis
     if (shipId && !workOrderId && createdTxs?.length > 0) {
       const reqId = await ensurePanolRequirementId('REQ_PANOL_RETIRO_SIN_OT')
       const shipName = ships.find((s) => s.id === shipId)?.name || shipId
-      const { error: sinOtErr } = await supabase.from('compliance_alerts').insert([{
+      const { error: sinOtErr } = await complianceAlertsRepository.insertOne({
         requirement_id: reqId,
         ship_id: shipId,
         entity_type: 'inventory_transactions',
@@ -631,15 +603,14 @@ export async function saveMultiWithdrawalService({
         escalated_to_admin: true,
         status: 'PENDIENTE',
         alert_message: `Retiro registrado (⚠️ Sin OT) en buque ${shipName} por ${workerName} (${createdTxs.length} renglón/es).`
-      }])
-      if (sinOtErr) throw sinOtErr
+      })
+      if (sinOtErr) throw new Error(sinOtErr)
     }
 
     return { isEdit: false, createdTxs: createdTxs || [], matUpdates, createdGasMovements }
   } catch (err) {
-    // Compensación atómica ante falla intermedia (SKL-015)
     for (const rb of appliedStockRollbacks) {
-      await supabase.from('materials').update({ current_stock: rb.prevStock }).eq('id', rb.id)
+      await materialsRepository.updateStock(rb.id, rb.prevStock)
     }
     await rollbackCreatedTxs()
     throw err
@@ -659,8 +630,8 @@ export async function insertBlankRowService({ inventoryTx }) {
     transaction_date: new Date().toISOString().split('T')[0]
   }
   const stampedTx = stampNewRecordWithFolio(newTx, inventoryTx)
-  const { data, error } = await supabase.from('inventory_transactions').insert([newTx]).select().single()
-  if (error) throw error
+  const { data, error } = await inventoryTransactionsRepository.insertBlankRow(newTx)
+  if (error) throw new Error(error)
   return { ...data, _rowSeq: stampedTx._rowSeq }
 }
 
@@ -676,8 +647,8 @@ export async function duplicateTxService({ tx, user }) {
   delete cloned.created_at
   delete cloned._rowSeq
 
-  const { data, error } = await supabase.from('inventory_transactions').insert([cloned]).select().single()
-  if (error) throw error
+  const { data, error } = await inventoryTransactionsRepository.insertOne(cloned)
+  if (error) throw new Error(error)
 
   logRowAction({
     action: 'ROW_DUPLICATE',
@@ -695,15 +666,16 @@ export async function duplicateTxService({ tx, user }) {
 }
 
 export async function requestDeletionTxService({ tx, userIdentifier }) {
-  const { error } = await supabase
-    .from('inventory_transactions')
-    .update({
+  const { error } = await inventoryTransactionsRepository.updateById(
+    tx.id,
+    {
       is_deletion_requested: true,
       deletion_requested_at: new Date().toISOString(),
       deletion_requested_by: userIdentifier
-    })
-    .eq('id', tx.id)
-  if (error) throw error
+    },
+    { select: null }
+  )
+  if (error) throw new Error(error)
 
   logRowAction({
     action: 'STATUS_CHANGE',
@@ -722,17 +694,17 @@ export async function permanentDeleteTxService({ tx, materials, gasMovements = [
   const mat = materials.find((m) => m.id === tx.material_id)
   if (mat && Number(tx.quantity_withdrawn)) {
     const restoredStock = (Number(mat.current_stock) || 0) + (Number(tx.quantity_withdrawn) || 0)
-    await supabase.from('materials').update({ current_stock: restoredStock }).eq('id', mat.id)
+    await materialsRepository.updateStock(mat.id, restoredStock)
   }
 
   const linkedGas = findLinkedGasMovement(tx, gasMovements)
   if (linkedGas?.id) {
-    const { error: gDelErr } = await supabase.from('gas_cylinder_movements').delete().eq('id', linkedGas.id)
-    if (gDelErr) throw gDelErr
+    const { error: gDelErr } = await gasMovementsRepository.deleteById(linkedGas.id)
+    if (gDelErr) throw new Error(gDelErr)
   }
 
-  const { error } = await supabase.from('inventory_transactions').delete().eq('id', tx.id)
-  if (error) throw error
+  const { error } = await inventoryTransactionsRepository.deleteById(tx.id)
+  if (error) throw new Error(error)
 
   logRowAction({
     action: 'ROW_DELETE',
@@ -771,7 +743,7 @@ export async function registerGasFinalReturnService({
     throw new Error('Seleccioná al menos un tubo en poder del contratista para devolver.')
   }
 
-  const workersCatalog = await getWorkersLookupCached(supabase)
+  const workersCatalog = await getWorkersLookupCached()
   const resolvedWorkerId = resolveWorkerIdFromCatalog(cleanContractor, workersCatalog)
 
   const inserts = validReturns.map((r) => {
@@ -803,8 +775,8 @@ export async function registerGasFinalReturnService({
     }
   })
 
-  const { data, error } = await supabase.from('gas_cylinder_movements').insert(inserts).select()
-  if (error) throw error
+  const { data, error } = await gasMovementsRepository.insertMany(inserts)
+  if (error) throw new Error(error)
 
   logRowAction({
     action: 'ROW_INSERT',
@@ -837,11 +809,7 @@ export async function createMaterialService({ formData, existingMaterials = [], 
     throw new Error(`Ya existe el material "${localDup.name}" en el Catálogo B.D.`)
   }
 
-  const { data: remoteDup } = await supabase
-    .from('materials')
-    .select('id, name')
-    .ilike('name', cleanName)
-    .limit(1)
+  const { data: remoteDup } = await materialsRepository.findByNameIlike(cleanName, { select: 'id, name' })
   if (remoteDup && remoteDup.length > 0) {
     throw new Error(`Ya existe el material "${remoteDup[0].name}" en la base de datos.`)
   }
@@ -878,19 +846,19 @@ export async function createMaterialService({ formData, existingMaterials = [], 
     security_factor: Number(formData?.security_factor) || 1.06
   }
 
-  const { data, error } = await supabase.from('materials').insert([payload]).select().single()
+  const { data, error, code } = await materialsRepository.insertOne(payload)
   if (error) {
-    if (error.code === '42501' || /row-level security/i.test(error.message || '')) {
+    if (code === '42501' || /row-level security/i.test(error)) {
       throw new Error(
         'Permiso bloqueado por RLS en tabla "materials". Iniciá sesión con cuenta de Supabase Auth o ejecutá la migración 0041 en el SQL Editor de Supabase.'
       )
     }
-    if (error.code === '22P02' || /invalid input syntax for type integer/i.test(error.message || '')) {
+    if (code === '22P02' || /invalid input syntax for type integer/i.test(error)) {
       throw new Error(
         'La base de datos actual solo admite números enteros en Stock Inicial y Stock Mínimo (ejecutá la migración 0041 en Supabase para habilitar decimales).'
       )
     }
-    throw error
+    throw new Error(error)
   }
 
   await logRowAction({
@@ -918,11 +886,7 @@ export async function createQuickGasMaterialService({ name, user }) {
   }
   const normalizedName = cleanName.startsWith('GAS ') ? cleanName : `GAS ${cleanName}`
 
-  const { data: existing } = await supabase
-    .from('materials')
-    .select('*')
-    .ilike('name', normalizedName)
-    .limit(1)
+  const { data: existing } = await materialsRepository.findByNameIlike(normalizedName, { select: '*' })
   if (existing && existing.length > 0) {
     return existing[0]
   }
@@ -939,8 +903,8 @@ export async function createQuickGasMaterialService({ name, user }) {
     security_factor: 1.06
   }
 
-  const { data, error } = await supabase.from('materials').insert([payload]).select().single()
-  if (error) throw error
+  const { data, error } = await materialsRepository.insertOne(payload)
+  if (error) throw new Error(error)
 
   logRowAction({
     action: 'ROW_INSERT',
@@ -1045,8 +1009,8 @@ export async function saveSupplierGasBatchService({
     }
   })
 
-  const { data, error } = await supabase.from('gas_cylinder_movements').insert(inserts).select()
-  if (error) throw error
+  const { data, error } = await gasMovementsRepository.insertMany(inserts)
+  if (error) throw new Error(error)
 
   const created = data || []
   created.forEach((row) => {
@@ -1075,7 +1039,7 @@ export async function saveContractorGasMovementService({ gasData, user }) {
   if (!String(gasData?.contractor_name || '').trim()) throw new Error('Debes seleccionar un contratista.')
 
   const actor = user?.email || 'Pañol Central'
-  const workersCatalog = gasData.worker_id ? [] : await getWorkersLookupCached(supabase)
+  const workersCatalog = gasData.worker_id ? [] : await getWorkersLookupCached()
   const resolvedWorkerId = resolveWorkerIdFromCatalog(
     gasData.worker_name || gasData.contractor_name,
     workersCatalog,
@@ -1093,8 +1057,8 @@ export async function saveContractorGasMovementService({ gasData, user }) {
           : null
   }
 
-  const { data, error } = await supabase.from('gas_cylinder_movements').insert([payload]).select().single()
-  if (error) throw error
+  const { data, error } = await gasMovementsRepository.insertOne(payload)
+  if (error) throw new Error(error)
 
   logRowAction({
     action: 'ROW_INSERT',
@@ -1156,13 +1120,12 @@ export async function updateGasMovementInlineService({ movementId, field, value,
     return row
   }
 
-  const { data, error } = await supabase
-    .from('gas_cylinder_movements')
-    .update({ [field]: parsedValue })
-    .eq('id', movementId)
-    .select()
-    .single()
-  if (error) throw error
+  const { data, error } = await gasMovementsRepository.updateById(
+    movementId,
+    { [field]: parsedValue },
+    { select: '*' }
+  )
+  if (error) throw new Error(error)
 
   logCellChange({
     entityType: 'gas_cylinders',
@@ -1191,11 +1154,8 @@ export async function deleteGasMovementService({ movement, user }) {
     )
   }
 
-  const { error } = await supabase
-    .from('gas_cylinder_movements')
-    .delete()
-    .eq('id', movement.id)
-  if (error) throw error
+  const { error } = await gasMovementsRepository.deleteById(movement.id)
+  if (error) throw new Error(error)
 
   logRowAction({
     action: 'ROW_DELETE',
@@ -1213,18 +1173,19 @@ export async function deleteGasMovementService({ movement, user }) {
 }
 
 export async function restoreTxService({ tx }) {
-  const { error } = await supabase
-    .from('inventory_transactions')
-    .update({ is_deletion_requested: false, deletion_requested_at: null, deletion_requested_by: null })
-    .eq('id', tx.id)
-  if (error) throw error
+  const { error } = await inventoryTransactionsRepository.updateById(
+    tx.id,
+    { is_deletion_requested: false, deletion_requested_at: null, deletion_requested_by: null },
+    { select: null }
+  )
+  if (error) throw new Error(error)
 }
 
 export async function submitRequestOtService({ requestOtModal, ships }) {
   const targetShip = ships.find((s) => s.id === requestOtModal.shipId)
   const shipName = targetShip?.name || 'Astillero General'
   const reqId = await ensurePanolRequirementId('REQ_PANOL_APERTURA_OT')
-  const { error } = await supabase.from('compliance_alerts').insert([{
+  const { error } = await complianceAlertsRepository.insertOne({
     requirement_id: reqId,
     ship_id: requestOtModal.shipId || null,
     entity_type: 'work_orders',
@@ -1233,8 +1194,8 @@ export async function submitRequestOtService({ requestOtModal, ships }) {
     status: 'PENDIENTE',
     escalated_to_admin: true,
     alert_message: `Solicitud de Apertura de OT en buque ${shipName} para ${requestOtModal.targetWorkerOrContractor || 'Sin especificar'}. Motivo: ${requestOtModal.reason || 'Sin detalles'}`.trim()
-  }])
-  if (error) throw error
+  })
+  if (error) throw new Error(error)
 }
 
 export async function submitWorkerPermissionService({ workerPermissionModal, workers, user }) {
@@ -1246,7 +1207,7 @@ export async function submitWorkerPermissionService({ workerPermissionModal, wor
     throw new Error('Operario no encontrado en el padrón.')
   }
   const reqId = await ensurePanolRequirementId('REQ_PANOL_HABILITACION_OPERARIO')
-  const { error } = await supabase.from('compliance_alerts').insert([{
+  const { error } = await complianceAlertsRepository.insertOne({
     requirement_id: reqId,
     ship_id: null,
     entity_type: 'workers',
@@ -1256,10 +1217,10 @@ export async function submitWorkerPermissionService({ workerPermissionModal, wor
     status: 'PENDIENTE',
     escalated_to_admin: true,
     alert_message: `Solicitud de Habilitación para retiro de Pañol (P): ${targetWorker.name} (${targetWorker.admin_center || 'Astillero'}). Motivo: ${workerPermissionModal.reason || 'Sin detalles'}`.trim()
-  }])
-  if (error) throw error
+  })
+  if (error) throw new Error(error)
 
-  const { error: reqErr } = await supabase.from('worker_permission_requests').insert([{
+  const { error: reqErr } = await workerPermissionRequestsRepository.insertOne({
     worker_id: targetWorker.id,
     worker_name: targetWorker.name,
     work_group: targetWorker.work_group || null,
@@ -1267,15 +1228,21 @@ export async function submitWorkerPermissionService({ workerPermissionModal, wor
     requested_by_name: user?.email || 'Pañol Central',
     reason: workerPermissionModal.reason || 'Solicitud de habilitación para retiro en Pañol',
     status: 'PENDIENTE'
-  }])
-  if (reqErr) throw reqErr
+  })
+  if (reqErr) throw new Error(reqErr)
+}
+
+export async function fetchPendingPanolAlertsService() {
+  const { data, error } = await complianceAlertsRepository.listPending()
+  if (error) throw new Error(error)
+  return data || []
 }
 
 export async function createDirectPurchaseOrderService({ material, quantity, urgency, ships }) {
   const astilleroShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO')) || ships[0]
-  const workersCatalog = await getWorkersLookupCached(supabase)
+  const workersCatalog = await getWorkersLookupCached()
   const panolWorkerId = resolveWorkerIdFromCatalog('PAÑOL', workersCatalog)
-  const { error } = await supabase.from('purchase_orders').insert([{
+  const { error } = await purchaseOrdersRepository.insertOne({
     material_id: material?.id || null,
     material_name_raw: material?.name || 'Insumo',
     quantity: quantity ? Number(quantity) : 1,
@@ -1288,6 +1255,6 @@ export async function createDirectPurchaseOrderService({ material, quantity, urg
     status: 'PEDIR',
     urgency,
     notes: 'Solicitud directa generada desde Pañol'
-  }])
-  if (error) throw error
+  })
+  if (error) throw new Error(error)
 }

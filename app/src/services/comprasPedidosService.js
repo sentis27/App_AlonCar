@@ -4,9 +4,10 @@
  * Cumple Candado #3 (Cero SQL en Vista) y Candado #4 (Trazabilidad en audit_logs).
  */
 
-import { supabase } from '../lib/supabase.js'
 import { auditService } from '../lib/auditService.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog, stampWorkerIdOnRecord } from '../lib/workerIdentity.js'
+import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
+import { materialsRepository } from '../repositories/materialsRepository.js'
 
 const SHEET_NAME = 'Compras · Pedidos'
 const MODULE_ROUTE = '/compras'
@@ -18,20 +19,20 @@ export async function updatePedidoFieldService({
   oldValue,
   extraFields = {},
   entityName = '',
-  fieldLabel = field
+  fieldLabel = field,
 }) {
   const finalExtra = { ...extraFields }
   if (field === 'requested_by_name' && !finalExtra.requested_by) {
-    const workersCatalog = await getWorkersLookupCached(supabase)
+    const workersCatalog = await getWorkersLookupCached()
     finalExtra.requested_by = resolveWorkerIdFromCatalog(newValue, workersCatalog)
   }
 
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ [field]: newValue, ...finalExtra, updated_at: new Date().toISOString() })
-    .eq('id', orderId)
-
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.updateById(
+    orderId,
+    { [field]: newValue, ...finalExtra, updated_at: new Date().toISOString() },
+    { select: null }
+  )
+  if (error) throw new Error(error)
 
   await auditService.logCellChange({
     entityType: 'purchase_orders',
@@ -42,7 +43,7 @@ export async function updatePedidoFieldService({
     oldValue,
     newValue,
     sheetName: SHEET_NAME,
-    moduleRoute: MODULE_ROUTE
+    moduleRoute: MODULE_ROUTE,
   })
 }
 
@@ -53,14 +54,14 @@ export async function updatePedidoFieldsWithAuditService({
   auditLabel,
   oldValue,
   newValue,
-  entityName = ''
+  entityName = '',
 }) {
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', orderId)
-
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.updateById(
+    orderId,
+    { ...updates, updated_at: new Date().toISOString() },
+    { select: null }
+  )
+  if (error) throw new Error(error)
 
   if (auditField) {
     await auditService.logCellChange({
@@ -72,7 +73,7 @@ export async function updatePedidoFieldsWithAuditService({
       oldValue,
       newValue,
       sheetName: SHEET_NAME,
-      moduleRoute: MODULE_ROUTE
+      moduleRoute: MODULE_ROUTE,
     })
   }
 }
@@ -102,19 +103,15 @@ export async function batchRevertPedidosService({ colKey, revertMap, computeFort
       } else {
         payload[colKey] = oldVal
       }
-      const { error } = await supabase.from('purchase_orders').update(payload).eq('id', id)
-      if (error) throw error
+      const { error } = await purchaseOrdersRepository.updateById(id, payload, { select: null })
+      if (error) throw new Error(error)
     })
   )
 }
 
 export async function batchUpdatePedidosService({ targetIds, dbPayload, colKey, batchItems = [] }) {
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update(dbPayload)
-    .in('id', targetIds)
-
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.updateByIds(targetIds, dbPayload, { select: null })
+  if (error) throw new Error(error)
 
   const items = batchItems.length > 0
     ? batchItems
@@ -124,34 +121,29 @@ export async function batchUpdatePedidosService({ targetIds, dbPayload, colKey, 
         field: colKey,
         fieldLabel: colKey,
         oldValue: '—',
-        newValue: dbPayload[colKey] ?? JSON.stringify(dbPayload)
+        newValue: dbPayload[colKey] ?? JSON.stringify(dbPayload),
       }))
 
   await auditService.logBatchPaste({
     entityType: 'purchase_orders',
     batchItems: items,
     sheetName: SHEET_NAME,
-    moduleRoute: MODULE_ROUTE
+    moduleRoute: MODULE_ROUTE,
   })
 }
 
 export async function insertPedidoService({ payload, auditAction = 'ROW_INSERT', entityName = 'Pedido', details = {} }) {
   let safePayload = payload
   if (safePayload && !safePayload.requested_by && safePayload.requested_by_name) {
-    const workersCatalog = await getWorkersLookupCached(supabase)
+    const workersCatalog = await getWorkersLookupCached()
     safePayload = stampWorkerIdOnRecord(safePayload, workersCatalog, {
       nameFields: ['requested_by_name'],
-      idField: 'requested_by'
+      idField: 'requested_by',
     })
   }
 
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .insert([safePayload])
-    .select()
-    .single()
-
-  if (error) throw error
+  const { data, error } = await purchaseOrdersRepository.insertOne(safePayload)
+  if (error) throw new Error(error)
 
   await auditService.logRowAction({
     action: auditAction,
@@ -160,20 +152,20 @@ export async function insertPedidoService({ payload, auditAction = 'ROW_INSERT',
     entityName,
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
-    changes: details
+    changes: details,
   })
 
   return data
 }
 
 export async function restorePedidoRowService(row) {
-  const { error } = await supabase.from('purchase_orders').insert([row])
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.insertOne(row, { select: null })
+  if (error) throw new Error(error)
 }
 
 export async function deletePedidoService({ orderId, entityName = 'Pedido', audit = true }) {
-  const { error } = await supabase.from('purchase_orders').delete().eq('id', orderId)
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.deleteById(orderId)
+  if (error) throw new Error(error)
 
   if (audit) {
     await auditService.logRowAction({
@@ -182,18 +174,18 @@ export async function deletePedidoService({ orderId, entityName = 'Pedido', audi
       entityId: orderId,
       entityName,
       sheetName: SHEET_NAME,
-      moduleRoute: MODULE_ROUTE
+      moduleRoute: MODULE_ROUTE,
     })
   }
 }
 
 export async function pastePedidoRowService({ targetId, fieldsToCopy, entityName = '', sourceId }) {
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ ...fieldsToCopy, updated_at: new Date().toISOString() })
-    .eq('id', targetId)
-
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.updateById(
+    targetId,
+    { ...fieldsToCopy, updated_at: new Date().toISOString() },
+    { select: null }
+  )
+  if (error) throw new Error(error)
 
   await auditService.logRowAction({
     action: 'PASTE_ROW',
@@ -202,23 +194,23 @@ export async function pastePedidoRowService({ targetId, fieldsToCopy, entityName
     entityName: entityName || `OC #${targetId}`,
     sheetName: SHEET_NAME,
     moduleRoute: MODULE_ROUTE,
-    changes: { sourceId }
+    changes: { sourceId },
   })
 }
 
 export async function silentUpdatePedidoService(orderId, payload) {
-  const { error } = await supabase.from('purchase_orders').update(payload).eq('id', orderId)
-  if (error) throw error
+  const { error } = await purchaseOrdersRepository.updateById(orderId, payload, { select: null })
+  if (error) throw new Error(error)
 }
 
 export async function incrementMaterialStockService(materialId, newStock) {
-  const { error } = await supabase.from('materials').update({ current_stock: newStock }).eq('id', materialId)
-  if (error) throw error
+  const { error } = await materialsRepository.updateStock(materialId, newStock)
+  if (error) throw new Error(error)
 }
 
 export async function reconcilePedidosBatchService(orderIds, updates) {
   for (const id of orderIds) {
-    const { error } = await supabase.from('purchase_orders').update(updates).eq('id', id)
-    if (error) throw error
+    const { error } = await purchaseOrdersRepository.updateById(id, updates, { select: null })
+    if (error) throw new Error(error)
   }
 }
