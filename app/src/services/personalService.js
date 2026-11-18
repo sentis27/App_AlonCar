@@ -7,6 +7,7 @@
 import { supabase } from '../lib/supabase.js'
 import { logCellChange, logRowAction } from '../lib/auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from '../lib/monotonicFolioEngine.js'
+import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
 
 /**
  * Carga completa del padrón de personal, tarifarios y roles organizacionales.
@@ -19,12 +20,7 @@ export async function fetchPersonalData() {
       .order('admin_center', { ascending: true })
       .order('work_group', { ascending: true })
       .order('name', { ascending: true }),
-    supabase
-      .from('rate_cards')
-      .select('*')
-      .order('year', { ascending: false })
-      .order('month', { ascending: false })
-      .order('quincena', { ascending: false }),
+    rateCardsRepository.listRateCards(),
     supabase
       .from('organization_roles')
       .select('*')
@@ -148,32 +144,17 @@ export async function batchUpdateWorkerStatusService({ workerIds = [], targetSta
 export async function saveRateCardService({ rateCard, isNew = false, changedBy = 'Operador Web' }) {
   if (!rateCard) throw new Error('Datos de tarifario requeridos.')
 
-  const { data, error } = await supabase
-    .from('rate_cards')
-    .upsert([rateCard], { onConflict: 'period,admin_center,entity_name' })
-    .select()
+  const { data, error } = await rateCardsRepository.saveRateCard(rateCard, {
+    isNew,
+    changedBy,
+  })
 
   if (error) {
     console.error('[personalService] Error guardando tarifario:', error)
-    throw error
+    throw new Error(error)
   }
 
-  const savedRecord = data?.[0] || rateCard
-
-  logRowAction({
-    action: isNew ? 'CREATE' : 'UPDATE',
-    entityType: 'rate_cards',
-    entityId: savedRecord.id || `${savedRecord.period}_${savedRecord.entity_name}`,
-    entityName: `${savedRecord.period} · ${savedRecord.entity_name}`,
-    performedBy: changedBy,
-    details: {
-      rate_oficial_ars: savedRecord.rate_oficial_ars,
-      rate_oficial_usd: savedRecord.rate_oficial_usd,
-      dollar_rate: savedRecord.dollar_rate
-    }
-  })
-
-  return { ok: true, rateCard: savedRecord }
+  return { ok: true, rateCard: data }
 }
 
 export * from './personalNominaService.js'
