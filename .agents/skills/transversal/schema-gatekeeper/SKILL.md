@@ -17,6 +17,7 @@ El modelo de lenguaje padece **3 sesgos de memoria estadística**:
 
 - **NEVER** utilices tu memoria conversacional para enumerar módulos, vistas, entidades o tablas del sistema; consulta siempre primero el índice maestro de arquitectura.
 - **NEVER** escribas el nombre de una entidad, columna, clave primaria, relación o propiedad en el código sin haber verificado empíricamente su existencia exacta en la fuente de verdad durante la sesión activa.
+- **NEVER** agregues o modifiques una consulta/mutación hacia una tabla o columna sin verificar y actualizar primero su esquema Zod en `app/src/schemas/*.schema.js` (y `registerTrapKeys` en `app/src/schemas/index.js` si existen columnas trampa).
 - **NEVER** inicies un turno de implementación invocando herramientas de creación o edición de archivos antes de haber ejecutado herramientas de inspección y lectura.
 - **NEVER** asumas que un catálogo o lista de opciones es estático o local; verifica siempre si otra parte del sistema ya lo consume desde una fuente compartida o base de datos.
 - **NEVER** propongas un plan arquitectónico transversal sin cruzarlo contra la totalidad del padrón de componentes transaccionales y analíticos del proyecto.
@@ -30,7 +31,7 @@ El modelo de lenguaje padece **3 sesgos de memoria estadística**:
 | **Errores por columnas o tablas inexistentes** | Deducción por intuición semántica | **Sondeo Empírico Pre-Vuelo (Schema Probe):** Consultar el diccionario de contratos verificados o ejecutar una lectura real de 1 registro contra el motor de datos para extraer las claves reales antes de codificar. |
 | **Soluciones parciales que olvidan módulos del sistema** | Trabajo basado en memoria de corto plazo | **Barrido contra Padrón Maestro:** Lectura obligatoria del índice oficial de clasificación de módulos y submódulos antes de emitir cualquier diagnóstico, lista o plan de alcance global. |
 | **Duplicación de lógica o fuentes de datos** | Desconocimiento de componentes preexistentes | **Rastreo de Consumo Existente:** Antes de crear una consulta o estado, buscar en el código cómo resuelven ese mismo dominio los módulos adyacentes para reutilizar el mismo contrato. |
-| **Desfase entre un cambio nuevo y la documentación** | Evolución del código sin actualizar el mapa | **Sincronización de Contrato Inmediata:** Toda alta o modificación de entidad, vista o herramienta analítica exige actualizar en el mismo acto el índice estructural que la gobierna. |
+| **Desfase entre un cambio nuevo y la documentación** | Evolución del código sin actualizar el mapa | **Sincronización de Contrato Inmediata:** Toda alta o modificación de entidad, tabla o columna en Supabase exige actualizar en el mismo acto su contrato ejecutable en `app/src/schemas/`, su repositorio en `app/src/repositories/` y el índice estructural que la gobierna. |
 
 ---
 

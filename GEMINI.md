@@ -1,7 +1,7 @@
 ---
-version: 1.4
+version: 1.5
 last_updated_by: antigravity
-last_updated: 2026-11-13
+last_updated: 2026-11-18
 source_of_truth: GEMINI.md
 ---
 
@@ -24,7 +24,7 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 | 2+ tareas o varias capas | `SKL-008` | `read_file` / `run_command` | Tabla de etapas (*Fast-Track* o *Freno por Riesgo*). |
 | UI, formularios y flujos | `SKL-012` | `read_file` | Vector Único, Top-Down y compresión dimensional. |
 | Grillas editables (`CARGA_EDICION`) | `SKL-013` | `read_file` | Teclado 100%, in-situ, motor `useSpreadsheetGrid.js`. |
-| Código / lógica / persistencia | `SKL-009` + `SKL-015` + `SKL-007` | `run_command` / `read_file` | Test runtime Node `data > 0` + `build` + Reporte. |
+| Código / lógica / repositories / schemas | `SKL-009` + `SKL-015` + `SKL-007` | `run_command` / `read_file` | Test runtime Node `data > 0` + `build` + Reporte. |
 | Auditoría o cierre pre-commit | `SKL-017` (+ `SKL-006`) | `git status -s` / `read_file` | LCOM/CBO o dictamen en `BITACORA_DELTAS_SESION.md`. |
 | Nuevo módulo o pantalla | Regla §4 + `SKL-009` | **NINGUNO** sin clasificar | Preguntar si es `CARGA_EDICION` o `METRICAS_ANALISIS`. |
 | Workflows n8n (`workflows/**`) | `SKL-001` | `read_file` (`INDEX.md` + `SDD.md`) | JSON listos; nunca `activo` sin SDD (`PLANTILLA.md`). |
@@ -35,14 +35,14 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 2. **F2 — Intervención modular (`SKL-009`) + 5 Candados Anti-Rot:**
    1. **Caja Nueva:** `<=250L` en páginas; toda pestaña, subpanel, modal o motor (`>150L`) nace en `app/src/components/` o `app/src/lib/`.
    2. **Cero Hardcode:** prohibido arrays estáticos o duplicar catálogos/lógica; fuente única en Supabase / `app/src/lib/`.
-   3. **Cero SQL en Vista:** prohibido `supabase.from()` directo en JSX; mutar vía `app/src/lib/` o `services/`.
+   3. **Acceso Exclusivo vía Repositorios + Zod:** prohibido `supabase.from()`, `supabase.rpc()` o `.storage.from()` fuera de `app/src/repositories/` (verificado por `check:hygiene`); toda tabla opera mediante `createBaseRepository` (`_baseRepository.js`) y su contrato Zod en `app/src/schemas/`.
    4. **Trazabilidad:** toda mutación en grillas invoca `auditService.logCellChange/logRowAction`.
    5. **onBlur Blindado:** todo input editable usa `onBlur={() => commitFn()}` (jamás pasar evento `e`).
 3. **F3 — Runtime real (`SKL-007`):** prohibido validar solo con `includes` o `build`; ejecutar prueba real en Node (`error === null` y `data.length > 0`) + `npm run build` + `npm run lint`.
 4. **F4 — Reporte:** cerrar con Trazabilidad y tabla Control de Calidad (`§5`).
 
 ## 3. Contratos Reales Supabase (Prohibido adivinar)
-> **Pre-Flight Anti-Memoria:** leer `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` e `INDICE_PLANILLAS.md` antes de listar módulos/tablas. Para otras tablas, correr `select('*').limit(1)` en F1.
+> **Pre-Flight Anti-Memoria:** leer `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` e `INDICE_PLANILLAS.md` antes de listar módulos/tablas. Para otras tablas, correr `select('*').limit(1)` en F1. Cada tabla consumida debe respaldarse con su esquema Zod en `app/src/schemas/` (`registerTrapKeys`) y su repositorio en `app/src/repositories/`.
 
 | Tabla | PK | Columnas verificadas | Trampas (NO existen) |
 | :--- | :--- | :--- | :--- |
@@ -67,6 +67,8 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 **Inicio de cada turno:**
 > **[Gobernanza AlonCar]** Arquetipo: `CARGA_EDICION` | `METRICAS_ANALISIS`  
 > **Skills y Estándares activos:** `[SKL-016 Router ➔ SKL-00X, Estándar 0X...]`
+
+- **Traducción obligatoria para el usuario (Cero Jerga Cruda):** En propuestas, diagnósticos o explicaciones arquitectónicas, acompañar todo término técnico con su traducción breve (`🔧 Técnico:` qué archivo/pieza cambia · `💡 En simple:` analogía concreta de taller/astillero en 1–2 líneas).
 
 **Cierre con cambios (`SKL-007`):** incluir `### 🔍 Trazabilidad de Cumplimiento Mecánico` (1. Inspección F1/`SKL-014`, 2. Fuente compartida F2, 3. Runtime F3) y:
 ```markdown

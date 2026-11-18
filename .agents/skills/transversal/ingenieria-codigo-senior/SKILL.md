@@ -25,11 +25,12 @@ Un ingeniero senior optimiza para **lectura rápida, cambio aislado y falla cont
 ### P1. Separación estricta de responsabilidades (Enfoque Crítico)
 Ningún archivo ni función puede mezclar transporte/presentación, reglas de negocio y acceso a datos:
 - **En Frontend:**
-  1. `api/` o `services/`: comunicación HTTP o cliente de base de datos, sin JSX ni estados visuales.
-  2. `lib/` o `utils/`: reglas de negocio, validadores, formateadores y cálculos como **funciones puras** (entra dato → sale resultado).
-  3. `hooks/`: coordinación de estado, filtros, paginación y atajos.
-  4. `pages/` y `components/`: estructura visual y disparo de acciones.
-  > **🛑 Prohibición de Persistencia en Vista:** Queda terminantemente prohibido ejecutar `supabase.from().select/insert/update/delete` directamente dentro de callbacks de eventos o JSX en componentes visuales. Toda operación de base de datos debe residir en funciones de `lib/` o `services/`.
+  1. `schemas/` (`app/src/schemas/`): contratos Zod por entidad y registro de columnas trampa (`registerTrapKeys`). Cero lógica de red o UI.
+  2. `repositories/` (`app/src/repositories/`): **única capa autorizada** a invocar `supabase.from()`, `supabase.rpc()` o `.storage.from()`, construida sobre `createBaseRepository` (`_baseRepository.js`).
+  3. `services/` y `lib/`: orquestación de casos de uso, cruces multi-repositorio, auditoría (`auditService`) y funciones puras de negocio. Sin llamadas directas a tablas Supabase.
+  4. `hooks/`: coordinación de estado, filtros, paginación y atajos.
+  5. `pages/` y `components/`: estructura visual y disparo de acciones.
+  > **🛑 Prohibición de Bypass de Repositorios:** Queda terminantemente prohibido ejecutar `supabase.from()`, `supabase.rpc()` o `.storage.from()` fuera de `app/src/repositories/` (prohibido en `pages/`, `components/`, `hooks/`, `context/`, `services/` y `lib/`). Toda operación de base de datos pasa por su repositorio + contrato Zod.
 - **En Backend:**
   1. `routes/`: definición de rutas y middlewares de entrada.
   2. `controllers/`: lectura de `req` y emisión de código HTTP en `res`. Cero SQL/ORM.
@@ -81,7 +82,7 @@ El código senior asume que la red falla, la base rechaza datos, el entorno est�
 Cuando se desarma un monolito existente, se hace en pasos donde cada paso compila y pasa `SKL-007`:
 1. Extraer constantes y funciones puras (`lib/`).
 2. Extraer subcomponentes y modales autónomos (`components/`).
-3. Extraer acceso a datos y coordinación (`services/` y `hooks/`).
+3. Extraer contratos Zod (`schemas/`), acceso a datos (`repositories/`) y orquestación (`services/` y `hooks/`).
 4. Simplificar la vista principal (`pages/`).
 
 ### P10. Simplicidad y economía de abstracción

@@ -19,12 +19,12 @@ Eres un arquitecto principal que inspecciona sistemas con "Duda Disciplinada" (b
 Antes de emitir juicio, mide el sistema basándote en estos umbrales objetivos:
 
 1. **LCOM Adaptado (Cohesión de Componente / Módulo):**
-   - *Frontend (`components/`, `hooks/`, `lib/`, `services/`):* Todo archivo en `app/src/components/`, `app/src/hooks/`, `app/src/lib/` y `app/src/services/` debe mantenerse **`≤ 300 líneas`**. Un componente React que administra más de 3 sub-flujos (modales, formularios o tablas embebidas) que no comparten `estado local / props`, o cualquier archivo nuevo/modificado en esas carpetas que supere las **300 L** (o crezca si ya pasaba 300 L en legacy), viola este umbral.
+   - *Frontend (`components/`, `hooks/`, `lib/`, `repositories/`, `schemas/`, `services/`):* Todo archivo en `app/src/components/`, `app/src/hooks/`, `app/src/lib/`, `app/src/repositories/`, `app/src/schemas/` y `app/src/services/` debe mantenerse **`≤ 300 líneas`**. Un componente React que administra más de 3 sub-flujos (modales, formularios o tablas embebidas) que no comparten `estado local / props`, o cualquier archivo nuevo/modificado en esas carpetas que supere las **300 L** (o crezca si ya pasaba 300 L en legacy), viola este umbral.
    - *Backend:* Un servicio o controlador que agrupa entidades de dominios no relacionados (ej. facturación y autenticación en el mismo archivo).
    - *Dictamen:* Cohesión puramente incidental. Debe extraerse obligatoriamente según `SKL-009 P3`.
 
 2. **CBO Adaptado (Acoplamiento de Dominio):**
-   - *Frontend (Fan-Out Crítico):* Un componente de vista que importa lógica de más de 3 dominios empresariales distintos, o que invoca consultas directas a la base de datos (ej. `supabase.from()`) saltándose la capa de servicio (`app/src/lib/`).
+   - *Frontend (Fan-Out Crítico):* Un componente de vista que importa lógica de más de 3 dominios empresariales distintos, o que invoca consultas o mutaciones directas a Supabase (`supabase.from()`, `supabase.rpc()`, `.storage.from()`) fuera de `app/src/repositories/` o sin contrato Zod en `app/src/schemas/`.
    - *Backend (Fuga de Capas):* Un Controller que ejecuta consultas SQL o conoce la base de datos sin pasar por Service/Repo, o un Service que recibe objetos de transporte HTTP (`req`/`res`) (`SKL-011`).
    - *Dictamen:* Acoplamiento existencial. Riesgo inminente de fallas en cascada y regresión.
 
@@ -34,7 +34,7 @@ Antes de emitir juicio, mide el sistema basándote en estos umbrales objetivos:
 Rastrea activamente los siguientes 5 "Pecados Capitales" en la generación de código:
 1. **Sync-Effect Trap:** Abuso de `useEffect` para reaccionar a una prop/estado y guardarla en otro `useState` redundante (debe forzarse cálculo al vuelo o `useMemo`, `SKL-009 P2`).
 2. **Serialización Corrupta en BD:** El patrón `onBlur` o manejadores de eventos que terminan persistiendo `[object Object]` silenciosamente en Supabase.
-3. **Domain Leaks & Catálogos Duplicados:** Mezclar llamadas a red crudas dentro de vistas `.jsx` o recrear listas/arrays estáticos que ya existen en `app/src/lib/`.
+3. **Domain Leaks & Catálogos Duplicados:** Ejecutar llamadas directas a Supabase fuera de `app/src/repositories/` o recrear listas/arrays estáticos que ya existen en `app/src/lib/` o Supabase.
 4. **Falso Blindaje Nulo (Silent Swallow):** Bloques `try/catch` vacíos, o el abuso de `data?.map() || []` que enmascara fallas de red o caídas del esquema de Supabase (`SKL-015`).
 5. **Bypass de Trazabilidad:** Transacciones CRUD en módulos operativos que omiten el registro obligatorio en `auditService` (`audit_logs`).
 6. **Amputación por Refactor (Anti-Loop `ERR-006`):** Partir un archivo para cumplir `< 300 L` simplificando `<select>`/`<datalist>`/cascadas a `<input>` vacíos, omitiendo inicializadores (`selectedShipId`) o rompiendo contracts/shapes sin verificar paridad con módulos hermanos (**Pañol** ⇄ **Horas**, `allocationEngine.js`). Ver [ERR-006](../../../../docs/02_producto/02_errores/ERR-006-auditoria-borro-listas-y-logica-operarios-horas.md) y [PLAN-001](../../../../docs/02_producto/05_auditorias/planes/PLAN-001-blindaje-anti-regresiones-auditoria-skl017.md).
@@ -50,7 +50,7 @@ Esta skill opera OBLIGATORIAMENTE en uno de estos dos modos. Si el usuario no es
 
 > ⛔ **Freno de Turno Obligatorio:** Queda terminantemente prohibido auditar más de un cuadrante por turno. La IA audita el cuadrante solicitado, entrega el reporte y frena para esperar la confirmación del usuario antes del siguiente.
 
-- **Cuadrante A (Núcleo y Contratos):** `app/src/lib/`, hooks centrales (`useSpreadsheetGrid.js`, `useGridContextMenu.js`), clientes de base de datos (`supabase.js`) y utilidades puras.
+- **Cuadrante A (Núcleo y Contratos):** `app/src/schemas/`, `app/src/repositories/` (`_baseRepository.js`), `app/src/lib/`, hooks centrales (`useSpreadsheetGrid.js`, `useGridContextMenu.js`), clientes de base de datos (`supabase.js`) y utilidades puras.
 - **Cuadrante B (Gallo / CARGA_EDICION):** Planillas transaccionales operativas (Compras, Personal, Horas, etc.). Evalúa las 5 Zonas Canónicas y el registro en `audit_logs`.
 - **Cuadrante C (Gallina / METRICAS_ANALISIS):** Tableros y analíticas. Evalúa el costo de re-renderizado, cálculos al vuelo con `useMemo` y trazabilidad hacia tablas origen.
 - **Cuadrante D (Backend e Infra):** Enrutadores Express (estricto 4 capas), Docker y webhooks n8n (`workflows/_meta/`).
@@ -61,7 +61,7 @@ Esta skill opera OBLIGATORIAMENTE en uno de estos dos modos. Si el usuario no es
 **Activación:** Al final de una sesión de trabajo, o cuando el usuario pide "revisar antes de guardar / cerrar sesión".
 
 Sigue estrictamente estos 4 pasos:
-1. **Gate Automatizado (`0` tokens):** Ejecutar `npm.cmd run check:hygiene` (en `app/`) y `git status -s`. Esto valida en un único comando enlaces, `INDICE_METADATOS.md`, IDs `DEC-`/`ERR-`, umbrales de rotación (`15 KB`), archivos `> 300 L` en `components/`, `hooks/`, `lib/` y `services/`, **datalists huérfanos (`list="..."`)**, `oxlint` (`0` errors) y `vite build`.
+1. **Gate Automatizado (`0` tokens):** Ejecutar `npm.cmd run check:hygiene` (en `app/`) y `git status -s`. Esto valida en un único comando enlaces, `INDICE_METADATOS.md`, IDs `DEC-`/`ERR-`, umbrales de rotación (`15 KB`), archivos `> 300 L` en `components/`, `hooks/`, `lib/`, `repositories/`, `schemas/` y `services/`, **datalists huérfanos (`list="..."`)**, **`repo boundary` (0 bypass de `repositories/`)**, `oxlint` (`0` errors), `vite build` y `vitest`.
 2. **Blast Radius y Paridad Funcional (`ERR-006`):** Buscar referencias cruzadas sobre el delta (`git diff --name-only`). Si la intervención toca un módulo dividido o por dividir, **comprobar explícitamente** que conserva selectores, datalists, inicialización de estado y motores compartidos (`allocationEngine.js`) antes de asumir que un bloque era código redundante.
 3. **Escáner Anti-Rot:** Pasar los cambios del delta por el tracker de las 5 Firmas de Pudrición (Sección 3) y los umbrales LCOM/CBO (`≤ 300 L`, Sección 2).
 4. **Dictamen:** Registrar el delta en `BITACORA_DELTAS_SESION.md` usando la salida real de `check:hygiene`.
