@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { profilesRepository } from '../repositories/profilesRepository.js'
 
 const AuthContext = createContext({})
 
@@ -56,11 +57,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = async (sessionUser) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', sessionUser.id)
-        .single()
+      const { data, error } = await profilesRepository.getByUserId(sessionUser.id)
 
       if (!error && data) {
         setProfile(data)
@@ -72,7 +69,7 @@ export const AuthProvider = ({ children }) => {
           full_name: isMasterSupervisor ? 'Andrés Vanoli' : (sessionUser.user_metadata?.full_name || sessionUser.email?.split('@')[0]),
           role: 'Supervisor'
         }
-        await supabase.from('profiles').upsert(defaultProfile)
+        await profilesRepository.upsertProfile(defaultProfile)
         setProfile(defaultProfile)
       }
     } catch (err) {

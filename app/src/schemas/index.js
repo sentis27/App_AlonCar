@@ -33,6 +33,7 @@ import {
   WorkerPermissionRequestSchema,
 } from './complianceAlerts.schema.js'
 import { AuditLogSchema } from './auditLogs.schema.js'
+import { ProfileSchema, PROFILE_ROLES } from './profiles.schema.js'
 
 const TRAP_KEYS_REGISTRY = new WeakMap()
 
@@ -238,4 +239,6 @@ export {
   ComplianceAlertSchema,
   WorkerPermissionRequestSchema,
   AuditLogSchema,
+  ProfileSchema,
+  PROFILE_ROLES,
 }

@@ -19,6 +19,7 @@ import { createInventoryTransactionsRepository } from '../../src/repositories/in
 import { createGasMovementsRepository } from '../../src/repositories/gasMovementsRepository.js'
 import { createComplianceAlertsRepository } from '../../src/repositories/complianceAlertsRepository.js'
 import { createAuditLogsRepository } from '../../src/repositories/auditLogsRepository.js'
+import { createProfilesRepository } from '../../src/repositories/profilesRepository.js'
 import * as repositoriesBarrel from '../../src/repositories/index.js'
 
 function createChainMock({ rows = [], error = null } = {}) {
@@ -199,5 +200,39 @@ describe('Repositorios Etapa 1 y Etapa 2', () => {
     expect(repositoriesBarrel.laborLogsRepository).toBeDefined()
     expect(repositoriesBarrel.shipsRepository).toBeDefined()
     expect(repositoriesBarrel.purchaseOrdersRepository).toBeDefined()
+    expect(repositoriesBarrel.profilesRepository).toBeDefined()
+  })
+
+  it('profilesRepository valida UUID/email/rol y ejecuta upsert onConflict id', async () => {
+    const validUuid = '1de75167-e6f3-49c3-b1bb-22e9f4073dd9'
+    const { client, ops } = createChainMock({
+      rows: [{ id: validUuid, email: 'test@aloncar.com', role: 'Supervisor' }],
+    })
+    const repo = createProfilesRepository({ client })
+
+    const badUuid = await repo.upsertProfile({ id: 'no-uuid', email: 'test@aloncar.com', role: 'Supervisor' })
+    expect(badUuid.error).toContain('UUID')
+    expect(ops).toHaveLength(0)
+
+    const badRole = await repo.upsertProfile({
+      id: validUuid,
+      email: 'test@aloncar.com',
+      role: 'RolInventado',
+    })
+    expect(badRole.error).toBeTruthy()
+    expect(ops).toHaveLength(0)
+
+    const ok = await repo.upsertProfile({
+      id: validUuid,
+      email: 'test@aloncar.com',
+      full_name: 'Andrés Vanoli',
+      role: 'Supervisor',
+    })
+    expect(ok.error).toBe(null)
+    expect(ops.find((o) => o[0] === 'upsert')[2]).toEqual({ onConflict: 'id' })
+
+    const found = await repo.getByUserId(validUuid)
+    expect(found.error).toBe(null)
+    expect(found.data.email).toBe('test@aloncar.com')
   })
 })

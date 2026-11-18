@@ -12,7 +12,7 @@ const IGNORE_DIRS = new Set(['node_modules', 'dist', 'Presentacion', '.git'])
 const IGNORE_REL_PREFIXES = ['app/dist', 'docs/04_anexos_entendiemiento de planillas']
 const USER_PATH_RE = /Users[\\/](?:senti|Vanoli)|file:\/\/\//i
 const CODE_EXT_RE = /\.(?:js|jsx|ts|tsx)$/
-const SRC_GUARDED_RE = /^app\/src\/(?:components|hooks|lib|services)\//
+const SRC_GUARDED_RE = /^app\/src\/(?:components|hooks|lib|repositories|schemas|services)\//
 const SIZE_ALERT_BYTES = 15 * 1024
 const SRC_LINE_LIMIT = 300
 
@@ -211,6 +211,36 @@ function runLocalBin(binName, binArgs) {
   })
 }
 
+const DIRECT_DB_ACCESS_RE = /\bsupabase\s*\.\s*(?:from|rpc)\s*\(|\.storage\s*\.\s*from\s*\(/
+
+function stripCommentsForScan(code) {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+}
+
+function checkRepositoryBoundary() {
+  const srcRoot = path.join(APP_DIR, 'src')
+  if (!fs.existsSync(srcRoot)) return []
+  const errors = []
+  const stack = [srcRoot]
+  while (stack.length > 0) {
+    const dir = stack.pop()
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name)
+      if (ent.isDirectory()) { stack.push(full); continue }
+      if (!CODE_EXT_RE.test(ent.name)) continue
+      const rel = toPosix(path.relative(ROOT_DIR, full))
+      if (rel.startsWith('app/src/repositories/')) continue
+      const content = stripCommentsForScan(fs.readFileSync(full, 'utf8'))
+      if (DIRECT_DB_ACCESS_RE.test(content)) {
+        errors.push(`Acceso directo a Supabase fuera de app/src/repositories/: ${rel}`)
+      }
+    }
+  }
+  return errors
+}
+
 function checkDatalistIntegrity() {
   const srcRoot = path.join(APP_DIR, 'src')
   if (!fs.existsSync(srcRoot)) return []
@@ -299,8 +329,9 @@ function main() {
   const idErrors = checkDuplicateIds()
   const errFormatErrors = checkErrorDocsFormat()
   const datalistErrors = checkDatalistIntegrity()
+  const repoBoundaryErrors = checkRepositoryBoundary()
   const migrations = checkMigrationsManifest(ROOT_DIR)
-  const errors = [...docErrors, ...indexErrors, ...idErrors, ...errFormatErrors, ...datalistErrors, ...migrations.errors]
+  const errors = [...docErrors, ...indexErrors, ...idErrors, ...errFormatErrors, ...datalistErrors, ...repoBoundaryErrors, ...migrations.errors]
   const alerts = [
     ...checkLiveDocSizes(),
     ...checkGitDiffLineLimits(),
@@ -340,6 +371,7 @@ function main() {
   console.log(
     `[check:hygiene] .md activos: ${mdFiles.length} | docs/links: ${docErrors.length === 0 ? 'OK' : `FAIL (${docErrors.length})`} | INDICE_METADATOS: ${indexErrors.length === 0 ? 'OK' : `FAIL (${indexErrors.length})`} | IDs DEC/ERR: ${idErrors.length === 0 ? 'OK' : `FAIL (${idErrors.length})`} | ERR formato: ${errFormatErrors.length === 0 ? 'OK' : `FAIL (${errFormatErrors.length})`} | datalists: ${datalistErrors.length === 0 ? 'OK' : `FAIL (${datalistErrors.length})`}`
   )
+  console.log(`[check:hygiene] repo boundary: ${repoBoundaryErrors.length === 0 ? 'OK (0 bypass)' : `FAIL (${repoBoundaryErrors.length})`}`)
   console.log(`[check:hygiene] oxlint: ${lintSummary}`)
   console.log(`[check:hygiene] migraciones: ${migrations.migrationsCount} (max ${String(migrations.maxNumber).padStart(4, '0')}) | rollbacks: ${migrations.rollbacksCount} | ${migrations.errors.length === 0 ? 'OK' : `FAIL (${migrations.errors.length})`}`)
   console.log(`[check:hygiene] vite build: ${buildSummary}`)
