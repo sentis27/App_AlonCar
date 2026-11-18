@@ -308,6 +308,7 @@ function main() {
 
   let lintSummary = 'omitido (--fast)'
   let buildSummary = 'omitido (--fast)'
+  let testSummary = 'omitido (--fast)'
 
   if (!FAST_MODE) {
     const lintRes = runLocalBin('oxlint', ['--quiet'])
@@ -325,6 +326,14 @@ function main() {
     if (buildRes.status !== 0) {
       errors.push(`vite build falló:\n${buildOut}`)
     }
+
+    const testRes = runLocalBin('vitest', ['run'])
+    const testOut = `${testRes.stdout || ''}\n${testRes.stderr || ''}`.trim()
+    const testLine = testOut.split(/\r?\n/).find((l) => /Tests\s+\d+\s+passed/i.test(l))
+    testSummary = testLine ? testLine.trim() : `exit ${testRes.status ?? 1}`
+    if (testRes.status !== 0) {
+      errors.push(`vitest falló (${testSummary}):\n${testOut}`)
+    }
   }
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
@@ -334,6 +343,7 @@ function main() {
   console.log(`[check:hygiene] oxlint: ${lintSummary}`)
   console.log(`[check:hygiene] migraciones: ${migrations.migrationsCount} (max ${String(migrations.maxNumber).padStart(4, '0')}) | rollbacks: ${migrations.rollbacksCount} | ${migrations.errors.length === 0 ? 'OK' : `FAIL (${migrations.errors.length})`}`)
   console.log(`[check:hygiene] vite build: ${buildSummary}`)
+  console.log(`[check:hygiene] vitest: ${testSummary}`)
 
   if (alerts.length > 0) {
     console.warn(`[check:hygiene] ALERTAS (${alerts.length}):`)
