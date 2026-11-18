@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { checkMigrationsManifest } from './lib/migrationsManifest.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '..')
@@ -298,7 +299,8 @@ function main() {
   const idErrors = checkDuplicateIds()
   const errFormatErrors = checkErrorDocsFormat()
   const datalistErrors = checkDatalistIntegrity()
-  const errors = [...docErrors, ...indexErrors, ...idErrors, ...errFormatErrors, ...datalistErrors]
+  const migrations = checkMigrationsManifest(ROOT_DIR)
+  const errors = [...docErrors, ...indexErrors, ...idErrors, ...errFormatErrors, ...datalistErrors, ...migrations.errors]
   const alerts = [
     ...checkLiveDocSizes(),
     ...checkGitDiffLineLimits(),
@@ -330,6 +332,7 @@ function main() {
     `[check:hygiene] .md activos: ${mdFiles.length} | docs/links: ${docErrors.length === 0 ? 'OK' : `FAIL (${docErrors.length})`} | INDICE_METADATOS: ${indexErrors.length === 0 ? 'OK' : `FAIL (${indexErrors.length})`} | IDs DEC/ERR: ${idErrors.length === 0 ? 'OK' : `FAIL (${idErrors.length})`} | ERR formato: ${errFormatErrors.length === 0 ? 'OK' : `FAIL (${errFormatErrors.length})`} | datalists: ${datalistErrors.length === 0 ? 'OK' : `FAIL (${datalistErrors.length})`}`
   )
   console.log(`[check:hygiene] oxlint: ${lintSummary}`)
+  console.log(`[check:hygiene] migraciones: ${migrations.migrationsCount} (max ${String(migrations.maxNumber).padStart(4, '0')}) | rollbacks: ${migrations.rollbacksCount} | ${migrations.errors.length === 0 ? 'OK' : `FAIL (${migrations.errors.length})`}`)
   console.log(`[check:hygiene] vite build: ${buildSummary}`)
 
   if (alerts.length > 0) {

@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { REDACTED, isSecretKey, redactSecrets } from './security/piiMask.js'
 
 /**
  * Diccionario Canónico de Módulos y Submódulos Auditables (Padrón 2.A)
@@ -91,9 +92,7 @@ async function resolveCurrentUserLabel(explicitUser) {
   try {
     const { data } = await supabase.auth.getUser()
     if (data?.user?.email) return data.user.email
-  } catch {
-    // Fallback silencioso
-  }
+  } catch { /* fallback silencioso */ }
   return 'Operador Sistema'
 }
 
@@ -145,20 +144,20 @@ export async function logCellChange({
         change_origin: changeOrigin,
         field: String(field),
         field_label: String(fieldLabel || field),
-        old_value: cleanOld,
-        new_value: cleanNew,
+        old_value: isSecretKey(field) ? REDACTED : cleanOld,
+        new_value: isSecretKey(field) ? REDACTED : cleanNew,
         cell_coordinates: cellCoordinates || undefined,
         changes: {
           [field]: {
-            from: cleanOld,
-            to: cleanNew
+            from: isSecretKey(field) ? REDACTED : cleanOld,
+            to: isSecretKey(field) ? REDACTED : cleanNew
           }
         }
       },
       performed_by: performedBy
     }
 
-    const { data, error } = await supabase.from('audit_logs').insert(payload).select().single()
+    const { data, error } = await supabase.from('audit_logs').insert(redactSecrets(payload)).select().single()
     if (error) {
       console.error('[auditService.logCellChange] Error:', error.message)
       return null
@@ -208,7 +207,7 @@ export async function logRowAction({
       performed_by: performedBy
     }
 
-    const { data, error } = await supabase.from('audit_logs').insert(payload).select().single()
+    const { data, error } = await supabase.from('audit_logs').insert(redactSecrets(payload)).select().single()
     if (error) {
       console.error('[auditService.logRowAction] Error:', error.message)
       return null
@@ -249,7 +248,7 @@ export async function logEvent({
       performed_by: performedBy
     }
 
-    const { data, error } = await supabase.from('audit_logs').insert(payload).select().single()
+    const { data, error } = await supabase.from('audit_logs').insert(redactSecrets(payload)).select().single()
     if (error) {
       console.error('[auditService.logEvent] Error:', error.message)
       return null
@@ -292,8 +291,8 @@ export async function logBatchPaste({
           change_origin: 'CONTEXT_MENU_PASTE',
           field: String(item.field || ''),
           field_label: String(item.fieldLabel || item.field || ''),
-          old_value: sanitizeAuditValue(item.oldValue),
-          new_value: sanitizeAuditValue(item.newValue),
+          old_value: isSecretKey(item.field) ? REDACTED : sanitizeAuditValue(item.oldValue),
+          new_value: isSecretKey(item.field) ? REDACTED : sanitizeAuditValue(item.newValue),
           changes: {
             [item.field || 'valor']: {
               from: sanitizeAuditValue(item.oldValue),
@@ -306,7 +305,7 @@ export async function logBatchPaste({
 
     if (rowsToInsert.length === 0) return []
 
-    const { data, error } = await supabase.from('audit_logs').insert(rowsToInsert).select()
+    const { data, error } = await supabase.from('audit_logs').insert(redactSecrets(rowsToInsert)).select()
     if (error) {
       console.error('[auditService.logBatchPaste] Error:', error.message)
       return []

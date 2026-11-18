@@ -43,6 +43,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | INDICE_PLANILLAS.md | indice | consultar-siempre | completo | fase-2 | activo | 2026-06-18 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md |
 | ROADMAP_NEGOCIO.md | roadmap | auditar-avances | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | app/README.md | guia | ninguno | primera-vez | fase-2+ | activo | 2026-11-13 | README.md |
+| supabase/rollbacks/README.md | protocolo | auditar-reglas \| validar-integridad | primera-vez | transversal | activo | 2026-11-18 | app/scripts/lib/migrationsManifest.mjs |
 | docs/00_ARQUITECTURA_TABLAS_Y_FOLIOS.md | protocolo | auditar-reglas \| consultar-siempre | completo | transversal | activo | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
 | docs/01_infraestructura/README.md | indice | ninguno | ignorar | fase-1 | activo | 2026-11-13 | INDICE_CENTRAL.md |
 | docs/01_infraestructura/01_stack_tecnico.md | documentacion-tecnica | ninguno | completo | fase-1 | activo | 2026-06-10 | ninguno |
