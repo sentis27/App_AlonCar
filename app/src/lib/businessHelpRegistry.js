@@ -23,6 +23,10 @@ import {
   LABOR_CLOCK_ASSIGN_STEP_HELP,
   LABOR_EDIT_STEP_HELP
 } from './help/laborHelp.js'
+import {
+  WORK_ORDER_STEP_HELP,
+  OT_CATALOG_STEP_HELP
+} from './help/workOrdersHelp.js'
 
 export {
   HIGH_VALUE_MATERIAL_USD_THRESHOLD,
@@ -37,7 +41,9 @@ export {
   LABOR_CREW_STEP_HELP,
   LABOR_CLOCK_BOARD_STEP_HELP,
   LABOR_CLOCK_ASSIGN_STEP_HELP,
-  LABOR_EDIT_STEP_HELP
+  LABOR_EDIT_STEP_HELP,
+  WORK_ORDER_STEP_HELP,
+  OT_CATALOG_STEP_HELP
 }
 
 export const BUSINESS_HELP_REGISTRY = {
@@ -50,7 +56,9 @@ export const BUSINESS_HELP_REGISTRY = {
   labor_cuadrilla: LABOR_CREW_STEP_HELP,
   labor_reloj: LABOR_CLOCK_BOARD_STEP_HELP,
   labor_reloj_asignacion: LABOR_CLOCK_ASSIGN_STEP_HELP,
-  labor_edicion: LABOR_EDIT_STEP_HELP
+  labor_edicion: LABOR_EDIT_STEP_HELP,
+  work_orders: WORK_ORDER_STEP_HELP,
+  ot_catalog: OT_CATALOG_STEP_HELP
 }
 
 /**

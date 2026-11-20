@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardList, Ship, Briefcase, Calendar, Info, AlertTriangle } from 'lucide-react'
+import { Ship, Briefcase, ClipboardList, Calendar, AlertTriangle } from 'lucide-react'
 import { cleanShipName } from '../../lib/laborConstants.js'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 
@@ -26,50 +26,23 @@ export default function LaborCascadeHeader({
   setWorkType,
   blockedWorkItemsForShip = [],
   currentWorkOrder,
-  currentWorkItem
+  compact = false
 }) {
   return (
-    <div className="alon-zone-entry p-5 md:p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
-        <div className="flex items-center gap-2.5">
-          <h2 className="text-xs uppercase tracking-wider font-bold text-primary flex items-center gap-2">
-            <ClipboardList className="w-4 h-4" />
-            Orden de Trabajo & Destino Por Defecto (Filtro de Habilitación en Cascada)
-          </h2>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-700/50 font-bold">
-            Solo OTs &ldquo;En ejecución&rdquo;
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {blockedWorkItemsForShip.length > 0 && (
-            <span
-              className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/70 text-amber-300 border border-amber-800/50 font-semibold"
-              title="Trabajos bloqueados para recibir costos."
-            >
-              🔒 {blockedWorkItemsForShip.length} trabajo(s) bloqueado(s) en este barco
-            </span>
-          )}
-          <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-cyan-950/70 text-cyan-400 border border-cyan-800/40 font-semibold font-mono">
-            Centro de Costo: CLIENTE (Fijo)
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className={compact ? 'space-y-2' : 'alon-zone-entry p-4 space-y-3'}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end">
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-bold flex items-center justify-center">
-              1
-            </span>
-            <Ship className="w-3.5 h-3.5 text-cyan-400" />
-            Barco / Embarcación
+          <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1">
+            <Ship className="w-3 h-3 text-cyan-400" />
+            <span>Barco / Buque <span className="text-rose-400">*</span></span>
           </label>
           <select
+            autoFocus
             value={selectedShipId}
             onChange={(e) => setSelectedShipId(e.target.value)}
-            className="w-full bg-slate-950/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400"
           >
-            {ships.map(ship => (
+            {ships.map((ship) => (
               <option key={ship.id} value={ship.id} className="bg-slate-900">
                 {cleanShipName(ship.name)}
               </option>
@@ -78,22 +51,19 @@ export default function LaborCascadeHeader({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center justify-center">
-              2
-            </span>
-            <Briefcase className="w-3.5 h-3.5 text-amber-400" />
-            Contratista / Grupo Habilitado
+          <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1">
+            <Briefcase className="w-3 h-3 text-amber-400" />
+            <span>Contratista / Grupo</span>
           </label>
           <select
             value={selectedContractorGroup}
             onChange={(e) => onContractorGroupChange(e.target.value)}
-            className="w-full bg-slate-950/80 border border-amber-500/40 rounded-lg px-3 py-2 text-xs text-amber-200 font-semibold focus:outline-none focus:border-amber-400"
+            className="w-full bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-amber-200 font-bold focus:outline-none focus:border-amber-400"
           >
             {enabledContractorsForShip.length === 0 ? (
-              <option value="">🔒 Sin contratistas habilitados (En ejecución)</option>
+              <option value="">🔒 Sin habilitados (En ejecución)</option>
             ) : (
-              enabledContractorsForShip.map(contractor => (
+              enabledContractorsForShip.map((contractor) => (
                 <option key={contractor} value={contractor} className="bg-slate-900 text-white">
                   {contractor}
                 </option>
@@ -101,7 +71,7 @@ export default function LaborCascadeHeader({
             )}
             {selectedShipId && !isHeaderContractorsExpanded && (
               <option value="__EXPANDIR_CONTRATISTAS__" className="bg-slate-900 text-amber-300 font-bold">
-                🔓 Expandir (Ver totalidad de contratistas y Astillero)...
+                🔓 Expandir (Todos los contratistas y Astillero)...
               </option>
             )}
             {selectedShipId && isHeaderContractorsExpanded && (
@@ -113,12 +83,9 @@ export default function LaborCascadeHeader({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center justify-center">
-              3
-            </span>
-            <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
-            OT ({availableWorkOrders.length} hab. / Opcional)
+          <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1">
+            <ClipboardList className="w-3 h-3 text-emerald-400" />
+            <span>OT ({availableWorkOrders.length} hab. / Opcional)</span>
           </label>
           <WorkOrderSelectorWithHover
             value={selectedWorkOrderId}
@@ -128,49 +95,49 @@ export default function LaborCascadeHeader({
             workItems={workItems}
             allWorkOrders={workOrders.length ? workOrders : availableWorkOrders}
             contractorName={selectedContractorGroup}
-            placeholder="-- ⚠️ Dejar OT en blanco (Pendiente de apertura) --"
+            placeholder="-- ⚠️ Dejar OT en blanco --"
+            showPreviewCard={false}
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-              Fecha Trabajo
-            </label>
-            <input
-              type="date"
-              value={dateLogged}
-              onChange={(e) => setDateLogged(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Modalidad
-            </label>
-            <select
-              value={workType}
-              onChange={(e) => setWorkType(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
-            >
-              <option value="HORA">Por Hora</option>
-              <option value="PRESUPUESTO">Presupuesto</option>
-              <option value="CONTROL">Control</option>
-            </select>
-          </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1">
+            <Calendar className="w-3 h-3 text-cyan-400" />
+            <span>Fecha Trabajo</span>
+          </label>
+          <input
+            type="date"
+            value={dateLogged}
+            onChange={(e) => setDateLogged(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+            Modalidad (Col. F)
+          </label>
+          <select
+            value={workType}
+            onChange={(e) => setWorkType(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400"
+          >
+            <option value="HORA">Por Hora</option>
+            <option value="PRESUPUESTO">Presupuesto</option>
+            <option value="CONTROL">Control</option>
+          </select>
         </div>
       </div>
 
       {activeItemsForSelectedWo.length > 1 && (
-        <div className="pt-1">
-          <label className="block text-[11px] font-semibold text-cyan-300 mb-1">
-            Trabajo específico dentro de {currentWorkOrder?.ot_number || currentWorkOrder?.title} ({activeItemsForSelectedWo.length} habilitados para {selectedContractorGroup}):
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-[11px] font-semibold text-cyan-300 shrink-0">
+            Subtarea de {currentWorkOrder?.ot_number || currentWorkOrder?.title} ({activeItemsForSelectedWo.length}):
           </label>
           <select
             value={selectedWorkItemId}
             onChange={(e) => setSelectedWorkItemId(e.target.value)}
-            className="w-full bg-slate-950 border border-cyan-500/40 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400"
+            className="flex-1 min-w-[260px] bg-slate-950 border border-cyan-500/40 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400"
           >
             {activeItemsForSelectedWo.map((item, idx) => (
               <option key={item.id} value={item.id} className="bg-slate-900">
@@ -181,52 +148,24 @@ export default function LaborCascadeHeader({
         </div>
       )}
 
-      {currentWorkOrder ? (
-        <div className="p-3.5 rounded-xl bg-slate-950/80 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div>
-                <span className="font-mono font-bold text-emerald-300 mr-1.5">
-                  [{currentWorkOrder.ot_number || 'OT'}]
-                </span>
-                <strong className="text-white">{currentWorkOrder.title}: </strong>
-                <span className="text-slate-200 font-medium">
-                  {currentWorkItem?.description || currentWorkOrder.description || 'Sin descripción detallada registrada.'}
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                <span>
-                  Jefe de Obra: <strong className="text-cyan-300">{currentWorkItem?.foreman_name || currentWorkOrder.foreman_name || 'S/D'}</strong>
-                </span>
-                <span>&bull;</span>
-                <span>
-                  Contratistas habilitados:{' '}
-                  <strong className="text-amber-300">
-                    {(currentWorkItem?.contractors || []).join(' / ') || selectedContractorGroup || 'Astillero'}
-                  </strong>
-                </span>
-              </div>
-            </div>
-          </div>
-          <Link to="/ots" className="shrink-0 text-[11px] text-cyan-400 hover:text-cyan-300 underline font-semibold">
-            Ver en Órdenes de Trabajo &rarr;
-          </Link>
-        </div>
-      ) : (
-        <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/40 flex items-center justify-between gap-3 text-xs text-amber-200">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>
-              No hay Órdenes de Trabajo en estado <strong>&ldquo;En ejecución&rdquo;</strong> habilitadas para este barco/contratista. Podés elegir otro barco en cada fila (Modo Multi-Barco) o habilitar la OT en Órdenes de Trabajo.
+      {!currentWorkOrder && (
+        <div className="px-3 py-1.5 rounded-xl bg-amber-950/30 border border-amber-500/40 flex items-center justify-between gap-2 text-[11px] text-amber-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="truncate">
+              Sin OT &ldquo;En ejecución&rdquo; seleccionada: podés cargar en blanco, usar <strong>Multi-Barco</strong> o abrir la OT.
             </span>
           </div>
-          <Link
-            to="/ots"
-            className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold"
-          >
-            Ir a OTs
-          </Link>
+          <div className="flex items-center gap-2 shrink-0">
+            {blockedWorkItemsForShip.length > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800/50 font-semibold">
+                🔒 {blockedWorkItemsForShip.length} bloq.
+              </span>
+            )}
+            <Link to="/ots" className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold">
+              Ir a OTs
+            </Link>
+          </div>
         </div>
       )}
     </div>

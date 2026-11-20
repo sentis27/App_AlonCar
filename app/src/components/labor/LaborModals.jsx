@@ -21,6 +21,8 @@ import { deduplicateWorkOrdersWithScope, TIPOS_DE_TRABAJO } from '../../lib/work
 import { normalizeLaborWorkType } from '../../lib/laborCargaGridHelpers'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
+import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import { LABOR_EDIT_STEP_HELP } from '../../lib/businessHelpRegistry.js'
 
 // ==============================================================================
 // MODAL 1: EDICIÓN COMPLETA DE REGISTRO DE HORAS
@@ -39,327 +41,177 @@ export function EditLaborLogModal({
   if (!editingLog || !editingForm) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative">
-        <div className="flex items-start justify-between border-b border-slate-800 pb-4 mb-4">
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={() => setEditingLog(null)}
+      maxWidthClass="max-w-5xl"
+      icon={<Pencil className="w-4 h-4 text-primary" />}
+      title={`EDITAR REGISTRO DE HORAS — ${editingForm.worker_name}`}
+      headerBadges={
+        <span className="px-2 py-0.5 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono font-bold">
+          Centro Costo: CLIENTE
+        </span>
+      }
+      onSubmit={handleSaveEdit}
+      footerLeft={
+        <button type="button" onClick={() => setEditingLog(null)} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" disabled={savingEdit} className="px-5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+          <Save className="w-3.5 h-3.5" />
+          <span>{savingEdit ? 'Guardando...' : 'Guardar Cambios'}</span>
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={LABOR_EDIT_STEP_HELP[1]} title="DESTINO, OPERARIO Y RUBRO" subtitle="Barco ➔ OT ➔ Operario ➔ Rubro">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
           <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Pencil className="w-4 h-4 text-primary" />
-              Editar Registro de Horas
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Operario: <strong className="text-white">{editingForm.worker_name}</strong> &bull; Centro Costo: <strong className="text-cyan-400">CLIENTE</strong>
-            </p>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1"><Ship className="w-3 h-3 text-cyan-400" /><span>Barco / Buque</span></label>
+            <select
+              value={editingForm.ship_id || ''}
+              onChange={(e) => {
+                const newShipId = e.target.value
+                const filteredWos = workOrders.filter((w) => w.ship_id === newShipId)
+                setEditingForm({
+                  ...editingForm,
+                  ship_id: newShipId,
+                  work_order_id: filteredWos[0]?.id || '',
+                  shipName: ships.find((s) => s.id === newShipId)?.name || 'Barco'
+                })
+              }}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400"
+            >
+              {ships.map((ship) => <option key={ship.id} value={ship.id} className="bg-slate-900">{ship.name}</option>)}
+            </select>
           </div>
-          <button
-            type="button"
-            onClick={() => setEditingLog(null)}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1"><ClipboardList className="w-3 h-3 text-emerald-400" /><span>Orden de Trabajo (OT)</span></label>
+            {(() => {
+              const currentShipId = editingForm.ship_id || ships[0]?.id
+              const filteredWos = deduplicateWorkOrdersWithScope(workOrders.filter((w) => w.ship_id === currentShipId), workItems)
+              const availableWos = filteredWos.filter((w) => w.isActiveForImputation !== false || w.id === editingForm.work_order_id)
+              return (
+                <WorkOrderSelectorWithHover
+                  value={editingForm.work_order_id}
+                  onChange={(newWoId) => {
+                    const chosenWo = availableWos.find((w) => String(w.id) === String(newWoId))
+                    const inferredWt = normalizeLaborWorkType(chosenWo?.work_type, '')
+                    setEditingForm({
+                      ...editingForm,
+                      work_order_id: newWoId,
+                      ...(inferredWt && !editingLog.work_order_id ? { work_type: inferredWt } : {})
+                    })
+                  }}
+                  availableWos={availableWos}
+                  ship={ships.find((s) => s.id === currentShipId)}
+                  workItems={workItems}
+                  allWorkOrders={workOrders}
+                  contractorName={editingForm.worker_name}
+                  placeholder="-- Seleccionar OT --"
+                  showPreviewCard={false}
+                />
+              )
+            })()}
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Operario / Contratista</label>
+            <input type="text" list="all-workers-datalist" required value={editingForm.worker_name} onChange={(e) => setEditingForm({ ...editingForm, worker_name: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Rubro Manual</label>
+            <input type="text" list="rubros-list-carga" required value={editingForm.rubro} onChange={(e) => setEditingForm({ ...editingForm, rubro: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400" />
+          </div>
+        </div>
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep step={2} helpEntry={LABOR_EDIT_STEP_HELP[2]} title="HORAS IMPUTADAS, TIPO DE PERSONAL Y MODALIDAD">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Hs Normales</label>
+            <input type="number" step="0.5" min="0" max="24" required value={editingForm.hours_normal} onChange={(e) => setEditingForm({ ...editingForm, hours_normal: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white text-center font-mono font-bold focus:outline-none focus:border-cyan-400" />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-cyan-400 mb-1">Extras 50%</label>
+            <input type="number" step="0.5" min="0" max="24" value={editingForm.hours_extra_50} onChange={(e) => setEditingForm({ ...editingForm, hours_extra_50: e.target.value })} className="w-full bg-slate-950 border border-cyan-800 rounded-lg px-2 py-1.5 text-xs text-cyan-300 text-center font-mono font-bold focus:outline-none focus:border-cyan-400" />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-amber-400 mb-1">Extras 100%</label>
+            <input type="number" step="0.5" min="0" max="24" value={editingForm.hours_extra_100} onChange={(e) => setEditingForm({ ...editingForm, hours_extra_100: e.target.value })} className="w-full bg-slate-950 border border-amber-800 rounded-lg px-2 py-1.5 text-xs text-amber-300 text-center font-mono font-bold focus:outline-none focus:border-amber-400" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Tipo de Personal</label>
+            <select value={editingForm.worker_type} onChange={(e) => setEditingForm({ ...editingForm, worker_type: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400">
+              <option value="Astillero">Astillero</option>
+              <option value="Taller">Taller</option>
+              <option value="Contratista">Contratista</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Modalidad (Col. F)</label>
+            <select value={normalizeLaborWorkType(editingForm.work_type, 'HORA')} onChange={(e) => setEditingForm({ ...editingForm, work_type: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400">
+              {TIPOS_DE_TRABAJO.map((t) => <option key={t.value} value={t.value} className="bg-slate-900 text-white">{t.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep step={3} helpEntry={LABOR_EDIT_STEP_HELP[3]} title="FECHA, ESTADO DE APROBACIÓN Y OBSERVACIONES" isLast={true}>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Fecha del Trabajo</label>
+            <input type="date" required value={editingForm.date_logged} onChange={(e) => setEditingForm({ ...editingForm, date_logged: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Estado Aprobación</label>
+            <select value={editingForm.approval_status || ''} onChange={(e) => setEditingForm({ ...editingForm, approval_status: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400">
+              <option value="">- Sin Revisar -</option>
+              <option value="S">S (Aprobado)</option>
+              <option value="R">R (Requiere Revisión)</option>
+              <option value="RR">RR (Corregido)</option>
+              <option value="RRR">RRR (Aprobado Final)</option>
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Observaciones</label>
+            <input type="text" value={editingForm.notes || ''} placeholder="Detalle opcional..." onChange={(e) => setEditingForm({ ...editingForm, notes: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400" />
+          </div>
         </div>
 
-        <form onSubmit={handleSaveEdit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                <Ship className="w-3.5 h-3.5 text-cyan-400" />
-                Barco / Embarcación
-              </label>
-              <select
-                value={editingForm.ship_id || ''}
-                onChange={(e) => {
-                  const newShipId = e.target.value
-                  const filteredWos = workOrders.filter(w => w.ship_id === newShipId)
-                  setEditingForm({
-                    ...editingForm,
-                    ship_id: newShipId,
-                    work_order_id: filteredWos[0]?.id || '',
-                    shipName: ships.find(s => s.id === newShipId)?.name || 'Barco'
-                  })
-                }}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              >
-                {ships.map(ship => (
-                  <option key={ship.id} value={ship.id} className="bg-slate-900">
-                    {ship.name}
-                  </option>
-                ))}
-              </select>
+        {editingForm.approval_status === 'R' && (
+          <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl space-y-1">
+            <div className="flex items-center gap-1.5 text-rose-400 text-[11px] font-bold">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Motivo de Revisión / Duda Técnica (Auditoría R)</span>
             </div>
+            <input type="text" value={editingForm.review_reason || ''} onChange={(e) => setEditingForm({ ...editingForm, review_reason: e.target.value })} placeholder="Ej: Tareas no coinciden con la OT; exceso de horas extras al 100%..." className="w-full bg-slate-950 border border-rose-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-400" />
+          </div>
+        )}
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                <ClipboardList className="w-3.5 h-3.5 text-cyan-400" />
-                Orden de Trabajo (OT)
-              </label>
-                {(() => {
-                  const currentShipId = editingForm.ship_id || ships[0]?.id
-                  const filteredWos = deduplicateWorkOrdersWithScope(
-                    workOrders.filter(w => w.ship_id === currentShipId),
-                    workItems
-                  )
-                  const availableWos = filteredWos.filter(
-                    (w) => w.isActiveForImputation !== false || w.id === editingForm.work_order_id
-                  )
-                  return (
-                    <WorkOrderSelectorWithHover
-                      value={editingForm.work_order_id}
-                      onChange={(newWoId) => {
-                        const chosenWo = availableWos.find((w) => String(w.id) === String(newWoId))
-                        const inferredWt = normalizeLaborWorkType(chosenWo?.work_type, '')
-                        setEditingForm({
-                          ...editingForm,
-                          work_order_id: newWoId,
-                          ...(inferredWt && !editingLog.work_order_id ? { work_type: inferredWt } : {})
-                        })
-                      }}
-                      availableWos={availableWos}
-                      ship={ships.find((s) => s.id === currentShipId)}
-                      workItems={workItems}
-                      allWorkOrders={workOrders}
-                      contractorName={editingForm.worker_name}
-                      placeholder="-- Seleccionar OT --"
-                      showPreviewCard={false}
-                    />
-                  )
-                })()}
+        {editingForm.approval_status === 'RR' && (
+          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1.5">
+            {editingForm.review_reason && (
+              <div className="text-[11px] text-amber-200/90 bg-amber-950/40 px-2 py-1 rounded border border-amber-800/40">
+                <strong className="text-amber-400">Duda (R): </strong>{editingForm.review_reason}
               </div>
+            )}
+            <div className="flex items-center gap-1.5 text-amber-400 text-[11px] font-bold">
+              <FileText className="w-3.5 h-3.5 shrink-0" />
+              <span>Descargo / Corrección del Operario o Responsable (RR)</span>
             </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Operario / Contratista
-              </label>
-              <input
-                type="text" list="all-workers-datalist"
-                required
-                value={editingForm.worker_name}
-                onChange={(e) => setEditingForm({ ...editingForm, worker_name: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Rubro Manual
-              </label>
-              <input
-                type="text" list="rubros-list-carga"
-                required
-                value={editingForm.rubro}
-                onChange={(e) => setEditingForm({ ...editingForm, rubro: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              />
-            </div>
+            <input type="text" value={editingForm.worker_response || ''} onChange={(e) => setEditingForm({ ...editingForm, worker_response: e.target.value })} placeholder="Explique la corrección realizada..." className="w-full bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400" />
           </div>
+        )}
 
-          {/* HORAS NORMALES, EXTRAS 50% Y 100% */}
-          <div className="grid grid-cols-3 gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1 text-center">
-                Hs Normales
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                max="24"
-                required
-                value={editingForm.hours_normal}
-                onChange={(e) => setEditingForm({ ...editingForm, hours_normal: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-cyan-400 mb-1 text-center">
-                Extras 50%
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                max="24"
-                value={editingForm.hours_extra_50}
-                onChange={(e) => setEditingForm({ ...editingForm, hours_extra_50: e.target.value })}
-                className="w-full bg-slate-900 border border-cyan-800 rounded-lg px-2 py-1.5 text-xs text-cyan-300 text-center font-bold focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-amber-400 mb-1 text-center">
-                Extras 100%
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                max="24"
-                value={editingForm.hours_extra_100}
-                onChange={(e) => setEditingForm({ ...editingForm, hours_extra_100: e.target.value })}
-                className="w-full bg-slate-900 border border-amber-800 rounded-lg px-2 py-1.5 text-xs text-amber-300 text-center font-bold focus:outline-none focus:border-primary"
-              />
-            </div>
+        {(editingForm.approval_status === 'RRR' || editingForm.approval_status === 'S' || editingForm.approval_status === 'Aprobado') && editingForm.review_reason && (
+          <div className="px-2.5 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-[11px] flex flex-wrap gap-3 text-slate-400">
+            <span><strong className="text-rose-400">Obs. (R):</strong> {editingForm.review_reason}</span>
+            {editingForm.worker_response && <span><strong className="text-amber-400">Resp. (RR):</strong> {editingForm.worker_response}</span>}
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Fecha del Trabajo
-              </label>
-              <input
-                type="date"
-                required
-                value={editingForm.date_logged}
-                onChange={(e) => setEditingForm({ ...editingForm, date_logged: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Tipo de Personal
-              </label>
-              <select
-                value={editingForm.worker_type}
-                onChange={(e) => setEditingForm({ ...editingForm, worker_type: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              >
-                <option value="Astillero">Astillero</option>
-                <option value="Taller">Taller</option>
-                <option value="Contratista">Contratista</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Modalidad (Col. F)
-              </label>
-              <select
-                value={normalizeLaborWorkType(editingForm.work_type, 'HORA')}
-                onChange={(e) => setEditingForm({ ...editingForm, work_type: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              >
-                {TIPOS_DE_TRABAJO.map((t) => (
-                  <option key={t.value} value={t.value} className="bg-slate-900 text-white">
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Estado de Aprobación
-              </label>
-              <select
-                value={editingForm.approval_status || ''}
-                onChange={(e) => setEditingForm({ ...editingForm, approval_status: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-bold"
-              >
-                <option value="">- Sin Revisar -</option>
-                <option value="S">S (Aprobado)</option>
-                <option value="R">R (Requiere Revisión / Observado)</option>
-                <option value="RR">RR (Corregido por Operario)</option>
-                <option value="RRR">RRR (Aprobado Final Supervisor)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Observaciones
-              </label>
-              <input
-                type="text"
-                value={editingForm.notes || ''}
-                placeholder="Detalle opcional..."
-                onChange={(e) => setEditingForm({ ...editingForm, notes: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-primary"
-              />
-            </div>
-          </div>
-
-          {editingForm.approval_status === 'R' && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl space-y-1.5 animate-in fade-in duration-150">
-              <div className="flex items-center gap-1.5 text-rose-400 text-xs font-bold">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>Motivo de Revisión / Duda Técnica (Auditoría)</span>
-              </div>
-              <p className="text-[11px] text-rose-300/80">
-                Especifique la duda u observación para que el operario o supervisor pueda revisar y corregir:
-              </p>
-              <textarea
-                rows={2}
-                value={editingForm.review_reason || ''}
-                onChange={(e) => setEditingForm({ ...editingForm, review_reason: e.target.value })}
-                placeholder="Ej: Tareas no coinciden con la OT; exceso de horas extras al 100% no autorizadas..."
-                className="w-full bg-slate-950 border border-rose-500/40 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-400"
-              />
-            </div>
-          )}
-
-          {editingForm.approval_status === 'RR' && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 animate-in fade-in duration-150">
-              {editingForm.review_reason && (
-                <div className="text-[11px] text-amber-200/90 bg-amber-950/40 p-2 rounded border border-amber-800/40">
-                  <strong className="text-amber-400 block mb-0.5 font-semibold">Duda planteada previamente (R):</strong>
-                  {editingForm.review_reason}
-                </div>
-              )}
-              <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
-                <FileText className="w-4 h-4 shrink-0" />
-                <span>Descargo / Corrección del Operario o Responsable (RR)</span>
-              </div>
-              <textarea
-                rows={2}
-                value={editingForm.worker_response || ''}
-                onChange={(e) => setEditingForm({ ...editingForm, worker_response: e.target.value })}
-                placeholder="Explique la corrección realizada o aclare el motivo de las horas imputadas..."
-                className="w-full bg-slate-950 border border-amber-500/40 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-              />
-            </div>
-          )}
-
-          {(editingForm.approval_status === 'RRR' || editingForm.approval_status === 'S' || editingForm.approval_status === 'Aprobado') && editingForm.review_reason && (
-            <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs space-y-1">
-              <div className="text-[11px] text-slate-400">
-                <span className="text-rose-400 font-semibold">Observación previa (R): </span>
-                {editingForm.review_reason}
-              </div>
-              {editingForm.worker_response && (
-                <div className="text-[11px] text-slate-400">
-                  <span className="text-amber-400 font-semibold">Respuesta previa (RR): </span>
-                  {editingForm.worker_response}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setEditingLog(null)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={savingEdit}
-              className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 text-slate-950 text-xs font-bold rounded-lg shadow-md hover:brightness-110 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>{savingEdit ? 'Guardando...' : 'Guardar Cambios'}</span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        )}
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 
@@ -380,209 +232,111 @@ export function QuickLogModal({
   if (!quickLogWorker) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative">
-        <div className="flex items-start justify-between border-b border-slate-800 pb-3 mb-4">
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={() => setQuickLogWorker(null)}
+      maxWidthClass="max-w-5xl"
+      icon={<Plus className="w-4 h-4 text-emerald-400" />}
+      title={`IMPUTAR HORAS A ${quickLogWorker.name}`}
+      headerBadges={
+        <span className="px-2 py-0.5 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono font-bold">
+          {quickLogWorker.date || auditDate} · CLIENTE
+        </span>
+      }
+      onSubmit={handleQuickLogSubmit}
+      footerLeft={
+        <button type="button" onClick={() => setQuickLogWorker(null)} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" disabled={savingEdit} className="px-5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+          <Save className="w-3.5 h-3.5" />
+          <span>{savingEdit ? 'Guardando...' : 'Guardar Horas'}</span>
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={LABOR_EDIT_STEP_HELP[1]} title="BARCO, OT Y RUBRO" subtitle="Barco ➔ OT (Opcional) ➔ Rubro">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Plus className="w-4 h-4 text-primary" />
-              Imputar Horas a {quickLogWorker.name}
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Fecha: <strong className="text-white font-mono">{quickLogWorker.date || auditDate}</strong> &bull; Centro Costo: <strong className="text-cyan-400">CLIENTE</strong>
-            </p>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1"><Ship className="w-3 h-3 text-cyan-400" /><span>Barco / Buque</span></label>
+            <select
+              autoFocus
+              value={quickLogWorker.ship_id || ''}
+              onChange={(e) => {
+                const newShipId = e.target.value
+                const filteredWos = getEnabledWosForWorkerInShip
+                  ? getEnabledWosForWorkerInShip(newShipId, quickLogWorker.name, quickLogWorker.type)
+                  : workOrders.filter((w) => w.ship_id === newShipId)
+                setQuickLogWorker({ ...quickLogWorker, ship_id: newShipId, work_order_id: filteredWos[0]?.id || '' })
+              }}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400"
+            >
+              {ships.map((ship) => <option key={ship.id} value={ship.id} className="bg-slate-900">{ship.name}</option>)}
+            </select>
           </div>
-          <button
-            type="button"
-            onClick={() => setQuickLogWorker(null)}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1"><ClipboardList className="w-3 h-3 text-emerald-400" /><span>OT (Opcional)</span></label>
+            {(() => {
+              const currentShipId = quickLogWorker.ship_id || ships[0]?.id
+              const rawWos = getEnabledWosForWorkerInShip
+                ? getEnabledWosForWorkerInShip(currentShipId, quickLogWorker.name, quickLogWorker.type)
+                : workOrders.filter((w) => w.ship_id === currentShipId)
+              const filteredWos = deduplicateWorkOrdersWithScope(rawWos, workItems)
+              const availableWos = filteredWos.filter((w) => w.isActiveForImputation !== false || w.id === quickLogWorker.work_order_id)
+              return (
+                <WorkOrderSelectorWithHover
+                  value={quickLogWorker.work_order_id || ''}
+                  onChange={(newWoId) => {
+                    const chosenWo = availableWos.find((w) => String(w.id) === String(newWoId))
+                    const inferredWt = normalizeLaborWorkType(chosenWo?.work_type, '')
+                    setQuickLogWorker({ ...quickLogWorker, work_order_id: newWoId, ...(inferredWt ? { work_type: inferredWt } : {}) })
+                  }}
+                  availableWos={availableWos}
+                  ship={ships.find((s) => s.id === currentShipId)}
+                  workItems={workItems}
+                  allWorkOrders={workOrders}
+                  contractorName={quickLogWorker.name}
+                  placeholder="-- ⚠️ Dejar OT en blanco --"
+                  showPreviewCard={false}
+                />
+              )
+            })()}
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Rubro</label>
+            <input type="text" list="rubros-list-carga" required value={quickLogWorker.rubro || ''} onChange={(e) => setQuickLogWorker({ ...quickLogWorker, rubro: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400" />
+          </div>
         </div>
+      </CanonicalStepperStep>
 
-        <form onSubmit={handleQuickLogSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                <Ship className="w-3.5 h-3.5 text-cyan-400" />
-                1. Barco / Embarcación
-              </label>
-              <select
-                value={quickLogWorker.ship_id || ''}
-                onChange={(e) => {
-                  const newShipId = e.target.value
-                  const filteredWos = getEnabledWosForWorkerInShip
-                    ? getEnabledWosForWorkerInShip(newShipId, quickLogWorker.name, quickLogWorker.type)
-                    : workOrders.filter(w => w.ship_id === newShipId)
-                  setQuickLogWorker({
-                    ...quickLogWorker,
-                    ship_id: newShipId,
-                    work_order_id: filteredWos[0]?.id || ''
-                  })
-                }}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              >
-                {ships.map(ship => (
-                  <option key={ship.id} value={ship.id} className="bg-slate-900">
-                    {ship.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
-                2. OT (Opcional: puede dejarse en blanco)
-              </label>
-                {(() => {
-                  const currentShipId = quickLogWorker.ship_id || ships[0]?.id
-                  const rawWos = getEnabledWosForWorkerInShip
-                    ? getEnabledWosForWorkerInShip(currentShipId, quickLogWorker.name, quickLogWorker.type)
-                    : workOrders.filter(w => w.ship_id === currentShipId)
-                  const filteredWos = deduplicateWorkOrdersWithScope(rawWos, workItems)
-                  const availableWos = filteredWos.filter(
-                    (w) => w.isActiveForImputation !== false || w.id === quickLogWorker.work_order_id
-                  )
-                  return (
-                    <WorkOrderSelectorWithHover
-                      value={quickLogWorker.work_order_id || ''}
-                      onChange={(newWoId) => {
-                        const chosenWo = availableWos.find((w) => String(w.id) === String(newWoId))
-                        const inferredWt = normalizeLaborWorkType(chosenWo?.work_type, '')
-                        setQuickLogWorker({
-                          ...quickLogWorker,
-                          work_order_id: newWoId,
-                          ...(inferredWt ? { work_type: inferredWt } : {})
-                        })
-                      }}
-                      availableWos={availableWos}
-                      ship={ships.find((s) => s.id === currentShipId)}
-                      workItems={workItems}
-                      allWorkOrders={workOrders}
-                      contractorName={quickLogWorker.name}
-                      placeholder="-- ⚠️ Dejar OT en blanco (Pendiente) --"
-                      showPreviewCard={false}
-                    />
-                  )
-                })()}
-              </div>
-            </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Rubro
-              </label>
-              <input
-                type="text" list="rubros-list-carga"
-                required
-                value={quickLogWorker.rubro || ''}
-                onChange={(e) => setQuickLogWorker({ ...quickLogWorker, rubro: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Modalidad (Col. F)
-              </label>
-              <select
-                value={normalizeLaborWorkType(quickLogWorker.work_type, 'HORA')}
-                onChange={(e) => setQuickLogWorker({ ...quickLogWorker, work_type: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              >
-                {TIPOS_DE_TRABAJO.map((t) => (
-                  <option key={t.value} value={t.value} className="bg-slate-900 text-white">
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Hs Normales
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                max="24"
-                required
-                value={quickLogWorker.hours_normal ?? 9}
-                onChange={(e) => setQuickLogWorker({ ...quickLogWorker, hours_normal: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-cyan-400 mb-1">
-                Extras 50%
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                max="24"
-                value={quickLogWorker.hours_extra_50 ?? 0}
-                onChange={(e) => setQuickLogWorker({ ...quickLogWorker, hours_extra_50: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-950 border border-cyan-800 rounded-lg px-3 py-2 text-xs text-cyan-300 focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-amber-400 mb-1">
-                Extras 100%
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                max="24"
-                value={quickLogWorker.hours_extra_100 ?? 0}
-                onChange={(e) => setQuickLogWorker({ ...quickLogWorker, hours_extra_100: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-slate-950 border border-amber-800 rounded-lg px-3 py-2 text-xs text-amber-300 focus:outline-none focus:border-primary"
-              />
-            </div>
-          </div>
-
+      <CanonicalStepperStep step={2} helpEntry={LABOR_EDIT_STEP_HELP[2]} title="HORAS Y MODALIDAD">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Observaciones
-            </label>
-            <input
-              type="text"
-              placeholder="Detalle opcional..."
-              value={quickLogWorker.notes || ''}
-              onChange={(e) => setQuickLogWorker({ ...quickLogWorker, notes: e.target.value })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-primary"
-            />
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Hs Normales</label>
+            <input type="number" step="0.5" min="0" max="24" required value={quickLogWorker.hours_normal ?? 9} onChange={(e) => setQuickLogWorker({ ...quickLogWorker, hours_normal: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white text-center font-mono font-bold focus:outline-none focus:border-cyan-400" />
           </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-cyan-400 mb-1">Extras 50%</label>
+            <input type="number" step="0.5" min="0" max="24" value={quickLogWorker.hours_extra_50 ?? 0} onChange={(e) => setQuickLogWorker({ ...quickLogWorker, hours_extra_50: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-950 border border-cyan-800 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 text-center font-mono font-bold focus:outline-none focus:border-cyan-400" />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-amber-400 mb-1">Extras 100%</label>
+            <input type="number" step="0.5" min="0" max="24" value={quickLogWorker.hours_extra_100 ?? 0} onChange={(e) => setQuickLogWorker({ ...quickLogWorker, hours_extra_100: parseFloat(e.target.value) || 0 })} className="w-full bg-slate-950 border border-amber-800 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 text-center font-mono font-bold focus:outline-none focus:border-amber-400" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1">Modalidad (Col. F)</label>
+            <select value={normalizeLaborWorkType(quickLogWorker.work_type, 'HORA')} onChange={(e) => setQuickLogWorker({ ...quickLogWorker, work_type: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400">
+              {TIPOS_DE_TRABAJO.map((t) => <option key={t.value} value={t.value} className="bg-slate-900 text-white">{t.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </CanonicalStepperStep>
 
-          <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setQuickLogWorker(null)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={savingEdit}
-              className="px-5 py-2 bg-gradient-to-r from-primary to-blue-500 text-slate-950 text-xs font-bold rounded-lg shadow-md hover:brightness-110 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>{savingEdit ? 'Guardando...' : 'Guardar Horas'}</span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <CanonicalStepperStep step={3} helpEntry={LABOR_EDIT_STEP_HELP[3]} title="OBSERVACIONES" isLast={true}>
+        <input type="text" placeholder="Detalle opcional de la tarea realizada..." value={quickLogWorker.notes || ''} onChange={(e) => setQuickLogWorker({ ...quickLogWorker, notes: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400" />
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 

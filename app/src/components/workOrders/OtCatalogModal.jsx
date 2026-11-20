@@ -116,7 +116,7 @@ export default function OtCatalogModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 font-sans">
-      <div className="alon-modal-card max-w-6xl max-h-[92vh]">
+      <div className="alon-modal-card alon-modal-zeroscroll max-w-6xl">
         <div className="alon-modal-header py-2.5 px-4">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
