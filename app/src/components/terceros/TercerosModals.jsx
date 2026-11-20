@@ -45,7 +45,6 @@ import {
 import { getEnabledWorkersAndContractors } from '../../lib/allocationEngine.js'
 import { deduplicateWorkOrdersWithScope } from '../../lib/workOrdersConstants.js'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
-import { WorkOrderScopeHoverCard } from '../workOrders/WorkOrderScopeHoverCard.jsx'
 
 // ----------------------------------------------------------------------------
 // COMPONENTE AUXILIAR: DESPLEGABLE DE CONTRATISTAS CON BÚSQUEDA REACTIVA
@@ -521,7 +520,7 @@ export function TercerosModalsContainer({
                             contractorName={formData.contractor_name}
                             disabled={!formData.ship_id}
                             placeholder={!formData.ship_id ? '-- 1° elija buque --' : '-- ⚠️ Dejar OT en blanco --'}
-                            showPreviewCard={true}
+                            showPreviewCard={false}
                           />
                         </div>
                       </div>

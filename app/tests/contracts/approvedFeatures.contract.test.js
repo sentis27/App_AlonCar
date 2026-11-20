@@ -75,6 +75,7 @@ const COVERED_CONTRACT_IDS = new Set([
   'FL-011',
   'FL-012',
   'FL-013',
+  'FL-014',
 ])
 
 describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', () => {
@@ -318,5 +319,36 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
       purchaseOrdersRepository.updateByIds = origUpdateByIds
       auditService.logRowAction = origAuditRow
     }
+  })
+
+  it('FL-014: MultiWithdrawalModal usa stepper vertical, miniatura 5cm×5cm, CanonicalMaterialPicker y selector OT solo tooltip flotante', () => {
+    expect(STATUS_BY_ID.get('FL-014')).toBe('blindado')
+    const modalSrc = readRepoFile('app/src/components/panol/MultiWithdrawalModal.jsx')
+    const destSrc = readRepoFile('app/src/components/panol/MultiWithdrawalDestinationStep.jsx')
+    const itemsSrc = readRepoFile('app/src/components/panol/MultiWithdrawalItemsStep.jsx')
+    const thumbSrc = readRepoFile('app/src/components/panol/MaterialThumbnailZoom.jsx')
+    const otSelSrc = readRepoFile('app/src/components/workOrders/WorkOrderSelectorWithHover.jsx')
+    const basketCardSrc = readRepoFile('app/src/components/panol/PanolBasketFastEntryCard.jsx')
+
+    expect(modalSrc).toContain('StepHelpBadge')
+    expect(modalSrc).toContain('PANOL_WITHDRAWAL_STEP_HELP')
+    expect(modalSrc).toContain('MultiWithdrawalItemsStep')
+    expect(modalSrc).not.toContain('WorkOrderScopeHoverCard')
+    expect(destSrc).toContain('WorkOrderSelectorWithHover')
+    expect(destSrc).toContain('showPreviewCard={false}')
+    expect(itemsSrc).toContain('MaterialThumbnailZoom')
+    expect(itemsSrc).toContain('CanonicalMaterialPicker')
+
+    expect(thumbSrc).toContain("width: '5cm'")
+    expect(thumbSrc).toContain("height: '5cm'")
+    expect(thumbSrc).toContain('createPortal')
+
+    expect(otSelSrc).toContain('CanonicalOtBadge')
+    expect(otSelSrc).toContain('buildCanonicalOtBadgeData')
+    expect(otSelSrc).toContain('showPreviewCard = false')
+    expect(otSelSrc).toContain('title={woBadge.tooltip}')
+
+    expect(basketCardSrc).toContain('MaterialThumbnailZoom')
+    expect(basketCardSrc).toContain('CanonicalMaterialPicker')
   })
 })

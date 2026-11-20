@@ -37,6 +37,7 @@ vinculado_a: ERR-006
 | FL-011 | Pañol (`M4`) | Planilla de Retiros (`PanolMovimientosPanel`) muestra la Columna A de Stock disponible del material con semáforo (`current_stock` / `S/C`) | `app/src/components/panol/PanolMovimientosPanel.jsx` | blindado | `FL-011` |
 | FL-012 | Pañol (`M4`) | Celda Material de Planilla usa `CanonicalMaterialPicker` (sin UUID crudo ni `datalist` básico) y Canasta de Costos usa `CanonicalOtBadge` con tooltip flotante | `app/src/components/panol/PanolMovimientosPanel.jsx` | blindado | `FL-012` |
 | FL-013 | Compras (`M4b`) | `MandadosModal` / `dispatchMandadosService` pasa el estado a `PEDIDO` (preservando `PEDIDO INCOMPLETO`) al enviar WhatsApp y muestra `🛵` de inmediato | `app/src/components/compras/MandadosModal.jsx` | blindado | `FL-013` |
+| FL-014 | Pañol / Transversal | `MultiWithdrawalModal` usa stepper vertical de 3 pasos (`StepHelpBadge`), miniatura ampliable a `5cm × 5cm` (`MaterialThumbnailZoom`), `CanonicalMaterialPicker` y `WorkOrderSelectorWithHover` con `CanonicalOtBadge` y texto flotante (sin bloque inline fijo) | `app/src/components/panol/MultiWithdrawalModal.jsx` | blindado | `FL-014` |
 
 ---
 

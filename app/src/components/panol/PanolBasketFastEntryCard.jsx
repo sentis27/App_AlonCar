@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Plus, Trash2, Clock, Save, AlertTriangle, ChevronDown, ChevronRight, ShoppingBasket } from 'lucide-react'
-import { MaterialAutocompleteInput } from './MaterialAutocompleteInput'
+import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
+import MaterialThumbnailZoom from './MaterialThumbnailZoom'
 import { GasDeliveryInlinePanel } from './GasDeliveryInlinePanel'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import { isGasMaterial } from '../../lib/panolConstants'
@@ -131,8 +132,9 @@ export default function PanolBasketFastEntryCard({
             return (
               <div key={idx} className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
                 <div className="flex items-center gap-1.5">
+                  <MaterialThumbnailZoom material={mat} size="sm" />
                   <div className="flex-1 min-w-0">
-                    <MaterialAutocompleteInput materials={materials} value={item.material_id} onChange={(id) => updateItem(idx, 'material_id', id)} />
+                    <CanonicalMaterialPicker materials={materials} value={item.material_id} onChange={(id) => updateItem(idx, 'material_id', id)} />
                   </div>
                   <input
                     type="number" min="0.01" step={rowIsGas ? '1' : '0.01'} value={item.quantity}

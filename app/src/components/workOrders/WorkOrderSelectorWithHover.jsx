@@ -1,14 +1,17 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { ChevronDown, Star, Check, AlertTriangle, Eye, EyeOff } from 'lucide-react'
 import { WorkOrderScopeHoverCard } from './WorkOrderScopeHoverCard.jsx'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
+import { buildCanonicalOtBadgeData } from '../../lib/canonicalHelpers'
 
 /**
- * Selector Canónico Estandarizado de Orden de Trabajo con Previsualización Hover.
- * 
- * Reemplaza los menús select estándar con cadenas grotescas horizontales.
- * Muestra una lista limpia y compacta: [OT-X] Título de la OT (+ badge asignada / N tareas).
- * Al pasar el mouse (hover) o al tener una OT seleccionada, despliega la tarjeta canónica
- * idéntica a la vista de planilla (Imagen 2) con tareas finalizadas tachadas (❌) y activas en verde.
+ * Selector Canónico Estandarizado de Orden de Trabajo con Texto Flotante (FL-002).
+ *
+ * Muestra una lista compacta con `CanonicalOtBadge` y el texto flotante oficial (`title`)
+ * generado por `buildCanonicalOtBadgeData` / `formatWorkOrderTooltipCanonical`, tanto sobre
+ * cada opción del desplegable como sobre la OT ya seleccionada.
+ * El bloque inline `WorkOrderScopeHoverCard` queda desactivado por defecto (`showPreviewCard = false`)
+ * para no expandir ni empujar el formulario hacia abajo.
  */
 export function WorkOrderSelectorWithHover({
   value = '',
@@ -21,7 +24,7 @@ export function WorkOrderSelectorWithHover({
   disabled = false,
   isSinOt = false,
   placeholder = '-- Seleccionar OT --',
-  showPreviewCard = true,
+  showPreviewCard = false,
   onHoverChange = null,
   className = ''
 }) {
@@ -78,11 +81,21 @@ export function WorkOrderSelectorWithHover({
 
   const displayedList = showFinalized ? [...activeList, ...finalizedList] : activeList
 
-  // La OT a mostrar en la tarjeta de previsualización
+  // La OT a mostrar en la tarjeta de previsualización (solo si showPreviewCard=true)
   const activePreviewWo = hoveredWo || selectedWo
 
-  const selectedOtNum = selectedWo?.ot_number || (selectedWo?.id ? String(selectedWo.id).slice(0, 4) : '')
-  const selectedOtTitle = selectedWo?.title || selectedWo?.description || ''
+  const selectedBadgeData = useMemo(
+    () =>
+      selectedWo
+        ? buildCanonicalOtBadgeData({
+            wo: selectedWo,
+            ship,
+            workItems,
+            workOrders: allWorkOrders
+          })
+        : null,
+    [selectedWo, ship, workItems, allWorkOrders]
+  )
 
   return (
     <div ref={containerRef} className={`relative space-y-2 ${className}`}>
@@ -91,22 +104,32 @@ export function WorkOrderSelectorWithHover({
         type="button"
         disabled={disabled || isSinOt}
         onClick={() => !disabled && !isSinOt && setIsOpen((prev) => !prev)}
+        title={selectedBadgeData?.tooltip || (isSinOt ? '(⚠️ Sin OT)' : placeholder)}
         className={`w-full px-2.5 py-1.5 rounded-lg border text-left text-xs flex items-center justify-between gap-2 transition-all cursor-pointer ${
           disabled || isSinOt
             ? 'opacity-40 cursor-not-allowed bg-slate-950 border-slate-800 text-slate-500'
             : isOpen
-            ? 'bg-slate-900 border-cyan-400 text-white shadow-md shadow-cyan-950/20'
+            ? 'bg-slate-950 border-cyan-400 text-white shadow-md shadow-cyan-950/20'
             : selectedWo
-            ? 'bg-slate-900 border-slate-700 text-white font-semibold hover:border-slate-600'
-            : 'bg-slate-900 border-slate-700 text-amber-300 font-bold hover:border-slate-600'
+            ? 'bg-slate-950 border-slate-700 text-white font-semibold hover:border-slate-600'
+            : 'bg-slate-950 border-slate-700 text-amber-300 font-bold hover:border-slate-600'
         }`}
       >
-        <span className="truncate">
-          {isSinOt
-            ? '(⚠️ Sin OT)'
-            : selectedWo
-            ? `OT #${selectedOtNum}: ${selectedOtTitle}`
-            : placeholder}
+        <span className="truncate flex items-center min-w-0 flex-1">
+          {isSinOt ? (
+            '(⚠️ Sin OT)'
+          ) : selectedWo ? (
+            <CanonicalOtBadge
+              wo={selectedWo}
+              ship={ship}
+              workItems={workItems}
+              workOrders={allWorkOrders}
+              variant="inline"
+              className="text-xs font-semibold text-white"
+            />
+          ) : (
+            placeholder
+          )}
         </span>
         <ChevronDown
           className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${
@@ -115,9 +138,9 @@ export function WorkOrderSelectorWithHover({
         />
       </button>
 
-      {/* Menú Desplegable con Hover Preview */}
+      {/* Menú Desplegable con Tooltip Flotante Canónico */}
       {isOpen && !disabled && !isSinOt && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-slate-950 border border-slate-700 rounded-xl shadow-2xl overflow-hidden p-1 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute left-0 right-0 top-full mt-1 z-[60] bg-slate-950 border border-slate-700 rounded-xl shadow-2xl overflow-hidden p-1 space-y-1 animate-in fade-in zoom-in-95 duration-100">
           {/* Opción (⚠️ Sin OT) */}
           <button
             type="button"
@@ -126,6 +149,7 @@ export function WorkOrderSelectorWithHover({
               setIsOpen(false)
               handleSetHovered(null)
             }}
+            title="(⚠️ Sin OT) — Dejar la Orden de Trabajo en blanco para imputación posterior"
             className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-amber-300 hover:bg-amber-950/40 border border-transparent hover:border-amber-600/40 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -135,11 +159,15 @@ export function WorkOrderSelectorWithHover({
           {/* Lista de OTs */}
           <div className="max-h-48 overflow-y-auto space-y-0.5 pr-0.5">
             {displayedList.map((wo) => {
-              const otNum = wo.ot_number || (wo.id ? String(wo.id).slice(0, 4) : 'OT')
-              const otTitle = wo.title || wo.description || 'Sin título'
               const isSelected = String(wo.id) === String(value)
               const isHovered = hoveredWo?.id === wo.id
               const isClosed = wo.isActiveForImputation === false
+              const woBadge = buildCanonicalOtBadgeData({
+                wo,
+                ship,
+                workItems,
+                workOrders: allWorkOrders
+              })
 
               // Coincidencia con contratista
               const isContractorMatch = normContractor
@@ -152,6 +180,7 @@ export function WorkOrderSelectorWithHover({
                 <button
                   key={wo.id}
                   type="button"
+                  title={woBadge.tooltip}
                   onClick={() => {
                     onChange(wo.id)
                     setIsOpen(false)
@@ -169,17 +198,16 @@ export function WorkOrderSelectorWithHover({
                       : 'bg-slate-900/70 border-slate-800 text-slate-200 hover:border-slate-700'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
-                        isSelected
-                          ? 'bg-emerald-950 text-emerald-300 border-emerald-600'
-                          : 'bg-slate-950 text-slate-400 border-slate-700'
-                      }`}
-                    >
-                      OT #{otNum}
-                    </span>
-                    <span className="font-semibold text-xs truncate">{otTitle}</span>
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <CanonicalOtBadge
+                      wo={wo}
+                      ship={ship}
+                      workItems={workItems}
+                      workOrders={allWorkOrders}
+                      tooltipOverride={woBadge.tooltip}
+                      variant="pill"
+                      className="min-w-0 text-xs"
+                    />
                     {isContractorMatch && (
                       <span className="text-[9px] text-amber-300 font-bold flex items-center gap-0.5 shrink-0 bg-amber-950/70 px-1 py-0.2 rounded border border-amber-600/60">
                         <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />

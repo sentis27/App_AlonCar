@@ -93,8 +93,74 @@ export const PANOL_MATERIAL_STEP_HELP = {
   }
 }
 
+export const PANOL_WITHDRAWAL_STEP_HELP = {
+  1: {
+    id: 'panol_withdrawal_step_1',
+    module: 'panol_retiros',
+    step: 1,
+    title: 'PASO 1 · DESTINO E IMPUTACIÓN DE OBRA',
+    uiBullets: [
+      {
+        label: 'Cascada Naval',
+        text: 'Elegí Barco ➔ Operario/Contratista ➔ Orden de Trabajo (OT). Solo aparecen operarios habilitados con permiso de Pañol (P).'
+      },
+      {
+        label: 'Texto flotante de OT',
+        text: 'Pasá el mouse sobre cualquier OT del desplegable (o sobre la OT elegida) para ver su alcance completo y tareas sin expandir la pantalla.'
+      },
+      {
+        label: 'Sin OT / Solicitudes',
+        text: 'Si el contratista aún no tiene OT abierta en el buque, tildá (⚠️ Sin OT) o solicitá apertura/alta a Jorge Sentis.'
+      }
+    ],
+    aiRuleContext:
+      'Regla de Imputación de Retiros de Pañol (Cascada Naval): Todo retiro se imputa en orden Barco -> Operario/Contratista -> OT. Las OTs muestran su alcance consolidado únicamente mediante tooltip flotante canónico (CanonicalOtBadge / formatWorkOrderTooltipCanonical). Si el operario/contratista no posee OT activa en ese barco, se permite imputación provisoria con Sin OT y solicitud de apertura a Administración.'
+  },
+  2: {
+    id: 'panol_withdrawal_step_2',
+    module: 'panol_retiros',
+    step: 2,
+    title: 'PASO 2 · INSUMOS Y MATERIALES RETIRADOS',
+    uiBullets: [
+      {
+        label: 'Buscador Canónico',
+        text: 'Escribí nombre, rubro o categoría (sin tildes ni mayúsculas) y elegí con ↑↓ + Enter.'
+      },
+      {
+        label: 'Miniatura 5×5 cm',
+        text: 'A la izquierda de cada renglón ves la foto del material; hacé clic para ampliarla a 5 cm × 5 cm.'
+      },
+      {
+        label: 'Tubos de Gas',
+        text: 'Al elegir un gas se despliega en línea el control de Primera Entrega o Recambio 1×1 con marca entregada/devuelta.'
+      }
+    ],
+    aiRuleContext:
+      'Regla de Carga Multi-Material en Pañol: Cada renglón usa el selector canónico CanonicalMaterialPicker con miniatura ampliable a 5cm x 5cm, cantidad en unidad oficial, peso calculado y centro de costo (CLIENTE o CONTRATISTA). Si el material corresponde a gases industriales, requiere trazabilidad de proveedor entregado/devuelto.'
+  },
+  3: {
+    id: 'panol_withdrawal_step_3',
+    module: 'panol_retiros',
+    step: 3,
+    title: 'PASO 3 · FECHA Y OBSERVACIONES',
+    uiBullets: [
+      {
+        label: 'Fecha real',
+        text: 'Se precarga la fecha de hoy; ajustala si estás registrando un vale físico de una jornada anterior.'
+      },
+      {
+        label: 'Trazabilidad',
+        text: 'Anotá ubicación en buque o aclaración útil para facturación y control de obra (se audita en audit_logs).'
+      }
+    ],
+    aiRuleContext:
+      'Regla de Fecha y Notas en Retiros de Pañol: La fecha del retiro impacta en el control de stock diario y reportes de consumo de 6 meses; las observaciones generales quedan asociadas a todos los renglones creados en el lote.'
+  }
+}
+
 export const BUSINESS_HELP_REGISTRY = {
-  panol_catalogo: PANOL_MATERIAL_STEP_HELP
+  panol_catalogo: PANOL_MATERIAL_STEP_HELP,
+  panol_retiros: PANOL_WITHDRAWAL_STEP_HELP
 }
 
 /**

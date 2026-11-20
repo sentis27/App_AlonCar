@@ -120,7 +120,7 @@ export function EditLaborLogModal({
                       allWorkOrders={workOrders}
                       contractorName={editingForm.worker_name}
                       placeholder="-- Seleccionar OT --"
-                      showPreviewCard={true}
+                      showPreviewCard={false}
                     />
                   )
                 })()}
@@ -462,7 +462,7 @@ export function QuickLogModal({
                       allWorkOrders={workOrders}
                       contractorName={quickLogWorker.name}
                       placeholder="-- ⚠️ Dejar OT en blanco (Pendiente) --"
-                      showPreviewCard={true}
+                      showPreviewCard={false}
                     />
                   )
                 })()}
