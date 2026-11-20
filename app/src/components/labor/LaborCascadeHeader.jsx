@@ -2,9 +2,12 @@ import React from 'react'
 import { Link } from 'react-router-dom'
 import { ClipboardList, Ship, Briefcase, Calendar, Info, AlertTriangle } from 'lucide-react'
 import { cleanShipName } from '../../lib/laborConstants.js'
+import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 
 export default function LaborCascadeHeader({
   ships = [],
+  workOrders = [],
+  workItems = [],
   selectedShipId,
   setSelectedShipId,
   selectedContractorGroup,
@@ -117,22 +120,16 @@ export default function LaborCascadeHeader({
             <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
             OT ({availableWorkOrders.length} hab. / Opcional)
           </label>
-          <select
+          <WorkOrderSelectorWithHover
             value={selectedWorkOrderId}
-            onChange={(e) => setSelectedWorkOrderId(e.target.value)}
-            className={`w-full bg-slate-950/80 border rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-emerald-400 ${
-              !selectedWorkOrderId ? 'border-amber-500/60 text-amber-300' : 'border-emerald-500/40 text-white'
-            }`}
-          >
-            <option value="" className="bg-slate-900 text-amber-300 font-bold">
-              -- ⚠️ Dejar OT en blanco (Pendiente de apertura) --
-            </option>
-            {availableWorkOrders.map(wo => (
-              <option key={wo.id} value={wo.id} className="bg-slate-900 text-white">
-                {wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}
-              </option>
-            ))}
-          </select>
+            onChange={(nextWoId) => setSelectedWorkOrderId(nextWoId)}
+            availableWos={availableWorkOrders}
+            ship={ships.find((s) => String(s.id) === String(selectedShipId)) || null}
+            workItems={workItems}
+            allWorkOrders={workOrders.length ? workOrders : availableWorkOrders}
+            contractorName={selectedContractorGroup}
+            placeholder="-- ⚠️ Dejar OT en blanco (Pendiente de apertura) --"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-2">

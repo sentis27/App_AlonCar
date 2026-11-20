@@ -1,6 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import HighlightText from '../HighlightText'
-import { buildCanonicalOtBadgeData } from '../../lib/canonicalHelpers'
+import { buildCanonicalOtBadgeData, formatCanonicalOtNumberLabel } from '../../lib/canonicalHelpers'
 
 /**
  * CanonicalOtBadge.jsx
@@ -44,11 +44,14 @@ export default function CanonicalOtBadge({
     )
   }
 
+  const pillLabel = formatCanonicalOtNumberLabel(data.otNumber)
+  const compactLabel = formatCanonicalOtNumberLabel(data.otNumber, { compact: true })
+
   if (variant === 'compact') {
     return (
       <span className={`truncate block ${className}`} title={data.tooltip}>
         <HighlightText
-          text={`${data.otNumber ? `#${data.otNumber} ` : ''}${data.otTitle}`}
+          text={`${compactLabel ? `${compactLabel} ` : ''}${data.otTitle}`}
           query={searchQuery}
         />
       </span>
@@ -58,12 +61,12 @@ export default function CanonicalOtBadge({
   if (variant === 'inline') {
     return (
       <span className={`truncate inline-flex items-center gap-1 ${className}`} title={data.tooltip}>
-        {data.otNumber && (
+        {pillLabel && (
           <span className="font-mono text-cyan-300 font-bold shrink-0">
-            {String(data.otNumber).toUpperCase().startsWith('OT') ? data.otNumber : `OT #${data.otNumber}`}
+            <HighlightText text={pillLabel} query={searchQuery} />
           </span>
         )}
-        {data.otNumber && data.otTitle && <span className="text-slate-500">·</span>}
+        {pillLabel && data.otTitle && <span className="text-slate-500">·</span>}
         <span className="truncate">
           <HighlightText text={data.otTitle} query={searchQuery} />
         </span>
@@ -73,9 +76,9 @@ export default function CanonicalOtBadge({
 
   return (
     <div className={`truncate ${className}`} title={data.tooltip}>
-      {data.otNumber && (
+      {pillLabel && (
         <span className="font-mono text-cyan-300 font-bold bg-cyan-950/60 px-1 py-0.5 rounded border border-cyan-800/50 mr-1.5">
-          OT #<HighlightText text={data.otNumber} query={searchQuery} />
+          <HighlightText text={pillLabel} query={searchQuery} />
         </span>
       )}
       <span className="text-slate-200 text-xs truncate">

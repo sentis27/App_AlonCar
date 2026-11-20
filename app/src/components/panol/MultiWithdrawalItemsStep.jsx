@@ -1,6 +1,8 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { isGasMaterial } from '../../lib/panolConstants'
+import { evaluateFormulaInput } from '../../lib/formulaEngine'
 import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker.jsx'
+import FormulaNumericInput from '../canonical/FormulaNumericInput.jsx'
 import MaterialThumbnailZoom from './MaterialThumbnailZoom.jsx'
 import { GasDeliveryInlinePanel } from './GasDeliveryInlinePanel.jsx'
 
@@ -40,7 +42,9 @@ export default function MultiWithdrawalItemsStep({
         {items.map((item, idx) => {
           const mat = materials.find((m) => m.id === item.material_id)
           const rowIsGas = isGasMaterial(mat)
-          const weightRow = ((Number(mat?.weight_kg) || 0) * (Number(item.quantity) || 1)).toFixed(2)
+          const parsedQty = evaluateFormulaInput(item.quantity, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
+          const numericQty = parsedQty.ok && parsedQty.value !== null ? parsedQty.value : 0
+          const weightRow = ((Number(mat?.weight_kg) || 0) * numericQty).toFixed(2)
 
           return (
             <div
@@ -61,18 +65,21 @@ export default function MultiWithdrawalItemsStep({
                   />
                 </div>
 
-                <div className="w-24 shrink-0 flex items-center gap-1">
-                  <input
-                    type="number"
-                    min={rowIsGas ? '1' : '0.1'}
-                    step={rowIsGas ? '1' : 'any'}
-                    placeholder="Cant."
-                    value={item.quantity}
-                    onChange={(e) => onItemChange(idx, 'quantity', e.target.value)}
-                    required
-                    className="w-16 px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-400"
-                  />
-                  <span className="text-[10px] text-slate-400 font-semibold truncate">{mat?.unit_measure || 'un.'}</span>
+                <div className="w-28 shrink-0 flex items-start gap-1">
+                  <div className="w-20">
+                    <FormulaNumericInput
+                      variant="field"
+                      maxDecimals={rowIsGas ? 0 : 4}
+                      unitSuffix={mat?.unit_measure || 'un.'}
+                      placeholder="Cant."
+                      value={item.quantity}
+                      onChange={(val) => onItemChange(idx, 'quantity', val)}
+                      required
+                      title="Cantidad o fórmula (=1*0.5, +42+45)"
+                      className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-semibold truncate pt-2">{mat?.unit_measure || 'un.'}</span>
                 </div>
 
                 <div className="w-20 shrink-0 text-center font-mono text-slate-400 text-[11px]">

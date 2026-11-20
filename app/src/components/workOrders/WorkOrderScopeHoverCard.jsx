@@ -1,5 +1,5 @@
 import React from 'react'
-import { getWorkOrderConsolidatedScope } from '../../lib/workOrdersConstants'
+import { getWorkOrderConsolidatedScope, isClosedWorkItemStatus } from '../../lib/workOrdersConstants'
 
 /**
  * Tarjeta Canónica de Previsualización y Sábana Técnica de Orden de Trabajo.
@@ -35,7 +35,7 @@ export function WorkOrderScopeHoverCard({
       <div className="flex items-start justify-between gap-2 border-b border-slate-800/80 pb-1.5">
         <div className="flex items-center gap-2">
           <span className="font-mono text-cyan-300 font-bold bg-cyan-950 px-2 py-0.5 rounded border border-cyan-700 shrink-0">
-            OT #{scope.otNum}
+            {/^OT\b/i.test(String(scope.otNum || '').trim()) ? scope.otNum : `OT #${scope.otNum}`}
           </span>
           <div>
             <div className="font-bold text-white text-xs">{scope.otTitle}</div>
@@ -60,11 +60,7 @@ export function WorkOrderScopeHoverCard({
             )}
           </div>
           {scope.tasks.map((task) => {
-            const isClosed =
-              task.status === 'Finalizado' ||
-              task.status === 'Facturado' ||
-              task.status === 'Finalizado costo final de obra' ||
-              task.status === 'Desestimado'
+            const isClosed = isClosedWorkItemStatus(task.status)
 
             return (
               <div

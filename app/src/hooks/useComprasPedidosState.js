@@ -12,6 +12,7 @@ import { buildPedidosSpreadsheetColumns, buildBatchOrderDbPayload } from '../lib
 import { batchRevertPedidosService, batchUpdatePedidosService } from '../services/comprasPedidosService'
 import { useComprasPedidosMutations } from './useComprasPedidosMutations'
 import { useComprasPedidosModalActions } from './useComprasPedidosModalActions'
+import { getEditableCellInitialValue } from '../lib/formulaEngine'
 
 export function useComprasPedidosState(props) {
   const {
@@ -147,7 +148,7 @@ export function useComprasPedidosState(props) {
   const pushUndoAction = useCallback((action) => pushUndoRef.current?.(action), [])
 
   const rowMutations = useComprasPedidosMutations({
-    purchaseOrders, setPurchaseOrders, ships, filteredOrders, selectedOrderIds, setSelectedOrderIds,
+    purchaseOrders, setPurchaseOrders, materials, ships, filteredOrders, selectedOrderIds, setSelectedOrderIds,
     currentFortnight, user, profile, pushUndoAction, setInlineEdit, showFeedbackMsg
   })
 
@@ -212,9 +213,16 @@ export function useComprasPedidosState(props) {
       setContractorPickerModal({ isOpen: true, orderId: po.id, currentValue: po.requested_by_name || 'PAÑOL', shipName: shp?.name || 'ASTILLERO', workOrderTitle: wo ? (wo.ot_number ? `#${wo.ot_number} ${wo.title}` : wo.title) : '', isOtBlank: !po.work_order_id })
       return
     }
-    if (colKey === 'material_name_raw') { setInlineEdit({ orderId: po.id, field: 'material_name_raw', value: po.material_name_raw || '', obsValue: po.observations || '' }); return }
+    if (colKey === 'material_name_raw') { setInlineEdit({ orderId: po.id, field: 'material_name_raw', value: po.material_name_raw || '', materialId: po.material_id || '', obsValue: po.observations || '' }); return }
     const today = new Date().toISOString().split('T')[0]
-    const defaults = { charge_type: po.charge_type || 'DIRECT', order_date: po.order_date || today, delivery_date: po.delivery_date || today, quantity: po.quantity || 1, supplier_quoted_price: po.supplier_quoted_price || '', supplier_id: po.supplier_id || '' }
+    const defaults = {
+      charge_type: po.charge_type || 'DIRECT',
+      order_date: po.order_date || today,
+      delivery_date: po.delivery_date || today,
+      quantity: getEditableCellInitialValue(po, 'quantity', po.quantity || 1),
+      supplier_quoted_price: getEditableCellInitialValue(po, 'supplier_quoted_price', po.supplier_quoted_price || ''),
+      supplier_id: po.supplier_id || ''
+    }
     if (colKey in defaults) setInlineEdit({ orderId: po.id, field: colKey, value: defaults[colKey] })
   }, [suppliers, ships, workOrders, rowMutations])
 

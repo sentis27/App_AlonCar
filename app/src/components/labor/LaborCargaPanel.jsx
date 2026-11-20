@@ -111,6 +111,9 @@ export default function LaborCargaPanel({
         />
 
         <LaborLogsTable
+          ships={ships}
+          workOrders={workOrders}
+          workItems={workItems}
           filteredLogs={gridState.filteredLogs}
           recentLogs={recentLogs}
           selectedLogIds={selectedLogIds}

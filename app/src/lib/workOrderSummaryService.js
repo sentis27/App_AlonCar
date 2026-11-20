@@ -30,10 +30,8 @@ const EMPTY_ROWS = [
 
 async function fetchWoScopedRecords(woId) {
   const [wiRes, invRes, tpRes, poRes, logRes, gasRes, docRes] = await Promise.all([
-    workItemsRepository.listWorkItems({
-      select: 'id, work_order_id, description, status, work_type',
+    workItemsRepository.listCanonicalWorkItems({
       filters: { work_order_id: woId },
-      orderBy: [],
     }),
     inventoryTransactionsRepository.listTransactions({
       select: 'id, material_id, work_order_id, work_item_id, ship_id, worker_id, worker_name, contractor_name, movement_type, quantity_withdrawn, unit_cost_ars_snapshot, unit_cost_usd_snapshot, cost_center, transaction_date, is_deletion_requested',

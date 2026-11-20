@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { ArrowLeft, Download, Eye, ShieldAlert, Megaphone, ReceiptText, CheckCircle2 } from 'lucide-react'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 const OT_STATUS_PILLS = {
   'EN EJECUCION': 'bg-emerald-950/80 text-emerald-300 border-emerald-500/60',
@@ -158,7 +159,16 @@ export default function ResumenMatrizOtsPanel({
                   <td className="px-3 py-2 font-semibold whitespace-nowrap">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Eye className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                      <span className="text-cyan-300 font-mono">{row.otNumber}</span>
+                      <CanonicalOtBadge
+                        wo={row.wo || null}
+                        ship={ship}
+                        otNumber={row.otNumber}
+                        otTitle={row.title}
+                        tooltipOverride={row.canonicalTooltip || ''}
+                        variant="inline"
+                        sinOtLabel="S/OT · Sin OT asignada"
+                        className="max-w-[235px]"
+                      />
                       <span
                         className={`px-1.5 py-0.5 rounded border text-[9px] font-black uppercase ${getStatusPillClass(row.status)}`}
                         title={`Estado operativo de la OT: ${row.status}`}
@@ -175,7 +185,6 @@ export default function ResumenMatrizOtsPanel({
                           ✅ Ampliado
                         </span>
                       )}
-                      <span className="text-slate-200 truncate max-w-[165px]" title={row.title}>{row.title}</span>
                     </div>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatUsd(row.tercerosUsd)}</td>

@@ -33,7 +33,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | Archivo | Tipo | Comportamiento-IA | Lectura | Fase | Estado | Última revisión | Depende de |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | README.md | portada | ninguno | primera-vez | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
-| GEMINI.md | instrucciones-agente | auditar-reglas \| consultar-siempre | completo | transversal | activo | 2026-11-13 | ninguno |
+| GEMINI.md | instrucciones-agente | auditar-reglas \| consultar-siempre | completo | transversal | activo | 2026-11-20 | ninguno |
 | CLAUDE.md | instrucciones-agente | consultar-siempre | ignorar | transversal | activo | 2026-11-13 | GEMINI.md |
 | GUIA_ANTIGRAVITY.md | instrucciones-agente | ninguno | ignorar | transversal | deprecado | 2026-11-13 | GEMINI.md |
 | INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | ninguno |
@@ -164,6 +164,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | .agents/skills/transversal/context-aware-skill-router/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/architectural-modularity-auditor/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/behavior-preservation-guard/SKILL.md | skill | auditar-reglas | primera-vez | transversal | activo | 2026-11-20 | .agents/skills/SKILLS_REGISTRY.md \| docs/02_producto/estandares/08_FEATURES_LOCK.md |
+| .agents/skills/transversal/piezas-replicables-solucion/SKILL.md | skill | auditar-reglas | primera-vez | transversal | activo | 2026-11-20 | GEMINI.md \| .agents/skills/SKILLS_REGISTRY.md \| docs/02_producto/estandares/08_FEATURES_LOCK.md |
 | mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |
 | mcp-server/package.json | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | mcp-server/index.js |
 | app/src/pages/ResumenGerencial.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-022-resumen-gerencial-gs004-comparador-y-remito-alfa.md |

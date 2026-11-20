@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Megaphone, AlertTriangle, CheckCircle2, Trash2, X } from 'lucide-react'
 import { formatUsd } from '../../lib/drydockCatalogConstants'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
  * Columna 3 (Derecha, Compacta y Soldada a la Cabecera `top-0` de cada OT):
@@ -110,9 +111,14 @@ export default function BillingRightCostCard({
       {/* Cabecera Naranja: OT-XX · Nombre + [Estado] + TOTAL OT arriba a la derecha */}
       <div className="flex items-stretch rounded-t-lg overflow-hidden border-b border-slate-700">
         <div className="flex-1 min-w-0 bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-1 flex items-center justify-between gap-1 text-slate-950">
-          <span className="font-black text-[11px] uppercase truncate" title={`${otRow.otNumber} · ${otRow.title}`}>
-            {otRow.otNumber} · {otRow.title}
-          </span>
+          <CanonicalOtBadge
+            wo={otRow.wo || null}
+            otNumber={otRow.otNumber}
+            otTitle={otRow.title}
+            tooltipOverride={otRow.canonicalTooltip || ''}
+            variant="compact"
+            className="font-black text-[11px] uppercase text-slate-950 min-w-0"
+          />
           <span className="px-1.5 py-0.5 rounded bg-white/95 border border-purple-500 text-purple-900 text-[9px] font-black shrink-0 max-w-[82px] truncate" title={otRow.status}>
             {otRow.status}
           </span>

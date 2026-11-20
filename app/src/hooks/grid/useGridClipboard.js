@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { evaluateFormulaInput } from '../../lib/formulaEngine'
 
 /**
  * useGridClipboard
@@ -74,9 +75,12 @@ export function useGridClipboard({
     }
 
     if (colDef?.type === 'number' || colDef?.type === 'currency') {
-      const cleaned = str.replace(/[$€\s]/g, '').replace(/,/g, '.')
-      const num = Number(cleaned)
-      return isNaN(num) ? null : num
+      const parsed = evaluateFormulaInput(str, { allowNegative: false, maxDecimals: 4, emptyValue: null })
+      if (!parsed.ok) return null
+      if (colDef?.allowFormula && parsed.isFormula && parsed.formula) {
+        return parsed.formula
+      }
+      return parsed.value
     }
 
     if (colDef?.type === 'boolean') {

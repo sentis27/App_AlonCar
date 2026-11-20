@@ -1,5 +1,5 @@
 ---
-version: 1.6
+version: 1.7
 last_updated_by: antigravity
 last_updated: 2026-11-20
 source_of_truth: GEMINI.md
@@ -27,6 +27,7 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 | Código / lógica / repositories / schemas | `SKL-009` + `SKL-015` + `SKL-007` | `run_command` / `read_file` | Test runtime Node `data > 0` + `build` + Reporte. |
 | Auditoría o cierre pre-commit | `SKL-017` (+ `SKL-006`) | `git status -s` / `read_file` | LCOM/CBO o dictamen en `BITACORA_DELTAS_SESION.md`. |
 | Refactor / partición / preservación | `SKL-018` | `git diff` + `read_file` | Cirugía mínima (Refactor ≠ Feature), Tabla Paridad y `diff guard` OK. |
+| Estandarizar / replicar pieza transversal | `SKL-019` | **NINGUNO** sin entrevista | Entrevista de Solución aprobada (preguntas + datos sugeridos) + 3 Capas Soldadas + candado `check:hygiene`. |
 | Nuevo módulo o pantalla | Regla §4 + `SKL-009` | **NINGUNO** sin clasificar | Preguntar si es `CARGA_EDICION` o `METRICAS_ANALISIS`. |
 | Workflows n8n (`workflows/**`) | `SKL-001` | `read_file` (`INDEX.md` + `SDD.md`) | JSON listos; nunca `activo` sin SDD (`PLANTILLA.md`). |
 | Docker / Backend Node+PG | `SKL-010` + `SKL-011` | `read_file` de `SKL-010`/`011` | `${APP_SLUG}`, 4 capas y `env.js` fail-fast. |
@@ -35,7 +36,7 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 1. **F1 — Inspección empírica:** Tool Call #1 obligatorio (`read_file`/`run_command`; prohibido `write_file`/`edit_file`). Verificar columnas (`select('*').limit(1)`) y fuente usada por otras planillas.
 2. **F2 — Intervención modular (`SKL-009`) + 5 Candados Anti-Rot:**
    1. **Caja Nueva:** `<=250L` en páginas; toda pestaña, subpanel, modal o motor (`>150L`) nace en `app/src/components/` o `app/src/lib/`.
-   2. **Cero Hardcode y Canónicos:** prohibido arrays estáticos o duplicar catálogos/lógica; usar `CanonicalOtBadge` (tooltip OT obligatorio) y `CanonicalMaterialPicker` (selector material), fuente única en Supabase / `app/src/lib/`.
+   2. **Cero Hardcode y Piezas Replicables (`SKL-019`):** prohibido arrays estáticos o duplicar catálogos/lógica; toda pieza replicable se diseña tras entrevista funcional y se suelda en **3 Capas (Consulta única en repositorio + Motor de reglas en `lib/` + UI única en `components/canonical/` + candado `check:hygiene`)** — ej. `CanonicalOtBadge` + `listCanonicalWorkOrders`/`listCanonicalWorkItems` y `CanonicalMaterialPicker`.
    3. **Acceso Exclusivo vía Repositorios + Zod:** prohibido `supabase.from()`, `supabase.rpc()` o `.storage.from()` fuera de `app/src/repositories/` (verificado por `check:hygiene`); toda tabla opera mediante `createBaseRepository` (`_baseRepository.js`) y su contrato Zod en `app/src/schemas/`.
    4. **Trazabilidad:** toda mutación en grillas invoca `auditService.logCellChange/logRowAction`.
    5. **onBlur Blindado:** todo input editable usa `onBlur={() => commitFn()}` (jamás pasar evento `e`).

@@ -1,5 +1,7 @@
 import { useCallback } from 'react'
-import { deduceUnitMeasure } from '../lib/comprasConstants'
+import { deduceUnitMeasure, normalizeUnitMeasure } from '../lib/comprasConstants'
+import { normalizeText } from '../lib/allocationEngine'
+import { evaluateFormulaInput, buildCellFormulasPatch, getEditableCellInitialValue } from '../lib/formulaEngine'
 import { computeFortnightFromDate, getNextUrgency } from '../lib/comprasPedidosHelpers'
 import {
   computeAdjacentCreatedAt,
@@ -20,6 +22,7 @@ import {
 export function useComprasPedidosMutations({
   purchaseOrders,
   setPurchaseOrders,
+  materials = [],
   ships,
   filteredOrders,
   selectedOrderIds,
@@ -50,26 +53,45 @@ export function useComprasPedidosMutations({
   const saveInlineEdit = useCallback(async (orderId, field, newValue) => {
     setInlineEdit({ orderId: null, field: null, value: '' })
     const targetOrder = purchaseOrders.find((p) => p.id === orderId)
-    if (!targetOrder || targetOrder[field] === newValue) return
+    if (!targetOrder) return
+
+    const isFormulaField = field === 'quantity' || field === 'supplier_quoted_price'
+    const currentComparable = isFormulaField
+      ? getEditableCellInitialValue(targetOrder, field, targetOrder[field] ?? '')
+      : targetOrder[field]
+    if (String(currentComparable ?? '') === String(newValue ?? '')) return
+
+    let finalValue = newValue
+    const extraFields = {}
+    if (isFormulaField) {
+      const maxDecimals = field === 'quantity' ? 4 : 2
+      const fallback = field === 'quantity' ? 1 : 0
+      const parsed = evaluateFormulaInput(newValue, { allowNegative: false, maxDecimals, emptyValue: fallback })
+      if (!parsed.ok) {
+        showFeedbackMsg('error', parsed.error || 'Fórmula inválida.')
+        return
+      }
+      finalValue = parsed.value ?? fallback
+      extraFields.cell_formulas = buildCellFormulasPatch(targetOrder.cell_formulas, field, parsed.formula)
+    }
 
     pushUndoAction({
       colKey: field,
       colLabel: field,
       actionLabel: 'Edición en celda',
-      previousValues: { [orderId]: targetOrder[field] },
+      previousValues: { [orderId]: currentComparable },
       newValue,
       timestamp: Date.now()
     })
 
-    const extraFields = {}
     if (field === 'order_date') extraFields.fortnight_period = getFortnight(newValue)
     else if (field === 'material_name_raw') extraFields.unit_measure = deduceUnitMeasure(String(newValue || ''))
     else if (field === 'charge_type' && newValue !== 'DIRECT') extraFields.work_order_id = null
 
-    setPurchaseOrders((prev) => prev.map((p) => (p.id === orderId ? { ...p, [field]: newValue, ...extraFields } : p)))
+    setPurchaseOrders((prev) => prev.map((p) => (p.id === orderId ? { ...p, [field]: finalValue, ...extraFields } : p)))
     try {
       await updatePedidoFieldService({
-        orderId, field, newValue, oldValue: targetOrder[field], extraFields, entityName: targetOrder.material_name_raw
+        orderId, field, newValue: finalValue, oldValue: targetOrder[field], extraFields, entityName: targetOrder.material_name_raw
       })
       showFeedbackMsg('success', 'Campo actualizado correctamente.')
     } catch (err) {
@@ -79,16 +101,20 @@ export function useComprasPedidosMutations({
     }
   }, [purchaseOrders, setInlineEdit, pushUndoAction, getFortnight, setPurchaseOrders, showFeedbackMsg])
 
-  const saveInlineMaterialAndObs = useCallback(async (orderId, materialName, observations) => {
+  const saveInlineMaterialAndObs = useCallback(async (orderId, materialName, observations, selectedMaterial = null) => {
     setInlineEdit({ orderId: null, field: null, value: '', obsValue: '' })
     const targetOrder = purchaseOrders.find((p) => p.id === orderId)
     if (!targetOrder) return
 
     const newMaterial = (materialName || '').trim()
     const newObs = observations !== undefined ? (observations || '').trim() : (targetOrder.observations || '')
+    const matchedMat = selectedMaterial || materials.find((m) => normalizeText(m.name) === normalizeText(newMaterial)) || null
     const updates = {
+      material_id: matchedMat ? matchedMat.id : null,
       material_name_raw: newMaterial,
-      unit_measure: deduceUnitMeasure(newMaterial),
+      is_new_material: matchedMat ? false : Boolean(newMaterial),
+      unit_measure: matchedMat?.unit_measure ? normalizeUnitMeasure(matchedMat.unit_measure, matchedMat.name) : deduceUnitMeasure(newMaterial),
+      ...(matchedMat?.cost_ars ? { system_unit_price: matchedMat.cost_ars } : {}),
       observations: newObs || null
     }
 
@@ -109,7 +135,7 @@ export function useComprasPedidosMutations({
       showFeedbackMsg('error', 'Error al guardar: ' + err.message)
       setPurchaseOrders((prev) => prev.map((p) => (p.id === orderId ? targetOrder : p)))
     }
-  }, [purchaseOrders, setInlineEdit, pushUndoAction, setPurchaseOrders, showFeedbackMsg])
+  }, [purchaseOrders, materials, setInlineEdit, pushUndoAction, setPurchaseOrders, showFeedbackMsg])
 
   const handleCycleUrgency = useCallback(async (orderId, currentUrgency) => {
     await saveInlineEdit(orderId, 'urgency', getNextUrgency(currentUrgency))

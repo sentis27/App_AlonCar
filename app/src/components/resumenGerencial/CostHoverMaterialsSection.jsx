@@ -111,17 +111,35 @@ export default function CostHoverMaterialsSection({ summaryData = null }) {
             activeItems.map((it) => (
               <div
                 key={it.key}
-                className="grid grid-cols-[84px_1fr_92px] items-center gap-2 py-1.5 px-1.5 hover:bg-slate-900/70 rounded"
+                className="py-1.5 px-1.5 hover:bg-slate-900/70 rounded"
               >
-                <span className="font-mono text-xs font-extrabold text-cyan-300 text-right tabular-nums truncate">
-                  {it.qtyUnitLabel}
-                </span>
-                <span className="font-semibold text-white truncate" title={it.materialName}>
-                  {it.materialName}
-                </span>
-                <span className="font-mono text-xs font-bold text-emerald-300 text-right tabular-nums shrink-0">
-                  {formatUsd(it.costUsd)}
-                </span>
+                <div className="grid grid-cols-[84px_1fr_92px] items-center gap-2">
+                  <span className="font-mono text-xs font-extrabold text-cyan-300 text-right tabular-nums truncate">
+                    {it.qtyUnitLabel}
+                  </span>
+                  <span className="font-semibold text-white truncate" title={it.materialName}>
+                    {it.materialName}
+                  </span>
+                  <span className="font-mono text-xs font-bold text-emerald-300 text-right tabular-nums shrink-0">
+                    {formatUsd(it.costUsd)}
+                  </span>
+                </div>
+                {it.cuts?.length > 0 && (
+                  <div className="mt-0.5 pl-[92px] flex flex-wrap gap-1">
+                    {it.cuts.slice(0, 6).map((c, idx) => (
+                      <span
+                        key={idx}
+                        title={[c.date, c.dimensionsLabel, c.notes].filter(Boolean).join(' · ')}
+                        className="px-1.5 py-0.5 rounded bg-cyan-950/70 border border-cyan-500/35 text-[10px] font-mono text-cyan-200 max-w-[200px] truncate"
+                      >
+                        {c.dimensionsLabel}{c.notes ? ` · ${c.notes}` : ''}
+                      </span>
+                    ))}
+                    {it.cuts.length > 6 && (
+                      <span className="text-[10px] font-mono text-slate-400">+{it.cuts.length - 6} más</span>
+                    )}
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -169,16 +187,34 @@ export default function CostHoverMaterialsSection({ summaryData = null }) {
                     {isExpanded && (
                       <div className="border-t border-slate-800/80 bg-slate-950/75 divide-y divide-slate-800/50 px-1.5">
                         {rg.items.map((it) => (
-                          <div key={it.key} className="grid grid-cols-[78px_1fr_88px] items-center gap-2 py-1 px-1">
-                            <span className="font-mono text-[11px] font-bold text-cyan-300 text-right tabular-nums truncate">
-                              {it.qtyUnitLabel}
-                            </span>
-                            <span className="text-[11.5px] font-medium text-slate-100 truncate" title={it.materialName}>
-                              {it.materialName}
-                            </span>
-                            <span className="font-mono text-[11px] font-bold text-emerald-300 text-right tabular-nums shrink-0">
-                              {formatUsd(it.costUsd)}
-                            </span>
+                          <div key={it.key} className="py-1 px-1">
+                            <div className="grid grid-cols-[78px_1fr_88px] items-center gap-2">
+                              <span className="font-mono text-[11px] font-bold text-cyan-300 text-right tabular-nums truncate">
+                                {it.qtyUnitLabel}
+                              </span>
+                              <span className="text-[11.5px] font-medium text-slate-100 truncate" title={it.materialName}>
+                                {it.materialName}
+                              </span>
+                              <span className="font-mono text-[11px] font-bold text-emerald-300 text-right tabular-nums shrink-0">
+                                {formatUsd(it.costUsd)}
+                              </span>
+                            </div>
+                            {it.cuts?.length > 0 && (
+                              <div className="mt-0.5 pl-[86px] flex flex-wrap gap-1">
+                                {it.cuts.slice(0, 6).map((c, idx) => (
+                                  <span
+                                    key={idx}
+                                    title={[c.date, c.dimensionsLabel, c.notes].filter(Boolean).join(' · ')}
+                                    className="px-1.5 py-0.5 rounded bg-cyan-950/70 border border-cyan-500/35 text-[9.5px] font-mono text-cyan-200 max-w-[190px] truncate"
+                                  >
+                                    {c.dimensionsLabel}{c.notes ? ` · ${c.notes}` : ''}
+                                  </span>
+                                ))}
+                                {it.cuts.length > 6 && (
+                                  <span className="text-[9.5px] font-mono text-slate-400">+{it.cuts.length - 6} más</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

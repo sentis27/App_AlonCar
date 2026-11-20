@@ -168,7 +168,7 @@ export default function ResumenGerencialHeader({
               onChange={(e) => onChangeOt(e.target.value)}
               disabled={otRows.length === 0}
               className="w-full sm:w-auto sm:min-w-[230px] max-w-full sm:max-w-[360px] bg-slate-950 border border-violet-500/45 rounded-lg px-2.5 py-1.5 text-xs font-bold text-violet-100 outline-none disabled:opacity-50 min-h-[34px]"
-              title="Filtra el detalle por Orden de Trabajo manteniendo intacto el Costo General del buque"
+              title={otRows.find((o) => o.id === selectedOtId)?.canonicalTooltip || 'Filtra el detalle por Orden de Trabajo manteniendo intacto el Costo General del buque'}
             >
               {otRows.length === 0 ? (
                 <option value="">Sin OTs para este buque/alcance</option>

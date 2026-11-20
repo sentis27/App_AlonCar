@@ -4,6 +4,7 @@ import { buildClockAssignmentPayload } from '../../lib/laborFacialClockHelpers.j
 import { insertLaborBatchService } from '../../services/laborCargaService.js'
 import { TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants.js'
 import { buildStandardShipWorkOrdersCatalog, resolveSingleWorkItemId } from '../../lib/workOrderUnificationEngine.js'
+import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 
 const QUICK_HOURS = [2, 4, 4.5, 8, 9]
 
@@ -183,23 +184,21 @@ export default function LaborClockAssignSheet({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-300 mb-1">Orden de Trabajo (Opcional)</label>
-              <select
+              <WorkOrderSelectorWithHover
                 value={workOrderId}
-                onChange={(e) => {
-                  const nextWoId = e.target.value
+                onChange={(nextWoId) => {
                   setWorkOrderId(nextWoId)
                   const woObj = shipWos.find(w => String(w.id) === String(nextWoId))
                   if (woObj?.work_type && ['HORA', 'PRESUPUESTO', 'CONTROL'].includes(String(woObj.work_type).toUpperCase())) {
                     setWorkType(String(woObj.work_type).toUpperCase())
                   }
                 }}
-                className={`w-full bg-slate-950 border rounded-xl px-3 py-2 text-xs focus:outline-none ${!workOrderId ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-emerald-500/50 text-white'}`}
-              >
-                <option value="" className="bg-slate-900 text-amber-300">-- ⚠️ Dejar OT en blanco --</option>
-                {shipWos.map(wo => (
-                  <option key={wo.id} value={wo.id} className="bg-slate-900 text-white">{wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}</option>
-                ))}
-              </select>
+                availableWos={shipWos}
+                ship={assignment.ship || null}
+                workItems={workItems}
+                allWorkOrders={workOrders}
+                placeholder="-- ⚠️ Dejar OT en blanco --"
+              />
             </div>
             <div>
               <label className="block text-[11px] font-bold text-slate-300 mb-1">Rubro / Oficio</label>

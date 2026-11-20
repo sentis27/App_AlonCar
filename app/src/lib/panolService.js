@@ -5,6 +5,7 @@
  */
 
 import { logCellChange, logRowAction } from './auditService.js'
+import { evaluateFormulaInput, buildCellFormulasPatch, getStoredCellFormula } from './formulaEngine.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { normalizeText, setAllocationWorkersCache } from './allocationEngine.js'
 import { isGasMaterial, stripGasTagFromNotes, findLinkedGasMovement } from './panolConstants.js'
@@ -170,9 +171,9 @@ export async function fetchPanolData() {
       materialRubrosRepository.listRubros(),
       suppliersRepository.listSuppliers(),
       shipsRepository.listShips(),
-      workOrdersRepository.listWorkOrders(),
+      workOrdersRepository.listCanonicalWorkOrders(),
       workersRepository.listWorkers({ orderBy: [{ column: 'name', ascending: true }] }),
-      workItemsRepository.listWorkItems({ select: 'id, work_order_id, contractors, description, status, foreman_name' }),
+      workItemsRepository.listCanonicalWorkItems(),
       complianceAlertsRepository.listPending(),
     ])
 
@@ -252,19 +253,37 @@ export async function saveShipAndWorkOrderService({
 }
 
 export async function saveInlineTxService({ txId, field, value, tx, materials, user }) {
-  const normalizedVal = field === 'transaction_date' && value
+  let normalizedVal = field === 'transaction_date' && value
     ? buildTransactionTimestampIso(value, formatLocalTimeHHMM(tx?.transaction_date) || null)
     : value
   const updates = { [field]: normalizedVal }
+  let auditNewValue = value
+
+  if (field === 'quantity_withdrawn') {
+    const parsed = evaluateFormulaInput(value, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
+    if (!parsed.ok) {
+      throw new Error(parsed.error || 'Cantidad o fórmula inválida.')
+    }
+    normalizedVal = parsed.value ?? 0
+    updates.quantity_withdrawn = normalizedVal
+    updates.cell_formulas = buildCellFormulasPatch(tx?.cell_formulas, 'quantity_withdrawn', parsed.formula)
+    auditNewValue = parsed.formula ? `${normalizedVal} (${parsed.formula})` : normalizedVal
+  }
+
   if (field === 'quantity_withdrawn' || field === 'material_id') {
     const targetMat = materials.find((m) => m.id === (field === 'material_id' ? value : tx?.material_id))
     if (targetMat) {
-      updates.weight_total = (Number(targetMat.weight_kg) || 0) * (field === 'quantity_withdrawn' ? Number(value) : Number(tx?.quantity_withdrawn) || 1)
+      updates.weight_total = (Number(targetMat.weight_kg) || 0) * (field === 'quantity_withdrawn' ? Number(normalizedVal) : Number(tx?.quantity_withdrawn) || 1)
     }
   }
 
   const { error } = await inventoryTransactionsRepository.updateById(txId, updates, { select: null })
   if (error) throw new Error(error)
+
+  const oldFormula = field === 'quantity_withdrawn' ? getStoredCellFormula(tx, 'quantity_withdrawn') : null
+  const auditOldValue = tx
+    ? (oldFormula ? `${tx[field]} (${oldFormula})` : tx[field])
+    : ''
 
   logCellChange({
     entityType: 'inventory_transactions',
@@ -272,8 +291,8 @@ export async function saveInlineTxService({ txId, field, value, tx, materials, u
     entityName: tx?.material_id || txId,
     field,
     fieldLabel: field,
-    oldValue: tx ? tx[field] : '',
-    newValue: value,
+    oldValue: auditOldValue,
+    newValue: auditNewValue,
     sheetName: 'Pañol · Stock y Movimientos',
     moduleRoute: '/panol',
     changeOrigin: 'INLINE_CELL',
@@ -327,19 +346,23 @@ export async function saveMultiWithdrawalService({
     const item = items[0]
     const mat = materials.find((m) => m.id === item.material_id)
     if (!mat) throw new Error('Debes seleccionar un material válido.')
-    const qty = Number(item.quantity)
+    const parsedQty = evaluateFormulaInput(item.quantity, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
+    if (!parsedQty.ok) {
+      throw new Error(`Cantidad o fórmula inválida para "${mat.name}": ${parsedQty.error}`)
+    }
+    const rowIsGas = isGasMaterial(mat)
+    const qty = rowIsGas ? Math.round(parsedQty.value || 0) : (parsedQty.value || 0)
     if (!Number.isFinite(qty) || qty <= 0) {
       throw new Error(`La cantidad para "${mat.name}" debe ser mayor a 0.`)
     }
 
     const baseUserNotes = stripGasTagFromNotes(item.notes ? `${notes} - ${item.notes}`.trim() : notes)
-    const rowIsGas = isGasMaterial(mat)
     const existingGasMov = linkedGasMovement || (originalTx ? findLinkedGasMovement(originalTx, gasMovements) : null)
 
     let gasPayload = null
     if (rowIsGas) {
       gasPayload = buildGasMovementPayload({
-        item,
+        item: { ...item, quantity: qty },
         mat,
         date,
         rawNotes: baseUserNotes,
@@ -381,6 +404,7 @@ export async function saveMultiWithdrawalService({
     const updates = {
       material_id: item.material_id || null,
       quantity_withdrawn: qty,
+      cell_formulas: buildCellFormulasPatch(originalTx?.cell_formulas, 'quantity_withdrawn', rowIsGas ? null : parsedQty.formula),
       ship_id: shipId || null,
       work_order_id: workOrderId || null,
       work_item_id: resolvedWiId,
@@ -492,18 +516,22 @@ export async function saveMultiWithdrawalService({
   for (const item of items) {
     const mat = materials.find((m) => m.id === item.material_id)
     if (!mat) continue
-    const qty = Number(item.quantity)
+    const parsedQty = evaluateFormulaInput(item.quantity, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
+    if (!parsedQty.ok) {
+      throw new Error(`Cantidad o fórmula inválida para "${mat.name}": ${parsedQty.error}`)
+    }
+    const isGas = isGasMaterial(mat)
+    const qty = isGas ? Math.round(parsedQty.value || 0) : (parsedQty.value || 0)
     if (!Number.isFinite(qty) || qty <= 0) {
       throw new Error(`La cantidad para "${mat.name}" debe ser mayor a 0.`)
     }
 
-    const isGas = isGasMaterial(mat)
     const rawUserNotes = stripGasTagFromNotes(item.notes ? `${notes} - ${item.notes}`.trim() : notes)
     let itemNotes = rawUserNotes
 
     if (isGas) {
       const built = buildGasMovementPayload({
-        item,
+        item: { ...item, quantity: qty },
         mat,
         date,
         rawNotes: rawUserNotes,
@@ -523,6 +551,7 @@ export async function saveMultiWithdrawalService({
     txInserts.push({
       material_id: mat.id,
       quantity_withdrawn: qty,
+      cell_formulas: buildCellFormulasPatch(null, 'quantity_withdrawn', isGas ? null : parsedQty.formula),
       ship_id: shipId || null,
       work_order_id: workOrderId || null,
       work_item_id: resolvedWiId,

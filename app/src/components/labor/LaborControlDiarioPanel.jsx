@@ -12,6 +12,15 @@ import {
   Trash2
 } from 'lucide-react'
 import HighlightText from '../HighlightText'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
+import {
+  evaluateFormulaInput,
+  buildCellFormulasPatch,
+  describeFormula,
+  getStoredCellFormula,
+  getEditableCellInitialValue
+} from '../../lib/formulaEngine'
 import { patchLaborLogService } from '../../services/laborService'
 import {
   cleanShipName,
@@ -22,6 +31,9 @@ import {
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 
 export default function LaborControlDiarioPanel({
+  ships = [],
+  workOrders = [],
+  workItems = [],
   auditDate,
   setAuditDate,
   recentLogs = [],
@@ -59,7 +71,12 @@ export default function LaborControlDiarioPanel({
 
   const activateHorasCell = (log, field) => {
     if (!log) return
-    setInlineLogEdit({ id: log.id, field, value: log[field] ?? '' })
+    const isHourField = ['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(field)
+    setInlineLogEdit({
+      id: log.id,
+      field,
+      value: isHourField ? getEditableCellInitialValue(log, field, log[field] ?? '') : (log[field] ?? '')
+    })
   }
 
   const saveInlineLogEdit = async (logId, field, value) => {
@@ -69,16 +86,21 @@ export default function LaborControlDiarioPanel({
     const targetLog = recentLogs.find(l => l.id === logId)
     if (!targetLog) return
 
+    const isHourField = ['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(field)
     let numVal = value
-    if (['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(field)) {
-      numVal = parseFloat(value) || 0
+    let nextFormulas = null
+    if (isHourField) {
+      const parsed = evaluateFormulaInput(value, { allowNegative: false, maxDecimals: 2, emptyValue: 0 })
+      if (!parsed.ok) return
+      numVal = parsed.value ?? 0
+      nextFormulas = buildCellFormulasPatch(targetLog.cell_formulas, field, parsed.formula)
     }
 
     setRecentLogs(prev =>
       prev.map(l => {
         if (l.id !== logId) return l
-        const updated = { ...l, [field]: numVal }
-        if (['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(field)) {
+        const updated = { ...l, [field]: numVal, ...(nextFormulas ? { cell_formulas: nextFormulas } : {}) }
+        if (isHourField) {
           const n = parseFloat(updated.hours_normal) || 0
           const h50 = parseFloat(updated.hours_extra_50) || 0
           const h100 = parseFloat(updated.hours_extra_100) || 0
@@ -90,11 +112,12 @@ export default function LaborControlDiarioPanel({
 
     try {
       const payload = { [field]: numVal }
-      if (['hours_normal', 'hours_extra_50', 'hours_extra_100'].includes(field)) {
+      if (isHourField) {
         const n = field === 'hours_normal' ? numVal : (parseFloat(targetLog.hours_normal) || 0)
         const h50 = field === 'hours_extra_50' ? numVal : (parseFloat(targetLog.hours_extra_50) || 0)
         const h100 = field === 'hours_extra_100' ? numVal : (parseFloat(targetLog.hours_extra_100) || 0)
         payload.hours_worked = n + h50 + h100
+        payload.cell_formulas = nextFormulas
       }
       await patchLaborLogService(logId, payload)
     } catch (err) {
@@ -581,7 +604,8 @@ export default function LaborControlDiarioPanel({
                           <div className="space-y-2 py-0.5">
                             {item.logs.map(l => {
                               const shipName = cleanShipName(l.ships?.name || l.work_orders?.ships?.name || '') || 'Sin Buque'
-                              const ot = l.work_orders
+                              const ot = (l.work_order_id && workOrders.find((w) => String(w.id) === String(l.work_order_id))) || l.work_orders || null
+                              const shipObj = ships.find((s) => String(s.id) === String(l.ship_id || ot?.ship_id)) || l.ships || l.work_orders?.ships || null
 
                               return (
                                 <div 
@@ -596,23 +620,23 @@ export default function LaborControlDiarioPanel({
                                       workerName: `${item.worker.name} (${l.rubro || 'General'})`
                                     })
                                   }}
-                                  className="h-6 flex items-center text-[11px] truncate max-w-[260px] cursor-pointer hover:bg-cyan-950/40 px-1 rounded transition-colors group" 
-                                  title={`Doble clic para cambiar Buque u OT: ${shipName} - ${ot?.title || 'Sin OT'}`}
+                                  className="h-6 flex items-center text-[11px] truncate max-w-[270px] cursor-pointer hover:bg-cyan-950/40 px-1 rounded transition-colors group" 
+                                  title="Doble clic para cambiar Buque u OT"
                                 >
                                   <Ship className="w-3 h-3 text-cyan-400 mr-1 shrink-0" />
-                                  <strong className="text-white mr-1 truncate">
+                                  <strong className="text-white mr-1 truncate shrink-0 max-w-[95px]">
                                     <HighlightText text={shipName} query={dailySearch} />:
                                   </strong>
-                                  {ot ? (
-                                    <span className="text-cyan-300 font-mono font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50 mr-1 shrink-0">
-                                      <HighlightText text={ot.ot_number} query={dailySearch} />
-                                    </span>
-                                  ) : (
-                                    <span className="text-amber-400 font-bold text-[10px] mr-1 shrink-0">⚠️ Sin OT</span>
-                                  )}
-                                  <span className="text-slate-300 truncate text-[10px]">
-                                    <HighlightText text={ot?.title || '(Doble clic para asignar)'} query={dailySearch} />
-                                  </span>
+                                  <CanonicalOtBadge
+                                    wo={l.work_order_id ? ot : null}
+                                    ship={shipObj}
+                                    workItems={workItems}
+                                    workOrders={workOrders}
+                                    searchQuery={dailySearch}
+                                    variant="inline"
+                                    sinOtLabel="Sin OT (Doble clic)"
+                                    className="text-[10px] text-slate-300 flex-1 min-w-0"
+                                  />
                                   {item.logs.length > 1 && (
                                     <span className="ml-1 text-[10px] text-cyan-400 font-mono font-bold shrink-0">
                                       ({l.hours_worked || l.hours_normal || 0}h)
@@ -678,28 +702,28 @@ export default function LaborControlDiarioPanel({
                           <span className="text-slate-600">-</span>
                         ) : (
                           <div className="space-y-2 py-0.5">
-                            {item.logs.map(l => (
+                            {item.logs.map(l => {
+                              const fNorm = getStoredCellFormula(l, 'hours_normal')
+                              return (
                               <div
                                 key={l.id}
                                 onDoubleClick={() => activateHorasCell(l, 'hours_normal')}
-                                className="h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
-                                title="Doble clic para editar Horas Normales"
+                                className="relative h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
+                                title={describeFormula(fNorm)?.tooltipText || 'Doble clic para editar Horas Normales (acepta =4+4.5)'}
                               >
+                                <FormulaCellCornerMark formula={fNorm} />
                                 {inlineLogEdit.id === l.id && inlineLogEdit.field === 'hours_normal' ? (
-                                  <input
-                                    type="number"
-                                    step="0.5"
-                                    min="0"
-                                    max="24"
+                                  <FormulaNumericInput
+                                    variant="cell"
                                     autoFocus
+                                    maxDecimals={2}
+                                    emptyValue={0}
+                                    unitSuffix="hs"
                                     value={inlineLogEdit.value}
-                                    onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveInlineLogEdit(l.id, 'hours_normal', inlineLogEdit.value)
-                                      if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
-                                    }}
-                                    onBlur={() => saveInlineLogEdit(l.id, 'hours_normal', inlineLogEdit.value)}
-                                    className="w-12 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
+                                    onChange={(val) => setInlineLogEdit({ ...inlineLogEdit, value: val })}
+                                    onCommit={(rawVal) => saveInlineLogEdit(l.id, 'hours_normal', rawVal)}
+                                    onCancel={() => setInlineLogEdit({ id: null, field: null, value: '' })}
+                                    className="w-16 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
                                   />
                                 ) : (
                                   <span>
@@ -708,7 +732,8 @@ export default function LaborControlDiarioPanel({
                                   </span>
                                 )}
                               </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
                       </td>
@@ -719,34 +744,35 @@ export default function LaborControlDiarioPanel({
                           <span className="text-slate-600">-</span>
                         ) : (
                           <div className="space-y-2 py-0.5">
-                            {item.logs.map(l => (
+                            {item.logs.map(l => {
+                              const f50 = getStoredCellFormula(l, 'hours_extra_50')
+                              return (
                               <div
                                 key={l.id}
                                 onDoubleClick={() => activateHorasCell(l, 'hours_extra_50')}
-                                className="h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
-                                title="Doble clic para editar Horas 50%"
+                                className="relative h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
+                                title={describeFormula(f50)?.tooltipText || 'Doble clic para editar Horas 50% (acepta =1+1.5)'}
                               >
+                                <FormulaCellCornerMark formula={f50} />
                                 {inlineLogEdit.id === l.id && inlineLogEdit.field === 'hours_extra_50' ? (
-                                  <input
-                                    type="number"
-                                    step="0.5"
-                                    min="0"
-                                    max="24"
+                                  <FormulaNumericInput
+                                    variant="cell"
                                     autoFocus
+                                    maxDecimals={2}
+                                    emptyValue={0}
+                                    unitSuffix="hs"
                                     value={inlineLogEdit.value}
-                                    onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveInlineLogEdit(l.id, 'hours_extra_50', inlineLogEdit.value)
-                                      if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
-                                    }}
-                                    onBlur={() => saveInlineLogEdit(l.id, 'hours_extra_50', inlineLogEdit.value)}
-                                    className="w-12 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
+                                    onChange={(val) => setInlineLogEdit({ ...inlineLogEdit, value: val })}
+                                    onCommit={(rawVal) => saveInlineLogEdit(l.id, 'hours_extra_50', rawVal)}
+                                    onCancel={() => setInlineLogEdit({ id: null, field: null, value: '' })}
+                                    className="w-16 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
                                   />
                                 ) : (
                                   <span>{l.hours_extra_50 || '-'}</span>
                                 )}
                               </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
                       </td>
@@ -757,34 +783,35 @@ export default function LaborControlDiarioPanel({
                           <span className="text-slate-600">-</span>
                         ) : (
                           <div className="space-y-2 py-0.5">
-                            {item.logs.map(l => (
+                            {item.logs.map(l => {
+                              const f100 = getStoredCellFormula(l, 'hours_extra_100')
+                              return (
                               <div
                                 key={l.id}
                                 onDoubleClick={() => activateHorasCell(l, 'hours_extra_100')}
-                                className="h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
-                                title="Doble clic para editar Horas 100%"
+                                className="relative h-6 flex items-center justify-center cursor-pointer hover:bg-slate-800/80 rounded px-1"
+                                title={describeFormula(f100)?.tooltipText || 'Doble clic para editar Horas 100% (acepta =2+2)'}
                               >
+                                <FormulaCellCornerMark formula={f100} />
                                 {inlineLogEdit.id === l.id && inlineLogEdit.field === 'hours_extra_100' ? (
-                                  <input
-                                    type="number"
-                                    step="0.5"
-                                    min="0"
-                                    max="24"
+                                  <FormulaNumericInput
+                                    variant="cell"
                                     autoFocus
+                                    maxDecimals={2}
+                                    emptyValue={0}
+                                    unitSuffix="hs"
                                     value={inlineLogEdit.value}
-                                    onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveInlineLogEdit(l.id, 'hours_extra_100', inlineLogEdit.value)
-                                      if (e.key === 'Escape') setInlineLogEdit({ id: null, field: null, value: '' })
-                                    }}
-                                    onBlur={() => saveInlineLogEdit(l.id, 'hours_extra_100', inlineLogEdit.value)}
-                                    className="w-12 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
+                                    onChange={(val) => setInlineLogEdit({ ...inlineLogEdit, value: val })}
+                                    onCommit={(rawVal) => saveInlineLogEdit(l.id, 'hours_extra_100', rawVal)}
+                                    onCancel={() => setInlineLogEdit({ id: null, field: null, value: '' })}
+                                    className="w-16 bg-slate-950 border border-cyan-400 rounded px-1 py-0.2 text-center text-xs text-white focus:outline-none"
                                   />
                                 ) : (
                                   <span>{l.hours_extra_100 || '-'}</span>
                                 )}
                               </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
                       </td>

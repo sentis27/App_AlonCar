@@ -5,6 +5,7 @@
  */
 
 import { logCellChange, logRowAction } from './auditService.js'
+import { evaluateFormulaInput, buildCellFormulasPatch, getStoredCellFormula } from './formulaEngine.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { setAllocationWorkersCache } from './allocationEngine.js'
 import { getDollarRateForDate } from './tercerosConstants.js'
@@ -24,14 +25,8 @@ export async function fetchTercerosData() {
   const [srvRes, shpRes, woRes, wiRes, wkrRes, mvRes, vhRes] = await Promise.all([
     thirdPartyServicesRepository.listServices(),
     shipsRepository.listShips({ select: 'id, name, vessel_type, current_location' }),
-    workOrdersRepository.listWorkOrders({
-      select: 'id, ot_number, title, description, ship_id, status, is_tabulated',
-      orderBy: [{ column: 'ot_number', ascending: true }],
-    }),
-    workItemsRepository.listWorkItems({
-      select: 'id, work_order_id, contractors, description',
-      orderBy: [],
-    }),
+    workOrdersRepository.listCanonicalWorkOrders(),
+    workItemsRepository.listCanonicalWorkItems(),
     workersRepository.listThirdPartyEnabled(),
     macroVariablesRepository.listMacroVariables(),
     thirdPartyVoucherHistoryRepository.listHistory(),
@@ -67,9 +62,16 @@ export async function saveServiceService({ formData, editingService, canEditAmou
     throw new Error('La opción PRC requiere cargar un número de presupuesto sí o sí.')
   }
 
-  const parsedArs = editingService && !canEditAmounts
-    ? (editingService.amount_ars || 0)
-    : (parseFloat(formData.amount_ars) || 0)
+  let parsedArs = 0
+  let amountFormula = editingService ? getStoredCellFormula(editingService, 'amount_ars') : null
+  if (editingService && !canEditAmounts) {
+    parsedArs = editingService.amount_ars || 0
+  } else {
+    const evalRes = evaluateFormulaInput(formData.amount_ars, { allowNegative: false, maxDecimals: 2, emptyValue: 0 })
+    if (!evalRes.ok) throw new Error(`Importe o fórmula inválida: ${evalRes.error}`)
+    parsedArs = evalRes.value ?? 0
+    amountFormula = evalRes.formula
+  }
 
   const rate = getDollarRateForDate(formData.entry_date, macroVariables) || 1500
   const parsedUsd = rate > 0 ? Number((parsedArs / rate).toFixed(2)) : 0
@@ -106,6 +108,7 @@ export async function saveServiceService({ formData, editingService, canEditAmou
     amount_ars: parsedArs,
     usd_rate: rate,
     amount_usd: parsedUsd,
+    cell_formulas: buildCellFormulasPatch(editingService?.cell_formulas, 'amount_ars', amountFormula),
     direct_observations: formData.direct_observations ? formData.direct_observations.trim() : null,
     specific_observations: formData.specific_observations ? formData.specific_observations.trim() : null,
     status: formData.voucher_type,
@@ -221,9 +224,12 @@ export async function confirmEvolutionService({ evolvingService, evolutionForm, 
     throw new Error('Debe especificar el número de Factura oficial definitiva.')
   }
 
-  const parsedArs = parseFloat(evolutionForm.final_amount_ars) || evolvingService.amount_ars || 0
+  const evalEvo = evaluateFormulaInput(evolutionForm.final_amount_ars, { allowNegative: false, maxDecimals: 2, emptyValue: null })
+  if (!evalEvo.ok) throw new Error(`Monto final o fórmula inválida: ${evalEvo.error}`)
+  const parsedArs = evalEvo.value !== null ? evalEvo.value : (evolvingService.amount_ars || 0)
   const rate = evolvingService.usd_rate > 0 ? evolvingService.usd_rate : 1500
   const parsedUsd = Number((parsedArs / rate).toFixed(2))
+  const evoFormulas = buildCellFormulasPatch(evolvingService.cell_formulas, 'amount_ars', evalEvo.value !== null ? evalEvo.formula : getStoredCellFormula(evolvingService, 'amount_ars'))
 
   const { error: updErr } = await thirdPartyServicesRepository.updateById(
     evolvingService.id,
@@ -234,6 +240,7 @@ export async function confirmEvolutionService({ evolvingService, evolutionForm, 
       voucher_date: evolutionForm.voucher_date,
       amount_ars: parsedArs,
       amount_usd: parsedUsd,
+      cell_formulas: evoFormulas,
       updated_at: new Date().toISOString(),
     },
     { select: null }
@@ -314,10 +321,13 @@ export async function saveInlineEditService({ serviceId, field, newValue, servic
     extraFields.usd_rate = rate
     extraFields.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
   } else if (field === 'amount_ars') {
-    const num = parseFloat(newValue) || 0
+    const evalRes = evaluateFormulaInput(newValue, { allowNegative: false, maxDecimals: 2, emptyValue: 0 })
+    if (!evalRes.ok) throw new Error(evalRes.error || 'Importe o fórmula inválida.')
+    const num = evalRes.value ?? 0
     const rate = Number(targetService.usd_rate) || 1500
     cleanedValue = num
     extraFields.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+    extraFields.cell_formulas = buildCellFormulasPatch(targetService.cell_formulas, 'amount_ars', evalRes.formula)
   } else if (field === 'contractor_name') {
     cleanedValue = String(newValue || '').trim().toUpperCase()
     const foundC = contractors.find((c) => c.name?.toUpperCase().trim() === cleanedValue)
@@ -331,14 +341,16 @@ export async function saveInlineEditService({ serviceId, field, newValue, servic
   const { error } = await thirdPartyServicesRepository.updateById(serviceId, updateData, { select: null })
   if (error) throw new Error(error)
 
+  const prevFormula = field === 'amount_ars' ? getStoredCellFormula(targetService, 'amount_ars') : null
+  const nextFormula = field === 'amount_ars' ? extraFields.cell_formulas?.amount_ars || null : null
   await logCellChange({
     entityType: 'third_party_services',
     entityId: serviceId,
     entityName: targetService.contractor_name || String(serviceId),
     field,
     fieldLabel: field,
-    oldValue: targetService[field],
-    newValue: cleanedValue,
+    oldValue: prevFormula ? `${targetService[field]} (${prevFormula})` : targetService[field],
+    newValue: nextFormula ? `${cleanedValue} (${nextFormula})` : cleanedValue,
     sheetName: 'Terceros · Servicios y Facturación',
     moduleRoute: '/terceros',
     changeOrigin: 'INLINE_CELL',
@@ -424,10 +436,12 @@ export async function saveSpreadsheetBatchService({ colKey, newValue, targetIds,
         const targetSrv = services.find((x) => x.id === id)
         const rowPayload = { updated_at: new Date().toISOString() }
         if (colKey === 'amount_ars') {
-          const num = parseFloat(newValue) || 0
+          const evalRes = evaluateFormulaInput(newValue, { allowNegative: false, maxDecimals: 2, emptyValue: 0 })
+          const num = evalRes.ok ? (evalRes.value ?? 0) : (parseFloat(newValue) || 0)
           const rate = Number(targetSrv?.usd_rate) || 1500
           rowPayload.amount_ars = num
           rowPayload.amount_usd = rate > 0 ? Number((num / rate).toFixed(2)) : 0
+          rowPayload.cell_formulas = buildCellFormulasPatch(targetSrv?.cell_formulas, 'amount_ars', evalRes.ok ? evalRes.formula : null)
         } else {
           const rate = getDollarRateForDate(newValue, macroVariables) || 1500
           const num = parseFloat(targetSrv?.amount_ars) || 0

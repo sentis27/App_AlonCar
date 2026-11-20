@@ -6,6 +6,7 @@
 
 import { matchesUniversalSearch } from './searchEngine.js'
 import { isThirdPartyZeroCost } from './zeroCostAlertsRules.js'
+import { evaluateFormulaInput } from './formulaEngine.js'
 
 // Tipos de Comprobante y Reglas de Negocio (DEC-017)
 export const VOUCHER_TYPES = [
@@ -114,12 +115,13 @@ export function getDollarRateForDate(dateStr, macroVariables = []) {
   return Number(rate) || 1500
 }
 
-// Recálculo del dólar oficial congelado por fecha de entrada
+// Recálculo del dólar oficial congelado por fecha de entrada (soporta fórmulas =42+45 / +42+45)
 export function computeEntryDateOrAmountChange(newDate, newAmountArs, macroVariables = []) {
   const rate = getDollarRateForDate(newDate, macroVariables) || 1500
-  const ars = parseFloat(newAmountArs) || 0
+  const parsed = evaluateFormulaInput(newAmountArs, { allowNegative: false, maxDecimals: 2, emptyValue: 0 })
+  const ars = parsed.ok ? (parsed.value ?? 0) : (parseFloat(newAmountArs) || 0)
   const usd = rate > 0 ? Number((ars / rate).toFixed(2)) : 0
-  return { usd_rate: rate, amount_usd: usd }
+  return { usd_rate: rate, amount_usd: usd, evaluated_ars: ars }
 }
 
 // Métricas de KPIs y Radar Operativo en vivo
@@ -257,7 +259,7 @@ export function getSpreadsheetColumnsTerceros(canEditAmounts, shipMap, otMap) {
       }
     },
     { key: 'contractor_name', label: 'Contratista', readOnly: false },
-    { key: 'amount_ars', label: 'Importe AR$', readOnly: !canEditAmounts },
+    { key: 'amount_ars', label: 'Importe AR$', type: 'currency', allowFormula: true, readOnly: !canEditAmounts },
     { key: 'voucher_type', label: 'Comprobante', readOnly: false },
     { key: 'voucher_number', label: 'Nº Comprobante', readOnly: false },
     { key: 'direct_observations', label: 'Comentarios', readOnly: false }

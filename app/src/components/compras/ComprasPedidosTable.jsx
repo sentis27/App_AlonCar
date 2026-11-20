@@ -9,6 +9,7 @@ export default function ComprasPedidosTable({
   suppliers,
   ships,
   workOrders,
+  workItems = [],
   documents,
   searchQuery,
   viewMode,
@@ -56,12 +57,6 @@ export default function ComprasPedidosTable({
         exportRows={filteredOrders}
         exportFilename={`compras_pedidos_${new Date().toISOString().split('T')[0]}`}
       />
-
-      <datalist id="compras-materials-datalist">
-        {materials.slice(0, 300).map((m) => (
-          <option key={m.id} value={m.name} />
-        ))}
-      </datalist>
 
       <div tabIndex={0} onKeyDown={grid.handleKeyDown} ref={grid.gridContainerRef} className="alon-grid-scroll">
         <table className="w-full text-left text-[11px] border-collapse">
@@ -120,8 +115,10 @@ export default function ComprasPedidosTable({
                   viewMode={viewMode}
                   isSelected={selectedOrderIds.has(po.id)}
                   suppliers={suppliers}
+                  materials={materials}
                   ships={ships}
                   workOrders={workOrders}
+                  workItems={workItems}
                   documents={documents}
                   searchQuery={searchQuery}
                   isSupervisorOrAdmin={isSupervisorOrAdmin}

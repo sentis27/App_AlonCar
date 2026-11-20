@@ -5,6 +5,9 @@
 
 import React from 'react'
 import HighlightText from '../HighlightText'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
+import { describeFormula, getStoredCellFormula, getEditableCellInitialValue } from '../../lib/formulaEngine'
 import GridRibbon from '../GridRibbon'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -29,6 +32,8 @@ export default function TercerosFilasPanel({
   shipMap = new Map(),
   otMap = new Map(),
   contractorMap = new Map(),
+  workOrders = [],
+  workItems = [],
   searchTerm = '',
   canEditAmounts = false,
   canMutateRows = true,
@@ -283,17 +288,17 @@ export default function TercerosFilasPanel({
                             <HighlightText text={shipName} query={searchTerm} />
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 truncate">
-                          {ot ? (
-                            <span className="font-mono text-cyan-300 font-semibold bg-cyan-950/60 px-1 rounded border border-cyan-800/50 shrink-0">
-                              <HighlightText text={ot.ot_number} query={searchTerm} />
-                            </span>
-                          ) : (
-                            <span className="text-amber-400 text-[10px] shrink-0 font-bold">⚠️ Sin OT</span>
-                          )}
-                          <span className="truncate text-[10px] text-slate-500" title={ot?.title}>
-                            <HighlightText text={ot?.title || '(Doble clic para asignar)'} query={searchTerm} />
-                          </span>
+                        <div className="mt-0.5 truncate">
+                          <CanonicalOtBadge
+                            wo={ot || null}
+                            ship={shipMap.get(srv.ship_id) || null}
+                            workItems={workItems}
+                            workOrders={workOrders}
+                            searchQuery={searchTerm}
+                            variant="pill"
+                            sinOtLabel="Sin OT (Doble clic)"
+                            className="text-[10px]"
+                          />
                         </div>
                         {cp.renderHandle && (
                           <div
@@ -401,28 +406,35 @@ export default function TercerosFilasPanel({
                   {/* 4. Importe AR$ */}
                   {(() => {
                     const cp = getSpreadsheetCellProps(index, 'amount_ars')
+                    const amountFormula = getStoredCellFormula(srv, 'amount_ars')
+                    const formulaMeta = describeFormula(amountFormula)
                     return (
                       <td
                         {...cp.domProps}
                         onDoubleClick={() => {
                           if (canEditAmounts) {
-                            setInlineEdit({ id: srv.id, field: 'amount_ars', value: srv.amount_ars || '' })
+                            setInlineEdit({
+                              id: srv.id,
+                              field: 'amount_ars',
+                              value: getEditableCellInitialValue(srv, 'amount_ars', srv.amount_ars || '')
+                            })
                           }
                         }}
+                        title={formulaMeta?.tooltipText || 'Doble clic para editar importe (acepta =42+45 o +42+45)'}
                         className={`py-2.5 px-2 text-right whitespace-nowrap font-mono font-semibold text-slate-100 ${cp.className}`}
                       >
+                        <FormulaCellCornerMark formula={amountFormula} />
                         {inlineEdit.id === srv.id && inlineEdit.field === 'amount_ars' ? (
-                          <input
-                            type="number"
+                          <FormulaNumericInput
+                            variant="cell"
                             autoFocus
-                            step="any"
+                            currencyPrefix="$"
+                            maxDecimals={2}
+                            emptyValue={0}
                             value={inlineEdit.value}
-                            onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveInlineEdit(srv.id, 'amount_ars', inlineEdit.value)
-                              if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                            }}
-                            onBlur={() => saveInlineEdit(srv.id, 'amount_ars', inlineEdit.value)}
+                            onChange={(val) => setInlineEdit({ ...inlineEdit, value: val })}
+                            onCommit={(rawVal) => saveInlineEdit(srv.id, 'amount_ars', rawVal)}
+                            onCancel={() => setInlineEdit({ id: null, field: null, value: '' })}
                             className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-right text-white outline-none font-mono"
                           />
                         ) : (

@@ -5,6 +5,9 @@ import GridStatusBarBottom from '../GridStatusBarBottom.jsx'
 import LaborLogsTableRow from './LaborLogsTableRow.jsx'
 
 export default function LaborLogsTable({
+  ships = [],
+  workOrders = [],
+  workItems = [],
   filteredLogs = [],
   recentLogs = [],
   selectedLogIds = new Set(),
@@ -116,6 +119,9 @@ export default function LaborLogsTable({
                 <LaborLogsTableRow
                   key={log.id}
                   log={log}
+                  ships={ships}
+                  workOrders={workOrders}
+                  workItems={workItems}
                   rowIndex={rowIndex}
                   isSelected={selectedLogIds.has(log.id)}
                   filterWorker={filterWorker}

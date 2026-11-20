@@ -6,6 +6,9 @@ import { supabase as defaultClient } from '../lib/supabase.js'
 import { WorkItemSchema } from '../schemas/workItems.schema.js'
 import { createBaseRepository } from './_baseRepository.js'
 
+export const WORK_ITEM_CANONICAL_SELECT =
+  'id, work_order_id, description, contractors, foreman_name, status, work_type, trade, created_at'
+
 export function createWorkItemsRepository({ client = defaultClient } = {}) {
   const base = createBaseRepository({
     table: 'work_items',
@@ -19,6 +22,10 @@ export function createWorkItemsRepository({ client = defaultClient } = {}) {
 
     async listWorkItems({ select = '*', orderBy = [{ column: 'created_at', ascending: true }], filters = {} } = {}) {
       return base.findAll({ select, orderBy, filters })
+    },
+
+    async listCanonicalWorkItems({ orderBy = [{ column: 'created_at', ascending: true }], filters = {} } = {}) {
+      return base.findAll({ select: WORK_ITEM_CANONICAL_SELECT, orderBy, filters })
     },
 
     async listByWorkOrderIds(woIds = [], { select = 'id, work_order_id, status, comments' } = {}) {

@@ -5,6 +5,7 @@
  * contratistas activos de Personal y Tarifas, hora real local (HH:mm) y corte diario.
  */
 import { normalizeText } from './allocationEngine.js'
+import { getStoredCellFormula } from './formulaEngine.js'
 import { deduplicateWorkOrdersWithScope, formatWorkOrderTooltipCanonical } from './workOrdersConstants.js'
 
 export const BASKET_SHIP_THEMES = [
@@ -86,6 +87,7 @@ function toBasketItem(tx, materialMap) {
     materialName: mat?.name || 'Material sin catálogo',
     unitMeasure: mat?.unit_measure || 'un.',
     quantity: Number(tx.quantity_withdrawn) || 0,
+    qtyFormula: getStoredCellFormula(tx, 'quantity_withdrawn'),
     costCenter: tx.cost_center || 'CLIENTE',
     notes: tx.notes || '',
     transactionDate: tx.transaction_date || ''

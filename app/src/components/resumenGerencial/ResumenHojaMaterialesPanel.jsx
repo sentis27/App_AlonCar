@@ -12,6 +12,11 @@ import {
 } from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
 import ResumenHojaMaterialesToolbar from './ResumenHojaMaterialesToolbar'
+import { exportPlateCutsReport } from '../../lib/plateCutsExport'
+import { formatFormulaNumericDisplay } from '../../lib/formulaEngine'
+import { matchesMaterialQuickType } from '../../lib/filterThemeConstants'
+import { Scissors } from 'lucide-react'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
  * Hoja Solo Lectura: MATERIALES (MATERIALES GENERAL / MATERIALES POR O.T).
@@ -52,6 +57,7 @@ export default function ResumenHojaMaterialesPanel({
   }, [initialKpiFilter])
 
   const shipId = ship?.id || null
+  const otRowMap = useMemo(() => new Map(otRows.map((o) => [o.id, o])), [otRows])
   const scopedBaseRows = useMemo(
     () => scopeResumenRows(materialRows, { shipId, costScope, activeOtId }),
     [materialRows, shipId, costScope, activeOtId]
@@ -164,20 +170,44 @@ export default function ResumenHojaMaterialesPanel({
           entityName="movimientos"
           exportRows={filteredRows}
           exportFilename={`gs004_materiales_${ship?.name || 'buque'}.csv`}
+          extraActions={
+            (materialQuick === 'CHAPA' || filteredRows.some((r) => r.cutDimensionsLabel || matchesMaterialQuickType(r, 'CHAPA'))) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetRows =
+                    materialQuick === 'CHAPA'
+                      ? filteredRows
+                      : filteredRows.filter((r) => r.cutDimensionsLabel || matchesMaterialQuickType(r, 'CHAPA'))
+                  exportPlateCutsReport({ rows: targetRows, shipName: ship?.name || 'buque' })
+                }}
+                disabled={filteredRows.length === 0}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900/90 disabled:opacity-40 border border-cyan-500/60 text-cyan-200 hover:text-white font-bold text-xs cursor-pointer transition-colors"
+                title="Exportar informe trazado de cortes y parches de chapa (Medidas, Área, Fecha Reporte/Carga y Ubicación) para cliente y Jefe de Obra"
+              >
+                <Scissors className="w-3.5 h-3.5 text-cyan-300" />
+                Reporte Parches / Cortes (.csv)
+              </button>
+            )
+          }
           exportColumns={[
-            { key: 'date', label: 'Fecha' },
+            { key: 'date', label: 'Fecha Reporte' },
+            { key: 'createdAt', label: 'Fecha Carga' },
             { key: 'sourceType', label: 'Origen' },
             { key: 'otLabel', label: 'O.T' },
             { key: 'materialName', label: 'Material' },
             { key: 'rubro', label: 'Rubro' },
             { key: 'category', label: 'Clasificación' },
+            { key: 'cutDimensionsLabel', label: 'Corte / Medidas' },
+            { key: 'qtyFormula', label: 'Fórmula' },
             { key: 'qty', label: 'Cant' },
             { key: 'unitMeasure', label: 'Unidad' },
             { key: 'weightKg', label: 'KG' },
             { key: 'unitUsd', label: 'P.Unit US$' },
             { key: 'shipDirectUsd', label: 'Total Obra US$' },
             { key: 'referenceUsd', label: 'Ref EPP US$' },
-            { key: 'workerName', label: 'Solicitante' }
+            { key: 'workerName', label: 'Solicitante' },
+            { key: 'notes', label: 'Ubicación / Notas' }
           ]}
         />
 
@@ -212,7 +242,15 @@ export default function ResumenHojaMaterialesPanel({
                 filteredRows.map((r, idx) => (
                   <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
                     <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono text-slate-300">{r.date || '—'}</td>
+                    <td
+                      className="px-2.5 py-1.5 whitespace-nowrap font-mono text-slate-300"
+                      title={r.createdAt ? `Fecha reporte: ${r.date || '—'} · Fecha carga: ${r.createdAt}` : undefined}
+                    >
+                      <div>{r.date || '—'}</div>
+                      {r.createdAt && r.date && r.createdAt !== r.date && (
+                        <div className="text-[9.5px] text-slate-500">Carga: {r.createdAt.slice(5)}</div>
+                      )}
+                    </td>
                     <td className="px-2.5 py-1.5 whitespace-nowrap">
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -224,8 +262,8 @@ export default function ResumenHojaMaterialesPanel({
                         {r.sourceType === 'COMPRA_DIRECTA' ? 'OC DIRECTA' : 'PAÑOL'}
                       </span>
                     </td>
-                    <td className="px-2.5 py-1.5 font-mono text-cyan-300 font-semibold max-w-[200px] truncate" title={r.otLabel || r.otNumber}>
-                      {r.otLabel || (r.otTitle ? `${r.otNumber} · ${r.otTitle}` : r.otNumber)}
+                    <td className="px-2.5 py-1.5 max-w-[205px]">
+                      <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
                     </td>
                     <td className="px-2.5 py-1.5 font-medium text-white max-w-[220px] truncate" title={r.materialName}>
                       {r.materialName}
@@ -244,8 +282,19 @@ export default function ResumenHojaMaterialesPanel({
                         {r.isSafetyReference ? 'EPP (REF)' : r.category}
                       </span>
                     </td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums whitespace-nowrap">
-                      {r.qty} <span className="text-slate-500">{r.unitMeasure}</span>
+                    <td
+                      className="px-2.5 py-1.5 text-right tabular-nums whitespace-nowrap"
+                      title={r.qtyFormula ? `Fórmula cargada: ${r.qtyFormula}` : undefined}
+                    >
+                      <div>
+                        {formatFormulaNumericDisplay(r.qty, { maxDecimals: 3 })}{' '}
+                        <span className="text-slate-500">{r.unitMeasure}</span>
+                      </div>
+                      {r.cutDimensionsLabel && (
+                        <div className="text-[10px] font-mono text-cyan-300 font-semibold">
+                          {r.cutDimensionsLabel}
+                        </div>
+                      )}
                     </td>
                     <td className="px-2.5 py-1.5 text-right tabular-nums text-purple-200">
                       {r.weightKg > 0 ? formatKg(r.weightKg, 1) : '—'}

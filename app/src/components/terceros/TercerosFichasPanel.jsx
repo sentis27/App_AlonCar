@@ -4,6 +4,7 @@
  */
 
 import React from 'react'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import {
   Ship,
   Sparkles,
@@ -18,6 +19,8 @@ export default function TercerosFichasPanel({
   shipMap = new Map(),
   otMap = new Map(),
   contractorMap = new Map(),
+  workOrders = [],
+  workItems = [],
   selectedIds = new Set(),
   handleRowClick,
   handleCheckboxToggle,
@@ -134,17 +137,15 @@ export default function TercerosFichasPanel({
                   <Ship className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                   <span>{shipName}</span>
                 </div>
-                <div className="text-xs text-slate-400 flex items-center gap-1.5">
-                  {ot ? (
-                    <>
-                      <span className="font-mono text-cyan-300 font-bold bg-cyan-950/80 px-1 rounded border border-cyan-800/60">
-                        {ot.ot_number}
-                      </span>
-                      <span className="truncate text-slate-300 text-[11px]">{ot.title}</span>
-                    </>
-                  ) : (
-                    <span className="text-amber-400 text-xs">⚠️ Sin Orden de Trabajo asignada</span>
-                  )}
+                <div className="text-xs text-slate-400">
+                  <CanonicalOtBadge
+                    wo={ot || null}
+                    ship={shipMap.get(srv.ship_id) || null}
+                    workItems={workItems}
+                    workOrders={workOrders}
+                    variant="pill"
+                    sinOtLabel="Sin Orden de Trabajo asignada"
+                  />
                 </div>
               </div>
 

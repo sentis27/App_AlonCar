@@ -20,6 +20,7 @@ import { patchLaborLogService, createLaborLogWithRelationsService } from '../../
 import { deduplicateWorkOrdersWithScope, TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants'
 import { normalizeLaborWorkType } from '../../lib/laborCargaGridHelpers'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
 
 // ==============================================================================
 // MODAL 1: EDICIÓN COMPLETA DE REGISTRO DE HORAS
@@ -726,6 +727,9 @@ export function ReviewLaborLogsModal({
   reviewModalSearch,
   setReviewModalSearch,
   filteredReviewLogs = [],
+  ships = [],
+  workOrders = [],
+  workItems = [],
   selectedLogIds = new Set(),
   toggleSelectLog,
   toggleSelectAllLogs,
@@ -918,9 +922,16 @@ export function ReviewLaborLogsModal({
                       <span className="font-bold text-white block">{log.worker_name}</span>
                       <span className="text-[10px] text-slate-400">{log.worker_type || 'Astillero'}</span>
                     </td>
-                    <td className="py-2.5 px-3">
-                      <strong className="text-white block">{log.work_orders?.ships?.name}</strong>
-                      <span className="text-[11px] text-slate-300">{log.work_orders?.title}</span>
+                    <td className="py-2.5 px-3 max-w-[230px]">
+                      <strong className="text-white block truncate">{log.ships?.name || log.work_orders?.ships?.name || 'Sin Buque'}</strong>
+                      <CanonicalOtBadge
+                        wo={(log.work_order_id && workOrders.find((w) => String(w.id) === String(log.work_order_id))) || log.work_orders || null}
+                        ship={ships.find((s) => String(s.id) === String(log.ship_id || log.work_orders?.ship_id)) || log.ships || log.work_orders?.ships || null}
+                        workItems={workItems}
+                        workOrders={workOrders}
+                        variant="compact"
+                        className="text-[11px] text-slate-300 max-w-[215px]"
+                      />
                     </td>
                     <td className="py-2.5 px-3 text-slate-300">
                       {log.rubro || 'General'}
@@ -1295,6 +1306,9 @@ export function LaborModalsContainer({
           reviewModalSearch={reviewModalSearch}
           setReviewModalSearch={setReviewModalSearch}
           filteredReviewLogs={filteredReviewLogs}
+          ships={ships}
+          workOrders={workOrders}
+          workItems={workItems}
           selectedLogIds={selectedLogIds}
           toggleSelectLog={toggleSelectLog}
           toggleSelectAllLogs={toggleSelectAllLogs}

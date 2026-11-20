@@ -92,6 +92,8 @@ export default function LaborCrewBatchModal({
         <div className="alon-modal-body space-y-4">
           <LaborCascadeHeader
             ships={ships}
+            workOrders={workOrders}
+            workItems={workItems}
             selectedShipId={crew.selectedShipId}
             setSelectedShipId={crew.setSelectedShipId}
             selectedContractorGroup={crew.selectedContractorGroup}

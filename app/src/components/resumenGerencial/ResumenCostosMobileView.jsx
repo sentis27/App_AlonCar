@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Anchor, AlertTriangle, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
 import ZeroCostAlertHoverCard from '../ZeroCostAlertHoverCard'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
  * Vista Móvil Ágil de Costos (< md):
@@ -158,9 +159,16 @@ export default function ResumenCostosMobileView({
             <span className="text-[10px] font-bold uppercase tracking-wider text-violet-300 block">
               Detalle Orden de Trabajo
             </span>
-            <span className="text-xs font-extrabold text-white truncate block">
-              {activeOt ? (activeOt.otLabel || `${activeOt.otNumber} — ${activeOt.title}`) : 'Sin OT activa'}
-            </span>
+            <CanonicalOtBadge
+              wo={activeOt?.wo || null}
+              ship={ship}
+              otNumber={activeOt?.otNumber}
+              otTitle={activeOt?.title}
+              tooltipOverride={activeOt?.canonicalTooltip || ''}
+              variant="inline"
+              sinOtLabel="Sin OT activa"
+              className="text-xs font-extrabold text-white max-w-full"
+            />
           </div>
           {activeOt && (
             <span className="text-lg font-black text-violet-200 tabular-nums shrink-0">

@@ -34,11 +34,8 @@ export async function fetchShipsData() {
     ownersRepository.listOwners({ select: '*', orderBy: [{ column: 'name', ascending: true }] }),
     shipStaysRepository.listStays({ select: '*, ships(id, name)', orderBy: [{ column: 'start_date', ascending: false }] }),
     contactsRepository.listContacts(),
-    workOrdersRepository.listWorkOrders({ select: 'id, ship_id, ot_number, title, status, description, created_at' }),
-    workItemsRepository.listWorkItems({
-      select: 'id, work_order_id, status, description, contractors, work_type',
-      orderBy: [],
-    }),
+    workOrdersRepository.listCanonicalWorkOrders(),
+    workItemsRepository.listCanonicalWorkItems(),
     laborLogsRepository.findAll({ select: 'id, ship_id', isNull: ['work_order_id'] }),
     thirdPartyServicesRepository.listServices({ select: 'id, ship_id', isNull: ['work_order_id'], orderBy: [] }),
     purchaseOrdersRepository.listOrders({ select: 'id, ship_id', isNull: ['work_order_id'], orderBy: [] }),

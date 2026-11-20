@@ -1,7 +1,8 @@
 import CrawlerSearchBar from '../CrawlerSearchBar'
-import { Package, X, Lock } from 'lucide-react'
+import { Package, X, Lock, Scissors } from 'lucide-react'
 import {
   CLEAR_FILTER_BTN_CLASS,
+  getFilterPillClass,
   getFilterSelectClass,
   resolveOtFilterOptions
 } from '../../lib/filterThemeConstants'
@@ -14,6 +15,9 @@ export default function PanolToolbar({
   setFilterPeriod,
   filterCategory,
   setFilterCategory,
+  filterMaterialQuick = '',
+  setFilterMaterialQuick,
+  onExportPlateCuts,
   filterShip,
   setFilterShip,
   filterOt = 'TODAS',
@@ -130,6 +134,31 @@ export default function PanolToolbar({
               <option value="ELEM.SEGURIDAD" className="bg-slate-900">ELEM.SEGURIDAD</option>
               <option value="GASES" className="bg-slate-900">GASES</option>
             </select>
+          )}
+
+          {/* 5b. Píldora rápida Chapa + Reporte de Parches (solo en Planilla de Retiros) */}
+          {activeTab === 'planillas' && setFilterMaterialQuick && (
+            <>
+              <button
+                type="button"
+                onClick={() => setFilterMaterialQuick(filterMaterialQuick === 'CHAPA' ? '' : 'CHAPA')}
+                className={getFilterPillClass('materialQuick', filterMaterialQuick === 'CHAPA')}
+                title="Filtrar automáticamente todos los retiros de Chapa / parches"
+              >
+                <span>Chapa</span>
+              </button>
+              {filterMaterialQuick === 'CHAPA' && onExportPlateCuts && (
+                <button
+                  type="button"
+                  onClick={onExportPlateCuts}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-200 hover:text-white cursor-pointer transition-colors"
+                  title="Exportar informe trazado de cortes y parches de chapa (Medidas, Área, Fecha Reporte/Carga y Ubicación)"
+                >
+                  <Scissors className="w-3.5 h-3.5 text-cyan-300" />
+                  <span>Reporte Parches (.csv)</span>
+                </button>
+              )}
+            </>
           )}
 
           {activeTab === 'catalogo' && (

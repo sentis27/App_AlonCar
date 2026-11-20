@@ -10,8 +10,12 @@ import {
   CheckCircle
 } from 'lucide-react'
 import HighlightText from '../HighlightText'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 export default function LaborSabanaPanel({
+  ships = [],
+  workOrders = [],
+  workItems = [],
   selectedYear,
   selectedMonth,
   setSelectedMonth,
@@ -435,9 +439,16 @@ export default function LaborSabanaPanel({
                             {log.worker_type || 'Astillero'}
                           </span>
                         </td>
-                        <td className="py-2 px-3">
-                          <span className="font-semibold text-white block">{log.work_orders?.ships?.name}</span>
-                          <span className="text-[11px] text-slate-400">{log.work_orders?.title}</span>
+                        <td className="py-2 px-3 max-w-[230px]">
+                          <span className="font-semibold text-white block truncate">{log.ships?.name || log.work_orders?.ships?.name || 'Sin Buque'}</span>
+                          <CanonicalOtBadge
+                            wo={(log.work_order_id && workOrders.find((w) => String(w.id) === String(log.work_order_id))) || log.work_orders || null}
+                            ship={ships.find((s) => String(s.id) === String(log.ship_id || log.work_orders?.ship_id)) || log.ships || log.work_orders?.ships || null}
+                            workItems={workItems}
+                            workOrders={workOrders}
+                            variant="compact"
+                            className="text-[11px] text-slate-400 max-w-[215px]"
+                          />
                         </td>
                         <td className="py-2 px-3">
                           <span className={`px-2 py-0.5 rounded text-[11px] ${

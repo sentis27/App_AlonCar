@@ -61,12 +61,28 @@ export function checkFeaturesLockManifest(rootDir) {
  * `CanonicalMaterialPicker`. Los archivos legacy preexistentes figuran en allowlist como alerta
  * hasta su migración; cualquier archivo nuevo fuera del allowlist falla como ERROR bloqueante.
  */
-const LEGACY_MATERIAL_DATALIST_ALLOWLIST = new Set([
-  'app/src/components/compras/ComprasPedidosTable.jsx',
-  'app/src/components/compras/ComprasRowCells.jsx',
-])
+const LEGACY_MATERIAL_DATALIST_ALLOWLIST = new Set([])
 
 const RAW_MATERIAL_DATALIST_RE = /(?:<datalist\b[^>]*\bid=["'][^"']*material[^"']*["']|\blist=["'][^"']*material[^"']*["'])/i
+
+const REQUIRED_CANONICAL_OT_SURFACES = [
+  'app/src/components/panol/PanolMovimientosPanel.jsx',
+  'app/src/components/compras/ComprasPedidoRow.jsx',
+  'app/src/components/terceros/TercerosFilasPanel.jsx',
+  'app/src/components/terceros/TercerosFichasPanel.jsx',
+  'app/src/components/labor/LaborLogsTableRow.jsx',
+  'app/src/components/labor/LaborControlDiarioPanel.jsx',
+  'app/src/components/labor/LaborSabanaPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenMatrizOtsPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenOtDetailStrip.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaMaterialesPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
+  'app/src/components/resumenGerencial/BillingRightCostCard.jsx',
+  'app/src/components/resumenGerencial/ComparadorNivel2OtTable.jsx',
+]
+
+const WORK_ITEMS_CUSTOM_SELECT_RE = /workItemsRepository\.listWorkItems\(\s*\{[\s\S]*?select:\s*['"]([^'"]+)['"]/g
 
 export function checkCanonicalComponentsUsage(rootDir, appDir) {
   const srcRoot = path.join(appDir, 'src')
@@ -93,6 +109,26 @@ export function checkCanonicalComponentsUsage(rootDir, appDir) {
           errors.push(`Prohibido crear datalist crudo de materiales fuera de CanonicalMaterialPicker: ${rel}`)
         }
       }
+
+      if (rel.startsWith('app/src/services/') || rel.startsWith('app/src/lib/')) {
+        for (const match of content.matchAll(WORK_ITEMS_CUSTOM_SELECT_RE)) {
+          const cols = match[1].trim()
+          if (cols === '*' || /^id(?:\s*,\s*work_order_id)?$/i.test(cols)) continue
+          const missing = ['status', 'foreman_name'].filter((c) => !new RegExp(`\\b${c}\\b`).test(cols))
+          if (missing.length > 0) {
+            errors.push(`Consulta work_items incompleta en ${rel} (falta ${missing.join(', ')}): usar workItemsRepository.listCanonicalWorkItems()`)
+          }
+        }
+      }
+    }
+  }
+
+  for (const rel of REQUIRED_CANONICAL_OT_SURFACES) {
+    const full = path.join(rootDir, rel)
+    if (!fs.existsSync(full)) continue
+    const content = fs.readFileSync(full, 'utf8')
+    if (!content.includes('CanonicalOtBadge')) {
+      errors.push(`Superficie obligatoria sin CanonicalOtBadge (tooltip de OT): ${rel}`)
     }
   }
 

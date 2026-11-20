@@ -4,6 +4,7 @@ import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
 import SvgDonutCard from './SvgDonutCard'
 import CostCategoryHoverCard from './CostCategoryHoverCard'
 import ResumenEquipmentButtonsRow from './ResumenEquipmentButtonsRow'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
  * Bloque Inferior: DETALLE POR ORDEN DE TRABAJO (Paleta Violeta · 100% Solo Lectura).
@@ -84,7 +85,7 @@ export default function ResumenOtDetailStrip({
           </span>
           {activeOt && (
             <span className="px-2.5 py-0.5 rounded-md bg-violet-950/75 border border-violet-400/45 text-xs font-bold text-violet-100 truncate max-w-[440px]">
-              {activeOtLabel}
+              <CanonicalOtBadge wo={activeOt.wo || null} otNumber={activeOt.otNumber} otTitle={activeOt.title} tooltipOverride={activeOt.canonicalTooltip || ''} variant="inline" className="text-violet-100" />
             </span>
           )}
         </div>
@@ -103,9 +104,7 @@ export default function ResumenOtDetailStrip({
           <div className="lg:col-span-5 xl:col-span-4 bg-slate-950/90 border border-violet-500/45 rounded-xl flex flex-col justify-between relative">
             <div>
               <div className="rounded-t-xl px-3.5 py-2 bg-violet-950/55 border-b border-violet-500/35 flex items-center justify-between gap-2">
-                <span className="text-xs font-extrabold text-violet-100 truncate" title={activeOtLabel}>
-                  {activeOtLabel}
-                </span>
+                <CanonicalOtBadge wo={activeOt.wo || null} otNumber={activeOt.otNumber} otTitle={activeOt.title} tooltipOverride={activeOt.canonicalTooltip || ''} variant="inline" className="text-xs font-extrabold text-violet-100 min-w-0" />
                 <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-violet-500/25 text-violet-200 font-bold shrink-0">
                   {activeOt.workType}
                 </span>

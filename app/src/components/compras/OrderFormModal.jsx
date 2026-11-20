@@ -5,6 +5,10 @@ import { normalizeText } from '../../lib/allocationEngine'
 import { savePurchaseOrdersFromModalService } from '../../services/comprasOcrSettingsService'
 import { buildStandardShipWorkOrdersCatalog } from '../../lib/workOrderUnificationEngine'
 import { resolveWorkerIdFromCatalog } from '../../lib/workerIdentity'
+import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
+import FormulaNumericInput from '../canonical/FormulaNumericInput'
+import { evaluateFormulaInput, buildCellFormulasPatch, getEditableCellInitialValue } from '../../lib/formulaEngine'
+import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover'
 
 export default function OrderFormModal({
   order,
@@ -40,8 +44,8 @@ export default function OrderFormModal({
     }
     return [{
       material_id: order?.material_id || null, material_name_raw: order?.material_name_raw || '', is_new_material: order?.is_new_material || false,
-      quantity: order?.quantity || 1, unit_measure: resolveOrderMaterialUnit(materials, order?.material_id, order?.material_name_raw, order?.unit_measure),
-      supplier_id: order?.supplier_id || '', supplier_quoted_price: order?.supplier_quoted_price || '',
+      quantity: getEditableCellInitialValue(order, 'quantity', order?.quantity || 1), unit_measure: resolveOrderMaterialUnit(materials, order?.material_id, order?.material_name_raw, order?.unit_measure),
+      supplier_id: order?.supplier_id || '', supplier_quoted_price: getEditableCellInitialValue(order, 'supplier_quoted_price', order?.supplier_quoted_price || ''),
       system_unit_price: order?.system_unit_price || 0, observations: order?.observations || ''
     }]
   })
@@ -65,10 +69,8 @@ export default function OrderFormModal({
     return buildStandardShipWorkOrdersCatalog(workOrders, workItems, { shipId, includeEliminated: false, includeClosed: true })
   }, [shipId, workOrders, workItems])
 
-  // OT seleccionada para mostrar su descripción completa
-  const selectedWorkOrder = useMemo(() => {
-    return workOrders.find((w) => w.id === workOrderId)
-  }, [workOrders, workOrderId])
+  // Barco seleccionado para el tooltip flotante canónico de OT
+  const selectedShipObj = useMemo(() => ships.find((s) => s.id === shipId) || null, [ships, shipId])
 
   // Si cambia el destino a VIA_PANOL, fijar barco ASTILLERO y OT STOCK
   useEffect(() => {
@@ -138,8 +140,15 @@ export default function OrderFormModal({
       if (!it.material_name_raw.trim()) {
         return alert(`El renglón #${i + 1} no tiene nombre de material.`)
       }
-      if (Number(it.quantity) <= 0) {
-        return alert(`La cantidad del renglón #${i + 1} debe ser mayor a 0.`)
+      const parsedQty = evaluateFormulaInput(it.quantity, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
+      if (!parsedQty.ok || (parsedQty.value || 0) <= 0) {
+        return alert(`La cantidad del renglón #${i + 1} debe ser mayor a 0${parsedQty.error ? ` (${parsedQty.error})` : ''}.`)
+      }
+      if (it.supplier_quoted_price !== '' && it.supplier_quoted_price !== null && it.supplier_quoted_price !== undefined) {
+        const parsedPrice = evaluateFormulaInput(it.supplier_quoted_price, { allowNegative: false, maxDecimals: 2, emptyValue: null })
+        if (!parsedPrice.ok) {
+          return alert(`Precio cotizado inválido en renglón #${i + 1}: ${parsedPrice.error}`)
+        }
       }
     }
 
@@ -150,27 +159,34 @@ export default function OrderFormModal({
         workers,
         order?.requested_by_name === requestedByName ? order?.requested_by : null
       )
-      const payloads = items.map((it) => ({
-        charge_type: chargeType,
-        order_date: orderDate,
-        ship_id: shipId || null,
-        work_order_id: workOrderId || null,
-        requested_by: resolvedRequestedById,
-        requested_by_name: requestedByName,
-        urgency,
-        material_id: it.material_id,
-        material_name_raw: it.material_name_raw.trim(),
-        is_new_material: it.is_new_material,
-        quantity: Number(it.quantity),
-        unit_measure: it.unit_measure,
-        supplier_id: it.supplier_id || null,
-        supplier_quoted_price: it.supplier_quoted_price ? Number(it.supplier_quoted_price) : null,
-        system_unit_price: it.system_unit_price ? Number(it.system_unit_price) : 0,
-        status: 'PEDIR',
-        observations: it.observations.trim() || null,
-        fortnight_period: currentFortnight,
-        updated_at: new Date().toISOString()
-      }))
+      const payloads = items.map((it) => {
+        const parsedQty = evaluateFormulaInput(it.quantity, { allowNegative: false, maxDecimals: 4, emptyValue: 1 })
+        const parsedPrice = evaluateFormulaInput(it.supplier_quoted_price, { allowNegative: false, maxDecimals: 2, emptyValue: null })
+        let formulas = buildCellFormulasPatch(order?.cell_formulas, 'quantity', parsedQty.formula)
+        formulas = buildCellFormulasPatch(formulas, 'supplier_quoted_price', parsedPrice.value !== null ? parsedPrice.formula : null)
+        return {
+          charge_type: chargeType,
+          order_date: orderDate,
+          ship_id: shipId || null,
+          work_order_id: workOrderId || null,
+          requested_by: resolvedRequestedById,
+          requested_by_name: requestedByName,
+          urgency,
+          material_id: it.material_id,
+          material_name_raw: it.material_name_raw.trim(),
+          is_new_material: it.is_new_material,
+          quantity: parsedQty.value ?? 1,
+          unit_measure: it.unit_measure,
+          supplier_id: it.supplier_id || null,
+          supplier_quoted_price: parsedPrice.value !== null ? parsedPrice.value : null,
+          system_unit_price: it.system_unit_price ? Number(it.system_unit_price) : 0,
+          cell_formulas: formulas,
+          status: 'PEDIR',
+          observations: it.observations.trim() || null,
+          fortnight_period: currentFortnight,
+          updated_at: new Date().toISOString()
+        }
+      })
 
       const savedRows = await savePurchaseOrdersFromModalService({
         orderId: order?.id || null,
@@ -313,29 +329,18 @@ export default function OrderFormModal({
                           <label className="block text-slate-300 mb-1 font-bold text-[11px]">
                             Orden de Trabajo (OT)
                           </label>
-                          <select
+                          <WorkOrderSelectorWithHover
                             value={workOrderId}
-                            onChange={(e) => setWorkOrderId(e.target.value)}
-                            className={`w-full bg-slate-900 border rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500 text-xs ${
-                              !workOrderId ? 'border-amber-500/60 text-amber-300 font-semibold' : 'border-slate-700 text-white'
-                            }`}
-                          >
-                            <option value="">-- ⚠️ Sin OT (Pendiente de apertura) --</option>
-                            {availableWorkOrders.map((w) => (
-                              <option key={w.id} value={w.id}>
-                                {w.ot_number ? `OT #${w.ot_number} - ` : ''}{w.title}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(nextWoId) => setWorkOrderId(nextWoId)}
+                            availableWos={availableWorkOrders}
+                            ship={selectedShipObj}
+                            workItems={workItems}
+                            allWorkOrders={workOrders}
+                            disabled={!shipId}
+                            placeholder={!shipId ? '-- 1° elija buque --' : '-- ⚠️ Sin OT (Pendiente de apertura) --'}
+                          />
                         </div>
                       </div>
-
-                      {selectedWorkOrder && (
-                        <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2 text-[11px] text-slate-300">
-                          <span className="font-bold text-cyan-400">Detalle OT: </span>
-                          <span>{selectedWorkOrder.description || selectedWorkOrder.title || 'Sin descripción técnica adicional.'}</span>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -420,44 +425,29 @@ export default function OrderFormModal({
                               Unidad: <strong className="text-cyan-400">{it.unit_measure}</strong>
                             </span>
                           </label>
-                          <input
-                            type="text"
+                          <CanonicalMaterialPicker
+                            materials={materials}
+                            value={it.material_id || ''}
+                            initialText={it.material_name_raw || ''}
+                            allowFreeText
                             placeholder="Ej: CHAPA NAVAL 1/4', ELECTRODO CONARCO 7018..."
-                            value={it.material_name_raw}
-                            onChange={(e) => handleItemChange(idx, 'material_name_raw', e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white text-xs font-medium focus:outline-none focus:border-cyan-500"
-                            required
+                            onChange={(matId, mat) => {
+                              if (mat?.id) handleSelectCatalogMaterial(idx, mat)
+                              else handleItemChange(idx, 'material_name_raw', mat?.name || '')
+                            }}
                           />
-
-                          {it.material_name_raw && !it.material_id && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {materials
-                                .filter((m) => m.name.toLowerCase().includes(it.material_name_raw.toLowerCase()))
-                                .slice(0, 3)
-                                .map((m) => (
-                                   <button
-                                    key={m.id}
-                                    type="button"
-                                    tabIndex={-1}
-                                    onClick={() => handleSelectCatalogMaterial(idx, m)}
-                                    className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-cyan-950 border border-slate-700 text-[10px] text-slate-300 hover:text-cyan-300 transition-colors cursor-pointer"
-                                  >
-                                    ✓ {m.name} ({m.unit_measure || 'un.'})
-                                  </button>
-                                ))}
-                            </div>
-                          )}
                         </div>
 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <div>
                             <label className="block text-slate-400 mb-1 font-bold text-[10px]">Cantidad</label>
-                            <input
-                              type="number"
-                              step="any"
-                              min="0.01"
+                            <FormulaNumericInput
+                              variant="field"
+                              maxDecimals={4}
+                              unitSuffix={formatUnitMeasureShort(it.unit_measure)}
                               value={it.quantity}
-                              onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                              onChange={(val) => handleItemChange(idx, 'quantity', val)}
+                              placeholder="1 o =2+3"
                               className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-500 text-xs"
                               required
                             />
@@ -493,12 +483,13 @@ export default function OrderFormModal({
 
                               <div>
                                 <label className="block text-slate-400 mb-1 font-bold text-[10px]">$/U Cotiz. AR$</label>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  placeholder="$0"
+                                <FormulaNumericInput
+                                  variant="field"
+                                  currencyPrefix="$"
+                                  maxDecimals={2}
+                                  placeholder="$0 o =100+25"
                                   value={it.supplier_quoted_price}
-                                  onChange={(e) => handleItemChange(idx, 'supplier_quoted_price', e.target.value)}
+                                  onChange={(val) => handleItemChange(idx, 'supplier_quoted_price', val)}
                                   className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white font-mono text-right text-xs focus:outline-none focus:border-cyan-500"
                                 />
                               </div>

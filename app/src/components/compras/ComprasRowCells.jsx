@@ -1,5 +1,6 @@
 import { AlertTriangle, Copy } from 'lucide-react'
 import HighlightText from '../HighlightText'
+import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
 import { STATUS_OPTIONS } from '../../lib/comprasConstants'
 import { SIMPLE_STATUS_VALUES, getStatusTextColor } from '../../lib/comprasPedidosHelpers'
 
@@ -57,32 +58,41 @@ export function RowClickNumMenu({ po, rowIndex, onClose, onInsertContext, onDupl
   )
 }
 
-export function MaterialInlineEditor({ po, inlineEdit, setInlineEdit, onSave }) {
+export function MaterialInlineEditor({ po, materials = [], inlineEdit, setInlineEdit, onSave }) {
   const clear = () => setInlineEdit({ orderId: null, field: null, value: '', obsValue: '' })
+  const commit = () => onSave(po.id, inlineEdit.value, inlineEdit.obsValue, inlineEdit.selectedMaterial || null)
   const handleKey = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      onSave(po.id, inlineEdit.value, inlineEdit.obsValue)
+      commit()
     } else if (e.key === 'Escape') {
       clear()
     }
   }
   return (
     <div
-      className="bg-slate-950 border-2 border-cyan-400 rounded-lg p-2 space-y-1.5 shadow-2xl min-w-[220px] z-30 text-left"
+      className="bg-slate-950 border-2 border-cyan-400 rounded-lg p-2 space-y-1.5 shadow-2xl min-w-[240px] z-30 text-left"
       onClick={(e) => e.stopPropagation()}
+      onKeyDown={handleKey}
     >
       <div>
         <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Material</label>
-        <input
-          type="text"
-          list="compras-materials-datalist"
+        <CanonicalMaterialPicker
+          materials={materials}
+          value={inlineEdit.materialId ?? po.material_id ?? ''}
+          initialText={inlineEdit.value ?? ''}
+          compact
           autoFocus
-          value={inlineEdit.value}
-          onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-          onKeyDown={handleKey}
-          placeholder="Nombre del material..."
-          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-semibold"
+          allowFreeText
+          placeholder="Buscar material o escribir nuevo..."
+          onChange={(matId, mat) => {
+            setInlineEdit((prev) => ({
+              ...prev,
+              value: mat?.name ?? '',
+              materialId: matId || null,
+              selectedMaterial: mat?.id ? mat : null
+            }))
+          }}
         />
       </div>
       <div>
@@ -91,7 +101,6 @@ export function MaterialInlineEditor({ po, inlineEdit, setInlineEdit, onSave }) 
           type="text"
           value={inlineEdit.obsValue ?? ''}
           onChange={(e) => setInlineEdit({ ...inlineEdit, obsValue: e.target.value })}
-          onKeyDown={handleKey}
           placeholder="Ej: son para juan..."
           className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
         />
@@ -100,7 +109,7 @@ export function MaterialInlineEditor({ po, inlineEdit, setInlineEdit, onSave }) 
         <span className="text-slate-500">Enter: guardar</span>
         <button
           type="button"
-          onClick={() => onSave(po.id, inlineEdit.value, inlineEdit.obsValue)}
+          onClick={commit}
           className="px-2 py-0.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded text-[10px] cursor-pointer"
         >
           Guardar

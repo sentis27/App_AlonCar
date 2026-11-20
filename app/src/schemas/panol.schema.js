@@ -46,6 +46,8 @@ export const InventoryTransactionSchema = z
     voucher_number: z.string().nullable().optional(),
     notes: z.string().nullable().optional(),
     transaction_date: z.string().nullable().optional(),
+    created_at: z.string().nullable().optional(),
+    cell_formulas: z.record(z.string(), z.string()).nullable().optional(),
     is_deletion_requested: z.boolean().optional(),
     deletion_requested_at: z.string().nullable().optional(),
     deletion_requested_by: z.string().nullable().optional(),

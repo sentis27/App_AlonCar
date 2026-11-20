@@ -9,6 +9,7 @@ import {
   Lock
 } from 'lucide-react'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 const SHEETS = [
   { id: 'materiales', label: 'MATERIALES', icon: Package },
@@ -87,15 +88,19 @@ export function CostSheetHeaderBar({
 
         {/* Indicador cromático inequívoco: Costo General (Cian) vs Costo por OT (Violeta) */}
         <span
-          className={`px-2.5 py-1 rounded-full text-[10.5px] font-black uppercase tracking-wider border ${
+          className={`px-2.5 py-1 rounded-full text-[10.5px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
             isGeneral
               ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/50'
               : 'bg-violet-500/25 text-violet-200 border-violet-400/50'
           }`}
+          title={!isGeneral ? (activeOt?.canonicalTooltip || activeOtDisplay) : undefined}
         >
-          {isGeneral
-            ? 'Vista: Costos Generales (Buque)'
-            : `Vista: Costos por O.T. (${activeOtDisplay})`}
+          {isGeneral ? 'Vista: Costos Generales (Buque)' : (
+            <>
+              <span>Vista O.T.:</span>
+              <CanonicalOtBadge wo={activeOt?.wo || null} otNumber={activeOt?.otNumber} otTitle={activeOt?.title} tooltipOverride={activeOt?.canonicalTooltip || ''} variant="compact" className="max-w-[220px]" />
+            </>
+          )}
         </span>
       </div>
 
@@ -134,6 +139,7 @@ export function CostSheetHeaderBar({
           <select
             value={activeOtId || ''}
             onChange={(e) => onSelectOt(e.target.value)}
+            title={activeOt?.canonicalTooltip || activeOtDisplay}
             className="bg-slate-950 border border-violet-500/40 rounded-lg px-2 py-1 text-xs font-semibold text-violet-100 outline-none"
           >
             {otRows.map((o) => (
@@ -158,7 +164,8 @@ export function ReadOnlyGridRibbon({
   entityName = 'registros',
   exportRows = [],
   exportFilename = 'export_solo_lectura',
-  exportColumns = []
+  exportColumns = [],
+  extraActions = null
 }) {
   const handleExport = () => {
     exportToSpreadsheet({
@@ -178,6 +185,7 @@ export function ReadOnlyGridRibbon({
       </div>
 
       <div className="flex items-center gap-2.5">
+        {extraActions}
         <button
           type="button"
           onClick={handleExport}

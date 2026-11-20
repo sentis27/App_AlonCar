@@ -95,6 +95,7 @@ export default function ComprasPedidosPanel(props) {
           suppliers={suppliers}
           ships={ships}
           workOrders={workOrders}
+          workItems={workItems}
           documents={documents}
           searchQuery={filters.searchQuery}
           viewMode={viewMode}

@@ -22,14 +22,8 @@ export async function fetchLaborData() {
     laborLogsRepository.listLaborLogs(),
     shipsRepository.listShips({ select: 'id, name, status, current_location, is_active' }),
     shipStaysRepository.listStays({ select: 'id, ship_id, location, start_date, end_date' }),
-    workOrdersRepository.listWorkOrders({
-      select: 'id, ot_number, title, ship_id, status, work_type',
-      orderBy: [{ column: 'ot_number', ascending: true }],
-    }),
-    workItemsRepository.listWorkItems({
-      select: 'id, work_order_id, contractors, description, status, work_type',
-      orderBy: [],
-    }),
+    workOrdersRepository.listCanonicalWorkOrders(),
+    workItemsRepository.listCanonicalWorkItems(),
     workersRepository.listWorkers({
       select: 'id, name, category, trade, work_group, admin_center, status, can_impute_hours',
       orderBy: [{ column: 'name', ascending: true }],

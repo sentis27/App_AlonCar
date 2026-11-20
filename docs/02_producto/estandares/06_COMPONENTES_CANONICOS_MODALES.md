@@ -45,3 +45,12 @@ Para garantizar curva de aprendizaje cero y reutilización real de código, todo
   - `OrderFormModal` en Compras
   - `WorkItemModal` en Obras / Terceros
 * **Permite revisar y modificar en bloque:** Buque, OT, contratista, fecha, renglones de materiales/servicios, cantidades, centro de costo, notas y adjuntos.
+
+---
+
+## 5. Estándar Universal de Menús de Carga Zero-Scroll (`CanonicalStepperModal` + `StepHelpBadge`)
+* **Ubicación:** `app/src/components/canonical/CanonicalStepperModal.jsx`, `app/src/components/canonical/StepHelpBadge.jsx` y `app/src/lib/businessHelpRegistry.js`.
+* **Reglas Duras Inmutables (Aprobadas por Dirección Operativa):**
+  1. **Flujo Vertical Unidireccional a Todo el Ancho (Modelo Pañol):** Todos los pasos se organizan en una sola línea vertical (`1 ➔ 2 ➔ 3 [➔ 4]`) de arriba hacia abajo con franjas horizontales compactas (`max-w-5xl` / `max-w-6xl`), aprovechando el ancho completo de pantalla.
+  2. **Cero Scroll Exterior (Presupuesto Predictivo de Pantalla):** El cuerpo del modal es `overflow-visible` en escritorio (`.alon-modal-zeroscroll`). Jamás puede aparecer una barra de scroll al pasar el mouse por una ayuda o al desplegar un aviso. En cargas multi-renglón (materiales, operarios, subtareas), el scroll queda confinado **exclusivamente** a la lista interna de renglones del Paso 2, manteniendo fijos el Paso 1, el Paso 3 y el pie de botones.
+  3. **Ayudas Contextuales en Portal con Apertura Hacia Arriba (`StepHelpBadge`):** Cada número de paso consulta `businessHelpRegistry.js` (doble uso: UI + Copiloto IA) y renderiza su tarjeta flotante vía `createPortal(..., document.body)`. En el último paso (`isLast={true}`) o cuando falta margen inferior, la tarjeta se despliega **hacia arriba (`bottom`)** con 0 px de expansión del modal y sin tooltip nativo blanco que tape la lectura.

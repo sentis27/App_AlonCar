@@ -5,6 +5,7 @@ import { normalizeText } from '../../lib/tradesCatalog.js'
 import { getRowWorkerPickerState, buildCrewRubroOptions } from '../../lib/laborRowOptions.js'
 import { isMergedWorkOrder } from '../../lib/workOrderUnificationEngine.js'
 import LaborSearchableSelect from './LaborSearchableSelect.jsx'
+import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 
 export default function LaborCrewRow({
   row,
@@ -181,18 +182,16 @@ export default function LaborCrewRow({
                 </option>
               ))}
             </select>
-            <select
-              value={row.work_order_id || selectedWorkOrderId}
-              onChange={(e) => onUpdateRow(row.id, 'work_order_id', e.target.value)}
-              className="w-full bg-slate-900 border border-purple-500/40 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none"
-            >
-              <option value="" className="text-amber-300">-- ⚠️ OT en blanco --</option>
-              {rowEnabledWorkOrders.map(wo => (
-                <option key={wo.id} value={wo.id} className="bg-slate-900 text-white">
-                  {wo.ot_number ? `${wo.ot_number} — ` : ''}{wo.title}
-                </option>
-              ))}
-            </select>
+            <WorkOrderSelectorWithHover
+              value={row.work_order_id || selectedWorkOrderId || ''}
+              onChange={(nextWoId) => onUpdateRow(row.id, 'work_order_id', nextWoId)}
+              availableWos={rowEnabledWorkOrders}
+              ship={ships.find((s) => String(s.id) === String(effectiveRowShipId)) || null}
+              workItems={workItems}
+              allWorkOrders={workOrders}
+              contractorName={selectedContractorGroup}
+              placeholder="-- ⚠️ OT en blanco --"
+            />
           </div>
         )}
 

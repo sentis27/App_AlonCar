@@ -4,6 +4,8 @@ import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
 import MaterialThumbnailZoom from './MaterialThumbnailZoom'
 import { GasDeliveryInlinePanel } from './GasDeliveryInlinePanel'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import FormulaNumericInput from '../canonical/FormulaNumericInput'
+import { evaluateFormulaInput, describeFormula, formatFormulaNumericDisplay } from '../../lib/formulaEngine'
 import { isGasMaterial } from '../../lib/panolConstants'
 import { formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
 
@@ -66,7 +68,19 @@ export default function PanolBasketFastEntryCard({
   const handleFormSubmit = async (e) => {
     e.preventDefault()
     setLocalError('')
-    const validItems = items.filter((it) => it.material_id && Number(it.quantity) > 0)
+    for (const it of items) {
+      if (!it.material_id) continue
+      const parsed = evaluateFormulaInput(it.quantity, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
+      if (!parsed.ok) {
+        setLocalError(`Cantidad o fórmula inválida: ${parsed.error}`)
+        return
+      }
+    }
+    const validItems = items.filter((it) => {
+      if (!it.material_id) return false
+      const parsed = evaluateFormulaInput(it.quantity, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
+      return parsed.ok && (parsed.value || 0) > 0
+    })
     if (validItems.length === 0) { setLocalError('Elegí al menos un material y una cantidad mayor a 0.'); return }
     for (const it of validItems) {
       const mat = materials.find((m) => m.id === it.material_id)
@@ -136,12 +150,18 @@ export default function PanolBasketFastEntryCard({
                   <div className="flex-1 min-w-0">
                     <CanonicalMaterialPicker materials={materials} value={item.material_id} onChange={(id) => updateItem(idx, 'material_id', id)} />
                   </div>
-                  <input
-                    type="number" min="0.01" step={rowIsGas ? '1' : '0.01'} value={item.quantity}
-                    onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
-                    className="w-16 bg-slate-950 border border-slate-700 focus:border-emerald-400 rounded px-2 py-1.5 text-xs font-mono text-white text-center focus:outline-none"
-                    title="Cantidad a retirar"
-                  />
+                  <div className="w-20 shrink-0">
+                    <FormulaNumericInput
+                      variant="field"
+                      maxDecimals={rowIsGas ? 0 : 4}
+                      unitSuffix={mat?.unit_measure || 'un.'}
+                      value={item.quantity}
+                      onChange={(val) => updateItem(idx, 'quantity', val)}
+                      placeholder="Cant."
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-400 rounded px-2 py-1.5 text-xs font-mono text-white text-center focus:outline-none"
+                      title="Cantidad o fórmula (ej. =1*0.5 o +42+45)"
+                    />
+                  </div>
                   <span className="text-[10px] font-mono text-slate-400 w-7 truncate">{mat?.unit_measure || 'un.'}</span>
                   <button
                     type="button" tabIndex={-1}
@@ -210,12 +230,18 @@ export default function PanolBasketFastEntryCard({
             <p className="text-[11px] text-slate-500 italic">Sin retiros cargados hoy en esta canasta.</p>
           ) : (
             <ul className="space-y-1 max-h-36 overflow-y-auto">
-              {basket.todayItems.map((it) => (
-                <li key={it.id} className="text-[11px] flex items-start justify-between gap-2 px-2 py-1 rounded bg-slate-900/80 border border-slate-800/80">
-                  <span className="text-slate-200 truncate"><strong className="text-emerald-300 font-mono mr-1.5">{it.timeLabel}</strong>{it.materialName}</span>
-                  <span className="font-mono font-bold text-white shrink-0">{it.quantity} {it.unitMeasure}</span>
-                </li>
-              ))}
+              {basket.todayItems.map((it) => {
+                const fMeta = describeFormula(it.qtyFormula)
+                return (
+                  <li key={it.id} className="text-[11px] flex items-start justify-between gap-2 px-2 py-1 rounded bg-slate-900/80 border border-slate-800/80" title={fMeta?.tooltipText || undefined}>
+                    <span className="text-slate-200 truncate"><strong className="text-emerald-300 font-mono mr-1.5">{it.timeLabel}</strong>{it.materialName}</span>
+                    <span className="font-mono font-bold text-white shrink-0">
+                      {formatFormulaNumericDisplay(it.quantity, { maxDecimals: 3 })} {it.unitMeasure}
+                      {fMeta?.dimensionsLabel && <span className="ml-1 text-[9px] text-cyan-300">({fMeta.dimensionsLabel})</span>}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
           )}
           {showPreviousDays && basket.previousItems.length > 0 && (

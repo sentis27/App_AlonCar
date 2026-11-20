@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { Download } from 'lucide-react'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
  * Nivel 2 del Comparador de Obras: Matriz comparativa OT a OT (productividad y costo/KG entre buques seleccionados).
@@ -21,6 +22,7 @@ export default function ComparadorNivel2OtTable({
           keyMap.set(matchKey, {
             key: matchKey,
             label: ot.title && ot.title !== 'Sin título' ? `${ot.otNumber} · ${ot.title}` : ot.otNumber,
+            sampleOt: ot,
             byShip: {}
           })
         }
@@ -103,7 +105,16 @@ export default function ComparadorNivel2OtTable({
             ) : (
               otComparisonRows.map((row) => (
                 <tr key={row.key} className="hover:bg-slate-800/40 text-slate-200">
-                  <td className="px-3 py-2 font-semibold text-white whitespace-nowrap">{row.label}</td>
+                  <td className="px-3 py-2 font-semibold text-white whitespace-nowrap max-w-[260px]">
+                    <CanonicalOtBadge
+                      wo={row.sampleOt?.wo || null}
+                      otNumber={row.sampleOt?.otNumber}
+                      otTitle={row.sampleOt?.title}
+                      tooltipOverride={row.sampleOt?.canonicalTooltip || ''}
+                      variant="inline"
+                      className="text-white font-semibold"
+                    />
+                  </td>
                   {selectedShipsData.map((ship) => {
                     const ot = row.byShip[ship.shipId]
                     if (!ot) {

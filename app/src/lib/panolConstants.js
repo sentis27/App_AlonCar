@@ -248,7 +248,7 @@ export const SPREADSHEET_COLUMNS_PANOL = [
   { key: 'ship_id', label: 'Barco / Destino', readOnly: false },
   { key: 'work_order_id', label: 'Orden de Trabajo (OT)', readOnly: false },
   { key: 'material_id', label: 'Material Insumo', readOnly: false },
-  { key: 'quantity_withdrawn', label: 'Cant.', isNumeric: true, readOnly: false },
+  { key: 'quantity_withdrawn', label: 'Cant.', isNumeric: true, type: 'number', allowFormula: true, readOnly: false },
   { key: 'weight_total', label: 'Peso (kg)', isNumeric: true, readOnly: false },
   { key: 'contractor_name', label: 'Operario / Contratista', readOnly: false },
   { key: 'cost_center', label: 'Centro de Costo', readOnly: false },

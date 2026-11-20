@@ -1,5 +1,6 @@
 import React from 'react'
 import HighlightText from '../HighlightText.jsx'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
 import { cleanShipName } from '../../lib/laborConstants.js'
 import { TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants.js'
 import { normalizeLaborWorkType, getWorkTypeBadgeMeta } from '../../lib/laborCargaGridHelpers.js'
@@ -29,6 +30,9 @@ const NUMERIC_HOUR_CELLS = [
 
 export default function LaborLogsTableRow({
   log,
+  ships = [],
+  workOrders = [],
+  workItems = [],
   rowIndex,
   isSelected,
   filterWorker,
@@ -48,8 +52,9 @@ export default function LaborLogsTableRow({
   onFillHandleDoubleClick
 }) {
   const shipDisplayName = cleanShipName(log.ships?.name || log.work_orders?.ships?.name || '') || 'Sin Buque'
-  const otNumber = log.work_orders?.ot_number
-  const otTitle = log.work_orders?.title
+  const resolvedWo = (log.work_order_id && workOrders.find((w) => String(w.id) === String(log.work_order_id))) || log.work_orders || null
+  const resolvedShip = ships.find((s) => String(s.id) === String(log.ship_id || resolvedWo?.ship_id)) || log.ships || log.work_orders?.ships || null
+  const otTitle = resolvedWo?.title || log.work_orders?.title
 
   const isEditingField = (field) => inlineLogEdit.id === log.id && inlineLogEdit.field === field
   const cancelInlineEdit = () => setInlineLogEdit({ id: null, field: null, value: '' })
@@ -125,14 +130,16 @@ export default function LaborLogsTableRow({
         <span className="font-semibold text-white block truncate max-w-[160px]">
           <HighlightText text={shipDisplayName} query={filterWorker} />
         </span>
-        {log.work_order_id ? (
-          <span className="text-[11px] text-slate-400 block truncate max-w-[160px]">
-            {otNumber ? <strong className="text-cyan-300 font-mono mr-1"><HighlightText text={otNumber} query={filterWorker} /></strong> : null}
-            <HighlightText text={otTitle || 'OT'} query={filterWorker} />
-          </span>
-        ) : (
-          <span className="text-[10px] text-amber-400 font-bold">⚠️ Sin OT (Doble clic)</span>
-        )}
+        <CanonicalOtBadge
+          wo={log.work_order_id ? resolvedWo : null}
+          ship={resolvedShip}
+          workItems={workItems}
+          workOrders={workOrders}
+          searchQuery={filterWorker}
+          variant="compact"
+          sinOtLabel="Sin OT (Doble clic)"
+          className="text-[11px] text-slate-400 max-w-[165px]"
+        />
       </LaborInlineCell>
 
       <LaborInlineCell

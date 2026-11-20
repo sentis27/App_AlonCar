@@ -45,6 +45,9 @@ import {
 import { getEnabledWorkersAndContractors } from '../../lib/allocationEngine.js'
 import { deduplicateWorkOrdersWithScope } from '../../lib/workOrdersConstants.js'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
+import FormulaNumericInput from '../canonical/FormulaNumericInput.jsx'
+import { evaluateFormulaInput, getEditableCellInitialValue } from '../../lib/formulaEngine.js'
 
 // ----------------------------------------------------------------------------
 // COMPONENTE AUXILIAR: DESPLEGABLE DE CONTRATISTAS CON BÚSQUEDA REACTIVA
@@ -258,8 +261,9 @@ export function TercerosModalsContainer({
       const sNum = editingService.supplier_remito_number || (['RMO', 'RPF'].includes(editingService.voucher_type) ? editingService.voucher_number || '' : '')
 
       const rate = getDollarRateForDate(editingService.entry_date || editingService.service_date, macroVariables) || editingService.usd_rate || 1500
-      const ars = editingService.amount_ars !== null ? editingService.amount_ars : ''
-      const usd = rate > 0 && ars ? Number((parseFloat(ars) / rate).toFixed(2)) : (editingService.amount_usd || 0)
+      const numericArs = editingService.amount_ars !== null ? Number(editingService.amount_ars) : 0
+      const ars = getEditableCellInitialValue(editingService, 'amount_ars', editingService.amount_ars !== null ? editingService.amount_ars : '')
+      const usd = rate > 0 && numericArs ? Number((numericArs / rate).toFixed(2)) : (editingService.amount_usd || 0)
 
       setFormData({
         ship_id: editingService.ship_id || '',
@@ -377,7 +381,7 @@ export function TercerosModalsContainer({
         target_voucher_type: 'FCR',
         new_voucher_number: '',
         voucher_date: new Date().toISOString().split('T')[0],
-        final_amount_ars: evolvingService.amount_ars !== null ? evolvingService.amount_ars : '',
+        final_amount_ars: getEditableCellInitialValue(evolvingService, 'amount_ars', evolvingService.amount_ars !== null ? evolvingService.amount_ars : ''),
         evolution_notes: `Evolución de ${evolvingService.voucher_type} a Factura oficial respaldatoria.`
       })
     }
@@ -759,14 +763,14 @@ export function TercerosModalsContainer({
                             Importe AR$ <span className="text-rose-400">*</span>
                           </label>
                           <div className="relative">
-                            <input
-                              type="number"
-                              step="any"
-                              placeholder="0.00"
+                            <FormulaNumericInput
+                              variant="field"
+                              currencyPrefix="$"
+                              maxDecimals={2}
+                              placeholder="0.00 o =42+45"
                               disabled={editingService && !canEditAmounts}
                               value={formData.amount_ars}
-                              onChange={(e) => {
-                                const newArs = e.target.value
+                              onChange={(newArs) => {
                                 const { usd_rate, amount_usd } = computeEntryDateOrAmountChange(formData.entry_date, newArs, macroVariables)
                                 setFormData((prev) => ({
                                   ...prev,
@@ -775,13 +779,14 @@ export function TercerosModalsContainer({
                                   amount_usd
                                 }))
                               }}
+                              title="Monto en pesos o fórmula (=42+45, +42+45)"
                               className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-2.5 pr-7 py-1.5 text-white font-mono font-bold text-xs focus:outline-none focus:border-amber-400 disabled:opacity-50"
                             />
                             {editingService && !canEditAmounts && (
                               <Lock className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2" title="Edición de montos bloqueada" />
                             )}
                           </div>
-                          <span className="text-[10px] text-slate-500 block">Monto en pesos</span>
+                          <span className="text-[10px] text-slate-500 block">Monto en pesos (acepta =42+45 o +42+45)</span>
                         </div>
                       </div>
 
@@ -792,9 +797,13 @@ export function TercerosModalsContainer({
                             Cotiz. Dólar Intocable: ${Number(formData.usd_rate).toLocaleString('es-AR')}
                           </span>
                           <span className="text-[10px] text-slate-400 font-mono block">
-                            {formData.amount_ars && formData.usd_rate > 0
-                              ? `$${Number(formData.amount_ars).toLocaleString('es-AR')} ÷ $${formData.usd_rate}`
-                              : 'Calculado automáticamente según fecha'}
+                            {(() => {
+                              const parsed = evaluateFormulaInput(formData.amount_ars, { allowNegative: false, maxDecimals: 2, emptyValue: 0 })
+                              const arsNum = parsed.ok ? (parsed.value || 0) : 0
+                              return arsNum > 0 && formData.usd_rate > 0
+                                ? `$${arsNum.toLocaleString('es-AR')} ÷ $${formData.usd_rate}`
+                                : 'Calculado automáticamente según fecha'
+                            })()}
                           </span>
                         </div>
                         <div className="text-right">
@@ -929,12 +938,14 @@ export function TercerosModalsContainer({
                   <label className="font-bold text-slate-300 text-[11px]">
                     Monto Final Facturado AR$
                   </label>
-                  <input
-                    type="number"
-                    step="any"
+                  <FormulaNumericInput
+                    variant="field"
+                    currencyPrefix="$"
+                    maxDecimals={2}
                     disabled={!canEditAmounts}
                     value={evolutionForm.final_amount_ars}
-                    onChange={(e) => setEvolutionForm((prev) => ({ ...prev, final_amount_ars: e.target.value }))}
+                    onChange={(val) => setEvolutionForm((prev) => ({ ...prev, final_amount_ars: val }))}
+                    placeholder="Monto final o =42+45"
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono font-bold text-xs focus:outline-none disabled:opacity-50"
                   />
                 </div>
@@ -1000,9 +1011,17 @@ export function TercerosModalsContainer({
                 <p className="font-bold text-slate-200">
                   {auditingService.contractor_name} — <span className="text-cyan-400">{auditingService.voucher_type}</span>
                 </p>
-                <p className="text-slate-400">
-                  Buque: {shipMap.get(auditingService.ship_id)?.name} | OT: {otMap.get(auditingService.work_order_id)?.ot_number || 'S/N'}
-                </p>
+                <div className="text-slate-400 flex items-center gap-1.5 flex-wrap">
+                  <span>Buque: {shipMap.get(auditingService.ship_id)?.name || 'Sin Buque'} |</span>
+                  <CanonicalOtBadge
+                    wo={otMap.get(auditingService.work_order_id) || null}
+                    ship={shipMap.get(auditingService.ship_id) || null}
+                    workItems={workItems}
+                    workOrders={workOrders}
+                    variant="inline"
+                    className="text-xs"
+                  />
+                </div>
                 {auditingService.direct_observations && (
                   <p className="text-slate-500 text-[11px] italic">
                     "{auditingService.direct_observations}"

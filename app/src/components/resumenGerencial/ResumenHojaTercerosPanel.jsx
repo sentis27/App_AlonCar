@@ -14,6 +14,7 @@ import {
   filterResumenThirdPartyRows
 } from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
  * Hoja Solo Lectura: TERCEROS (TERCEROS GENERAL / TERCEROS POR O.T).
@@ -50,6 +51,7 @@ export default function ResumenHojaTercerosPanel({
   }, [initialKpiFilter])
 
   const shipId = ship?.id || null
+  const otRowMap = useMemo(() => new Map(otRows.map((o) => [o.id, o])), [otRows])
   const scopedBaseRows = useMemo(
     () => scopeResumenRows(thirdPartyRows, { shipId, costScope, activeOtId }),
     [thirdPartyRows, shipId, costScope, activeOtId]
@@ -241,8 +243,8 @@ export default function ResumenHojaTercerosPanel({
                   <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
                     <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
                     <td className="px-2.5 py-1.5 whitespace-nowrap font-mono">{r.date || '—'}</td>
-                    <td className="px-2.5 py-1.5 font-mono text-cyan-300 font-semibold max-w-[200px] truncate" title={r.otLabel || r.otNumber}>
-                      {r.otLabel || (r.otTitle ? `${r.otNumber} · ${r.otTitle}` : r.otNumber)}
+                    <td className="px-2.5 py-1.5 max-w-[205px]">
+                      <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
                     </td>
                     <td className="px-2.5 py-1.5 font-medium text-white truncate max-w-[190px]">
                       {r.contractorName}

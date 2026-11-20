@@ -36,6 +36,14 @@ export function filterCanonicalMaterials(materials = [], rawQuery = '', limit = 
   return [...startsWithList, ...includesList].slice(0, limit)
 }
 
+export function formatCanonicalOtNumberLabel(otNumber = '', { compact = false } = {}) {
+  const raw = String(otNumber || '').trim()
+  if (!raw) return ''
+  if (/^OT\b/i.test(raw)) return raw
+  if (raw.startsWith('#')) return compact ? raw : `OT ${raw}`
+  return compact ? `#${raw}` : `OT #${raw}`
+}
+
 /**
  * Resuelve el texto, código y tooltip flotante obligatorio de cualquier Orden de Trabajo (OT).
  * Garantiza que nunca se renderice una OT sin su descripción enriquecida al pasar el mouse.
@@ -49,13 +57,17 @@ export function buildCanonicalOtBadgeData({
   otTitle = '',
   tooltipOverride = '',
 } = {}) {
-  const hasWo = Boolean(wo || otNumber || otTitle)
+  const rawNum = String(otNumber || '').trim()
+  const rawTitle = String(otTitle || '').trim()
+  const isPlaceholderNum = !rawNum || /^(?:sin\s*ot|sin_ot|s\/n|—|-)$/i.test(rawNum)
+  const isPlaceholderTitle = !rawTitle || /^(?:sin\s*ot|sin\s*t[ií]tulo|sin\s*orden)/i.test(rawTitle)
+  const hasWo = Boolean(wo || !isPlaceholderNum || !isPlaceholderTitle)
   const resolvedNumber = wo
     ? (wo.ot_number || wo.order_number || wo.id?.slice(0, 4) || '')
-    : (otNumber || '')
+    : (isPlaceholderNum ? '' : rawNum)
   const resolvedTitle = wo
     ? (wo.title || wo.description || '')
-    : (otTitle || '')
+    : (isPlaceholderTitle ? '' : rawTitle)
 
   let tooltip = tooltipOverride
   if (!tooltip) {
@@ -63,7 +75,8 @@ export function buildCanonicalOtBadgeData({
       tooltip = formatWorkOrderTooltipCanonical(wo, ship, workItems, workOrders)
     } else if (hasWo) {
       const shipLabel = ship?.name ? `\nBuque / Destino: ${ship.name}` : ''
-      tooltip = `OT ${resolvedNumber ? `#${resolvedNumber}: ` : ''}${resolvedTitle}${shipLabel}`.trim()
+      const numLabel = resolvedNumber ? `${formatCanonicalOtNumberLabel(resolvedNumber)}: ` : ''
+      tooltip = `${numLabel}${resolvedTitle}${shipLabel}`.trim()
     } else {
       tooltip = '(⚠️ Sin OT asignada)'
     }

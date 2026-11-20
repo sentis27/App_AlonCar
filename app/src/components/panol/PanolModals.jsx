@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { normalizeText } from '../../lib/allocationEngine'
 import { isGasMaterial } from '../../lib/panolConstants'
+import { PANOL_QUICK_PURCHASE_STEP_HELP, PANOL_GAS_CONTRACTOR_STEP_HELP } from '../../lib/businessHelpRegistry'
+import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
 import { MaterialAutocompleteInput } from './MaterialAutocompleteInput.jsx'
 import MultiWithdrawalModal from './MultiWithdrawalModal.jsx'
 import { GasFinalReturnModal } from './GasFinalReturnModal.jsx'
@@ -66,90 +68,57 @@ export function QuickPurchaseModal({ material, initialQuantity, initialUrgency =
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-cyan-500/50 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden font-sans flex flex-col">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
-          <div className="flex items-center gap-2 text-cyan-300 font-black text-sm">
-            <ShoppingCart className="w-5 h-5 text-cyan-400" />
-            <span>PEDIDO DIRECTO A COMPRAS</span>
-          </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white cursor-pointer">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-4 space-y-3.5 text-xs">
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={onClose}
+      maxWidthClass="max-w-3xl"
+      icon={<ShoppingCart className="w-5 h-5 text-cyan-400" />}
+      title="PEDIDO DIRECTO A COMPRAS"
+      onSubmit={handleSubmit}
+      footerLeft={
+        <button type="button" onClick={onClose} className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" disabled={isSubmitting} className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-600/30 disabled:opacity-50">
+          <ShoppingCart className="w-3.5 h-3.5 stroke-[2.5]" />
+          <span>{isSubmitting ? 'Enviando...' : 'Confirmar Pedido a Compras'}</span>
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={PANOL_QUICK_PURCHASE_STEP_HELP[1]} title="MATERIAL Y DESTINO EN COMPRAS">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+          <div className="sm:col-span-2">
             <span className="text-[10px] text-slate-500 uppercase font-mono font-bold block">Material / Insumo Requerido</span>
             <span className="font-bold text-white text-sm block truncate">{material?.name}</span>
-            <span className="text-[11px] text-cyan-400 font-mono">Unidad de medida: {material?.unit_measure || 'un.'}</span>
+            <span className="text-[11px] text-cyan-400 font-mono">Unidad oficial: {material?.unit_measure || 'un.'}</span>
           </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Cantidad a Pedir</label>
-              <input
-                type="number"
-                min="0.1"
-                step="any"
-                autoFocus
-                required
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="1"
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Nivel de Urgencia</label>
-              <select
-                value={urgency}
-                onChange={(e) => setUrgency(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400"
-              >
-                <option value="SIN_APURO">Sin Apuro</option>
-                <option value="URGENTE">⚠️ Urgente</option>
-                <option value="BLOQUEANTE">🚨 Bloqueante</option>
-              </select>
-            </div>
+          <div className="text-[11px] text-slate-300 space-y-0.5 sm:border-l sm:border-slate-800 sm:pl-3">
+            <div><span className="text-slate-400">Destino:</span> <strong className="text-white">Stock Pañol</strong></div>
+            <div><span className="text-slate-400">Estado:</span> <strong className="font-mono text-cyan-300">PEDIR</strong></div>
+            <div><span className="text-slate-400">Fecha:</span> <span className="font-mono">{today}</span></div>
           </div>
+        </div>
+      </CanonicalStepperStep>
 
-          <div className="p-2.5 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-[11px] text-slate-300 space-y-0.5">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Destino:</span>
-              <span className="font-semibold text-white">Astillero / Stock Pañol</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Estado inicial en Compras:</span>
-              <span className="font-mono font-bold text-cyan-300">PEDIR</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Fecha de pedido:</span>
-              <span className="font-mono text-slate-300">{today}</span>
-            </div>
+      <CanonicalStepperStep step={2} helpEntry={PANOL_QUICK_PURCHASE_STEP_HELP[2]} title="CANTIDAD Y URGENCIA" isLast={true}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Cantidad a Pedir ({material?.unit_measure || 'un.'})</label>
+            <input type="number" min="0.1" step="any" autoFocus required value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="1" className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-cyan-400" />
           </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-600/30 disabled:opacity-50"
-            >
-              <ShoppingCart className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>{isSubmitting ? 'Enviando...' : 'Confirmar Pedido a Compras'}</span>
-            </button>
+          <div>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Nivel de Urgencia</label>
+            <select value={urgency} onChange={(e) => setUrgency(e.target.value)} className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400">
+              <option value="SIN_APURO">Sin Apuro</option>
+              <option value="URGENTE">⚠️ Urgente</option>
+              <option value="BLOQUEANTE">🚨 Bloqueante</option>
+            </select>
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 
@@ -252,153 +221,82 @@ export function GasMovementModal({ operationType, materials, suppliers, ships, w
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl p-5 space-y-4 text-xs font-sans">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-          <div className="flex items-center gap-2 text-white font-black">
-            <Flame className="w-5 h-5 text-amber-400" />
-            <span>MOVIMIENTO DE TUBOS DE GAS</span>
-          </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">✕</button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={onClose}
+      maxWidthClass="max-w-5xl"
+      icon={<Flame className="w-5 h-5 text-amber-400" />}
+      title="MOVIMIENTO DE TUBOS DE GAS (CONTRATISTAS)"
+      onSubmit={handleSubmit}
+      footerLeft={
+        <button type="button" onClick={onClose} className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" className="px-5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black cursor-pointer shadow-lg shadow-amber-600/30">
+          Guardar Movimiento
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={PANOL_GAS_CONTRACTOR_STEP_HELP[1]} title="OPERACIÓN, CONTRATISTA Y BUQUE">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Tipo de Operación Canónica</label>
-            <select
-              value={opType}
-              onChange={(e) => setOpType(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-amber-400 font-bold focus:outline-none focus:border-cyan-400"
-            >
-              <option value="PRIMERA_ENTREGA">1. Primera Entrega (+1 deuda contratista, -1 lleno pañol)</option>
-              <option value="RECAMBIO_1X1">2. Recambio 1x1 con Cruce (+1 vacío marca A, -1 lleno marca B)</option>
-              <option value="DEVOLUCION_FINAL">3. Devolución Final (-1 deuda contratista, +1 vacío pañol)</option>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Tipo de Operación Canónica</label>
+            <select value={opType} onChange={(e) => setOpType(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-amber-400 font-bold focus:outline-none focus:border-cyan-400">
+              <option value="PRIMERA_ENTREGA">1. Primera Entrega (+1 deuda, -1 lleno)</option>
+              <option value="RECAMBIO_1X1">2. Recambio 1x1 con Cruce (+1 vacío, -1 lleno)</option>
+              <option value="DEVOLUCION_FINAL">3. Devolución Final (-1 deuda, +1 vacío)</option>
             </select>
           </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Gas / Tubo</label>
-              <select
-                value={materialId}
-                onChange={(e) => setMaterialId(e.target.value)}
-                required
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-              >
-                <option value="">Seleccionar Gas...</option>
-                {materials.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Contratista</label>
-              <input
-                type="text"
-                required
-                placeholder="Ej: TANO, BOLTRI..."
-                value={contractorName}
-                onChange={(e) => setContractorName(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white uppercase focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Proveedor Marca Entregada</label>
-              <select
-                value={supplierDeliveredId}
-                onChange={(e) => setSupplierDeliveredId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-              >
-                <option value="">Seleccionar Marca...</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Proveedor Marca Devuelta</label>
-              <select
-                value={supplierReturnedId}
-                onChange={(e) => setSupplierReturnedId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-              >
-                <option value="">Seleccionar Marca...</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Buque / Destino</label>
-              <select
-                value={shipId}
-                onChange={(e) => setShipId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-              >
-                <option value="">(Sin Barco / Astillero)</option>
-                {ships.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Cantidad de Tubos</label>
-              <input
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-          </div>
-
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Observaciones / Trazabilidad</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ej: Tubo de acetileno entregado para corte en grada..."
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400"
-            />
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Contratista <span className="text-rose-400">*</span></label>
+            <input type="text" required placeholder="Ej: TANO, BOLTRI..." value={contractorName} onChange={(e) => setContractorName(e.target.value.toUpperCase())} className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white uppercase focus:outline-none focus:border-cyan-400" />
           </div>
+          <div>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Buque / Destino</label>
+            <select value={shipId} onChange={(e) => setShipId(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400">
+              <option value="">(Sin Barco / Astillero)</option>
+              {ships.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        </div>
+      </CanonicalStepperStep>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-black cursor-pointer shadow-lg shadow-amber-600/30"
-            >
-              Guardar Movimiento
-            </button>
+      <CanonicalStepperStep step={2} helpEntry={PANOL_GAS_CONTRACTOR_STEP_HELP[2]} title="GAS, MARCAS Y CANTIDAD">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+          <div>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Gas / Tubo <span className="text-rose-400">*</span></label>
+            <select value={materialId} onChange={(e) => setMaterialId(e.target.value)} required className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400">
+              <option value="">Seleccionar Gas...</option>
+              {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
           </div>
-        </form>
-      </div>
-    </div>
+          <div>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Marca Entregada</label>
+            <select value={supplierDeliveredId} onChange={(e) => setSupplierDeliveredId(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400">
+              <option value="">Seleccionar Marca...</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Marca Devuelta</label>
+            <select value={supplierReturnedId} onChange={(e) => setSupplierReturnedId(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400">
+              <option value="">Seleccionar Marca...</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Cantidad Tubos</label>
+            <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-400" />
+          </div>
+        </div>
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep step={3} helpEntry={PANOL_GAS_CONTRACTOR_STEP_HELP[3]} title="OBSERVACIONES / TRAZABILIDAD" isLast={true}>
+        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: Tubo de acetileno entregado para corte en grada..." className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400" />
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 

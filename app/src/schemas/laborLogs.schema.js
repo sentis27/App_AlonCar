@@ -30,6 +30,7 @@ export const LaborLogSchema = z
     notes: z.string().nullable().optional(),
     review_reason: z.string().nullable().optional(),
     worker_response: z.string().nullable().optional(),
+    cell_formulas: z.record(z.string(), z.string()).nullable().optional(),
     created_at: z.string().optional(),
   })
   .passthrough()

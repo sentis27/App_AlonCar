@@ -9,6 +9,18 @@
                       radial-gradient(circle at bottom left, rgba(0, 242, 254, 0.1), transparent 40%);
     background-attachment: fixed;
   }
+
+  /* Celdas numéricas limpias estilo planilla: eliminar flechitas nativas (spinners ▲▼) */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }
 
 @layer components {
@@ -78,11 +90,16 @@
      Divide visualmente cada bloque funcional por color y mantiene el pie fijo.
      ========================================================================== */
   .alon-modal-card {
-    @apply w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh];
+    @apply w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh];
+  }
+
+  /* Carcasa Canónica Zero-Scroll (SKL-012 / SKL-019): tamaño amplio predecible sin scrollbar exterior */
+  .alon-modal-zeroscroll {
+    @apply overflow-visible max-h-[94vh];
   }
 
   .alon-modal-header {
-    @apply px-5 py-3 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between shrink-0;
+    @apply px-5 py-3 border-b border-slate-800 bg-slate-950/80 rounded-t-2xl flex items-center justify-between shrink-0;
   }
 
   .alon-modal-body {
@@ -90,7 +107,7 @@
   }
 
   .alon-modal-footer {
-    @apply px-5 py-3 border-t border-slate-800 bg-slate-950/95 flex items-center justify-between gap-3 shrink-0 sticky bottom-0 z-20;
+    @apply px-5 py-3 border-t border-slate-800 bg-slate-950/95 rounded-b-2xl flex items-center justify-between gap-3 shrink-0 sticky bottom-0 z-20;
   }
 
   .alon-chunk-amber {

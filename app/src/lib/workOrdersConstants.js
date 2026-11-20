@@ -646,19 +646,37 @@ export function toUnicodeStrikethrough(text = '') {
 }
 
 /**
+ * Estados terminales/cerrados de una subtarea (`work_items.status`).
+ * Fuente Única de Verdad compartida por tooltips flotantes, tarjetas de alcance e imputación.
+ */
+export const CLOSED_WORK_ITEM_STATUSES = [
+  'Finalizado',
+  'Facturado',
+  'Finalizado costo final de obra',
+  'Desestimado'
+]
+
+export function isClosedWorkItemStatus(status = '') {
+  const norm = String(status || '').trim().toLowerCase()
+  return CLOSED_WORK_ITEM_STATUSES.some((s) => s.toLowerCase() === norm)
+}
+
+/**
  * Formateador Canónico de Tooltip para celdas de Orden de Trabajo en todas las planillas.
  * Despliega la sábana técnica completa para facturación, imputación y control de obra.
- * Aplica tachado Unicode en tareas finalizadas/facturadas preservando la etiqueta de estado sin tachar.
+ * Aplica ❌ + tachado Unicode en tareas cerradas/terminadas preservando [Estado] visible.
  */
 export function formatWorkOrderTooltipCanonical(wo, ship, workItems = [], allWorkOrders = []) {
   if (!wo) return '(⚠️ Sin OT)'
   const scope = getWorkOrderConsolidatedScope(wo, workItems, allWorkOrders)
   const shipName = ship?.name || 'Astillero'
-  const otNum = scope.otNum
+  const otNumStr = String(scope.otNum || '').trim()
+  const otHeaderLabel = /^OT\b/i.test(otNumStr) ? otNumStr : `OT #${otNumStr}`
   const otTitle = scope.otTitle
+  const woStatusTag = wo.status ? ` [${wo.status}]` : ''
 
-  let lines = [
-    `OT #${otNum}: ${otTitle}`,
+  const lines = [
+    `${otHeaderLabel}: ${otTitle}${woStatusTag}`,
     `Buque / Destino: ${shipName}`
   ]
 
@@ -668,8 +686,7 @@ export function formatWorkOrderTooltipCanonical(wo, ship, workItems = [], allWor
   } else {
     lines.push(`Alcance de Obra (${scope.tasks.length} línea${scope.tasks.length > 1 ? 's' : ''}):`)
     scope.tasks.forEach((t) => {
-      const isClosed = t.status === 'Finalizado' || t.status === 'Facturado' || t.status === 'Desestimado'
-      if (isClosed) {
+      if (isClosedWorkItemStatus(t.status)) {
         const lineBody = `L${t.index}: ${t.description} — ${t.contractorsStr} (Jefe: ${t.foreman_name})`
         lines.push(`❌ ${toUnicodeStrikethrough(lineBody)} [${t.status}]`)
       } else {
@@ -706,9 +723,7 @@ export function isWorkOrderActiveForImputation(wo, workItems = [], allWorkOrders
   const activeTasks = scope.tasks.filter((t) => t.status !== 'Desestimado')
   if (activeTasks.length === 0) return false
 
-  const allClosed = activeTasks.every(
-    (t) => t.status === 'Finalizado' || t.status === 'Facturado' || t.status === 'Finalizado costo final de obra'
-  )
+  const allClosed = activeTasks.every((t) => isClosedWorkItemStatus(t.status))
   if (allClosed) return false
 
   return true

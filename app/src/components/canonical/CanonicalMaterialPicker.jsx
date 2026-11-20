@@ -96,6 +96,16 @@ export default function CanonicalMaterialPicker({
     setIsOpen(false)
   }
 
+  const commitFreeText = (rawText) => {
+    const clean = String(rawText || '').trim()
+    if (!clean) return
+    if (onChange) onChange(null, { id: null, name: clean, isFreeText: true })
+    setQuery(clean)
+    setHasTyped(false)
+    setIsEditingText(false)
+    setIsOpen(false)
+  }
+
   const clearSelection = (e) => {
     e.stopPropagation()
     if (onChange) onChange('', null)
@@ -109,34 +119,29 @@ export default function CanonicalMaterialPicker({
 
   const handleKeyDown = (e) => {
     if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      e.stopPropagation()
+      e.preventDefault(); e.stopPropagation()
       if (!isOpen) { setIsOpen(true); setActiveIndex(0); return }
       setActiveIndex((prev) => (matches.length > 0 ? Math.min(prev + 1, matches.length - 1) : 0))
     } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      e.stopPropagation()
+      e.preventDefault(); e.stopPropagation()
       if (!isOpen) { setIsOpen(true); return }
       setActiveIndex((prev) => Math.max(prev - 1, 0))
     } else if (e.key === 'Enter') {
-      e.preventDefault()
-      e.stopPropagation()
       if (isOpen && matches[activeIndex]) {
+        e.preventDefault(); e.stopPropagation()
         commitMaterial(matches[activeIndex])
-      } else if (allowFreeText && query.trim()) {
-        if (onChange) onChange(null, { id: null, name: query.trim() })
-        setIsOpen(false)
-        setIsEditingText(false)
+      } else if (allowFreeText && isOpen && query.trim()) {
+        e.preventDefault(); e.stopPropagation()
+        commitFreeText(query)
+      } else if (!allowFreeText) {
+        e.preventDefault(); e.stopPropagation()
       }
     } else if (e.key === 'Escape') {
-      e.preventDefault()
-      e.stopPropagation()
-      setIsOpen(false)
-      setIsEditingText(false)
+      e.preventDefault(); e.stopPropagation()
+      setIsOpen(false); setIsEditingText(false)
       if (onCancel) onCancel()
     } else if (e.key === 'Tab') {
-      setIsOpen(false)
-      setIsEditingText(false)
+      setIsOpen(false); setIsEditingText(false)
       if (compact && onCancel) onCancel()
     }
   }
@@ -156,15 +161,18 @@ export default function CanonicalMaterialPicker({
             setIsOpen(true)
             setIsEditingText(true)
             if (!compact && selectedMat) setQuery('')
+            else if (allowFreeText && !selectedMat) setQuery(initialText || '')
             setActiveIndex(0)
             e.target.select()
           }}
           onChange={(e) => {
-            setQuery(e.target.value)
+            const nextVal = e.target.value
+            setQuery(nextVal)
             setHasTyped(true)
             setIsEditingText(true)
             setIsOpen(true)
             setActiveIndex(0)
+            if (allowFreeText && onChange) onChange(null, { id: null, name: nextVal, isFreeText: true })
           }}
           onKeyDown={handleKeyDown}
           className={`w-full rounded bg-slate-950 border text-white font-semibold focus:outline-none transition-colors ${
@@ -265,6 +273,15 @@ export default function CanonicalMaterialPicker({
               })
             )}
           </div>
+          {allowFreeText && query.trim() && (
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); commitFreeText(query) }}
+              className="px-3 py-2 bg-slate-900/95 hover:bg-emerald-950/70 border-t border-slate-800 text-left text-[11px] font-bold text-emerald-300 cursor-pointer transition-colors"
+            >
+              ➕ Usar texto nuevo (fuera de catálogo): &ldquo;{query.trim()}&rdquo;
+            </button>
+          )}
         </div>,
         document.body
       )}

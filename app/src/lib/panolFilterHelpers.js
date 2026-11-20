@@ -7,6 +7,7 @@ import { normalizeText } from './allocationEngine.js'
 import { matchesUniversalSearch } from './searchEngine.js'
 import { isPanolTxZeroCost, isBillableShip } from './zeroCostAlertsRules.js'
 import { getLocalDateKey } from './panolBasketsEngine.js'
+import { matchesMaterialQuickType } from './filterThemeConstants.js'
 
 export function isDateInFilterPeriod(dateStr, filterPeriod) {
   if (filterPeriod === 'TODOS') return true
@@ -35,6 +36,7 @@ export function filterPanolTransactions(inventoryTx = [], {
   filterOt = 'TODAS',
   filterContractor = 'TODOS',
   filterCategory,
+  filterMaterialQuick = '',
   searchQuery,
   materials = [],
   ships = [],
@@ -71,6 +73,13 @@ export function filterPanolTransactions(inventoryTx = [], {
       if (filterCategory === 'GASES') {
         if (mat.rubro !== 'GASES' && mat.category !== 'GASES') return false
       } else if (mat.category !== filterCategory) return false
+    }
+    if (filterMaterialQuick) {
+      if (!matchesMaterialQuickType({
+        materialName: mat?.name || '',
+        rubro: mat?.rubro || '',
+        unitMeasure: mat?.unit_measure || ''
+      }, filterMaterialQuick)) return false
     }
     if (searchQuery && searchQuery.trim()) {
       const ship = shipMap.get(t.ship_id)

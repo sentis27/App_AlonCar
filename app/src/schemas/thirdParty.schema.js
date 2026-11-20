@@ -36,6 +36,7 @@ export const ThirdPartyServiceSchema = z
     created_by: z.string().nullable().optional(),
     is_active: z.boolean().optional(),
     closed_at: z.string().nullable().optional(),
+    cell_formulas: z.record(z.string(), z.string()).nullable().optional(),
     created_at: z.string().optional(),
     updated_at: z.string().optional(),
   })

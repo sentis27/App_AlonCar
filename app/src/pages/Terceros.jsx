@@ -13,6 +13,7 @@ import TercerosFilasPanel from '../components/terceros/TercerosFilasPanel'
 import TercerosFichasPanel from '../components/terceros/TercerosFichasPanel'
 import { TercerosModalsContainer } from '../components/terceros/TercerosModals'
 import { fetchTercerosData, insertBlankRowService, deleteServiceService, saveInlineEditService, saveSpreadsheetBatchService } from '../lib/tercerosService.js'
+import { getEditableCellInitialValue } from '../lib/formulaEngine.js'
 import { calculateTercerosKpis, calculateTercerosStats, filterTercerosServices, getSpreadsheetColumnsTerceros, buildTercerosMaps, TERCEROS_CLONE_FIELDS, TERCEROS_PASTE_BASE_FIELDS } from '../lib/tercerosConstants.js'
 import { AlertTriangle, CheckCircle2, Clock, Wrench } from 'lucide-react'
 
@@ -152,7 +153,9 @@ export default function Terceros() {
   const saveInlineEdit = async (serviceId, field, newValue) => {
     setInlineEdit({ id: null, field: null, value: '' })
     const target = services.find((s) => s.id === serviceId)
-    if (!target || target[field] === newValue) return
+    if (!target) return
+    const currentComparable = field === 'amount_ars' ? getEditableCellInitialValue(target, 'amount_ars', target[field] ?? '') : target[field]
+    if (String(currentComparable ?? '') === String(newValue ?? '')) return
     try {
       const res = await saveInlineEditService({ serviceId, field, newValue, services, macroVariables, contractors, actor })
       if (res) { setServices((prev) => prev.map((s) => (s.id === serviceId ? { ...s, [field]: res.cleanedValue, ...res.extraFields } : s))); showFeedback('success', 'Campo actualizado.') }
@@ -174,6 +177,7 @@ export default function Terceros() {
     onCellActivate: (srv, colDef) => {
       if (colDef.key === 'ship_wo') setPickerModal({ isOpen: true, serviceId: srv.id, shipId: srv.ship_id || '', workOrderId: srv.work_order_id || '', contractorName: srv.contractor_name || '' })
       else if (colDef.key === 'amount_ars' && !canEditAmounts) showFeedback('error', 'No tienes permisos para modificar importes.')
+      else if (colDef.key === 'amount_ars') setInlineEdit({ id: srv.id, field: 'amount_ars', value: getEditableCellInitialValue(srv, 'amount_ars', srv.amount_ars || '') })
       else setInlineEdit({ id: srv.id, field: colDef.key, value: srv[colDef.key] || '' })
     },
     onFocusSearch: () => { searchInputRef.current?.focus(); searchInputRef.current?.select() },
@@ -246,7 +250,7 @@ export default function Terceros() {
           </div>
         ) : viewMode === 'filas' ? (
           <TercerosFilasPanel
-            filteredServices={filteredServices} services={services} contractors={contractors} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap}
+            filteredServices={filteredServices} services={services} contractors={contractors} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems}
             searchTerm={searchTerm} canEditAmounts={canEditAmounts} canMutateRows={canMutateRows} activeRolePerspective={activeRolePerspective}
             grid={grid} spreadsheetColumns={spreadsheetColumns} menuTarget={menuTarget} openMenu={openMenu} closeMenu={closeMenu}
             selectedIds={selectedIds} handleSelectAll={() => setSelectedIds(selectedIds.size === filteredServices.length ? new Set() : new Set(filteredServices.map((s) => s.id)))}
@@ -259,7 +263,7 @@ export default function Terceros() {
           />
         ) : (
           <TercerosFichasPanel
-            filteredServices={filteredServices} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} selectedIds={selectedIds}
+            filteredServices={filteredServices} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} selectedIds={selectedIds}
             handleRowClick={(id, idx, e) => { if (!e.target.closest('button, a, input')) toggleRowSelection(id, idx, e.shiftKey) }}
             handleCheckboxToggle={(id, idx, e) => { e.stopPropagation(); toggleRowSelection(id, idx, e.shiftKey) }}
             handleClearSelection={() => { setSelectedIds(new Set()); setLastSelectedIndex(null) }}

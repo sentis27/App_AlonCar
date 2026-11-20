@@ -157,7 +157,8 @@ export function buildMaterialsHoverSummary(materialRows = [], { category = 'MATE
         rubro,
         qty: 0,
         costUsd: 0,
-        weightKg: 0
+        weightKg: 0,
+        cuts: []
       })
     }
 
@@ -165,6 +166,14 @@ export function buildMaterialsHoverSummary(materialRows = [], { category = 'MATE
     bucket.qty = round2(bucket.qty + qty)
     bucket.costUsd = round2(bucket.costUsd + costUsd)
     bucket.weightKg = round2(bucket.weightKg + weightKg)
+    if (row.cutDimensionsLabel || row.qtyFormula) {
+      bucket.cuts.push({
+        dimensionsLabel: row.cutDimensionsLabel || row.qtyFormula,
+        qty,
+        date: row.date || '',
+        notes: row.notes || ''
+      })
+    }
     totalUsd = round2(totalUsd + costUsd)
   }
 

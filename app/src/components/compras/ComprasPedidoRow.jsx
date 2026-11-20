@@ -1,11 +1,14 @@
 import { CheckSquare, Copy, Edit3, Lightbulb, Paperclip, Plus, Square, Trash2, TrendingDown, TrendingUp, Truck } from 'lucide-react'
 import HighlightText from '../HighlightText'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
+import { describeFormula, getStoredCellFormula, formatFormulaNumericDisplay } from '../../lib/formulaEngine'
 import { InlineSupplierPicker } from './ComprasAuxModals'
 import { STATUS_OPTIONS, getSearchMatchMap } from '../../lib/comprasConstants'
 import { FillHandle, MaterialDisplayCell, MaterialInlineEditor, PedidoStatusSelect, RowClickNumMenu } from './ComprasRowCells'
 
 export default function ComprasPedidoRow({
-  po, rowIndex, viewMode, isSelected, suppliers, ships, workOrders, documents, searchQuery,
+  po, rowIndex, viewMode, isSelected, suppliers, materials = [], ships, workOrders, workItems = [], documents, searchQuery,
   isSupervisorOrAdmin, grid, getSpreadsheetCellProps, inlineEdit, setInlineEdit, rowMenuTarget, setRowMenuTarget,
   toggleSelectRow, activateComprasCell, saveInlineEdit, saveInlineMaterialAndObs, handleQuickStatusChange,
   handleCycleUrgency, handleInsertOrderContext, handleDuplicateOrder, handleDeleteOrder,
@@ -95,9 +98,15 @@ export default function ComprasPedidoRow({
 
       <td {...cpShip.domProps} onDoubleClick={() => activateComprasCell(po, 'ship_id')} className={`py-1.5 px-1.5 cursor-pointer ${matchMap.ship ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cpShip.className}`} title="Doble clic para cambiar Buque u Orden de Trabajo">
         <div className="font-semibold text-slate-200 truncate max-w-[105px]" title={shp?.name || 'ASTILLERO'}><HighlightText text={shp?.name || 'ASTILLERO'} query={searchQuery} /></div>
-        <div className="text-[9px] text-slate-400 truncate max-w-[105px]" title={wo?.title || (po.work_order_id ? 'OT' : '⚠️ Sin OT')}>
-          {wo ? <HighlightText text={`${wo.ot_number ? `#${wo.ot_number} ` : ''}${wo.title}`} query={searchQuery} /> : po.work_order_id ? 'OT' : <span className="text-amber-400 font-bold">⚠️ Sin OT</span>}
-        </div>
+        <CanonicalOtBadge
+          wo={wo || null}
+          ship={shp || null}
+          workItems={workItems}
+          workOrders={workOrders}
+          searchQuery={searchQuery}
+          variant="compact"
+          className="text-[9px] text-slate-400 max-w-[115px]"
+        />
         {cpShip.renderHandle && <FillHandle grid={grid} />}
       </td>
 
@@ -108,36 +117,83 @@ export default function ComprasPedidoRow({
 
       <td {...cpMat.domProps} onDoubleClick={() => activateComprasCell(po, 'material_name_raw')} className={`py-1.5 px-1.5 cursor-pointer ${matchMap.material ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cpMat.className}`} title="Doble clic para editar material y observaciones in-situ">
         {inlineEdit.orderId === po.id && inlineEdit.field === 'material_name_raw' ? (
-          <MaterialInlineEditor po={po} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} onSave={saveInlineMaterialAndObs} />
+          <MaterialInlineEditor po={po} materials={materials} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} onSave={saveInlineMaterialAndObs} />
         ) : (
           <MaterialDisplayCell po={po} searchQuery={searchQuery} isSupervisorOrAdmin={isSupervisorOrAdmin} onOpenNewMaterial={onOpenNewMaterial} />
         )}
         {cpMat.renderHandle && <FillHandle grid={grid} />}
       </td>
 
-      <td {...cpQty.domProps} onDoubleClick={() => activateComprasCell(po, 'quantity')} className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono cursor-pointer ${cpQty.className}`} title="Doble clic para editar cantidad">
-        {inlineEdit.orderId === po.id && inlineEdit.field === 'quantity' ? (
-          <input type="number" autoFocus value={inlineEdit.value} onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1); if (e.key === 'Escape') clearInline() }} onBlur={() => saveInlineEdit(po.id, 'quantity', Number(inlineEdit.value) || 1)} className="w-16 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-right text-[11px] text-white focus:outline-none font-mono" />
-        ) : (
-          <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all font-mono inline-block text-right">
-            <span className="font-bold text-white">{po.quantity}</span> <span className="text-[9px] text-slate-500">{po.unit_measure || 'un.'}</span>
-          </div>
-        )}
-        {cpQty.renderHandle && <FillHandle grid={grid} />}
-      </td>
+      {(() => {
+        const qtyFormula = getStoredCellFormula(po, 'quantity')
+        const qtyMeta = describeFormula(qtyFormula)
+        return (
+          <td
+            {...cpQty.domProps}
+            onDoubleClick={() => activateComprasCell(po, 'quantity')}
+            className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono cursor-pointer ${cpQty.className}`}
+            title={qtyMeta?.tooltipText || 'Doble clic para editar cantidad (acepta =42+45 o +1*0.5)'}
+          >
+            <FormulaCellCornerMark formula={qtyFormula} />
+            {inlineEdit.orderId === po.id && inlineEdit.field === 'quantity' ? (
+              <FormulaNumericInput
+                variant="cell"
+                autoFocus
+                maxDecimals={4}
+                emptyValue={1}
+                unitSuffix={po.unit_measure || 'un.'}
+                value={inlineEdit.value}
+                onChange={(val) => setInlineEdit({ ...inlineEdit, value: val })}
+                onCommit={(rawVal) => saveInlineEdit(po.id, 'quantity', rawVal)}
+                onCancel={clearInline}
+                className="w-20 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-right text-[11px] text-white focus:outline-none font-mono"
+              />
+            ) : (
+              <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all font-mono inline-block text-right">
+                <span className="font-bold text-white">{formatFormulaNumericDisplay(po.quantity, { maxDecimals: 3 })}</span>{' '}
+                <span className="text-[9px] text-slate-500">{po.unit_measure || 'un.'}</span>
+              </div>
+            )}
+            {cpQty.renderHandle && <FillHandle grid={grid} />}
+          </td>
+        )
+      })()}
 
       {viewMode === 'completa' && (
         <>
-          <td {...cpQuoted.domProps} onDoubleClick={() => activateComprasCell(po, 'supplier_quoted_price')} className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono cursor-pointer ${cpQuoted.className}`} title="Doble clic para editar $/U cotizado">
-            {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_quoted_price' ? (
-              <input type="number" autoFocus value={inlineEdit.value} onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0); if (e.key === 'Escape') clearInline() }} onBlur={() => saveInlineEdit(po.id, 'supplier_quoted_price', Number(inlineEdit.value) || 0)} className="w-24 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-right text-[11px] text-white focus:outline-none font-mono" />
-            ) : (
-              <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right">
-                {po.supplier_quoted_price ? <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span> : <span className="text-slate-600">—</span>}
-              </div>
-            )}
-            {cpQuoted.renderHandle && <FillHandle grid={grid} />}
-          </td>
+          {(() => {
+            const priceFormula = getStoredCellFormula(po, 'supplier_quoted_price')
+            const priceMeta = describeFormula(priceFormula)
+            return (
+              <td
+                {...cpQuoted.domProps}
+                onDoubleClick={() => activateComprasCell(po, 'supplier_quoted_price')}
+                className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono cursor-pointer ${cpQuoted.className}`}
+                title={priceMeta?.tooltipText || 'Doble clic para editar $/U cotizado (acepta =42+45 o +42+45)'}
+              >
+                <FormulaCellCornerMark formula={priceFormula} />
+                {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_quoted_price' ? (
+                  <FormulaNumericInput
+                    variant="cell"
+                    autoFocus
+                    currencyPrefix="$"
+                    maxDecimals={2}
+                    emptyValue={0}
+                    value={inlineEdit.value}
+                    onChange={(val) => setInlineEdit({ ...inlineEdit, value: val })}
+                    onCommit={(rawVal) => saveInlineEdit(po.id, 'supplier_quoted_price', rawVal)}
+                    onCancel={clearInline}
+                    className="w-24 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-right text-[11px] text-white focus:outline-none font-mono"
+                  />
+                ) : (
+                  <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right">
+                    {po.supplier_quoted_price ? <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span> : <span className="text-slate-600">—</span>}
+                  </div>
+                )}
+                {cpQuoted.renderHandle && <FillHandle grid={grid} />}
+              </td>
+            )
+          })()}
           <td {...cpSys.domProps} className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono ${cpSys.className}`}>
             <div className="text-slate-400">{po.system_unit_price ? `$${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}</div>
             {deltaPct !== null && (

@@ -19,6 +19,14 @@ import HighlightText from '../HighlightText'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../ContractorPickerModal'
 import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
+import {
+  describeFormula,
+  getStoredCellFormula,
+  getEditableCellInitialValue,
+  formatFormulaNumericDisplay
+} from '../../lib/formulaEngine'
 import { SPREADSHEET_COLUMNS_PANOL, PANOL_PASTE_FIELDS } from '../../lib/panolConstants'
 import { formatUnitMeasureShort } from '../../lib/unitMeasureUtils'
 import { getLocalDateKey, formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
@@ -140,12 +148,16 @@ export default function PanolMovimientosPanel({
         return showFeedback('error', 'Solo el Administrador puede cambiar el Centro de Costo.')
       }
       const tx = filteredTransactions.find((t) => t.id === txId)
-      if (grid?.pushUndoAction && tx && tx[field] !== value) {
+      const prevUndoVal =
+        field === 'quantity_withdrawn' && tx
+          ? getEditableCellInitialValue(tx, 'quantity_withdrawn', tx[field])
+          : tx?.[field]
+      if (grid?.pushUndoAction && tx && String(prevUndoVal ?? '') !== String(value ?? '')) {
         grid.pushUndoAction({
           colKey: field,
           colLabel: field,
           actionLabel: 'Edición en celda',
-          previousValues: { [txId]: tx[field] },
+          previousValues: { [txId]: prevUndoVal },
           newValue: value,
           timestamp: Date.now()
         })
@@ -257,6 +269,14 @@ export default function PanolMovimientosPanel({
       if (colDef.key === 'material_id') {
         const matchedMat = materials.find((m) => m.id === row.material_id)
         setInlineEdit({ id: row.id, field: 'material_id', value: matchedMat?.name || '' })
+        return
+      }
+      if (colDef.key === 'quantity_withdrawn') {
+        setInlineEdit({
+          id: row.id,
+          field: 'quantity_withdrawn',
+          value: getEditableCellInitialValue(row, 'quantity_withdrawn', row.quantity_withdrawn ?? '')
+        })
         return
       }
       const currentVal = row[colDef.key]
@@ -569,19 +589,18 @@ export default function PanolMovimientosPanel({
                           title={otTooltip}
                         >
                           {wo ? (
-                            <div className="truncate">
-                              <span className="font-mono text-cyan-300 font-bold bg-cyan-950/60 px-1 py-0.5 rounded border border-cyan-800/50 mr-1.5">
-                                OT #<HighlightText text={wo.order_number || wo.ot_number || wo.id?.slice(0, 4)} query={searchQuery} />
-                              </span>
-                              <span className="text-slate-200 text-xs truncate">
-                                <HighlightText text={wo.title || wo.description} query={searchQuery} />
-                              </span>
-                            </div>
+                            <CanonicalOtBadge
+                              wo={wo}
+                              ship={ship || null}
+                              workItems={workItems}
+                              workOrders={workOrders}
+                              searchQuery={searchQuery}
+                              tooltipOverride={otTooltip}
+                              variant="pill"
+                            />
                           ) : (
                             <div className="flex items-center justify-between gap-1">
-                              <span className="text-amber-400 font-bold font-mono text-[10px]">
-                                ⚠️ Sin OT
-                              </span>
+                              <CanonicalOtBadge wo={null} tooltipOverride={otTooltip} />
                               {allocState.needsOtRequest && (
                                 allocState.isOtRequestPending ? (
                                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shrink-0">
@@ -668,36 +687,44 @@ export default function PanolMovimientosPanel({
                     {/* 6. Cantidad */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'quantity_withdrawn')
+                      const qtyFormula = getStoredCellFormula(tx, 'quantity_withdrawn')
+                      const formulaMeta = describeFormula(qtyFormula)
                       return (
                         <td
                           {...cp.domProps}
-                          onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'quantity_withdrawn', value: String(tx.quantity_withdrawn || 1) })}
+                          onDoubleClick={() =>
+                            setInlineEdit({
+                              id: tx.id,
+                              field: 'quantity_withdrawn',
+                              value: getEditableCellInitialValue(tx, 'quantity_withdrawn', tx.quantity_withdrawn ?? 1)
+                            })
+                          }
                           className={`py-1.5 px-1.5 text-right font-mono font-bold cursor-pointer whitespace-nowrap ${cp.className} ${isDeletionReq ? 'line-through' : 'text-emerald-400'}`}
-                          title="Doble clic para editar cantidad retirada"
+                          title={formulaMeta?.tooltipText || 'Doble clic para editar cantidad (acepta fórmulas =1*0.5 o +42+45)'}
                         >
+                          <FormulaCellCornerMark formula={qtyFormula} />
                           {inlineEdit.id === tx.id && inlineEdit.field === 'quantity_withdrawn' ? (
-                            <input
-                              type="number"
+                            <FormulaNumericInput
+                              variant="cell"
                               autoFocus
-                              step="any"
-                              min="0"
+                              maxDecimals={4}
+                              emptyValue={0}
+                              unitSuffix={mat?.unit_measure || 'un.'}
                               value={inlineEdit.value}
-                              onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onBlur={() => {
-                                handleSaveInlineTx(tx.id, 'quantity_withdrawn', inlineEdit.value)
+                              onChange={(val) => setInlineEdit({ ...inlineEdit, value: val })}
+                              onCommit={(rawVal) => {
+                                handleSaveInlineTx(tx.id, 'quantity_withdrawn', rawVal)
                                 setInlineEdit({ id: null, field: null, value: '' })
                               }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSaveInlineTx(tx.id, 'quantity_withdrawn', inlineEdit.value)
-                                  setInlineEdit({ id: null, field: null, value: '' })
-                                }
-                                if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none w-16 text-right"
+                              onCancel={() => setInlineEdit({ id: null, field: null, value: '' })}
+                              onInvalid={(errMsg) => showFeedback('error', errMsg)}
+                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none w-24 text-right"
                             />
                           ) : (
-                            <span>{tx.quantity_withdrawn} {mat?.unit_measure || 'un.'}</span>
+                            <span>
+                              {formatFormulaNumericDisplay(tx.quantity_withdrawn, { maxDecimals: 3 })}{' '}
+                              {mat?.unit_measure || 'un.'}
+                            </span>
                           )}
                           {cp.renderHandle && (
                             <div

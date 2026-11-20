@@ -12,6 +12,7 @@
  */
 
 import { computeManagerialCostSummary, classifyWithdrawalCost } from './workCostRules.js'
+import { getStoredCellFormula, describeFormula } from './formulaEngine.js'
 import { matchTransactionWorker } from './contractorDeductionsService.js'
 import { getDollarRateForDate } from './tercerosConstants.js'
 import { shipsRepository } from '../repositories/shipsRepository.js'
@@ -37,6 +38,7 @@ import {
 } from './zeroCostAlertsRules.js'
 import { isInvalidEventOrObjectScalar, logBatchPaste, logCellChange, logRowAction } from './auditService.js'
 import { isMergedWorkOrder, isEliminatedWorkOrder } from './workOrderUnificationEngine.js'
+import { formatWorkOrderTooltipCanonical } from './workOrdersConstants.js'
 import {
   ADHOC_METRICS_SETTINGS_KEY,
   ALFA_RATES_SETTINGS_KEY,
@@ -156,7 +158,7 @@ export async function fetchManagerialData() {
       select: 'id, period, year, month, quincena, admin_center, entity_name, rate_oficial_ars, rate_oficial_usd, has_ayudante, rate_ayudante_ars, rate_ayudante_usd, dollar_rate',
     }),
     inventoryTransactionsRepository.listTransactions({
-      select: 'id, material_id, work_order_id, work_item_id, ship_id, worker_id, worker_name, contractor_name, movement_type, quantity_withdrawn, unit_cost_ars_snapshot, unit_cost_usd_snapshot, weight_total, cost_center, voucher_number, notes, transaction_date, is_deletion_requested',
+      select: 'id, material_id, work_order_id, work_item_id, ship_id, worker_id, worker_name, contractor_name, movement_type, quantity_withdrawn, unit_cost_ars_snapshot, unit_cost_usd_snapshot, weight_total, cost_center, voucher_number, notes, transaction_date, created_at, cell_formulas, is_deletion_requested',
       limit: 3000,
     }),
     materialsRepository.listMaterials({
@@ -164,12 +166,12 @@ export async function fetchManagerialData() {
       orderBy: [],
     }),
     purchaseOrdersRepository.listOrders({
-      select: 'id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, unit_measure, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, invoice_number, remito_number, requested_by_name, observations',
+      select: 'id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, unit_measure, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, created_at, cell_formulas, invoice_number, remito_number, requested_by_name, observations',
       orderBy: [{ column: 'order_date', ascending: false }],
       limit: 2000,
     }),
     thirdPartyServicesRepository.listServices({
-      select: 'id, ship_id, work_order_id, work_item_id, contractor_name, trade, voucher_type, voucher_number, invoice_number, supplier_remito_number, budget_number, internal_remito_number, amount_ars, usd_rate, amount_usd, service_date, entry_date, voucher_date, direct_observations, specific_observations, is_active, audit_status, created_at',
+      select: 'id, ship_id, work_order_id, work_item_id, contractor_name, trade, voucher_type, voucher_number, invoice_number, supplier_remito_number, budget_number, internal_remito_number, amount_ars, usd_rate, amount_usd, cell_formulas, service_date, entry_date, voucher_date, direct_observations, specific_observations, is_active, audit_status, created_at',
       orderBy: [{ column: 'service_date', ascending: false }],
     }),
     workersRepository.listWorkers({
@@ -307,11 +309,15 @@ export function enrichMaterialMovements({
       continue
     }
 
+    const qtyFormula = getStoredCellFormula(tx, 'quantity_withdrawn')
+    const formulaMeta = describeFormula(qtyFormula)
+
     rows.push({
       id: `tx_${tx.id}`,
       rawId: tx.id,
       sourceType: 'PANOL_TX',
       date: tx.transaction_date ? String(tx.transaction_date).slice(0, 10) : '',
+      createdAt: tx.created_at ? String(tx.created_at).slice(0, 10) : (tx.transaction_date ? String(tx.transaction_date).slice(0, 10) : ''),
       year: extractYear(tx.transaction_date),
       shipId: resolvedShipId,
       shipName: resolvedShip?.name || 'SIN BUQUE',
@@ -331,6 +337,8 @@ export function enrichMaterialMovements({
       isSafetyReference: classification.referenceOnly,
       isSafetyContractorDeduction: classification.bucket === 'SAFETY_CONTRACTOR_DEDUCTION',
       qty,
+      qtyFormula: qtyFormula || '',
+      cutDimensionsLabel: formulaMeta?.dimensionsLabel || '',
       unitMeasure: mat?.unit_measure || 'un.',
       weightKg: round2(weightKg),
       unitUsd: round2(unitUsd),
@@ -381,11 +389,15 @@ export function enrichMaterialMovements({
     const rawCat = normKey(mat?.category)
     const logicalCategory = rawCat === 'CONSUMIBLES' ? 'CONSUMIBLES' : 'MATERIALES'
 
+    const poQtyFormula = getStoredCellFormula(po, 'quantity')
+    const poFormulaMeta = describeFormula(poQtyFormula)
+
     rows.push({
       id: `po_${po.id}`,
       rawId: po.id,
       sourceType: 'COMPRA_DIRECTA',
       date: dateStr,
+      createdAt: po.created_at ? String(po.created_at).slice(0, 10) : dateStr,
       year: extractYear(poDate),
       shipId: resolvedShipId,
       shipName: resolvedShip?.name || 'SIN BUQUE',
@@ -405,6 +417,8 @@ export function enrichMaterialMovements({
       isSafetyReference: false,
       isSafetyContractorDeduction: false,
       qty,
+      qtyFormula: poQtyFormula || '',
+      cutDimensionsLabel: poFormulaMeta?.dimensionsLabel || '',
       unitMeasure: po.unit_measure || mat?.unit_measure || 'un.',
       weightKg,
       unitUsd: round2(unitUsd),
@@ -861,6 +875,8 @@ export function computeShipManagerialSummary({
 
       return {
         id: wo.id,
+        wo,
+        canonicalTooltip: formatWorkOrderTooltipCanonical(wo, ship, workItems, workOrders),
         otNumber: otNum,
         title: otTitle,
         otLabel: formatOtAnalysisLabel({ id: wo.id, otNumber: otNum, title: otTitle, description: otDesc }),
@@ -884,7 +900,7 @@ export function computeShipManagerialSummary({
   let orphanSummary = null
   if (orphanMats.length > 0 || orphanLabs.length > 0 || orphanTps.length > 0) {
     orphanSummary = {
-      id: 'SIN_OT', otNumber: 'S/OT', title: 'MOVIMIENTOS SIN OT ASIGNADA',
+      id: 'SIN_OT', wo: null, canonicalTooltip: '(⚠️ Sin OT asignada)', otNumber: 'S/OT', title: 'MOVIMIENTOS SIN OT ASIGNADA',
       otLabel: formatOtAnalysisLabel({ id: 'SIN_OT', otNumber: 'S/OT', title: 'MOVIMIENTOS SIN OT ASIGNADA' }),
       description: 'Imputaciones cargadas al buque pendientes de vinculación a una OT', workType: 'HORA', status: 'Pendiente OT',
       unvaluedByOt: computeOtUnvaluedBreakdown({ otId: 'SIN_OT', laborRows: orphanLabs, materialRows: orphanMats, thirdPartyRows: orphanTps }),

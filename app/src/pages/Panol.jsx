@@ -17,6 +17,7 @@ import {
   formatWorkOrderTooltip, filterPanolTransactions, filterPanolMaterials
 } from '../lib/panolConstants'
 import { filterEligiblePersonnel, getContractorEnabledWos, getEnabledWorkersAndContractors } from '../lib/allocationEngine'
+import { exportPlateCutsReport } from '../lib/plateCutsExport'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 const PANOL_REALTIME_TABLES = ['materials', 'inventory_transactions', 'gas_cylinder_movements', 'compliance_alerts', 'ships', 'work_orders', 'work_items', 'workers', 'suppliers', 'material_rubros']
@@ -149,11 +150,34 @@ export default function Panol() {
       filterOt: planillasFilters.filterOt,
       filterContractor: planillasFilters.filterContractor,
       filterCategory: planillasFilters.filterCategory,
+      filterMaterialQuick: planillasFilters.filterMaterialQuick || '',
       searchQuery: planillasFilters.searchQuery,
       materials, ships, workOrders
     }),
     [inventoryTx, planillasFilters, materials, ships, workOrders]
   )
+
+  const handleExportPanolPlateCuts = useCallback(() => {
+    const matMap = new Map(materials.map((m) => [m.id, m]))
+    const shipMap = new Map(ships.map((s) => [s.id, s]))
+    const woMap = new Map(workOrders.map((w) => [w.id, w]))
+    const activeShipName = planillasFilters.filterShip && planillasFilters.filterShip !== 'TODOS'
+      ? (shipMap.get(planillasFilters.filterShip)?.name || 'buque')
+      : 'flota'
+    const enriched = filteredTransactions.map((tx) => {
+      const mat = matMap.get(tx.material_id)
+      const wo = woMap.get(tx.work_order_id)
+      return {
+        ...tx,
+        shipName: shipMap.get(tx.ship_id)?.name || 'SIN BUQUE',
+        otLabel: wo ? `${wo.ot_number || ''} · ${wo.title || ''}`.trim() : 'Sin OT',
+        materialName: mat?.name || 'Chapa / Material',
+        unitMeasure: mat?.unit_measure || 'm²',
+        workerName: tx.worker_name || tx.contractor_name || ''
+      }
+    })
+    exportPlateCutsReport({ rows: enriched, shipName: activeShipName })
+  }, [filteredTransactions, materials, ships, workOrders, planillasFilters.filterShip])
 
   const panolTotals = useMemo(() => calculatePanolTotals(filteredTransactions), [filteredTransactions])
   const clearAllPanolFilters = useCallback(() => {
@@ -219,6 +243,8 @@ export default function Panol() {
           searchQuery={searchQuery} setSearchQuery={(v) => setActiveFilter('searchQuery', v)} searchInputRef={searchInputRef}
           filterPeriod={activeFilters.filterPeriod ?? 'TODOS'} setFilterPeriod={(v) => setActiveFilter('filterPeriod', v)}
           filterCategory={filterCategory} setFilterCategory={(v) => setActiveFilter('filterCategory', v)}
+          filterMaterialQuick={activeFilters.filterMaterialQuick ?? ''} setFilterMaterialQuick={(v) => setActiveFilter('filterMaterialQuick', v)}
+          onExportPlateCuts={handleExportPanolPlateCuts}
           filterShip={activeFilters.filterShip ?? 'TODOS'} setFilterShip={(v) => setActiveFilter('filterShip', v)}
           filterOt={activeFilters.filterOt ?? 'TODAS'} setFilterOt={(v) => setActiveFilter('filterOt', v)}
           filterContractor={activeFilters.filterContractor ?? 'TODOS'} setFilterContractor={(v) => setActiveFilter('filterContractor', v)}

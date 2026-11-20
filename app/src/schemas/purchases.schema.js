@@ -48,6 +48,7 @@ export const PurchaseOrderSchema = z
     courier_dispatched_at: z.string().nullable().optional(),
     courier_worker_id: z.string().uuid().nullable().optional(),
     courier_worker_name: z.string().nullable().optional(),
+    cell_formulas: z.record(z.string(), z.string()).nullable().optional(),
     created_at: z.string().optional(),
     updated_at: z.string().optional(),
   })

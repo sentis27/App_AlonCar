@@ -3,7 +3,7 @@
 > **Propósito**: Catálogo máquina-legible de todas las Skills, sus divisiones,
 > estados y dependencias. Análogo a `divisions.json` de agency-agents.
 >
-> **Última actualización**: 2026-11-13
+> **Última actualización**: 2026-11-20
 >
 > **Versión schema**: 1.2
 
@@ -54,6 +54,7 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | SKL-016 | context-aware-skill-router | governance | transversal | active | ninguno | Meta-protocolo de enrutamiento contextual: activación selectiva de skills según globs y naturaleza de la tarea | transversal/context-aware-skill-router/SKILL.md |
 | SKL-017 | architectural-modularity-auditor | governance | transversal | active | SKL-007\|SKL-009\|SKL-015 | Auditoría arquitectónica profunda: cohesión/acoplamiento (LCOM/CBO), tracker anti-rot, Línea Base por Cuadrantes y Delta Diario pre-commit | transversal/architectural-modularity-auditor/SKILL.md |
 | SKL-018 | behavior-preservation-guard | governance | transversal | active | SKL-007\|SKL-017 | Protocolo anti-regresión para refactors y módulos blindados: Cirugía Mínima, Tabla de Paridad Antes/Después, umbrales por ruta, Componentes Canónicos y auditoría `git diff` | transversal/behavior-preservation-guard/SKILL.md |
+| SKL-019 | piezas-replicables-solucion | governance | transversal | active | SKL-014\|SKL-018 | Diseño orientado a soluciones para piezas transversales: Entrevista Inteligente de Solución pre-código (con sugerencias de datos) + arquitectura en 3 Capas Soldadas (Datos + Reglas + UI) y candado mecánico | transversal/piezas-replicables-solucion/SKILL.md |
 
 ---
 

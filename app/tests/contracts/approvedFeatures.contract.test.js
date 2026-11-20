@@ -23,6 +23,7 @@ import {
 import {
   filterCanonicalMaterials,
   buildCanonicalOtBadgeData,
+  formatCanonicalOtNumberLabel,
   formatCanonicalMaterialStock,
 } from '../../src/lib/canonicalHelpers.js'
 import { buildContractorCostBaskets } from '../../src/lib/panolBasketsEngine.js'
@@ -76,6 +77,11 @@ const COVERED_CONTRACT_IDS = new Set([
   'FL-012',
   'FL-013',
   'FL-014',
+  'FL-015',
+  'FL-016',
+  'FL-017',
+  'FL-018',
+  'FL-019',
 ])
 
 describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', () => {
@@ -350,5 +356,131 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
 
     expect(basketCardSrc).toContain('MaterialThumbnailZoom')
     expect(basketCardSrc).toContain('CanonicalMaterialPicker')
+  })
+
+  it('FL-015: Compras usa CanonicalOtBadge, WorkOrderSelectorWithHover y CanonicalMaterialPicker sin datalist legacy', () => {
+    expect(STATUS_BY_ID.get('FL-015')).toBe('blindado')
+    expect(formatCanonicalOtNumberLabel('OT-104')).toBe('OT-104')
+    expect(formatCanonicalOtNumberLabel('104')).toBe('OT #104')
+    expect(buildCanonicalOtBadgeData({ wo: null, otNumber: 'Sin OT' }).hasWo).toBe(false)
+
+    const tableSrc = readRepoFile('app/src/components/compras/ComprasPedidosTable.jsx')
+    const rowSrc = readRepoFile('app/src/components/compras/ComprasPedidoRow.jsx')
+    const cellsSrc = readRepoFile('app/src/components/compras/ComprasRowCells.jsx')
+    const modalSrc = readRepoFile('app/src/components/compras/OrderFormModal.jsx')
+    const mutSrc = readRepoFile('app/src/hooks/useComprasPedidosMutations.js')
+
+    expect(tableSrc).not.toContain('compras-materials-datalist')
+    expect(rowSrc).toContain('CanonicalOtBadge')
+    expect(cellsSrc).toContain('CanonicalMaterialPicker')
+    expect(cellsSrc).toContain('allowFreeText')
+    expect(modalSrc).toContain('WorkOrderSelectorWithHover')
+    expect(modalSrc).toContain('CanonicalMaterialPicker')
+    expect(modalSrc).toContain('allowFreeText')
+    expect(mutSrc).toContain('material_id:')
+  })
+
+  it('FL-016: Terceros renderiza OTs vía CanonicalOtBadge en grilla, fichas y auditoría', () => {
+    expect(STATUS_BY_ID.get('FL-016')).toBe('blindado')
+    const pageSrc = readRepoFile('app/src/pages/Terceros.jsx')
+    const filasSrc = readRepoFile('app/src/components/terceros/TercerosFilasPanel.jsx')
+    const fichasSrc = readRepoFile('app/src/components/terceros/TercerosFichasPanel.jsx')
+    const modalsSrc = readRepoFile('app/src/components/terceros/TercerosModals.jsx')
+
+    expect(pageSrc).toContain('workOrders={workOrders} workItems={workItems}')
+    expect(filasSrc).toContain('CanonicalOtBadge')
+    expect(fichasSrc).toContain('CanonicalOtBadge')
+    expect(modalsSrc).toContain('CanonicalOtBadge')
+    expect(modalsSrc).toContain('WorkOrderSelectorWithHover')
+  })
+
+  it('FL-017: Horas usa CanonicalOtBadge en vistas/grillas y WorkOrderSelectorWithHover en selectores de OT', () => {
+    expect(STATUS_BY_ID.get('FL-017')).toBe('blindado')
+    const rowSrc = readRepoFile('app/src/components/labor/LaborLogsTableRow.jsx')
+    const dailySrc = readRepoFile('app/src/components/labor/LaborControlDiarioPanel.jsx')
+    const sabanaSrc = readRepoFile('app/src/components/labor/LaborSabanaPanel.jsx')
+    const modalsSrc = readRepoFile('app/src/components/labor/LaborModals.jsx')
+    const cascadeSrc = readRepoFile('app/src/components/labor/LaborCascadeHeader.jsx')
+    const crewRowSrc = readRepoFile('app/src/components/labor/LaborCrewRow.jsx')
+    const clockSrc = readRepoFile('app/src/components/labor/LaborClockAssignSheet.jsx')
+
+    expect(rowSrc).toContain('CanonicalOtBadge')
+    expect(dailySrc).toContain('CanonicalOtBadge')
+    expect(sabanaSrc).toContain('CanonicalOtBadge')
+    expect(modalsSrc).toContain('CanonicalOtBadge')
+    expect(cascadeSrc).toContain('WorkOrderSelectorWithHover')
+    expect(crewRowSrc).toContain('WorkOrderSelectorWithHover')
+    expect(clockSrc).toContain('WorkOrderSelectorWithHover')
+  })
+
+  it('FL-018: Resumen Gerencial usa CanonicalOtBadge con tooltip consolidado en todas sus vistas sin exceder 250L en página', () => {
+    expect(STATUS_BY_ID.get('FL-018')).toBe('blindado')
+    const pageSrc = readRepoFile('app/src/pages/ResumenGerencial.jsx')
+    expect(pageSrc.trimEnd().split(/\r?\n/).length).toBeLessThanOrEqual(250)
+
+    const svcSrc = readRepoFile('app/src/lib/managerialSummaryService.js')
+    expect(svcSrc).toContain('formatWorkOrderTooltipCanonical')
+    expect(svcSrc).toContain('canonicalTooltip:')
+
+    const surfaces = [
+      'app/src/components/resumenGerencial/ResumenOtDetailStrip.jsx',
+      'app/src/components/resumenGerencial/ResumenCostosMobileView.jsx',
+      'app/src/components/resumenGerencial/ResumenMatrizOtsPanel.jsx',
+      'app/src/components/resumenGerencial/ResumenHojaMaterialesPanel.jsx',
+      'app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx',
+      'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
+      'app/src/components/resumenGerencial/BillingRightCostCard.jsx',
+      'app/src/components/resumenGerencial/ComparadorNivel2OtTable.jsx',
+      'app/src/components/resumenGerencial/CostSheetChrome.jsx',
+    ]
+    for (const rel of surfaces) {
+      expect(readRepoFile(rel)).toContain('CanonicalOtBadge')
+    }
+  })
+
+  it('FL-019: Pieza Replicable OT en 3 Capas (Datos Canónicos + Reglas Únicas + UI Pañol/Módulos)', () => {
+    expect(STATUS_BY_ID.get('FL-019')).toBe('blindado')
+
+    // Capa 1: Todos los módulos operativos usan la consulta canónica única de OTs y subtareas
+    const services = [
+      'app/src/services/comprasService.js',
+      'app/src/lib/tercerosService.js',
+      'app/src/services/laborService.js',
+      'app/src/lib/panolService.js',
+      'app/src/lib/shipsService.js',
+      'app/src/services/shipsService.js',
+    ]
+    for (const rel of services) {
+      const src = readRepoFile(rel)
+      expect(src).toContain('listCanonicalWorkOrders')
+      expect(src).toContain('listCanonicalWorkItems')
+    }
+
+    // Capa 2: Tooltip sin doble OT #OT-, con estado de OT y ❌ + tachado en los 4 estados cerrados (con [Estado] visible)
+    const badge = buildCanonicalOtBadgeData({
+      wo: { id: 'wo-3', ot_number: 'OT-3', title: 'CAMBIO CHAPA', status: 'En ejecución' },
+      ship: { id: 's-1', name: 'NONO PASCUAL' },
+      workItems: [
+        { id: 'i1', work_order_id: 'wo-3', description: 'Parche casco', contractors: ['TANO'], foreman_name: 'HUGO', status: 'Finalizado' },
+        { id: 'i2', work_order_id: 'wo-3', description: 'Desmontar', contractors: ['CARPINTERIA'], foreman_name: 'MARTIN', status: 'En ejecución' },
+        { id: 'i3', work_order_id: 'wo-3', description: 'Pocete chapa', contractors: ['TECO'], foreman_name: 'ALE C', status: 'Finalizado costo final de obra' },
+      ],
+      workOrders: [],
+    })
+    expect(badge.tooltip).toContain('OT-3: CAMBIO CHAPA [En ejecución]')
+    expect(badge.tooltip).not.toContain('OT #OT-3')
+    expect(badge.tooltip).toContain('❌')
+    expect(badge.tooltip).toContain('[Finalizado]')
+    expect(badge.tooltip).toContain('[Finalizado costo final de obra]')
+    const tooltipLines = badge.tooltip.split('\n')
+    const l1 = tooltipLines.find((l) => l.includes('[Finalizado]') && !l.includes('costo final'))
+    const l2 = tooltipLines.find((l) => l.includes('[En ejecución]') && l.includes('L2:'))
+    const l3 = tooltipLines.find((l) => l.includes('[Finalizado costo final de obra]'))
+    expect(l1?.startsWith('❌ ')).toBe(true)
+    expect(l2?.startsWith('• ')).toBe(true)
+    expect(l3?.startsWith('❌ ')).toBe(true)
+
+    // Capa 3: Pañol Planilla también usa CanonicalOtBadge
+    expect(readRepoFile('app/src/components/panol/PanolMovimientosPanel.jsx')).toContain('<CanonicalOtBadge')
   })
 })

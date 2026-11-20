@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Package, Check, X, Edit3 } from 'lucide-react'
+import { Package, Check, Edit3 } from 'lucide-react'
 import { getContractorEnabledWos, evaluateAllocationState, normalizeText } from '../../lib/allocationEngine'
 import {
   isGasMaterial,
@@ -8,7 +8,7 @@ import {
   findLinkedGasMovement
 } from '../../lib/panolConstants'
 import { PANOL_WITHDRAWAL_STEP_HELP } from '../../lib/businessHelpRegistry'
-import StepHelpBadge from './StepHelpBadge.jsx'
+import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
 import MultiWithdrawalDestinationStep from './MultiWithdrawalDestinationStep.jsx'
 import MultiWithdrawalItemsStep from './MultiWithdrawalItemsStep.jsx'
 
@@ -20,8 +20,8 @@ const createEmptyWithdrawalItem = () => ({
 /**
  * MultiWithdrawalModal.jsx
  * Modal Canónico de Salida Multi-Material de Pañol (Alta, Edición ✏️ y Entrega EPP).
- * Stepper Vertical de 3 pasos igual a `MaterialCatalogFormModal`, OTs solo texto flotante (`FL-002`)
- * y miniaturas de material ampliables a 5cm × 5cm.
+ * Stepper Vertical Zero-Scroll de 3 pasos (`CanonicalStepperModal` + `StepHelpBadge` en portal
+ * con apertura hacia arriba en el Paso 3), OTs solo texto flotante (`FL-002`) y miniaturas 5cm × 5cm.
  */
 export default function MultiWithdrawalModal({
   materials, suppliers = [], gasStats = null, gasMovements = [],
@@ -168,92 +168,82 @@ export default function MultiWithdrawalModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="alon-modal-card max-w-4xl overflow-visible">
-        <div className="alon-modal-header">
-          <div className="flex items-center gap-2 text-white font-black text-sm min-w-0">
-            {editingRow ? <Edit3 className="w-4 h-4 text-cyan-400 shrink-0" /> : <Package className="w-4 h-4 text-emerald-400 shrink-0" />}
-            <span className="truncate uppercase">
-              {editingRow ? 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL — MODO EDICIÓN' : 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL'}
-            </span>
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={onClose}
+      maxWidthClass="max-w-5xl"
+      icon={editingRow ? <Edit3 className="w-4 h-4 text-cyan-400" /> : <Package className="w-4 h-4 text-emerald-400" />}
+      title={editingRow ? 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL — MODO EDICIÓN' : 'REGISTRAR SALIDA MULTI-MATERIAL DE PAÑOL'}
+      onSubmit={handleSubmit}
+      footerLeft={
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isSubmitting}
+          className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="px-5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait"
+        >
+          <Check className="w-4 h-4 stroke-[3]" />
+          <span>{isSubmitting ? 'Guardando...' : editingRow ? 'Guardar Cambios' : `Confirmar Retiro (${items.length} materiales)`}</span>
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={PANOL_WITHDRAWAL_STEP_HELP[1]}>
+        <MultiWithdrawalDestinationStep
+          ships={ships} workOrders={workOrders} workItems={workItems}
+          astilleroWorkers={astilleroWorkers} contractorGroups={contractorGroups}
+          unauthorizedWorkers={unauthorizedWorkers} getEnabledWorkersAndContractors={getEnabledWorkersAndContractors}
+          shipId={shipId} setShipId={setShipId} contractorGroup={contractorGroup} setContractorGroup={setContractorGroup}
+          workOrderId={workOrderId} setWorkOrderId={setWorkOrderId} isOtEmpty={isOtEmpty} setIsOtEmpty={setIsOtEmpty}
+          isExpandedContractors={isExpandedContractors} setIsExpandedContractors={setIsExpandedContractors}
+          enabled={enabled} shipEnabledAstSet={shipEnabledAstSet} shipEnabledCntSet={shipEnabledCntSet}
+          availableWos={availableWos} allocState={allocState}
+          isSelectedContractorWithoutShipOt={isSelectedContractorWithoutShipOt}
+          onRequestOt={onRequestOt} onRequestWorkerPermission={onRequestWorkerPermission}
+        />
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep step={2} helpEntry={PANOL_WITHDRAWAL_STEP_HELP[2]}>
+        <MultiWithdrawalItemsStep
+          items={items} materials={materials} gasSuppliers={gasSuppliers} gasStats={gasStats}
+          contractorGroup={contractorGroup} isAdmin={isAdmin}
+          onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onItemChange={handleItemChange}
+        />
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep
+        step={3}
+        helpEntry={PANOL_WITHDRAWAL_STEP_HELP[3]}
+        title="FECHA Y OBSERVACIONES"
+        isLast={true}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+          <div>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Fecha del Retiro</label>
+            <input
+              type="date" value={date} onChange={(e) => setDate(e.target.value)}
+              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+            />
           </div>
-          <button type="button" tabIndex={-1} onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="md:col-span-2">
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">Observaciones Generales</label>
+            <input
+              type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Ej: Retiro para reparación de mamparo en bodega de popa..."
+              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-400"
+            />
+          </div>
         </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 text-xs">
-          <div className="p-4 sm:p-5 space-y-4 overflow-y-auto overflow-x-visible max-h-[76vh]">
-            <div className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <StepHelpBadge step={1} helpEntry={PANOL_WITHDRAWAL_STEP_HELP[1]} />
-                <div className="w-px flex-1 bg-slate-800 mt-1.5" />
-              </div>
-              <MultiWithdrawalDestinationStep
-                ships={ships} workOrders={workOrders} workItems={workItems}
-                astilleroWorkers={astilleroWorkers} contractorGroups={contractorGroups}
-                unauthorizedWorkers={unauthorizedWorkers} getEnabledWorkersAndContractors={getEnabledWorkersAndContractors}
-                shipId={shipId} setShipId={setShipId} contractorGroup={contractorGroup} setContractorGroup={setContractorGroup}
-                workOrderId={workOrderId} setWorkOrderId={setWorkOrderId} isOtEmpty={isOtEmpty} setIsOtEmpty={setIsOtEmpty}
-                isExpandedContractors={isExpandedContractors} setIsExpandedContractors={setIsExpandedContractors}
-                enabled={enabled} shipEnabledAstSet={shipEnabledAstSet} shipEnabledCntSet={shipEnabledCntSet}
-                availableWos={availableWos} allocState={allocState}
-                isSelectedContractorWithoutShipOt={isSelectedContractorWithoutShipOt}
-                onRequestOt={onRequestOt} onRequestWorkerPermission={onRequestWorkerPermission}
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <StepHelpBadge step={2} helpEntry={PANOL_WITHDRAWAL_STEP_HELP[2]} />
-                <div className="w-px flex-1 bg-slate-800 mt-1.5" />
-              </div>
-              <MultiWithdrawalItemsStep
-                items={items} materials={materials} gasSuppliers={gasSuppliers} gasStats={gasStats}
-                contractorGroup={contractorGroup} isAdmin={isAdmin}
-                onAddItem={handleAddItem} onRemoveItem={handleRemoveItem} onItemChange={handleItemChange}
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <StepHelpBadge step={3} helpEntry={PANOL_WITHDRAWAL_STEP_HELP[3]} />
-              </div>
-              <div className="flex-1 min-w-0 space-y-2">
-                <span className="block font-black text-white uppercase tracking-wider text-xs">FECHA Y OBSERVACIONES</span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                  <div>
-                    <label className="block text-slate-400 font-semibold text-[11px] mb-1">Fecha del Retiro</label>
-                    <input
-                      type="date" value={date} onChange={(e) => setDate(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-slate-400 font-semibold text-[11px] mb-1">Observaciones Generales</label>
-                    <input
-                      type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Ej: Retiro para reparación de mamparo en bodega de popa..."
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="alon-modal-footer">
-            <button type="button" onClick={onClose} disabled={isSubmitting} className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer disabled:opacity-50">
-              Cancelar
-            </button>
-            <button type="submit" disabled={isSubmitting} className="px-5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait">
-              <Check className="w-4 h-4 stroke-[3]" />
-              <span>{isSubmitting ? 'Guardando...' : editingRow ? 'Guardar Cambios' : `Confirmar Retiro (${items.length} materiales)`}</span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 
