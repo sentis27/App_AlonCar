@@ -19,6 +19,7 @@ import HighlightText from '../HighlightText'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../ContractorPickerModal'
 import { SPREADSHEET_COLUMNS_PANOL, PANOL_PASTE_FIELDS } from '../../lib/panolConstants'
+import { getLocalDateKey, formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
 import { evaluateAllocationState } from '../../lib/allocationEngine'
 import {
   saveShipAndWorkOrderService,
@@ -157,7 +158,7 @@ export default function PanolMovimientosPanel({
 
   const handleInsertBlankRow = async () => {
     try {
-      const rowWithFolio = await insertBlankRowService({ inventoryTx: filteredTransactions })
+      const rowWithFolio = await insertBlankRowService({ inventoryTx: filteredTransactions, user })
       const activeIdx = grid?.activeCell?.rowIndex ?? 0
       const targetRow = filteredTransactions[activeIdx]
       setInventoryTx((prev) => {
@@ -437,13 +438,14 @@ export default function PanolMovimientosPanel({
                     {/* 2. Fecha */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'transaction_date')
-                      const dateVal = tx.transaction_date ? String(tx.transaction_date).split('T')[0] : ''
+                      const dateVal = getLocalDateKey(tx.transaction_date)
+                      const timeVal = formatLocalTimeHHMM(tx.transaction_date)
                       return (
                         <td
                           {...cp.domProps}
                           onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'transaction_date', value: dateVal })}
                           className={`py-1.5 px-1.5 whitespace-nowrap font-mono cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
-                          title="Doble clic para editar fecha con calendario"
+                          title={timeVal ? `Registrado a las ${timeVal} hs · Doble clic para editar fecha` : 'Doble clic para editar fecha con calendario'}
                         >
                           {inlineEdit.id === tx.id && inlineEdit.field === 'transaction_date' ? (
                             <input

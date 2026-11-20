@@ -9,6 +9,7 @@ import PanolToolbar from '../components/panol/PanolToolbar'
 import PanolMovimientosPanel from '../components/panol/PanolMovimientosPanel'
 import PanolStockPanel from '../components/panol/PanolStockPanel'
 import { PanolModalsContainer } from '../components/panol/PanolModals'
+import PanolCostBasketModal from '../components/panol/PanolCostBasketModal'
 import { fetchPanolData } from '../lib/panolService'
 import { isPanolAdminRole } from '../lib/panolCatalogService'
 import {
@@ -61,6 +62,7 @@ export default function Panol() {
   const activeKpiFilter = activeFilters.activeKpiFilter ?? null
 
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
+  const [showCostBasketModal, setShowCostBasketModal] = useState(false)
   const [editingWithdrawalRow, setEditingWithdrawalRow] = useState(null)
   const [materialFormModal, setMaterialFormModal] = useState({ isOpen: false, material: null })
   const [showRubrosModal, setShowRubrosModal] = useState(false)
@@ -185,6 +187,7 @@ export default function Panol() {
       <PanolHeader
         activeTab={activeTab} isAdmin={isAdmin} filteredTransactionsCount={filteredTransactions.length} criticalCount={kpiStats.criticalCount} onChangeTab={changeTab}
         onOpenWithdrawalModal={() => { setEditingWithdrawalRow(null); setShowWithdrawalModal(true) }}
+        onOpenCostBasketModal={() => setShowCostBasketModal(true)}
         onOpenNewMaterialModal={() => setMaterialFormModal({ isOpen: true, material: null })}
         onOpenRubrosModal={() => setShowRubrosModal(true)}
         onOpenGasModal={() => setShowGasModal({ isOpen: true, operationType: 'PRIMERA_ENTREGA' })}
@@ -282,16 +285,12 @@ export default function Panol() {
         requestOtModal={requestOtModal} setRequestOtModal={setRequestOtModal}
         workerPermissionModal={workerPermissionModal} setWorkerPermissionModal={setWorkerPermissionModal}
         previewImage={previewImage} setPreviewImage={setPreviewImage}
-        materials={materials} setMaterials={setMaterials} inventoryTx={inventoryTx} setInventoryTx={setInventoryTx}
-        gasMovements={gasMovements} setGasMovements={setGasMovements}
-        gasStats={gasStats}
-        ships={ships} workOrders={workOrders} workItems={workItems} astilleroWorkers={astilleroWorkers}
-        contractorGroups={contractorGroups} unauthorizedWorkers={unauthorizedWorkers}
-        getEnabledWorkersAndContractors={getEnabledPersonnel}
-        pendingAlerts={pendingAlerts} setPendingAlerts={setPendingAlerts}
-        suppliers={suppliers} rubros={rubros} workers={workers} isAdmin={isAdmin} user={user} showFeedback={showFeedback}
-        onRefreshData={loadData} navigate={navigate}
+        materials={materials} setMaterials={setMaterials} inventoryTx={inventoryTx} setInventoryTx={setInventoryTx} gasMovements={gasMovements} setGasMovements={setGasMovements} gasStats={gasStats}
+        ships={ships} workOrders={workOrders} workItems={workItems} astilleroWorkers={astilleroWorkers} contractorGroups={contractorGroups} unauthorizedWorkers={unauthorizedWorkers}
+        getEnabledWorkersAndContractors={getEnabledPersonnel} pendingAlerts={pendingAlerts} setPendingAlerts={setPendingAlerts}
+        suppliers={suppliers} rubros={rubros} workers={workers} isAdmin={isAdmin} user={user} showFeedback={showFeedback} onRefreshData={loadData} navigate={navigate}
       />
+      {showCostBasketModal && <PanolCostBasketModal isOpen onClose={() => setShowCostBasketModal(false)} workers={workers} ships={ships} workOrders={workOrders} workItems={workItems} inventoryTx={inventoryTx} materials={materials} suppliers={suppliers} gasStats={gasStats} gasMovements={gasMovements} astilleroWorkers={astilleroWorkers} user={user} onRefreshData={loadData} showFeedback={showFeedback} />}
     </div>
   )
 }

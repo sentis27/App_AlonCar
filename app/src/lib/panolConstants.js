@@ -4,6 +4,7 @@ import {
   getShipEnabledContractors
 } from './allocationEngine.js'
 import { formatWorkOrderTooltipCanonical } from './workOrdersConstants.js'
+import { getLocalDateKey } from './panolBasketsEngine.js'
 
 export { getEnabledWorkersAndContractors, getShipEnabledContractors }
 
@@ -706,7 +707,7 @@ export function buildGasTraceabilityRows(
 
 // Cálculo del Radar de KPIs de Pañol
 export function calculatePanolKpis(materials = [], inventoryTx = [], gasStats = {}) {
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = getLocalDateKey(new Date())
   let criticalCount = 0
   materials.forEach((m) => {
     const c = Number(m.current_stock) || 0
@@ -719,7 +720,7 @@ export function calculatePanolKpis(materials = [], inventoryTx = [], gasStats = 
   let deletionRequestsCount = 0
 
   inventoryTx.forEach((t) => {
-    const d = String(t.transaction_date).split('T')[0]
+    const d = getLocalDateKey(t.transaction_date)
     if (d === todayStr) todayTxCount++
     if (!t.work_order_id) sinOtCount++
     if (t.is_deletion_requested) deletionRequestsCount++

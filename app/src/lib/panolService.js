@@ -8,6 +8,7 @@ import { logCellChange, logRowAction } from './auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { normalizeText, setAllocationWorkersCache } from './allocationEngine.js'
 import { isGasMaterial, stripGasTagFromNotes, findLinkedGasMovement } from './panolConstants.js'
+import { buildTransactionTimestampIso, formatLocalTimeHHMM } from './panolBasketsEngine.js'
 import { normalizeUnitMeasure } from './comprasConstants.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog } from './workerIdentity.js'
@@ -78,7 +79,7 @@ export function buildGasMovementPayload({
   const itemNotes = [gasTag, cleanUserNotes].filter(Boolean).join(' ')
 
   const gasRecord = {
-    movement_date: date ? new Date(`${date}T12:00:00`).toISOString() : new Date().toISOString(),
+    movement_date: buildTransactionTimestampIso(date),
     operation_type: opType,
     material_id: mat.id,
     ship_id: shipId || null,
@@ -251,7 +252,10 @@ export async function saveShipAndWorkOrderService({
 }
 
 export async function saveInlineTxService({ txId, field, value, tx, materials, user }) {
-  const updates = { [field]: value }
+  const normalizedVal = field === 'transaction_date' && value
+    ? buildTransactionTimestampIso(value, formatLocalTimeHHMM(tx?.transaction_date) || null)
+    : value
+  const updates = { [field]: normalizedVal }
   if (field === 'quantity_withdrawn' || field === 'material_id') {
     const targetMat = materials.find((m) => m.id === (field === 'material_id' ? value : tx?.material_id))
     if (targetMat) {
@@ -309,8 +313,9 @@ export async function saveInlineMaterialService({ matId, field, value, materials
 }
 
 export async function saveMultiWithdrawalService({
-  shipId, workOrderId, workItemId = null, workItems = [], contractorGroup, notes, date, items, editId,
-  originalTx = null, linkedGasMovement = null, gasMovements = [], materials, suppliers = [], ships = [], astilleroWorkers, user
+  shipId, workOrderId, workItemId = null, workItems = [], contractorGroup, notes, date, time = null, items, editId,
+  originalTx = null, linkedGasMovement = null, gasMovements = [], materials, suppliers = [], ships = [], astilleroWorkers, user,
+  changeOrigin = 'MODAL_WITHDRAWAL'
 }) {
   const matchedAst = astilleroWorkers.find((w) => w.name.toUpperCase() === String(contractorGroup || '').toUpperCase())
   const workerName = matchedAst ? matchedAst.name : contractorGroup || 'Sin asignar'
@@ -386,7 +391,7 @@ export async function saveMultiWithdrawalService({
       weight_total: (Number(mat?.weight_kg) || 0) * qty,
       movement_type: mat?.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
       notes: finalNotes,
-      transaction_date: date ? new Date(`${date}T12:00:00`).toISOString() : new Date().toISOString()
+      transaction_date: buildTransactionTimestampIso(date, time)
     }
 
     const { error: updErr } = await inventoryTransactionsRepository.updateById(editId, updates, { select: null })
@@ -465,7 +470,7 @@ export async function saveMultiWithdrawalService({
       changes: updates,
       sheetName: 'Pañol · Stock y Movimientos',
       moduleRoute: '/panol',
-      changeOrigin: 'MODAL_WITHDRAWAL',
+      changeOrigin,
       user: user?.email
     })
 
@@ -528,7 +533,7 @@ export async function saveMultiWithdrawalService({
       weight_total: (Number(mat.weight_kg) || 0) * qty,
       movement_type: mat.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
       notes: itemNotes,
-      transaction_date: date ? new Date(`${date}T12:00:00`).toISOString() : new Date().toISOString()
+      transaction_date: buildTransactionTimestampIso(date, time)
     })
   }
 
@@ -580,15 +585,24 @@ export async function saveMultiWithdrawalService({
       })
     }
 
+    const batchCategories = [...new Set(items.map((it) => materials.find((m) => m.id === it.material_id)?.category).filter(Boolean))]
     logRowAction({
       action: 'ROW_INSERT',
       entityType: 'inventory_transactions',
       entityId: createdTxs?.[0]?.id || 'batch',
       entityName: `Retiro múltiple (${txInserts.length} items)`,
-      rowData: { count: txInserts.length, contractor: workerName, ship_id: shipId, has_gas: gasItemsToCreate.length > 0 },
+      rowData: {
+        count: txInserts.length,
+        tx_ids: (createdTxs || []).map((t) => t.id).filter(Boolean),
+        categories: batchCategories,
+        contractor: workerName,
+        ship_id: shipId || null,
+        work_order_id: workOrderId || null,
+        has_gas: gasItemsToCreate.length > 0
+      },
       sheetName: 'Pañol · Stock y Movimientos',
       moduleRoute: '/panol',
-      changeOrigin: 'MODAL_WITHDRAWAL',
+      changeOrigin,
       user: user?.email
     })
 
@@ -618,7 +632,7 @@ export async function saveMultiWithdrawalService({
   }
 }
 
-export async function insertBlankRowService({ inventoryTx }) {
+export async function insertBlankRowService({ inventoryTx, user = null }) {
   const newTx = {
     material_id: null,
     quantity_withdrawn: null,
@@ -628,11 +642,22 @@ export async function insertBlankRowService({ inventoryTx }) {
     cost_center: null,
     weight_total: null,
     notes: '',
-    transaction_date: new Date().toISOString().split('T')[0]
+    transaction_date: new Date().toISOString()
   }
   const stampedTx = stampNewRecordWithFolio(newTx, inventoryTx)
   const { data, error } = await inventoryTransactionsRepository.insertBlankRow(newTx)
   if (error) throw new Error(error)
+  logRowAction({
+    action: 'ROW_INSERT',
+    entityType: 'inventory_transactions',
+    entityId: data?.id || 'blank-row',
+    entityName: `Fila en blanco #${data?.id || ''}`.trim(),
+    rowData: { count: 1, tx_ids: data?.id ? [data.id] : [], is_blank_row: true },
+    sheetName: 'Pañol · Stock y Movimientos',
+    moduleRoute: '/panol',
+    changeOrigin: 'GRID_BLANK_ROW',
+    user: user?.email
+  })
   return { ...data, _rowSeq: stampedTx._rowSeq }
 }
 

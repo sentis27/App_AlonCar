@@ -1,4 +1,4 @@
-import { Package, Plus, ExternalLink, FileSpreadsheet, Flame, Layers, Shield, Truck, FolderTree } from 'lucide-react'
+import { Package, Plus, ExternalLink, FileSpreadsheet, Flame, Layers, Shield, Truck, FolderTree, ShoppingBasket } from 'lucide-react'
 
 export default function PanolHeader({
   activeTab,
@@ -7,6 +7,7 @@ export default function PanolHeader({
   criticalCount,
   onChangeTab,
   onOpenWithdrawalModal,
+  onOpenCostBasketModal = null,
   onOpenNewMaterialModal,
   onOpenRubrosModal = null,
   onOpenGasModal,
@@ -114,14 +115,27 @@ export default function PanolHeader({
           </div>
 
           {activeTab === 'planillas' && (
-            <button
-              type="button"
-              onClick={onOpenWithdrawalModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Registrar Retiro Multi-Material</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {onOpenCostBasketModal && (
+                <button
+                  type="button"
+                  onClick={onOpenCostBasketModal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/50 border border-amber-500/50 text-amber-300 font-bold text-xs transition-all shadow-sm cursor-pointer"
+                  title="Abrir menú interactivo de Canastas de Costos por Contratista, Barco y OT (impacta en la planilla)"
+                >
+                  <ShoppingBasket className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Carga por Canasta de Costos</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onOpenWithdrawalModal}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Registrar Retiro Multi-Material</span>
+              </button>
+            </div>
           )}
           {activeTab === 'catalogo' && isAdmin && (
             <div className="flex flex-wrap items-center gap-2">

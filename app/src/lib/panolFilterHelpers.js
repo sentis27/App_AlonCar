@@ -6,6 +6,7 @@
 import { normalizeText } from './allocationEngine.js'
 import { matchesUniversalSearch } from './searchEngine.js'
 import { isPanolTxZeroCost, isBillableShip } from './zeroCostAlertsRules.js'
+import { getLocalDateKey } from './panolBasketsEngine.js'
 
 export function isDateInFilterPeriod(dateStr, filterPeriod) {
   if (filterPeriod === 'TODOS') return true
@@ -45,7 +46,7 @@ export function filterPanolTransactions(inventoryTx = [], {
   return inventoryTx.filter((t) => {
     const mat = materials.find((m) => m.id === t.material_id)
     if (activeKpiFilter === 'sin_ot' && t.work_order_id) return false
-    if (activeKpiFilter === 'hoy' && String(t.transaction_date).split('T')[0] !== new Date().toISOString().split('T')[0]) return false
+    if (activeKpiFilter === 'hoy' && getLocalDateKey(t.transaction_date) !== getLocalDateKey(new Date())) return false
     if (activeKpiFilter === 'bajas_pendientes' && !t.is_deletion_requested) return false
     if (activeKpiFilter === 'sin_precio') {
       if (!isPanolTxZeroCost(t, mat)) return false
