@@ -27,7 +27,8 @@ export default function ComprasPedidosPanel(props) {
     showOrderModal,
     setShowOrderModal,
     editingOrder,
-    setEditingOrder
+    setEditingOrder,
+    onCloseOrderModal
   } = props
 
   const state = useComprasPedidosState(props)
@@ -172,6 +173,8 @@ export default function ComprasPedidosPanel(props) {
         showOrderModal={showOrderModal}
         setShowOrderModal={setShowOrderModal}
         editingOrder={editingOrder}
+        setEditingOrder={setEditingOrder}
+        onCloseOrderModal={onCloseOrderModal}
         modals={modals}
         selectedOrderIds={selection.selectedOrderIds}
         setSelectedOrderIds={selection.setSelectedOrderIds}

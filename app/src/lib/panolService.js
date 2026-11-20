@@ -1277,7 +1277,7 @@ export async function createDirectPurchaseOrderService({ material, quantity, urg
     order_date: new Date().toISOString().split('T')[0],
     status: 'PEDIR',
     urgency,
-    notes: 'Solicitud directa generada desde Pañol'
+    observations: 'Solicitud directa generada desde Pañol'
   })
   if (error) throw new Error(error)
 }

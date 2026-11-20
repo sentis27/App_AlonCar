@@ -18,7 +18,9 @@ import GridStatusBarBottom from '../GridStatusBarBottom'
 import HighlightText from '../HighlightText'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../ContractorPickerModal'
+import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
 import { SPREADSHEET_COLUMNS_PANOL, PANOL_PASTE_FIELDS } from '../../lib/panolConstants'
+import { formatUnitMeasureShort } from '../../lib/unitMeasureUtils'
 import { getLocalDateKey, formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
 import { evaluateAllocationState } from '../../lib/allocationEngine'
 import {
@@ -252,12 +254,13 @@ export default function PanolMovimientosPanel({
         })
         return
       }
+      if (colDef.key === 'material_id') {
+        const matchedMat = materials.find((m) => m.id === row.material_id)
+        setInlineEdit({ id: row.id, field: 'material_id', value: matchedMat?.name || '' })
+        return
+      }
       const currentVal = row[colDef.key]
-      setInlineEdit({
-        id: row.id,
-        field: colDef.key,
-        value: currentVal !== null && currentVal !== undefined ? currentVal : ''
-      })
+      setInlineEdit({ id: row.id, field: colDef.key, value: currentVal ?? '' })
     },
     canEditCell: (row, colKey) => {
       if (colKey === 'cost_center' && !isAdmin) {
@@ -330,9 +333,6 @@ export default function PanolMovimientosPanel({
         exportFilename={`panol_retiros_${new Date().toISOString().split('T')[0]}`}
       />
 
-      <datalist id="panol-materials-datalist">
-        {materials.map((m) => (<option key={m.id} value={m.name} />))}
-      </datalist>
       <datalist id="panol-contractors-datalist">
         {availableGroups.map((grp) => (<option key={grp} value={grp} />))}
       </datalist>
@@ -363,6 +363,7 @@ export default function PanolMovimientosPanel({
                   <span className="font-mono text-[9px] text-slate-500 font-bold" title="Número de fila">#</span>
                 </div>
               </th>
+              <th className="py-2 px-1.5 text-center whitespace-nowrap" title="Stock disponible actual del material en Pañol">Stock</th>
               <th className="py-2 px-1.5">Fecha ✎</th>
               <th className="py-2 px-1.5">Barco / Destino ✎</th>
               <th className="py-2 px-1.5">Orden de Trabajo (OT) ✎</th>
@@ -379,14 +380,14 @@ export default function PanolMovimientosPanel({
           <tbody className="divide-y divide-slate-800/60 font-sans">
             {loading ? (
               <tr>
-                <td colSpan={11} className="py-12 text-center text-slate-500 text-xs">
+                <td colSpan={12} className="py-12 text-center text-slate-500 text-xs">
                   <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin mx-auto mb-2" />
                   <span>Cargando planilla de retiros de Pañol...</span>
                 </td>
               </tr>
             ) : filteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan={11} className="py-12 text-center text-slate-500 text-xs">
+                <td colSpan={12} className="py-12 text-center text-slate-500 text-xs">
                   No se encontraron retiros con los filtros seleccionados.
                 </td>
               </tr>
@@ -434,6 +435,16 @@ export default function PanolMovimientosPanel({
                         </span>
                       </div>
                     </td>
+
+                    {/* 1b. Stock disponible del material (Columna A) */}
+                    {(() => {
+                      if (!mat) return <td className="py-1.5 px-1.5 text-center font-mono text-slate-600 whitespace-nowrap" title="Sin material asignado">—</td>
+                      const hasCtrl = Boolean(mat.requires_stock_control)
+                      const label = hasCtrl ? `${mat.current_stock} ${formatUnitMeasureShort(mat.unit_measure)}` : 'S/C'
+                      const isLow = hasCtrl && (Number(mat.current_stock) || 0) <= (Number(mat.minimum_stock) || 0)
+                      const cls = !hasCtrl ? 'bg-slate-800/80 text-slate-400 border-slate-700' : isLow ? 'bg-rose-950/70 text-rose-300 border-rose-500/50' : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                      return <td className="py-1.5 px-1.5 text-center font-mono whitespace-nowrap" title={hasCtrl ? `Stock disponible: ${label} (Mín: ${mat.minimum_stock ?? 0})` : 'Sin control de stock físico'}><span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${cls}`}>{label}</span></td>
+                    })()}
 
                     {/* 2. Fecha */}
                     {(() => {
@@ -618,26 +629,14 @@ export default function PanolMovimientosPanel({
                           title="Doble clic para cambiar material"
                         >
                           {inlineEdit.id === tx.id && inlineEdit.field === 'material_id' ? (
-                            <input
-                              type="text"
-                              autoFocus
-                              list="panol-materials-datalist"
-                              value={inlineEdit.value}
-                              onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onBlur={() => {
-                                const match = materials.find((m) => m.name.toLowerCase() === inlineEdit.value.toLowerCase().trim())
-                                if (match) handleSaveInlineTx(tx.id, 'material_id', match.id)
-                                setInlineEdit({ id: null, field: null, value: '' })
+                            <CanonicalMaterialPicker
+                              materials={materials} value={tx.material_id || ''} initialText={inlineEdit.value} compact autoFocus
+                              placeholder="Buscar material o rubro..."
+                              onChange={(matId) => {
+                                if (matId && matId !== tx.material_id) handleSaveInlineTx(tx.id, 'material_id', matId)
+                                setInlineEdit({ id: null, field: null, value: '' }); grid.gridContainerRef.current?.focus()
                               }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  const match = materials.find((m) => m.name.toLowerCase() === inlineEdit.value.toLowerCase().trim())
-                                  if (match) handleSaveInlineTx(tx.id, 'material_id', match.id)
-                                  setInlineEdit({ id: null, field: null, value: '' })
-                                }
-                                if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none w-full"
+                              onCancel={() => { setInlineEdit({ id: null, field: null, value: '' }); grid.gridContainerRef.current?.focus() }}
                             />
                           ) : (
                             <div className="flex items-center gap-1.5">
@@ -892,12 +891,11 @@ export default function PanolMovimientosPanel({
 
                         <button
                           type="button"
-                          onClick={() => {
-                            onOpenQuickPurchaseModal({
-                              material: mat || { id: tx.material_id, name: 'Insumo', unit_measure: 'Unidad' },
-                              quantity: String(tx.quantity_withdrawn || 1)
-                            })
-                          }}
+                          onClick={() => onOpenQuickPurchaseModal({
+                            isOpen: true, urgency: 'SIN_APURO',
+                            material: mat || { id: tx.material_id, name: 'Insumo', unit_measure: 'Unidad' },
+                            quantity: String(tx.quantity_withdrawn || 1)
+                          })}
                           className="p-1 rounded hover:bg-cyan-950/80 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
                           title="Generar Pedido de Compra directo a Compras (Estado: PEDIR)"
                         >

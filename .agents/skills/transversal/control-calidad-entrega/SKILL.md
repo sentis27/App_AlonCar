@@ -71,6 +71,9 @@ Toda modificación se evalúa también por lo que pudo **romper alrededor**: otr
 usan el mismo componente, otras vistas que leen el mismo dato, atajos, filtros, exportaciones.
 - Si se toca un componente o una función compartida, se identifican todos sus usos y se
   verifica su impacto.
+- **Blindaje mecánico (`08_FEATURES_LOCK.md` + `git diff`):** antes de entregar, revisar las
+  líneas eliminadas (`-`) en `git diff` y verificar `npm.cmd run check:hygiene` (tests de
+  contrato `approvedFeatures.contract.test.js` + `diff guard` sin regresiones no solicitadas).
 
 ### P7. Honestidad del estado
 - Nunca se informa como hecho algo no comprobado.
@@ -126,7 +129,7 @@ La solución debe seguir siendo rápida cuando los datos crezcan 10 veces.
 | **G2. Barrido de clase** | Por cada requisito, identificar su clase y buscar otros casos de la misma clase en el ámbito afectado. | P5, P8 |
 | **G3. Verificación de resultado** | Releer el estado final real de cada requisito y compararlo con su criterio. Priorizar evidencia automática (búsqueda en código, script de aserción, consulta a la base, build); la revisión manual es complemento. | P3 |
 | **G4. Verificación de datos** | Si hubo cambios de datos o esquema: alcance medido, confirmación obtenida, estado antes/después consultado, integridad referencial intacta. | P9 |
-| **G5. Verificación de entorno** | Build limpio, consola sin errores nuevos, usos de componentes compartidos revisados, sin consultas o renders que no escalen. | P6, P10 |
+| **G5. Verificación de entorno** | Build limpio, consola sin errores nuevos, `npm.cmd run check:hygiene` OK (`features lock`, `canónicos`, `diff guard`, `vitest`), usos de componentes compartidos revisados, sin consultas o renders que no escalen. | P6, P10 |
 | **G6. Parar la línea** | Si un solo requisito no pasa: **no se entrega**. Se corrige y se vuelve a G3. Si no puede corregirse, se informa como `PENDIENTE` con su causa. | P7 |
 | **G7. Reporte con evidencia** | Entregar el reporte de la sección 3. | P2, P7 |
 

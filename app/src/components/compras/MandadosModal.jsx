@@ -27,6 +27,7 @@ export function MandadosModal({ purchaseOrders, suppliers, workers, preselectedI
 
   const [selectedWorkerId, setSelectedWorkerId] = useState(defaultWorker)
   const [copied, setCopied] = useState(false)
+  const [sending, setSending] = useState(false)
 
   const selectedWorker = useMemo(
     () => workers.find((w) => w.id === selectedWorkerId),
@@ -65,6 +66,7 @@ export function MandadosModal({ purchaseOrders, suppliers, workers, preselectedI
   }
 
   async function handleSendWhatsApp() {
+    if (sending) return
     const cleanPhone = (selectedWorker?.phone || '').replace(/\D/g, '')
     if (!cleanPhone) {
       alert(`El operario "${selectedWorker?.name || 'seleccionado'}" no tiene cargado un número de teléfono en Nómina. Por favor agrégalo en el módulo Personal o copia el mensaje manualmente.`)
@@ -74,26 +76,37 @@ export function MandadosModal({ purchaseOrders, suppliers, workers, preselectedI
     window.open(url, '_blank')
 
     const dispatchedIds = Array.from(selectedIds)
+    const nowIso = new Date().toISOString()
     const dispatchInfo = {
       courier_dispatched: true,
-      courier_dispatched_at: new Date().toISOString(),
+      courier_dispatched_at: nowIso,
       courier_worker_id: selectedWorker?.id || null,
-      courier_worker_name: selectedWorker?.name || null
+      courier_worker_name: selectedWorker?.name || null,
+      status: 'PEDIDO',
+      updated_at: nowIso
     }
 
+    setSending(true)
+    let statusById = {}
     try {
-      await dispatchMandadosService({
+      const res = await dispatchMandadosService({
         dispatchedIds,
         dispatchInfo,
         candidateOrders,
         workerName: selectedWorker?.name
       })
+      statusById = res?.statusById || {}
     } catch (err) {
       console.error('Error registrando despacho de mandado en Supabase:', err)
+      alert('No se pudo registrar el despacho de mandado en Supabase: ' + (err.message || err))
+      setSending(false)
+      return
+    } finally {
+      setSending(false)
     }
 
     if (onDispatched) {
-      onDispatched(dispatchedIds, dispatchInfo)
+      onDispatched(dispatchedIds, dispatchInfo, statusById)
     }
     onClose()
   }
@@ -239,12 +252,12 @@ export function MandadosModal({ purchaseOrders, suppliers, workers, preselectedI
 
             <button
               type="button"
-              disabled={selectedIds.size === 0}
+              disabled={selectedIds.size === 0 || sending}
               onClick={handleSendWhatsApp}
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black flex items-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer disabled:opacity-50"
             >
               <MessageSquare className="w-4 h-4 stroke-[2.5]" />
-              <span>Enviar WhatsApp a {selectedWorker?.name?.split(',')[0]?.split(' ')[0] || 'Mandadero'}</span>
+              <span>{sending ? 'Registrando...' : `Enviar WhatsApp a ${selectedWorker?.name?.split(',')[0]?.split(' ')[0] || 'Mandadero'}`}</span>
             </button>
           </div>
         </div>

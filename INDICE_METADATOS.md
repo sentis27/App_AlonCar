@@ -63,6 +63,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/estandares/05_BARRA_INFERIOR_FLOTANTE_CALCULOS_Y_LIMPIEZA.md | protocolo | auditar-reglas | completo | transversal | activo | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
 | docs/02_producto/estandares/06_COMPONENTES_CANONICOS_MODALES.md | protocolo | auditar-reglas | completo | transversal | activo | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
 | docs/02_producto/estandares/07_ESTANDAR_TRAZABILIDAD_Y_AUDITORIA.md | protocolo | auditar-reglas | completo | transversal | activo | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
+| docs/02_producto/estandares/08_FEATURES_LOCK.md | protocolo | auditar-reglas \| validar-integridad | completo | transversal | activo | 2026-11-20 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md \| app/tests/contracts/approvedFeatures.contract.test.js |
 | docs/02_producto/01_decisiones/DEC-003-separacion-indices.md | decision | ninguno | cambios | transversal | activo | 2026-06-11 | docs/02_producto/README.md |
 | docs/02_producto/01_decisiones/DEC-004-desdoblamiento-nodo-validaciones-e4.md | decision | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
 | docs/02_producto/01_decisiones/DEC-005-eliminacion-desdoblamiento-horas-ot-ambiguas.md | decision | ninguno | cambios | transversal | activo | 2026-07-19 | docs/02_producto/README.md \| docs/01_infraestructura/01_stack_tecnico.md |
@@ -162,6 +163,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | .agents/skills/transversal/defensive-erp-contracts/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/context-aware-skill-router/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/architectural-modularity-auditor/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | .agents/skills/SKILLS_REGISTRY.md |
+| .agents/skills/transversal/behavior-preservation-guard/SKILL.md | skill | auditar-reglas | primera-vez | transversal | activo | 2026-11-20 | .agents/skills/SKILLS_REGISTRY.md \| docs/02_producto/estandares/08_FEATURES_LOCK.md |
 | mcp-server/index.js | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-14 | docs/01_infraestructura/04_arquitectura_mcp.md |
 | mcp-server/package.json | codigo | ninguno | ignorar | fase-1 | activo | 2026-06-10 | mcp-server/index.js |
 | app/src/pages/ResumenGerencial.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-022-resumen-gerencial-gs004-comparador-y-remito-alfa.md |
@@ -176,4 +178,8 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | supabase/migrations/0038_panol_compliance_requirements.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/MATRIZ_RESPONSABILIDAD_DATOS.md |
 | supabase/migrations/0039_gas_tx_link_and_indexes.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md |
 | supabase/migrations/0040_gas_supplier_traceability.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md |
-| app/scripts/repo-hygiene.mjs | codigo | ninguno | ignorar | transversal | activo | 2026-11-15 | INDICE_METADATOS.md |
+| app/scripts/repo-hygiene.mjs | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | INDICE_METADATOS.md \| app/scripts/lib/antiRegressionChecks.mjs |
+| app/scripts/lib/antiRegressionChecks.mjs | codigo | validar-integridad | ignorar | transversal | activo | 2026-11-20 | docs/02_producto/estandares/08_FEATURES_LOCK.md |
+| app/src/lib/canonicalHelpers.js | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | app/src/lib/workOrdersConstants.js \| app/src/lib/allocationEngine.js |
+| app/src/components/canonical/CanonicalOtBadge.jsx | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | app/src/lib/canonicalHelpers.js |
+| app/src/components/canonical/CanonicalMaterialPicker.jsx | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | app/src/lib/canonicalHelpers.js |

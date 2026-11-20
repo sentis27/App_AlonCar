@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Plus, Trash2, Clock, Save, AlertTriangle, ChevronDown, ChevronRight, ShoppingBasket } from 'lucide-react'
 import { MaterialAutocompleteInput } from './MaterialAutocompleteInput'
 import { GasDeliveryInlinePanel } from './GasDeliveryInlinePanel'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import { isGasMaterial } from '../../lib/panolConstants'
 import { formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
 
@@ -97,8 +98,21 @@ export default function PanolBasketFastEntryCard({
             <input type="time" value={entryTime} onChange={(e) => setEntryTime(e.target.value)} className="bg-slate-950 text-emerald-300 focus:outline-none w-16" />
           </label>
         </div>
-        <div className={`mt-1.5 text-xs font-bold truncate ${basket.isSinOt ? 'text-amber-300' : 'text-slate-200'}`}>
-          {basket.isSinOt ? '⚠️ Sin OT — Canasta Única en Blanco para este barco' : `${basket.otNumber ? `${basket.otNumber} · ` : ''}${basket.otTitle}`}
+        <div
+          className={`mt-1.5 text-xs font-bold truncate ${basket.isSinOt ? 'text-amber-300' : 'text-slate-200'}`}
+          title={basket.otTooltip || (basket.isSinOt ? 'Canasta única para retiros sin OT en este barco' : `${basket.otNumber ? `${basket.otNumber} · ` : ''}${basket.otTitle}`)}
+        >
+          {basket.isSinOt ? (
+            '⚠️ Sin OT — Canasta Única en Blanco para este barco'
+          ) : (
+            <CanonicalOtBadge
+              otNumber={basket.otNumber}
+              otTitle={basket.otTitle}
+              tooltipOverride={basket.otTooltip}
+              variant="inline"
+              className="text-xs font-bold text-slate-200"
+            />
+          )}
         </div>
       </div>
 

@@ -11,27 +11,12 @@ import { OrganizationRoleSchema } from './organizationRoles.schema.js'
 import { MacroVariableSchema } from './macroVariables.schema.js'
 import { OtTemplateSchema } from './otTemplates.schema.js'
 import { SystemPromptSchema, AiProcessingLogSchema } from './aiGovernance.schema.js'
-import {
-  ShipSchema,
-  ShipStaySchema,
-  OwnerSchema,
-  ShipDocumentSchema,
-  ContactSchema,
-} from './ships.schema.js'
+import { ShipSchema, ShipStaySchema, OwnerSchema, ShipDocumentSchema, ContactSchema } from './ships.schema.js'
 import { PurchaseOrderSchema, SupplierSchema, PurchaseDocumentSchema } from './purchases.schema.js'
 import { ThirdPartyServiceSchema, ThirdPartyVoucherHistorySchema } from './thirdParty.schema.js'
 import { WorkItemSchema } from './workItems.schema.js'
-import {
-  MaterialSchema,
-  InventoryTransactionSchema,
-  GasCylinderMovementSchema,
-  MaterialRubroSchema,
-} from './panol.schema.js'
-import {
-  DataRequirementSchema,
-  ComplianceAlertSchema,
-  WorkerPermissionRequestSchema,
-} from './complianceAlerts.schema.js'
+import { MaterialSchema, InventoryTransactionSchema, GasCylinderMovementSchema, MaterialRubroSchema } from './panol.schema.js'
+import { DataRequirementSchema, ComplianceAlertSchema, WorkerPermissionRequestSchema } from './complianceAlerts.schema.js'
 import { AuditLogSchema } from './auditLogs.schema.js'
 import { ProfileSchema, PROFILE_ROLES } from './profiles.schema.js'
 
@@ -54,6 +39,7 @@ registerTrapKeys(LaborLogSchema, ['profile_id'], 'Usar "worker_id" apuntando a w
 registerTrapKeys(SystemSettingSchema, ['id'], 'Usar PK "key" (GEMINI.md §3).')
 registerTrapKeys(OrganizationRoleSchema, ['id'], 'Usar PK "role_key" (GEMINI.md §3).')
 registerTrapKeys(AuditLogSchema, ['entity', 'table_name'], 'Usar "entity_type" (GEMINI.md §3).')
+registerTrapKeys(PurchaseOrderSchema, ['notes'], 'Usar "observations" en purchase_orders (GEMINI.md §3).')
 
 /**
  * Detecta instancias de eventos React/DOM o cadenas `[object Object]` antes de persistir (SKL-015).

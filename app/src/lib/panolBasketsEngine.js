@@ -5,7 +5,7 @@
  * contratistas activos de Personal y Tarifas, hora real local (HH:mm) y corte diario.
  */
 import { normalizeText } from './allocationEngine.js'
-import { deduplicateWorkOrdersWithScope } from './workOrdersConstants.js'
+import { deduplicateWorkOrdersWithScope, formatWorkOrderTooltipCanonical } from './workOrdersConstants.js'
 
 export const BASKET_SHIP_THEMES = [
   { border: 'border-cyan-500/50', bg: 'bg-cyan-950/25', title: 'text-cyan-300', dot: 'bg-cyan-400' },
@@ -100,6 +100,7 @@ export function buildContractorCostBaskets({
   const activeContractors = getActiveContractorsFromRoster(workers)
   const shipMap = new Map((ships || []).map((s) => [s.id, s]))
   const materialMap = new Map((materials || []).map((m) => [m.id, m]))
+  const allWoById = new Map((workOrders || []).map((w) => [w.id, w]))
   const activeWos = deduplicateWorkOrdersWithScope(workOrders, workItems).filter((wo) => wo.isActiveForImputation !== false)
   const woIdToMaster = new Map()
   for (const wo of activeWos) {
@@ -115,11 +116,15 @@ export function buildContractorCostBaskets({
     const bKey = makeBasketKey(card.name, shipId, woId)
     if (!card.basketsMap.has(bKey)) {
       const ship = shipMap.get(shipId)
+      const otTooltip = isSinOt
+        ? 'Canasta única para retiros sin OT en este barco'
+        : formatWorkOrderTooltipCanonical(wo, ship, workItems, workOrders)
       card.basketsMap.set(bKey, {
         key: bKey, contractorKey: card.key, contractorName: card.name, shipId: shipId || null,
         shipName: ship?.name || 'Sin Barco', workOrderId: woId, isSinOt: Boolean(isSinOt),
         otNumber: isSinOt ? null : wo?.ot_number || null,
         otTitle: isSinOt ? 'Orden en Blanco (Sin OT)' : (wo?.title || wo?.description || wo?.scopeSummary || 'OT Activa'),
+        otTooltip,
         todayItems: [], previousItems: []
       })
     }
@@ -147,8 +152,9 @@ export function buildContractorCostBaskets({
     const isToday = txDateKey === todayKey
     const masterWo = tx.work_order_id ? woIdToMaster.get(tx.work_order_id) : null
     if (tx.work_order_id && !masterWo && !isToday) continue
+    const resolvedWo = masterWo || (tx.work_order_id ? allWoById.get(tx.work_order_id) : null) || { id: tx.work_order_id, ot_number: 'OT', title: 'OT registrada hoy' }
     const basket = tx.work_order_id
-      ? ensureBasket(card, tx.ship_id, masterWo || { id: tx.work_order_id, ot_number: 'OT', title: 'OT registrada hoy' }, false)
+      ? ensureBasket(card, tx.ship_id, resolvedWo, false)
       : ensureBasket(card, tx.ship_id, null, true)
     const item = toBasketItem(tx, materialMap)
     if (isToday) { basket.todayItems.push(item); card.todayCount += 1 }

@@ -195,7 +195,7 @@ export default function OrderFormModal({
             </div>
             <div className="min-w-0">
               <h3 className="text-sm font-black text-white truncate">
-                {order ? 'Editar Pedido de Compra' : 'Cargar Materiales (Multi-Renglón por OT / Obra)'}
+                {order?.id ? 'Editar Pedido de Compra' : 'Cargar Materiales (Multi-Renglón por OT / Obra)'}
               </h3>
               <p className="text-[11px] text-slate-400 truncate">
                 Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Destino/OT ➔ 2° Parámetros ➔ 3° Matriz de Materiales.
@@ -536,7 +536,7 @@ export default function OrderFormModal({
               disabled={saving}
               className="px-5 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
             >
-              {saving ? 'Guardando...' : order ? 'Actualizar Pedido' : `Registrar ${items.length} Materiales`}
+              {saving ? 'Guardando...' : order?.id ? 'Actualizar Pedido' : `Registrar ${items.length} Materiales`}
             </button>
           </div>
         </form>

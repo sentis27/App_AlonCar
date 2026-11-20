@@ -238,7 +238,7 @@ export default function Panol() {
             formatWorkOrderTooltip={(wo, ship) => formatWorkOrderTooltip(wo, ship, workItems, workOrders)}
             onClearAllFilters={clearAllPanolFilters}
             onOpenWithdrawalModal={(tx) => { setEditingWithdrawalRow(tx); setShowWithdrawalModal(true) }}
-            onOpenQuickPurchaseModal={setQuickPurchaseModal}
+            onOpenQuickPurchaseModal={(payload) => setQuickPurchaseModal({ isOpen: true, urgency: 'SIN_APURO', ...payload })}
             onOpenRequestOtModal={({ txId, shipId, targetWorkerOrContractor }) => setRequestOtModal({ isOpen: true, txId, shipId, targetWorkerOrContractor, reason: '' })}
             onOpenWorkerPermissionModal={() => setWorkerPermissionModal({ isOpen: true, workerId: '', reason: '' })}
             onPreviewImage={setPreviewImage} showFeedback={showFeedback} setInventoryTx={setInventoryTx}

@@ -105,14 +105,7 @@ export async function uploadPurchaseAttachmentsService({
   return uploadedDocs
 }
 
-export async function registerPartialDeliveryService({
-  order,
-  receivedQty,
-  missingQty,
-  remitoNumber,
-  notes,
-  evidenceFiles = [],
-}) {
+export async function registerPartialDeliveryService({ order, receivedQty, missingQty, remitoNumber, notes = '', evidenceFiles = [] }) {
   const originalQty = Number(order.quantity) || 1
   const cleanRemito = remitoNumber.trim()
   const receivedStatus = order.charge_type === 'DIRECT' ? 'RECIB.COMP.DIRECT' : 'RECIBIDO'
@@ -123,7 +116,7 @@ export async function registerPartialDeliveryService({
     missing_quantity: missingQty,
     remito_number: cleanRemito,
     status: receivedStatus,
-    notes: `${order.notes ? `${order.notes} | ` : ''}Recepción parcial (${receivedQty}/${originalQty}) s/Remito ${cleanRemito}. ${notes}`,
+    observations: `${order.observations ? `${order.observations} | ` : ''}Recepción parcial (${receivedQty}/${originalQty}) s/Remito ${cleanRemito}. ${notes}`.trim(),
     updated_at: new Date().toISOString(),
   }
 
@@ -135,11 +128,7 @@ export async function registerPartialDeliveryService({
     }
   }
 
-  const { data: updatedOriginal, error: errOrig } = await purchaseOrdersRepository.updateById(
-    order.id,
-    originalUpdates,
-    { select: '*' }
-  )
+  const { data: updatedOriginal, error: errOrig } = await purchaseOrdersRepository.updateById(order.id, originalUpdates, { select: '*' })
   if (errOrig) throw new Error(errOrig)
 
   const childPayload = {
@@ -166,7 +155,7 @@ export async function registerPartialDeliveryService({
     parent_order_id: order.id,
     remito_number: cleanRemito,
     fortnight_period: order.fortnight_period,
-    notes: `Saldo faltante de orden anterior. Remito parcial: ${cleanRemito}. ${notes}`,
+    observations: `Saldo faltante de orden anterior. Remito parcial: ${cleanRemito}. ${notes}`.trim(),
   }
 
   const { data: childOrder, error: errChild } = await purchaseOrdersRepository.insertOne(childPayload)
@@ -199,12 +188,8 @@ export async function registerPartialDeliveryService({
   }
 
   await auditService.logRowAction({
-    action: 'SPLIT',
-    entityType: 'purchase_orders',
-    entityId: order.id,
-    entityName: order.material_name_raw,
-    sheetName: SHEET_PEDIDOS,
-    moduleRoute: MODULE_ROUTE,
+    action: 'SPLIT', entityType: 'purchase_orders', entityId: order.id, entityName: order.material_name_raw,
+    sheetName: SHEET_PEDIDOS, moduleRoute: MODULE_ROUTE,
     details: { receivedQty, missingQty, remitoNumber: cleanRemito, childId: childOrder.id },
   })
 
@@ -212,40 +197,48 @@ export async function registerPartialDeliveryService({
 }
 
 export async function assignSupplierBatchService({ orderIds = [], supplierId, supplierName = 'Proveedor' }) {
-  const { error } = await purchaseOrdersRepository.updateByIds(
-    orderIds,
-    { supplier_id: supplierId, updated_at: new Date().toISOString() },
-    { select: null }
-  )
+  const { error } = await purchaseOrdersRepository.updateByIds(orderIds, { supplier_id: supplierId, updated_at: new Date().toISOString() }, { select: null })
   if (error) throw new Error(error)
 
   for (const id of orderIds) {
     await auditService.logCellChange({
-      sheetName: SHEET_PEDIDOS,
-      rowId: id,
-      colKey: 'supplier_id',
-      colLabel: 'Proveedor',
-      oldValue: null,
-      newValue: supplierName,
-      entityName: supplierName,
-      moduleRoute: MODULE_ROUTE,
+      sheetName: SHEET_PEDIDOS, rowId: id, colKey: 'supplier_id', colLabel: 'Proveedor',
+      oldValue: null, newValue: supplierName, entityName: supplierName, moduleRoute: MODULE_ROUTE,
     })
   }
 }
 
 export async function dispatchMandadosService({ dispatchedIds = [], dispatchInfo, candidateOrders = [], workerName = '' }) {
-  const { error } = await purchaseOrdersRepository.updateByIds(dispatchedIds, dispatchInfo, { select: null })
-  if (error) throw new Error(error)
+  const nowIso = dispatchInfo?.updated_at || new Date().toISOString()
+  const { status: _ignoredStatus, ...courierFields } = dispatchInfo || {}
+  const incompleteIds = []
+  const toPedidoIds = []
+  const statusById = {}
 
   for (const id of dispatchedIds) {
+    const prevOrder = candidateOrders.find((it) => it.id === id)
+    const nextStatus = prevOrder?.status === 'PEDIDO INCOMPLETO' ? 'PEDIDO INCOMPLETO' : 'PEDIDO'
+    statusById[id] = nextStatus
+    if (nextStatus === 'PEDIDO INCOMPLETO') incompleteIds.push(id)
+    else toPedidoIds.push(id)
+  }
+
+  if (toPedidoIds.length > 0) {
+    const { error } = await purchaseOrdersRepository.updateByIds(toPedidoIds, { ...courierFields, status: 'PEDIDO', updated_at: nowIso }, { select: null })
+    if (error) throw new Error(error)
+  }
+  if (incompleteIds.length > 0) {
+    const { error } = await purchaseOrdersRepository.updateByIds(incompleteIds, { ...courierFields, status: 'PEDIDO INCOMPLETO', updated_at: nowIso }, { select: null })
+    if (error) throw new Error(error)
+  }
+
+  for (const id of dispatchedIds) {
+    const prevOrder = candidateOrders.find((it) => it.id === id)
     await auditService.logRowAction({
-      action: 'DISPATCH',
-      entityType: 'purchase_orders',
-      entityId: id,
-      entityName: candidateOrders.find((it) => it.id === id)?.material_name_raw,
-      sheetName: SHEET_PEDIDOS,
-      moduleRoute: MODULE_ROUTE,
-      details: { worker: workerName, dispatchedAt: dispatchInfo.courier_dispatched_at },
+      action: 'DISPATCH', entityType: 'purchase_orders', entityId: id, entityName: prevOrder?.material_name_raw,
+      sheetName: SHEET_PEDIDOS, moduleRoute: MODULE_ROUTE,
+      details: { worker: workerName, dispatchedAt: dispatchInfo?.courier_dispatched_at, previousStatus: prevOrder?.status || null, newStatus: statusById[id] },
     })
   }
+  return { statusById }
 }

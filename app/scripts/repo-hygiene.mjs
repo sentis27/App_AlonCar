@@ -3,6 +3,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkMigrationsManifest } from './lib/migrationsManifest.mjs'
+import {
+  getPathLineLimit,
+  checkFeaturesLockManifest,
+  checkCanonicalComponentsUsage,
+  checkGitDiffDroppedFeatures,
+} from './lib/antiRegressionChecks.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '..')
@@ -12,9 +18,7 @@ const IGNORE_DIRS = new Set(['node_modules', 'dist', 'Presentacion', '.git'])
 const IGNORE_REL_PREFIXES = ['app/dist', 'docs/04_anexos_entendiemiento de planillas']
 const USER_PATH_RE = /Users[\\/](?:senti|Vanoli)|file:\/\/\//i
 const CODE_EXT_RE = /\.(?:js|jsx|ts|tsx)$/
-const SRC_GUARDED_RE = /^app\/src\/(?:components|hooks|lib|repositories|schemas|services)\//
 const SIZE_ALERT_BYTES = 15 * 1024
-const SRC_LINE_LIMIT = 300
 
 const args = new Set(process.argv.slice(2))
 const FAST_MODE = args.has('--fast')
@@ -189,14 +193,14 @@ function checkGitDiffLineLimits() {
     if (!fs.existsSync(full)) continue
     const currentLines = countLines(fs.readFileSync(full, 'utf8'))
     const headLines = getHeadLineCount(rel)
-    const scope = SRC_GUARDED_RE.test(rel) ? 'límite estricto' : 'app/src'
+    const { limit: pathLimit, label: scope } = getPathLineLimit(rel)
 
-    if (headLines === null && currentLines > SRC_LINE_LIMIT) {
-      alerts.push(`Archivo nuevo (${scope}) supera ${SRC_LINE_LIMIT} L: ${rel} (${currentLines} L)`)
-    } else if (headLines !== null && headLines <= SRC_LINE_LIMIT && currentLines > SRC_LINE_LIMIT) {
-      alerts.push(`Archivo (${scope}) cruzó ${SRC_LINE_LIMIT} L: ${rel} (${headLines} L -> ${currentLines} L)`)
-    } else if (headLines !== null && headLines > SRC_LINE_LIMIT && currentLines > headLines) {
-      alerts.push(`Archivo > ${SRC_LINE_LIMIT} L creció en diff: ${rel} (${headLines} L -> ${currentLines} L)`)
+    if (headLines === null && currentLines > pathLimit) {
+      alerts.push(`Archivo nuevo (${scope}) supera ${pathLimit} L: ${rel} (${currentLines} L)`)
+    } else if (headLines !== null && headLines <= pathLimit && currentLines > pathLimit) {
+      alerts.push(`Archivo (${scope}) cruzó ${pathLimit} L: ${rel} (${headLines} L -> ${currentLines} L)`)
+    } else if (headLines !== null && headLines > pathLimit && currentLines > headLines) {
+      alerts.push(`Archivo > ${pathLimit} L (${scope}) creció en diff: ${rel} (${headLines} L -> ${currentLines} L)`)
     }
   }
   return alerts
@@ -331,10 +335,25 @@ function main() {
   const datalistErrors = checkDatalistIntegrity()
   const repoBoundaryErrors = checkRepositoryBoundary()
   const migrations = checkMigrationsManifest(ROOT_DIR)
-  const errors = [...docErrors, ...indexErrors, ...idErrors, ...errFormatErrors, ...datalistErrors, ...repoBoundaryErrors, ...migrations.errors]
+  const featuresLock = checkFeaturesLockManifest(ROOT_DIR)
+  const canonicalUsage = checkCanonicalComponentsUsage(ROOT_DIR, APP_DIR)
+  const diffRegressionAlerts = checkGitDiffDroppedFeatures(ROOT_DIR)
+  const errors = [
+    ...docErrors,
+    ...indexErrors,
+    ...idErrors,
+    ...errFormatErrors,
+    ...datalistErrors,
+    ...repoBoundaryErrors,
+    ...migrations.errors,
+    ...featuresLock.errors,
+    ...canonicalUsage.errors,
+  ]
   const alerts = [
     ...checkLiveDocSizes(),
     ...checkGitDiffLineLimits(),
+    ...canonicalUsage.alerts,
+    ...diffRegressionAlerts,
   ]
 
   let lintSummary = 'omitido (--fast)'
@@ -359,7 +378,7 @@ function main() {
     }
 
     const testRes = runLocalBin('vitest', ['run'])
-    const testOut = `${testRes.stdout || ''}\n${testRes.stderr || ''}`.trim()
+    const testOut = `${testRes.stdout || ''}\n${testRes.stderr || ''}`.replace(/\x1b\[[0-9;]*m/g, '').trim()
     const testLine = testOut.split(/\r?\n/).find((l) => /Tests\s+\d+\s+passed/i.test(l))
     testSummary = testLine ? testLine.trim() : `exit ${testRes.status ?? 1}`
     if (testRes.status !== 0) {
@@ -372,6 +391,9 @@ function main() {
     `[check:hygiene] .md activos: ${mdFiles.length} | docs/links: ${docErrors.length === 0 ? 'OK' : `FAIL (${docErrors.length})`} | INDICE_METADATOS: ${indexErrors.length === 0 ? 'OK' : `FAIL (${indexErrors.length})`} | IDs DEC/ERR: ${idErrors.length === 0 ? 'OK' : `FAIL (${idErrors.length})`} | ERR formato: ${errFormatErrors.length === 0 ? 'OK' : `FAIL (${errFormatErrors.length})`} | datalists: ${datalistErrors.length === 0 ? 'OK' : `FAIL (${datalistErrors.length})`}`
   )
   console.log(`[check:hygiene] repo boundary: ${repoBoundaryErrors.length === 0 ? 'OK (0 bypass)' : `FAIL (${repoBoundaryErrors.length})`}`)
+  console.log(
+    `[check:hygiene] features lock: ${featuresLock.lockedCount} blindados / ${featuresLock.pendingCount} pendientes (${featuresLock.errors.length === 0 ? 'OK' : `FAIL (${featuresLock.errors.length})`}) | canónicos: ${canonicalUsage.errors.length === 0 ? `OK (${canonicalUsage.alerts.length} legacy)` : `FAIL (${canonicalUsage.errors.length})`} | diff guard: ${diffRegressionAlerts.length === 0 ? 'OK' : `ALERTA (${diffRegressionAlerts.length})`}`
+  )
   console.log(`[check:hygiene] oxlint: ${lintSummary}`)
   console.log(`[check:hygiene] migraciones: ${migrations.migrationsCount} (max ${String(migrations.maxNumber).padStart(4, '0')}) | rollbacks: ${migrations.rollbacksCount} | ${migrations.errors.length === 0 ? 'OK' : `FAIL (${migrations.errors.length})`}`)
   console.log(`[check:hygiene] vite build: ${buildSummary}`)

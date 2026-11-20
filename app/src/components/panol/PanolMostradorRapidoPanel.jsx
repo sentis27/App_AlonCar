@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Ship, Plus, AlertTriangle, Clock, CheckCircle2, FolderOpen } from 'lucide-react'
+import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
  * Columna izquierda del Menú "Carga por Canasta de Costos":
@@ -100,6 +101,7 @@ export default function PanolMostradorRapidoPanel({
                             <div
                               key={basket.key}
                               onClick={() => onSelectBasket(basket.key)}
+                              title={basket.otTooltip || (basket.isSinOt ? 'Canasta única para retiros sin OT en este barco' : `${basket.otNumber ? `${basket.otNumber} · ` : ''}${basket.otTitle}`)}
                               className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg border transition-all cursor-pointer ${
                                 isActive
                                   ? 'bg-emerald-950/60 border-emerald-400 ring-1 ring-emerald-400/60 shadow-md'
@@ -115,9 +117,13 @@ export default function PanolMostradorRapidoPanel({
                                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Sin OT · Orden en Blanco
                                     </span>
                                   ) : (
-                                    <span className="truncate">
-                                      {basket.otNumber ? `${basket.otNumber} · ` : ''}{basket.otTitle}
-                                    </span>
+                                    <CanonicalOtBadge
+                                      otNumber={basket.otNumber}
+                                      otTitle={basket.otTitle}
+                                      tooltipOverride={basket.otTooltip}
+                                      variant="inline"
+                                      className="text-xs font-bold text-white"
+                                    />
                                   )}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">

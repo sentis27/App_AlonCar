@@ -53,6 +53,7 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | SKL-015 | defensive-erp-contracts | architecture | transversal | active | SKL-009\|SKL-014 | Diseño defensivo en mutaciones y persistencia: cero errores silenciosos, atomicidad, sanitización escalar y auditoría | transversal/defensive-erp-contracts/SKILL.md |
 | SKL-016 | context-aware-skill-router | governance | transversal | active | ninguno | Meta-protocolo de enrutamiento contextual: activación selectiva de skills según globs y naturaleza de la tarea | transversal/context-aware-skill-router/SKILL.md |
 | SKL-017 | architectural-modularity-auditor | governance | transversal | active | SKL-007\|SKL-009\|SKL-015 | Auditoría arquitectónica profunda: cohesión/acoplamiento (LCOM/CBO), tracker anti-rot, Línea Base por Cuadrantes y Delta Diario pre-commit | transversal/architectural-modularity-auditor/SKILL.md |
+| SKL-018 | behavior-preservation-guard | governance | transversal | active | SKL-007\|SKL-017 | Protocolo anti-regresión para refactors y módulos blindados: Cirugía Mínima, Tabla de Paridad Antes/Después, umbrales por ruta, Componentes Canónicos y auditoría `git diff` | transversal/behavior-preservation-guard/SKILL.md |
 
 ---
 

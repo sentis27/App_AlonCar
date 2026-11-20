@@ -42,6 +42,8 @@ export default function ComprasPedidosModals({
   showOrderModal,
   setShowOrderModal,
   editingOrder,
+  setEditingOrder,
+  onCloseOrderModal,
   modals,
   selectedOrderIds,
   setSelectedOrderIds,
@@ -78,6 +80,15 @@ export default function ComprasPedidosModals({
     mandadosPreselectedIds, setMandadosPreselectedIds
   } = modals
 
+  const closeOrderModal = () => {
+    if (onCloseOrderModal) {
+      onCloseOrderModal()
+    } else {
+      setShowOrderModal(false)
+      setEditingOrder?.(null)
+    }
+  }
+
   return (
     <>
       {showOrderModal && (
@@ -93,16 +104,16 @@ export default function ComprasPedidosModals({
           currentFortnight={currentFortnight}
           viewMode={viewMode}
           isSupervisorOrAdmin={isSupervisorOrAdmin}
-          onClose={() => setShowOrderModal(false)}
+          onClose={closeOrderModal}
           onSuccess={(savedOrders) => {
-            if (editingOrder) {
+            if (editingOrder?.id) {
               setPurchaseOrders((prev) => prev.map((p) => (p.id === savedOrders[0].id ? savedOrders[0] : p)))
               showFeedbackMsg('success', 'Pedido actualizado correctamente.')
             } else {
               setPurchaseOrders((prev) => [...savedOrders, ...prev])
               showFeedbackMsg('success', `Se registraron ${savedOrders.length} materiales en la solicitud.`)
             }
-            setShowOrderModal(false)
+            closeOrderModal()
           }}
         />
       )}
@@ -258,8 +269,12 @@ export default function ComprasPedidosModals({
           suppliers={suppliers}
           workers={workers}
           preselectedIds={mandadosPreselectedIds}
-          onDispatched={(dispatchedIds, info) => {
-            setPurchaseOrders((prev) => prev.map((p) => (dispatchedIds.includes(p.id) ? { ...p, ...info } : p)))
+          onDispatched={(dispatchedIds, info, statusById = {}) => {
+            setPurchaseOrders((prev) => prev.map((p) => {
+              if (!dispatchedIds.includes(p.id)) return p
+              const nextStatus = statusById[p.id] || (p.status === 'PEDIDO INCOMPLETO' ? 'PEDIDO INCOMPLETO' : (info.status || 'PEDIDO'))
+              return { ...p, ...info, status: nextStatus }
+            }))
             setSelectedOrderIds(new Set())
             showFeedbackMsg('success', `🛵 Retiro de mandado registrado para ${dispatchedIds.length} ítem(s).`)
           }}

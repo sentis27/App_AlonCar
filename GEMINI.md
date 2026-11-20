@@ -1,7 +1,7 @@
 ---
-version: 1.5
+version: 1.6
 last_updated_by: antigravity
-last_updated: 2026-11-18
+last_updated: 2026-11-20
 source_of_truth: GEMINI.md
 ---
 
@@ -26,6 +26,7 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 | Grillas editables (`CARGA_EDICION`) | `SKL-013` | `read_file` | Teclado 100%, in-situ, motor `useSpreadsheetGrid.js`. |
 | Código / lógica / repositories / schemas | `SKL-009` + `SKL-015` + `SKL-007` | `run_command` / `read_file` | Test runtime Node `data > 0` + `build` + Reporte. |
 | Auditoría o cierre pre-commit | `SKL-017` (+ `SKL-006`) | `git status -s` / `read_file` | LCOM/CBO o dictamen en `BITACORA_DELTAS_SESION.md`. |
+| Refactor / partición / preservación | `SKL-018` | `git diff` + `read_file` | Cirugía mínima (Refactor ≠ Feature), Tabla Paridad y `diff guard` OK. |
 | Nuevo módulo o pantalla | Regla §4 + `SKL-009` | **NINGUNO** sin clasificar | Preguntar si es `CARGA_EDICION` o `METRICAS_ANALISIS`. |
 | Workflows n8n (`workflows/**`) | `SKL-001` | `read_file` (`INDEX.md` + `SDD.md`) | JSON listos; nunca `activo` sin SDD (`PLANTILLA.md`). |
 | Docker / Backend Node+PG | `SKL-010` + `SKL-011` | `read_file` de `SKL-010`/`011` | `${APP_SLUG}`, 4 capas y `env.js` fail-fast. |
@@ -34,7 +35,7 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 1. **F1 — Inspección empírica:** Tool Call #1 obligatorio (`read_file`/`run_command`; prohibido `write_file`/`edit_file`). Verificar columnas (`select('*').limit(1)`) y fuente usada por otras planillas.
 2. **F2 — Intervención modular (`SKL-009`) + 5 Candados Anti-Rot:**
    1. **Caja Nueva:** `<=250L` en páginas; toda pestaña, subpanel, modal o motor (`>150L`) nace en `app/src/components/` o `app/src/lib/`.
-   2. **Cero Hardcode:** prohibido arrays estáticos o duplicar catálogos/lógica; fuente única en Supabase / `app/src/lib/`.
+   2. **Cero Hardcode y Canónicos:** prohibido arrays estáticos o duplicar catálogos/lógica; usar `CanonicalOtBadge` (tooltip OT obligatorio) y `CanonicalMaterialPicker` (selector material), fuente única en Supabase / `app/src/lib/`.
    3. **Acceso Exclusivo vía Repositorios + Zod:** prohibido `supabase.from()`, `supabase.rpc()` o `.storage.from()` fuera de `app/src/repositories/` (verificado por `check:hygiene`); toda tabla opera mediante `createBaseRepository` (`_baseRepository.js`) y su contrato Zod en `app/src/schemas/`.
    4. **Trazabilidad:** toda mutación en grillas invoca `auditService.logCellChange/logRowAction`.
    5. **onBlur Blindado:** todo input editable usa `onBlur={() => commitFn()}` (jamás pasar evento `e`).
@@ -54,12 +55,12 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 | `labor_logs` | `id` | `worker_id` (FK `workers(id)`), `worker_name`, `ship_id`, `work_order_id`, `work_item_id`, `hours_worked`, `date_logged` | `worker_id` NO apunta a `profiles(id)` |
 | `third_party_services` | `id` | `contractor_id` (FK `workers(id)`), `contractor_name`, `ship_id`, `work_order_id`, `work_item_id`, `amount_ars`, `amount_usd` | — |
 | `work_item_contractors` | `(work_item_id, worker_id)` | Puente N:M `work_items(id)` ↔ `workers(id)` sincronizado vía trigger `trg_work_items_sync_contractors` | — |
-| `purchase_orders` | `id` | `material_id`, `material_name_raw`, `requested_by` (FK `workers(id)`), `requested_by_name`, `courier_worker_id`, `ship_id`, `work_order_id` | — |
+| `purchase_orders` | `id` | `material_id`, `material_name_raw`, `requested_by` (FK `workers(id)`), `requested_by_name`, `courier_worker_id`, `ship_id`, `work_order_id`, `observations` | `notes` |
 | `audit_logs` | `id` | `action`, `entity_type`, `entity_id`, `entity_name`, `details` (jsonb), `performed_by`, `created_at` | `entity`, `table_name` |
 
 ## 4. Módulos ERP, Commits, Cierre y Registros
 - **Bloqueo de nuevo módulo/pantalla:** prohibido programar sin preguntar si es `CARGA_EDICION` (Gallo, vinculado a `audit_logs`) o `METRICAS_ANALISIS` (Gallina) e indexarlo en `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md`.
-- **Estándares y Catálogo:** `CARGA_EDICION` (`useSpreadsheetGrid.js`, 5 Zonas `index.css`, ref. `Compras.jsx`) y `METRICAS_ANALISIS` viven en `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` y `estandares/01..07`; todo selector inicial (Buque/OT/Período) y pestaña de hoja vive en **Zona 1** (dividida visualmente entre hojas de obra e independientes), y toda vista ejecutiva Gallina debe entrar en pantalla **sin scroll vertical** (scroll solo en hojas de búsqueda); n8n en `SKL-001`; Docker/Backend en `SKL-010`/`SKL-011`; skills en `.agents/skills/SKILLS_REGISTRY.md`; agentes: `automation-governance-architect`, `database-optimizer`, `graphify`.
+- **Estándares y Catálogo:** `CARGA_EDICION` (`useSpreadsheetGrid.js`, 5 Zonas `index.css`, ref. `Compras.jsx`) y `METRICAS_ANALISIS` viven en `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` y `estandares/01..08` (`08_FEATURES_LOCK.md` blindado en `check:hygiene`); todo selector inicial (Buque/OT/Período) y pestaña de hoja vive en **Zona 1** (dividida visualmente entre hojas de obra e independientes), y toda vista ejecutiva Gallina debe entrar en pantalla **sin scroll vertical** (scroll solo en hojas de búsqueda); n8n en `SKL-001`; Docker/Backend en `SKL-010`/`SKL-011`; skills en `.agents/skills/SKILLS_REGISTRY.md`; agentes: `automation-governance-architect`, `database-optimizer`, `graphify`.
 - **Commits y Push:** `tipo: descripción corta` (`feat`, `fix`, `docs`, `refactor`), un commit por tarea atómica; **push solo con confirmación explícita en el chat**.
 - **Cierre de sesión (`SKL-006`):** correr `npm.cmd run check:hygiene` (`app/`) y actualizar solo el delta en `INDICE_METADATOS.md`, `workflows/_meta/INDEX.md`, `TAREAS_PENDIENTES.md` o `docs/MATRIZ_RESPONSABILIDAD_DATOS.md`.
 

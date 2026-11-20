@@ -52,6 +52,17 @@ export default function Compras() {
     }
   }, [searchParams, materials])
 
+  const handleCloseOrderModal = useCallback(() => {
+    setShowOrderModal(false)
+    setEditingOrder(null)
+    const keys = ['nuevo', 'materialId', 'materialName', 'multiMaterials']
+    if (keys.some((k) => searchParams.has(k))) {
+      const next = new URLSearchParams(searchParams)
+      keys.forEach((k) => next.delete(k))
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
   const showFeedbackMsg = useCallback((type, text) => {
     setFeedback({ type, text })
     setTimeout(() => setFeedback(null), 5000)
@@ -187,33 +198,16 @@ export default function Compras() {
       {/* PANELES MODULARES SEGÚN PESTAÑA ACTIVA */}
       {activeTab === 'compras' && (
         <ComprasPedidosPanel
-          purchaseOrders={purchaseOrders}
-          setPurchaseOrders={setPurchaseOrders}
-          suppliers={suppliers}
-          setSuppliers={setSuppliers}
-          materials={materials}
-          setMaterials={setMaterials}
-          ships={ships}
-          workOrders={workOrders}
-          workItems={workItems}
-          workers={workers}
-          macroVariables={macroVariables}
-          documents={documents}
-          setDocuments={setDocuments}
-          systemSettings={systemSettings}
-          contractorGroups={contractorGroups}
-          astilleroWorkers={astilleroWorkers}
-          currentFortnight={currentFortnight}
-          viewMode={viewMode}
-          isSupervisorOrAdmin={isSupervisorOrAdmin}
-          user={user}
-          profile={profile}
-          showFeedbackMsg={showFeedbackMsg}
-          fetchData={fetchData}
-          showOrderModal={showOrderModal}
-          setShowOrderModal={setShowOrderModal}
-          editingOrder={editingOrder}
-          setEditingOrder={setEditingOrder}
+          purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders}
+          suppliers={suppliers} setSuppliers={setSuppliers}
+          materials={materials} setMaterials={setMaterials}
+          ships={ships} workOrders={workOrders} workItems={workItems} workers={workers}
+          macroVariables={macroVariables} documents={documents} setDocuments={setDocuments}
+          systemSettings={systemSettings} contractorGroups={contractorGroups} astilleroWorkers={astilleroWorkers}
+          currentFortnight={currentFortnight} viewMode={viewMode} isSupervisorOrAdmin={isSupervisorOrAdmin}
+          user={user} profile={profile} showFeedbackMsg={showFeedbackMsg} fetchData={fetchData}
+          showOrderModal={showOrderModal} setShowOrderModal={setShowOrderModal}
+          editingOrder={editingOrder} setEditingOrder={setEditingOrder} onCloseOrderModal={handleCloseOrderModal}
           initialKpiFilter={initialKpiFilter}
           onClearUrlKpi={() => {
             setInitialKpiFilter(null)
