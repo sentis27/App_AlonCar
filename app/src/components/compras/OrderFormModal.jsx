@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react'
-import { deduceUnitMeasure } from '../../lib/comprasConstants'
+import { deduceUnitMeasure, normalizeUnitMeasure, formatUnitMeasureShort, resolveOrderMaterialUnit } from '../../lib/comprasConstants'
+import { normalizeText } from '../../lib/allocationEngine'
 import { savePurchaseOrdersFromModalService } from '../../services/comprasOcrSettingsService'
 import { buildStandardShipWorkOrdersCatalog } from '../../lib/workOrderUnificationEngine'
 import { resolveWorkerIdFromCatalog } from '../../lib/workerIdentity'
@@ -28,34 +29,21 @@ export default function OrderFormModal({
   const [urgency, setUrgency] = useState(order?.urgency || 'SIN_APURO')
   const [requestedByName, setRequestedByName] = useState(order?.requested_by_name || 'PAÑOL')
 
-  // Renglones dinámicos de materiales
+  // Renglones dinámicos de materiales (prioriza unidad oficial del Catálogo de Pañol)
   const [items, setItems] = useState(() => {
-    if (order?.initialItems && Array.isArray(order.initialItems) && order.initialItems.length > 0) {
+    if (order?.initialItems?.length > 0) {
       return order.initialItems.map((it) => ({
-        material_id: it.material_id || null,
-        material_name_raw: it.material_name_raw || '',
-        is_new_material: false,
-        quantity: it.quantity || 1,
-        unit_measure: it.unit_measure || 'Unidad',
-        supplier_id: '',
-        supplier_quoted_price: '',
-        system_unit_price: 0,
-        observations: ''
+        material_id: it.material_id || null, material_name_raw: it.material_name_raw || '', is_new_material: false,
+        quantity: it.quantity || 1, unit_measure: resolveOrderMaterialUnit(materials, it.material_id, it.material_name_raw, it.unit_measure),
+        supplier_id: '', supplier_quoted_price: '', system_unit_price: 0, observations: ''
       }))
     }
-    return [
-      {
-        material_id: order?.material_id || null,
-        material_name_raw: order?.material_name_raw || '',
-        is_new_material: order?.is_new_material || false,
-        quantity: order?.quantity || 1,
-        unit_measure: order?.unit_measure || 'Unidad',
-        supplier_id: order?.supplier_id || '',
-        supplier_quoted_price: order?.supplier_quoted_price || '',
-        system_unit_price: order?.system_unit_price || 0,
-        observations: order?.observations || ''
-      }
-    ]
+    return [{
+      material_id: order?.material_id || null, material_name_raw: order?.material_name_raw || '', is_new_material: order?.is_new_material || false,
+      quantity: order?.quantity || 1, unit_measure: resolveOrderMaterialUnit(materials, order?.material_id, order?.material_name_raw, order?.unit_measure),
+      supplier_id: order?.supplier_id || '', supplier_quoted_price: order?.supplier_quoted_price || '',
+      system_unit_price: order?.system_unit_price || 0, observations: order?.observations || ''
+    }]
   })
 
   const [saving, setSaving] = useState(false)
@@ -111,10 +99,18 @@ export default function OrderFormModal({
     updated[idx][field] = value
 
     if (field === 'material_name_raw') {
-      updated[idx].unit_measure = deduceUnitMeasure(value)
-      updated[idx].material_id = null
-      updated[idx].is_new_material = true
-      updated[idx].system_unit_price = 0
+      const exactCatalogMatch = materials.find((m) => normalizeText(m.name) === normalizeText(value))
+      if (exactCatalogMatch) {
+        updated[idx].material_id = exactCatalogMatch.id
+        updated[idx].is_new_material = false
+        updated[idx].system_unit_price = exactCatalogMatch.cost_ars || 0
+        updated[idx].unit_measure = normalizeUnitMeasure(exactCatalogMatch.unit_measure, exactCatalogMatch.name)
+      } else {
+        updated[idx].unit_measure = deduceUnitMeasure(value)
+        updated[idx].material_id = null
+        updated[idx].is_new_material = true
+        updated[idx].system_unit_price = 0
+      }
     }
 
     setItems(updated)
@@ -126,7 +122,7 @@ export default function OrderFormModal({
     updated[idx].material_name_raw = mat.name
     updated[idx].is_new_material = false
     updated[idx].system_unit_price = mat.cost_ars || 0
-    updated[idx].unit_measure = mat.unit_measure || deduceUnitMeasure(mat.name)
+    updated[idx].unit_measure = normalizeUnitMeasure(mat.unit_measure, mat.name)
     setItems(updated)
   }
 
@@ -472,10 +468,10 @@ export default function OrderFormModal({
                             <input
                               type="text"
                               tabIndex={-1}
-                              value={it.unit_measure}
+                              value={formatUnitMeasureShort(it.unit_measure)}
                               disabled
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-cyan-300 font-bold text-center cursor-not-allowed uppercase text-xs"
-                              title="Deducida automáticamente por reglas de nomenclatura"
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-cyan-300 font-bold text-center cursor-not-allowed text-xs"
+                              title="Unidad oficial del material (se edita desde Pañol ➔ Catálogo & Stock ➔ ✏️ Editar Material)"
                             />
                           </div>
 

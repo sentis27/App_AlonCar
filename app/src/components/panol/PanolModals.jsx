@@ -28,6 +28,13 @@ import { MaterialAutocompleteInput } from './MaterialAutocompleteInput.jsx'
 import { GasDeliveryInlinePanel } from './GasDeliveryInlinePanel.jsx'
 import { GasFinalReturnModal } from './GasFinalReturnModal.jsx'
 import { GasSupplierMovementModal } from './GasSupplierMovementModal.jsx'
+import MaterialCatalogFormModal from './MaterialCatalogFormModal.jsx'
+import MaterialRubrosManagerModal from './MaterialRubrosManagerModal.jsx'
+import MaterialConsumption6MModal from './MaterialConsumption6MModal.jsx'
+import {
+  updateCatalogMaterialService,
+  uploadMaterialImageService
+} from '../../lib/panolCatalogService'
 import {
   saveMultiWithdrawalService,
   saveInlineMaterialService,
@@ -862,300 +869,8 @@ export function QuickPurchaseModal({ material, initialQuantity, initialUrgency =
   )
 }
 
-// ==============================================================================
-// 4. MODAL ALTA FORMAL DE MATERIAL
-// ==============================================================================
-export function NewMaterialModal({ rubros = [], isAdmin, onClose, onSave }) {
-  const [name, setName] = useState('')
-  const [rubro, setRubro] = useState('')
-  const [category, setCategory] = useState('CONSUMIBLES')
-  const [unitMeasure, setUnitMeasure] = useState('Unidad')
-  const [weightKg, setWeightKg] = useState(0)
-  const [requiresStockControl, setRequiresStockControl] = useState(true)
-  const [currentStock, setCurrentStock] = useState(0)
-  const [minimumStock, setMinimumStock] = useState(0)
-  const [securityFactor, setSecurityFactor] = useState(1.06)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [formError, setFormError] = useState('')
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (isSubmitting) return
-    setFormError('')
-
-    if (!name.trim()) {
-      setFormError('El nombre técnico oficial del material es obligatorio.')
-      return
-    }
-
-    try {
-      setIsSubmitting(true)
-      await onSave({
-        name: name.trim().toUpperCase(),
-        rubro: rubro || 'VARIOS Y GENERAL',
-        category,
-        unit_measure: unitMeasure,
-        weight_kg: Number(weightKg) || 0,
-        requires_stock_control: requiresStockControl,
-        current_stock: Number(currentStock) || 0,
-        minimum_stock: Number(minimumStock) || 0,
-        security_factor: Number(securityFactor) || 1.06
-      })
-    } catch (err) {
-      setFormError(err?.message || 'Error al guardar el material en el catálogo.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="alon-modal-card max-w-4xl">
-        <div className="alon-modal-header">
-          <div className="flex items-center gap-2 text-white font-black text-sm min-w-0">
-            <Package className="w-5 h-5 text-emerald-400 shrink-0" />
-            <div className="min-w-0">
-              <span className="block leading-tight truncate">ALTA DE MATERIAL EN CATÁLOGO B.D (PAÑOL)</span>
-              <span className="text-[11px] font-normal text-slate-400 block truncate">
-                Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Identificación ➔ 2° Medidas ➔ 3° Stock & Alertas ➔ 4° Seguridad Naval.
-              </span>
-            </div>
-          </div>
-          <button type="button" tabIndex={-1} onClick={onClose} className="text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
-          <div className="alon-modal-body space-y-3">
-            {formError && (
-              <div className="p-3 rounded-xl bg-rose-950/90 border border-rose-500/70 text-rose-200 font-bold flex items-start gap-2.5 shadow-lg">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <span className="block text-[11px] uppercase tracking-wider text-rose-300 font-black">
-                    No se pudo guardar el material
-                  </span>
-                  <span className="block text-xs font-semibold text-rose-100 mt-0.5">{formError}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setFormError('')}
-                  className="text-rose-300 hover:text-white cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
-              {/* COLUMNA IZQUIERDA */}
-              <div className="space-y-3">
-                <div className="alon-chunk-sky space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
-                    <span className="font-black text-sky-400 uppercase tracking-wider text-[11px]">
-                      1. Identificación Técnica y Clasificación
-                    </span>
-                    <span className="text-[10px] text-slate-400">Catálogo oficial</span>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold text-[11px] mb-1">
-                      Nombre Técnico Oficial <span className="text-rose-400">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      autoFocus
-                      value={name}
-                      onChange={(e) => {
-                        setName(e.target.value)
-                        if (formError) setFormError('')
-                      }}
-                      placeholder="Ej: CHAPA NAVAL GRADO A 1/2' x 1500 x 6000..."
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold uppercase focus:outline-none focus:border-cyan-400 text-xs"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-slate-300 font-bold text-[11px] mb-1">
-                        Categoría General <span className="text-rose-400">*</span>
-                      </label>
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400 text-xs"
-                      >
-                        <option value="MATERIALES">MATERIALES</option>
-                        <option value="CONSUMIBLES">CONSUMIBLES</option>
-                        <option value="ELEM.SEGURIDAD">ELEM.SEGURIDAD</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-bold text-[11px] mb-1">
-                        Rubro Técnico <span className="text-rose-400">*</span>
-                      </label>
-                      <select
-                        value={rubro}
-                        onChange={(e) => setRubro(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 text-xs"
-                      >
-                        <option value="">VARIOS Y GENERAL (Por defecto)</option>
-                        {rubros.map((r) => (
-                          <option key={r.id || r.name} value={r.name}>
-                            {r.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="alon-chunk-indigo space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
-                    <span className="font-black text-indigo-400 uppercase tracking-wider text-[11px]">
-                      2. Métricas Físicas y Unidad de Despacho
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-slate-300 font-bold text-[11px] mb-1">Unidad de Medida</label>
-                      <select
-                        value={unitMeasure}
-                        onChange={(e) => setUnitMeasure(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-400 text-xs"
-                      >
-                        <option value="Unidad">Unidad</option>
-                        <option value="kg">Kilogramo (kg)</option>
-                        <option value="metro">Metro lineal</option>
-                        <option value="m2">Metro cuadrado (m2)</option>
-                        <option value="Litro">Litro</option>
-                        <option value="Bolsón">Bolsón</option>
-                        <option value="Tubo">Tubo / Cilindro</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-bold text-[11px] mb-1">Peso Unitario (kg)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        placeholder="0.00"
-                        value={weightKg}
-                        onChange={(e) => setWeightKg(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-indigo-400 text-xs"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* COLUMNA DERECHA */}
-              <div className="space-y-3">
-                <div className="alon-chunk-emerald space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
-                    <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px]">
-                      3. Stock y Alertas de Reposición
-                    </span>
-                    <span className="text-[10px] text-emerald-300 font-bold">Depósito Central</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-slate-300 font-bold text-[11px] mb-1">Stock Inicial Actual</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={currentStock}
-                        onChange={(e) => setCurrentStock(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-emerald-500 text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-bold text-[11px] mb-1">Stock Mínimo (Alerta)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={minimumStock}
-                        onChange={(e) => setMinimumStock(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-emerald-500 text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-white block text-[11px]">Lleva Control de Stock Físico</span>
-                      <span className="text-slate-400 text-[10px]">Desmarcar solo si es compra directa sin depósito</span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={requiresStockControl}
-                      onChange={(e) => setRequiresStockControl(e.target.checked)}
-                      className="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-700 cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                <div className="alon-chunk-amber space-y-2">
-                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
-                    <span className="font-black text-amber-400 uppercase tracking-wider text-[11px]">
-                      4. Coeficiente de Seguridad Naval
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold text-[11px] mb-1">% Seguridad Naval (Merma / Desperdicio)</label>
-                    <select
-                      disabled={!isAdmin}
-                      value={securityFactor}
-                      onChange={(e) => setSecurityFactor(e.target.value)}
-                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${
-                        !isAdmin ? 'bg-slate-950 border-slate-800 text-slate-500' : 'bg-slate-950 border-slate-700 text-white focus:outline-none focus:border-amber-400'
-                      }`}
-                    >
-                      <option value="1.02">2% (1.02)</option>
-                      <option value="1.06">6% (1.06 Estándar Astillero)</option>
-                      <option value="1.10">10% (1.10)</option>
-                      <option value="1.15">15% (1.15)</option>
-                      <option value="1.20">20% (1.20)</option>
-                    </select>
-                  </div>
-                  <p className="text-[10px] text-slate-400 italic">
-                    Aplica automáticamente sobre los cálculos de reposición y pedidos de compra directa.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="alon-modal-footer">
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={onClose}
-              className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-bold cursor-pointer text-xs"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-emerald-600/30 transition-all"
-            >
-              {isSubmitting ? 'Guardando...' : 'Guardar Material'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
+// 4. MODAL ALTA / EDICIÓN DE MATERIAL (RE-EXPORT MODULAR <= 250L)
+export { MaterialCatalogFormModal as NewMaterialModal }
 
 // ==============================================================================
 // 5. SUBCOMPONENTE: AJUSTE DE STOCK FÍSICO
@@ -1656,8 +1371,12 @@ export function PanolModalsContainer({
   setShowWithdrawalModal,
   editingWithdrawalRow,
   setEditingWithdrawalRow,
-  showNewMaterialModal,
-  setShowNewMaterialModal,
+  materialFormModal = { isOpen: false, material: null },
+  setMaterialFormModal,
+  showRubrosModal = false,
+  setShowRubrosModal,
+  consumption6MModal = { isOpen: false, material: null },
+  setConsumption6MModal,
   showStockAdjustModal,
   setShowStockAdjustModal,
   showGasModal,
@@ -1676,6 +1395,7 @@ export function PanolModalsContainer({
   setPreviewImage,
   materials,
   setMaterials,
+  inventoryTx = [],
   setInventoryTx,
   gasMovements = [],
   setGasMovements,
@@ -1694,7 +1414,9 @@ export function PanolModalsContainer({
   workers,
   isAdmin,
   user,
-  showFeedback
+  showFeedback,
+  onRefreshData = null,
+  navigate = null
 }) {
   const handleSaveMultiWithdrawal = async (payload) => {
     try {
@@ -1754,18 +1476,42 @@ export function PanolModalsContainer({
     }
   }
 
-  const handleSaveNewMaterial = async (formData) => {
+  const handleSaveMaterialForm = async ({ material, formData, imageFile }) => {
     try {
+      if (material?.id) {
+        const updated = await updateCatalogMaterialService({
+          material,
+          formData,
+          imageFile,
+          existingMaterials: materials,
+          isAdmin,
+          user
+        })
+        setMaterials((prev) => prev.map((m) => (m.id === material.id ? { ...m, ...updated } : m)))
+        showFeedback(
+          'success',
+          isAdmin
+            ? `Material "${updated.name}" actualizado con éxito.`
+            : `Foto de "${material.name}" actualizada con éxito.`
+        )
+        setMaterialFormModal({ isOpen: false, material: null })
+        return
+      }
+
+      let imageUrl = null
+      if (imageFile) {
+        imageUrl = await uploadMaterialImageService({ materialName: formData?.name, imageFile })
+      }
       const data = await createMaterialService({
-        formData,
+        formData: { ...formData, image_url: imageUrl },
         existingMaterials: materials,
         user
       })
       setMaterials((prev) => [data, ...prev])
       showFeedback('success', `Material "${data.name}" agregado con éxito al Catálogo B.D.`)
-      setShowNewMaterialModal(false)
+      setMaterialFormModal({ isOpen: false, material: null })
     } catch (e) {
-      showFeedback('error', 'Error creando material: ' + e.message)
+      showFeedback('error', 'Error guardando material: ' + e.message)
       throw e
     }
   }
@@ -1913,12 +1659,42 @@ export function PanolModalsContainer({
         />
       )}
 
-      {showNewMaterialModal && (
-        <NewMaterialModal
+      {materialFormModal?.isOpen && (
+        <MaterialCatalogFormModal
+          key={materialFormModal.material?.id || 'new-material'}
+          material={materialFormModal.material}
           rubros={rubros}
+          materials={materials}
           isAdmin={isAdmin}
-          onClose={() => setShowNewMaterialModal(false)}
-          onSave={handleSaveNewMaterial}
+          onOpenRubrosManager={isAdmin ? () => setShowRubrosModal(true) : null}
+          onClose={() => setMaterialFormModal({ isOpen: false, material: null })}
+          onSave={handleSaveMaterialForm}
+        />
+      )}
+
+      {showRubrosModal && (
+        <MaterialRubrosManagerModal
+          rubros={rubros}
+          materials={materials}
+          isAdmin={isAdmin}
+          user={user}
+          onRefreshData={onRefreshData}
+          showFeedback={showFeedback}
+          onClose={() => setShowRubrosModal(false)}
+        />
+      )}
+
+      {consumption6MModal?.isOpen && consumption6MModal.material && (
+        <MaterialConsumption6MModal
+          material={consumption6MModal.material}
+          inventoryTx={inventoryTx}
+          workOrders={workOrders}
+          ships={ships}
+          onReponer={navigate ? (mat) => {
+            setConsumption6MModal({ isOpen: false, material: null })
+            navigate(`/compras?nuevo=true&materialId=${mat.id}&materialName=${encodeURIComponent(mat.name)}`)
+          } : null}
+          onClose={() => setConsumption6MModal({ isOpen: false, material: null })}
         />
       )}
 

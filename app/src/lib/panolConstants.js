@@ -228,21 +228,16 @@ export function findLinkedGasMovement(tx, gasMovements = []) {
  * para el módulo de Pañol Central & Materiales (M4 - Logística Naval).
  */
 
-// Insignias cromáticas para porcentaje de Seguridad Naval
+export const MATERIAL_CATEGORIES = ['MATERIALES', 'CONSUMIBLES', 'ELEM.SEGURIDAD']
+
 export function getSecurityFactorBadge(factor) {
   const f = Number(factor) || 1.06
-  if (f <= 1.02) {
-    return { label: '2% (1.02)', style: 'bg-slate-800 text-slate-300 border-slate-700' }
-  }
-  if (Math.abs(f - 1.06) < 0.005) {
-    return { label: '6% (1.06 Estándar)', style: 'bg-emerald-950 text-emerald-300 border-emerald-500/60 font-bold' }
-  }
-  if (Math.abs(f - 1.10) < 0.005) {
-    return { label: '10% (1.10)', style: 'bg-amber-950 text-amber-300 border-amber-600' }
-  }
-  if (Math.abs(f - 1.15) < 0.005) {
-    return { label: '15% (1.15)', style: 'bg-orange-950 text-orange-300 border-orange-600' }
-  }
+  if (f <= 1.02) return { label: '2% (1.02)', style: 'bg-slate-800 text-slate-300 border-slate-700' }
+  if (Math.abs(f - 1.06) < 0.005) return { label: '6% (1.06)', style: 'bg-emerald-950 text-emerald-300 border-emerald-500/60 font-bold' }
+  if (Math.abs(f - 1.10) < 0.005) return { label: '10% (1.10)', style: 'bg-amber-950 text-amber-300 border-amber-600' }
+  if (Math.abs(f - 1.15) < 0.005) return { label: '15% (1.15)', style: 'bg-orange-950 text-orange-300 border-orange-600' }
+  if (Math.abs(f - 1.20) < 0.005) return { label: '20% (1.20)', style: 'bg-rose-950 text-rose-300 border-rose-600 font-bold' }
+  if (Math.abs(f - 1.30) < 0.005) return { label: '30% (1.30)', style: 'bg-fuchsia-950 text-fuchsia-300 border-fuchsia-600 font-bold' }
   return { label: `${Math.round((f - 1) * 100)}% (${f})`, style: 'bg-rose-950 text-rose-300 border-rose-600 font-bold' }
 }
 
@@ -259,17 +254,20 @@ export const SPREADSHEET_COLUMNS_PANOL = [
   { key: 'notes', label: 'Observaciones', readOnly: false }
 ]
 
-// Columnas para la grilla de materiales (materialsGrid)
+// Columnas para la grilla de materiales (materialsGrid) — Solo Admin edita catálogo/stock mín/control/% seg
 export const getMaterialsColumns = (isAdmin) => [
-  { key: 'name', label: 'Material / Insumo', readOnly: false },
-  { key: 'rubro', label: 'Rubro Técnico', readOnly: true },
-  { key: 'category', label: 'Categoría', readOnly: true },
-  { key: 'weight_kg', label: 'Peso Unit. (kg)', isNumeric: true, readOnly: false },
+  { key: 'name', label: 'Material / Insumo', readOnly: !isAdmin },
+  { key: 'rubro', label: 'Rubro Técnico', readOnly: !isAdmin },
+  { key: 'category', label: 'Categoría', readOnly: !isAdmin },
+  { key: 'unit_measure', label: 'Unidad', readOnly: !isAdmin },
+  { key: 'weight_kg', label: 'Peso Unit. (kg)', isNumeric: true, readOnly: !isAdmin },
   { key: 'current_stock', label: 'Stock Actual', isNumeric: true, readOnly: true },
-  { key: 'minimum_stock', label: 'Stock Mínimo', isNumeric: true, readOnly: false },
-  { key: 'requires_stock_control', label: 'Lleva Stock Físico', readOnly: false },
+  { key: 'minimum_stock', label: 'Stock Mínimo', isNumeric: true, readOnly: !isAdmin },
+  { key: 'requires_stock_control', label: 'Lleva Stock Físico', readOnly: !isAdmin },
   { key: 'security_factor', label: '% Seg. Naval', readOnly: !isAdmin }
 ]
+
+export const getMaterialsPasteFields = (isAdmin) => (isAdmin ? MATERIALS_PASTE_FIELDS : [])
 
 // Campos permitidos para pegado y clonación de filas
 export const PANOL_PASTE_FIELDS = [

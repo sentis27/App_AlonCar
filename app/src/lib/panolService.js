@@ -8,6 +8,7 @@ import { logCellChange, logRowAction } from './auditService.js'
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { normalizeText, setAllocationWorkersCache } from './allocationEngine.js'
 import { isGasMaterial, stripGasTagFromNotes, findLinkedGasMovement } from './panolConstants.js'
+import { normalizeUnitMeasure } from './comprasConstants.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog } from './workerIdentity.js'
 import { materialsRepository, materialRubrosRepository } from '../repositories/materialsRepository.js'
@@ -814,36 +815,33 @@ export async function createMaterialService({ formData, existingMaterials = [], 
     throw new Error(`Ya existe el material "${remoteDup[0].name}" en la base de datos.`)
   }
 
-  const currentStockNum =
-    formData?.current_stock === '' || formData?.current_stock == null ? 0 : Number(formData.current_stock)
-  const minimumStockNum =
-    formData?.minimum_stock === '' || formData?.minimum_stock == null ? 0 : Number(formData.minimum_stock)
-  const weightKgNum =
-    formData?.weight_kg === '' || formData?.weight_kg == null ? 0 : Number(formData.weight_kg)
+  const currentStockNum = formData?.current_stock === '' || formData?.current_stock == null ? 0 : Number(formData.current_stock)
+  const minimumStockNum = formData?.minimum_stock === '' || formData?.minimum_stock == null ? 0 : Number(formData.minimum_stock)
+  const weightKgNum = formData?.weight_kg === '' || formData?.weight_kg == null ? 0 : Number(formData.weight_kg)
+  const costArsNum = Math.max(0, Number(formData?.cost_ars) || 0)
+  const secFactorNum = Number(formData?.security_factor) || 1.06
+  const fxRate = Number(formData?.dollar_rate) > 0 ? Number(formData.dollar_rate) : 1500
+  const costUsdNum = formData?.cost_usd != null ? Math.max(0, Number(formData.cost_usd) || 0) : Math.round(((costArsNum * secFactorNum) / fxRate) * 100) / 100
 
-  if (!Number.isFinite(currentStockNum) || currentStockNum < 0) {
-    throw new Error('El stock inicial actual debe ser un número mayor o igual a 0.')
-  }
-  if (!Number.isFinite(minimumStockNum) || minimumStockNum < 0) {
-    throw new Error('El stock mínimo debe ser un número mayor o igual a 0.')
-  }
-  if (!Number.isFinite(weightKgNum) || weightKgNum < 0) {
-    throw new Error('El peso unitario debe ser un número mayor o igual a 0.')
-  }
+  if (!Number.isFinite(currentStockNum) || currentStockNum < 0) throw new Error('El stock inicial actual debe ser un número mayor o igual a 0.')
+  if (!Number.isFinite(minimumStockNum) || minimumStockNum < 0) throw new Error('El stock mínimo debe ser un número mayor o igual a 0.')
+  if (!Number.isFinite(weightKgNum) || weightKgNum < 0) throw new Error('El peso unitario debe ser un número mayor o igual a 0.')
 
   const payload = {
     name: cleanName,
     rubro: String(formData?.rubro || '').trim().toUpperCase() || 'VARIOS Y GENERAL',
     rubro_status: 'APROBADO',
-    category: ['MATERIALES', 'CONSUMIBLES', 'ELEM.SEGURIDAD'].includes(formData?.category)
-      ? formData.category
-      : 'CONSUMIBLES',
-    unit_measure: String(formData?.unit_measure || 'Unidad').trim() || 'Unidad',
+    category: ['MATERIALES', 'CONSUMIBLES', 'ELEM.SEGURIDAD'].includes(formData?.category) ? formData.category : 'CONSUMIBLES',
+    unit_measure: normalizeUnitMeasure(formData?.unit_measure, cleanName),
     weight_kg: weightKgNum,
+    cost_ars: costArsNum,
+    cost_usd: costUsdNum,
+    last_price_update: new Date().toISOString(),
     requires_stock_control: Boolean(formData?.requires_stock_control ?? true),
     current_stock: currentStockNum,
     minimum_stock: minimumStockNum,
-    security_factor: Number(formData?.security_factor) || 1.06
+    security_factor: secFactorNum,
+    ...(formData?.image_url ? { image_url: formData.image_url } : {})
   }
 
   const { data, error, code } = await materialsRepository.insertOne(payload)

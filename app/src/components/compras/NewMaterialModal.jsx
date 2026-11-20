@@ -1,24 +1,28 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ShieldAlert } from 'lucide-react'
-import {
-  CATALOG_RUBROS,
-  OFFICIAL_UNITS,
-  SECURITY_FACTORS,
-  deduceUnitMeasure
-} from '../../lib/comprasConstants'
-import {
-  dismissOrderCatalogRequirementService,
-  createCatalogMaterialWithImageService
-} from '../../services/comprasOcrSettingsService'
+import { CATALOG_RUBROS, OFFICIAL_UNITS, SECURITY_FACTORS, deduceUnitMeasure, normalizeUnitMeasure } from '../../lib/comprasConstants'
+import { materialRubrosRepository } from '../../repositories/materialsRepository'
+import { dismissOrderCatalogRequirementService, createCatalogMaterialWithImageService } from '../../services/comprasOcrSettingsService'
 
 export default function NewMaterialModal({ order, onClose, onDismissed, onSuccess }) {
   const [noCatalogRequired, setNoCatalogRequired] = useState(false)
-  const [name, setName] = useState(order.material_name_raw)
+  const [name, setName] = useState(String(order.material_name_raw || '').toUpperCase())
   const [category, setCategory] = useState('MATERIALES')
   const [rubro, setRubro] = useState('MATERIALES')
+  const [rubroOptions, setRubroOptions] = useState(CATALOG_RUBROS)
   const [requestNewRubro, setRequestNewRubro] = useState(false)
   const [suggestedRubro, setSuggestedRubro] = useState('')
-  const [unitMeasure, setUnitMeasure] = useState(order.unit_measure || deduceUnitMeasure(order.material_name_raw))
+  const [unitMeasure, setUnitMeasure] = useState(normalizeUnitMeasure(order.unit_measure, order.material_name_raw))
+
+  useEffect(() => {
+    let active = true
+    materialRubrosRepository.listRubros().then(({ data }) => {
+      if (!active || !data?.length) return
+      const names = Array.from(new Set(data.map((r) => String(r.name || '').trim().toUpperCase()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'))
+      setRubroOptions(names)
+    }).catch(() => {})
+    return () => { active = false }
+  }, [])
   const [securityFactor, setSecurityFactor] = useState(1.06)
   const [costArs, setCostArs] = useState(order.supplier_quoted_price || 0)
   const [minimumStock, setMinimumStock] = useState(0)
@@ -132,10 +136,11 @@ export default function NewMaterialModal({ order, onClose, onDismissed, onSucces
                   type="text"
                   value={name}
                   onChange={(e) => {
-                    setName(e.target.value)
-                    setUnitMeasure(deduceUnitMeasure(e.target.value))
+                    const upper = e.target.value.toUpperCase()
+                    setName(upper)
+                    setUnitMeasure(deduceUnitMeasure(upper))
                   }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-medium focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-medium uppercase focus:outline-none focus:border-cyan-500"
                   required
                 />
                 <div className="flex flex-wrap items-center gap-1.5 mt-2">
@@ -197,7 +202,7 @@ export default function NewMaterialModal({ order, onClose, onDismissed, onSucces
                     onChange={(e) => setRubro(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
                   >
-                    {CATALOG_RUBROS.map((r) => (
+                    {rubroOptions.map((r) => (
                       <option key={r} value={r}>
                         {r}
                       </option>

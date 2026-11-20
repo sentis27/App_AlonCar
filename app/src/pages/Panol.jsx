@@ -10,6 +10,7 @@ import PanolMovimientosPanel from '../components/panol/PanolMovimientosPanel'
 import PanolStockPanel from '../components/panol/PanolStockPanel'
 import { PanolModalsContainer } from '../components/panol/PanolModals'
 import { fetchPanolData } from '../lib/panolService'
+import { isPanolAdminRole } from '../lib/panolCatalogService'
 import {
   calculateGasStats, calculatePanolKpis, calculatePanolTotals,
   formatWorkOrderTooltip, filterPanolTransactions, filterPanolMaterials
@@ -23,7 +24,7 @@ export default function Panol() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user, profile } = useAuth()
-  const isAdmin = profile?.role === 'Admin' || profile?.role === 'Gerencia'
+  const isAdmin = isPanolAdminRole(profile)
 
   const [activeTab, setActiveTab] = useState(() => {
     const t = searchParams.get('tab')
@@ -47,15 +48,8 @@ export default function Panol() {
   const {
     safeTab, filtersByTab, activeFilters, hasActiveFilters: hasActivePanolFilter, setTabFilter, setActiveFilter, clearActiveTabFilters, viewsController: panolViewsController
   } = useTabbedFilterMemory({
-    modulePrefix: 'panol',
-    tabs: ['planillas', 'gases', 'catalogo', 'epp'],
-    activeTab,
-    urlOverridesByTab: {
-      planillas: {
-        ...(searchParams.get('kpi') ? { activeKpiFilter: searchParams.get('kpi') } : {}),
-        ...(searchParams.get('con_barco') === '1' ? { onlyWithShipFilter: true } : {})
-      }
-    },
+    modulePrefix: 'panol', tabs: ['planillas', 'gases', 'catalogo', 'epp'], activeTab,
+    urlOverridesByTab: { planillas: { ...(searchParams.get('kpi') ? { activeKpiFilter: searchParams.get('kpi') } : {}), ...(searchParams.get('con_barco') === '1' ? { onlyWithShipFilter: true } : {}) } },
     summaryContext: { ships, workOrders, suppliers, materials }
   })
 
@@ -66,10 +60,11 @@ export default function Panol() {
   const filterStockOnly = Boolean(activeFilters.filterStockOnly)
   const activeKpiFilter = activeFilters.activeKpiFilter ?? null
 
-  // Estados de Modales
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false)
   const [editingWithdrawalRow, setEditingWithdrawalRow] = useState(null)
-  const [showNewMaterialModal, setShowNewMaterialModal] = useState(false)
+  const [materialFormModal, setMaterialFormModal] = useState({ isOpen: false, material: null })
+  const [showRubrosModal, setShowRubrosModal] = useState(false)
+  const [consumption6MModal, setConsumption6MModal] = useState({ isOpen: false, material: null })
   const [showStockAdjustModal, setShowStockAdjustModal] = useState({ isOpen: false, material: null })
   const [showGasModal, setShowGasModal] = useState({ isOpen: false, operationType: 'PRIMERA_ENTREGA' })
   const [gasFinalReturnModal, setGasFinalReturnModal] = useState({ isOpen: false, contractorName: '' })
@@ -113,7 +108,7 @@ export default function Panol() {
     }
   }, [])
 
-  const isPanolModalOpen = Boolean(showWithdrawalModal || showNewMaterialModal || showStockAdjustModal.isOpen || showGasModal.isOpen || gasFinalReturnModal.isOpen || gasSupplierModal.isOpen || quickPurchaseModal.isOpen || requestOtModal.isOpen || workerPermissionModal.isOpen)
+  const isPanolModalOpen = Boolean(showWithdrawalModal || materialFormModal.isOpen || showRubrosModal || consumption6MModal.isOpen || showStockAdjustModal.isOpen || showGasModal.isOpen || gasFinalReturnModal.isOpen || gasSupplierModal.isOpen || quickPurchaseModal.isOpen || requestOtModal.isOpen || workerPermissionModal.isOpen)
   useSupabaseRealtimeRefresh({
     channelName: 'panol_live',
     tables: PANOL_REALTIME_TABLES,
@@ -167,11 +162,11 @@ export default function Panol() {
   const filteredMaterials = useMemo(
     () => filterPanolMaterials(materials, {
       activeKpiFilter: activeFilters.activeKpiFilter,
-      filterStockOnly: Boolean(activeFilters.filterStockOnly),
+      filterStockOnly: !isAdmin ? true : Boolean(activeFilters.filterStockOnly),
       filterCategory: activeFilters.filterCategory || 'TODAS',
       searchQuery: activeFilters.searchQuery || ''
     }),
-    [materials, activeFilters]
+    [materials, activeFilters, isAdmin]
   )
 
   return (
@@ -188,9 +183,10 @@ export default function Panol() {
 
       {/* ZONA 1: CONTEXTO OPERATIVO */}
       <PanolHeader
-        activeTab={activeTab} filteredTransactionsCount={filteredTransactions.length} criticalCount={kpiStats.criticalCount} onChangeTab={changeTab}
+        activeTab={activeTab} isAdmin={isAdmin} filteredTransactionsCount={filteredTransactions.length} criticalCount={kpiStats.criticalCount} onChangeTab={changeTab}
         onOpenWithdrawalModal={() => { setEditingWithdrawalRow(null); setShowWithdrawalModal(true) }}
-        onOpenNewMaterialModal={() => setShowNewMaterialModal(true)}
+        onOpenNewMaterialModal={() => setMaterialFormModal({ isOpen: true, material: null })}
+        onOpenRubrosModal={() => setShowRubrosModal(true)}
         onOpenGasModal={() => setShowGasModal({ isOpen: true, operationType: 'PRIMERA_ENTREGA' })}
         onOpenGasSupplierModal={(supplierId = '') => setGasSupplierModal({ isOpen: true, supplierId })}
         navigate={navigate}
@@ -223,8 +219,8 @@ export default function Panol() {
           filterShip={activeFilters.filterShip ?? 'TODOS'} setFilterShip={(v) => setActiveFilter('filterShip', v)}
           filterOt={activeFilters.filterOt ?? 'TODAS'} setFilterOt={(v) => setActiveFilter('filterOt', v)}
           filterContractor={activeFilters.filterContractor ?? 'TODOS'} setFilterContractor={(v) => setActiveFilter('filterContractor', v)}
-          filterStockOnly={filterStockOnly} setFilterStockOnly={(v) => setActiveFilter('filterStockOnly', v)}
-          activeTab={activeTab} ships={ships} workOrders={workOrders} workItems={workItems}
+          filterStockOnly={!isAdmin ? true : filterStockOnly} setFilterStockOnly={(v) => setActiveFilter('filterStockOnly', v)}
+          isAdmin={isAdmin} activeTab={activeTab} ships={ships} workOrders={workOrders} workItems={workItems}
           contractorOptions={availableGroups} hasActiveFilters={hasActivePanolFilter} onClearAllFilters={clearAllPanolFilters} viewsController={panolViewsController}
         />
 
@@ -249,9 +245,9 @@ export default function Panol() {
 
         {(activeTab === 'catalogo' || activeTab === 'gases' || activeTab === 'epp') && (
           <PanolStockPanel
-            activeTab={activeTab} filteredMaterials={filteredMaterials} materials={materials} gasStats={gasStats}
+            activeTab={activeTab} filteredMaterials={filteredMaterials} materials={materials} rubros={rubros} gasStats={gasStats}
             gasMovements={gasMovements} setGasMovements={setGasMovements} suppliers={suppliers} ships={ships} workOrders={workOrders}
-            searchQuery={searchQuery} activeKpiFilter={activeKpiFilter} filterCategory={filterCategory} filterStockOnly={filterStockOnly}
+            searchQuery={searchQuery} activeKpiFilter={activeKpiFilter} filterCategory={filterCategory} filterStockOnly={!isAdmin ? true : filterStockOnly}
             traceSupplierFilter={gasesFilters.traceSupplierFilter}
             setTraceSupplierFilter={(v) => setTabFilter('gases', 'traceSupplierFilter', v)}
             traceMaterialFilter={gasesFilters.traceMaterialFilter}
@@ -259,7 +255,10 @@ export default function Panol() {
             isAdmin={isAdmin} user={user} criticalMaterialsCount={kpiStats.criticalCount}
             stockControlledCount={materials.filter((m) => m.requires_stock_control).length}
             onClearFilters={clearAllPanolFilters}
+            onOpenEditMaterialModal={(mat) => setMaterialFormModal({ isOpen: true, material: mat })}
             onOpenStockAdjustModal={(mat) => setShowStockAdjustModal({ isOpen: true, material: mat })}
+            onOpenConsumption6MModal={(mat) => setConsumption6MModal({ isOpen: true, material: mat })}
+            onOpenRubrosModal={() => setShowRubrosModal(true)}
             onOpenWithdrawalModal={() => { setEditingWithdrawalRow(null); setShowWithdrawalModal(true) }}
             onOpenGasFinalReturnModal={(cName) => setGasFinalReturnModal({ isOpen: true, contractorName: cName })}
             onOpenGasSupplierModal={(supplierId = '') => setGasSupplierModal({ isOpen: true, supplierId })}
@@ -272,7 +271,9 @@ export default function Panol() {
       <PanolModalsContainer
         showWithdrawalModal={showWithdrawalModal} setShowWithdrawalModal={setShowWithdrawalModal}
         editingWithdrawalRow={editingWithdrawalRow} setEditingWithdrawalRow={setEditingWithdrawalRow}
-        showNewMaterialModal={showNewMaterialModal} setShowNewMaterialModal={setShowNewMaterialModal}
+        materialFormModal={materialFormModal} setMaterialFormModal={setMaterialFormModal}
+        showRubrosModal={showRubrosModal} setShowRubrosModal={setShowRubrosModal}
+        consumption6MModal={consumption6MModal} setConsumption6MModal={setConsumption6MModal}
         showStockAdjustModal={showStockAdjustModal} setShowStockAdjustModal={setShowStockAdjustModal}
         showGasModal={showGasModal} setShowGasModal={setShowGasModal}
         gasFinalReturnModal={gasFinalReturnModal} setGasFinalReturnModal={setGasFinalReturnModal}
@@ -281,7 +282,7 @@ export default function Panol() {
         requestOtModal={requestOtModal} setRequestOtModal={setRequestOtModal}
         workerPermissionModal={workerPermissionModal} setWorkerPermissionModal={setWorkerPermissionModal}
         previewImage={previewImage} setPreviewImage={setPreviewImage}
-        materials={materials} setMaterials={setMaterials} setInventoryTx={setInventoryTx}
+        materials={materials} setMaterials={setMaterials} inventoryTx={inventoryTx} setInventoryTx={setInventoryTx}
         gasMovements={gasMovements} setGasMovements={setGasMovements}
         gasStats={gasStats}
         ships={ships} workOrders={workOrders} workItems={workItems} astilleroWorkers={astilleroWorkers}
@@ -289,6 +290,7 @@ export default function Panol() {
         getEnabledWorkersAndContractors={getEnabledPersonnel}
         pendingAlerts={pendingAlerts} setPendingAlerts={setPendingAlerts}
         suppliers={suppliers} rubros={rubros} workers={workers} isAdmin={isAdmin} user={user} showFeedback={showFeedback}
+        onRefreshData={loadData} navigate={navigate}
       />
     </div>
   )

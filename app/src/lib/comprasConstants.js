@@ -129,42 +129,15 @@ export const CATALOG_RUBROS = [
   'VIDRIOS'
 ]
 
-// Unidades de medida oficiales del sistema
-export const OFFICIAL_UNITS = [
-  { value: 'unidad', label: 'Unidad (un.)' },
-  { value: 'm2', label: 'm2 (Lado x Lado / Área)' },
-  { value: 'metro lineal', label: 'Metro Lineal (m)' },
-  { value: 'kg', label: 'Kilogramos (kg)' },
-  { value: 'm3', label: 'Metros Cúbicos (m3)' },
-  { value: 'Litros', label: 'Litros (L)' },
-  { value: 'Caja', label: 'Caja' },
-  { value: 'Bolsón', label: 'Bolsón' },
-  { value: 'Rollo', label: 'Rollo' },
-  { value: 'Barra', label: 'Barra' },
-  { value: 'Chapa', label: 'Chapa' },
-  { value: 'Tubo', label: 'Tubo' },
-  { value: 'Pieza', label: 'Pieza' }
-]
-
-// Porcentajes de seguridad (Merma / Buffer Naval según módulo Pañol)
-export const SECURITY_FACTORS = [
-  { value: 1.02, label: '2% (Factor 1.02)' },
-  { value: 1.06, label: '6% — Predeterminado (Factor 1.06)' },
-  { value: 1.10, label: '10% (Factor 1.10)' },
-  { value: 1.15, label: '15% (Factor 1.15)' },
-  { value: 1.20, label: '20% (Factor 1.20)' },
-  { value: 1.30, label: '30% (Factor 1.30)' }
-]
-
-// Función obligatoria de deducción estricta de unidad de medida por texto
-export function deduceUnitMeasure(materialName = '') {
-  const text = materialName.toLowerCase()
-  if (text.includes('lado x lado')) return 'm2'
-  if (text.includes('x metro lineal') || text.includes('x metro') || text.includes('metro lineal')) return 'metro lineal'
-  if (text.includes('x kg') || text.includes('x kilo') || text.includes('kilo')) return 'kg'
-  if (text.includes('x m3') || text.includes('metro cubico')) return 'm3'
-  return 'unidad'
-}
+// Unidades, normalización y % de seguridad naval (Fuente Única en unitMeasureUtils.js)
+export {
+  OFFICIAL_UNITS,
+  SECURITY_FACTORS,
+  deduceUnitMeasure,
+  normalizeUnitMeasure,
+  formatUnitMeasureShort,
+  resolveOrderMaterialUnit
+} from './unitMeasureUtils.js'
 
 // Normalizador de teléfono argentino a formato WhatsApp internacional limpio (+54 9 [Área sin 0] [Número sin 15])
 export function formatArgPhoneForWhatsApp(phoneStr = '') {

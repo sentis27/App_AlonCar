@@ -1,12 +1,14 @@
-import { Package, Plus, ExternalLink, FileSpreadsheet, Flame, Layers, Shield, Truck } from 'lucide-react'
+import { Package, Plus, ExternalLink, FileSpreadsheet, Flame, Layers, Shield, Truck, FolderTree } from 'lucide-react'
 
 export default function PanolHeader({
   activeTab,
+  isAdmin = false,
   filteredTransactionsCount,
   criticalCount,
   onChangeTab,
   onOpenWithdrawalModal,
   onOpenNewMaterialModal,
+  onOpenRubrosModal = null,
   onOpenGasModal,
   onOpenGasSupplierModal = null,
   navigate
@@ -121,15 +123,28 @@ export default function PanolHeader({
               <span>Registrar Retiro Multi-Material</span>
             </button>
           )}
-          {activeTab === 'catalogo' && (
-            <button
-              type="button"
-              onClick={onOpenNewMaterialModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Nuevo Material</span>
-            </button>
+          {activeTab === 'catalogo' && isAdmin && (
+            <div className="flex flex-wrap items-center gap-2">
+              {onOpenRubrosModal && (
+                <button
+                  type="button"
+                  onClick={onOpenRubrosModal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-950 hover:bg-sky-900 border border-sky-500/60 text-sky-300 font-bold text-xs transition-all cursor-pointer"
+                  title="Base de Datos simple de Rubros de Materiales (1 Rubro ➔ N Materiales)"
+                >
+                  <FolderTree className="w-3.5 h-3.5 text-sky-400" />
+                  <span>B.D. Rubros</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onOpenNewMaterialModal}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Nuevo Material</span>
+              </button>
+            </div>
           )}
           {activeTab === 'gases' && (
             <div className="flex flex-wrap items-center gap-2">

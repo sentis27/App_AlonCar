@@ -1,5 +1,5 @@
 import CrawlerSearchBar from '../CrawlerSearchBar'
-import { Package, X } from 'lucide-react'
+import { Package, X, Lock } from 'lucide-react'
 import {
   CLEAR_FILTER_BTN_CLASS,
   getFilterSelectClass,
@@ -22,6 +22,7 @@ export default function PanolToolbar({
   setFilterContractor,
   filterStockOnly,
   setFilterStockOnly,
+  isAdmin = true,
   activeTab,
   ships = [],
   workOrders = [],
@@ -132,16 +133,26 @@ export default function PanolToolbar({
           )}
 
           {activeTab === 'catalogo' && (
-            <button
-              type="button"
-              onClick={() => setFilterStockOnly(!filterStockOnly)}
-              className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                filterStockOnly ? 'bg-cyan-950 border-cyan-500 text-cyan-300 shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
-              }`}
-            >
-              <Package className="w-3.5 h-3.5" />
-              <span>Solo con Control de Stock</span>
-            </button>
+            isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setFilterStockOnly(!filterStockOnly)}
+                className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  filterStockOnly ? 'bg-cyan-950 border-cyan-500 text-cyan-300 shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Solo con Control de Stock</span>
+              </button>
+            ) : (
+              <span
+                className="px-2.5 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-950/60 text-cyan-300 text-xs font-bold inline-flex items-center gap-1.5 cursor-help"
+                title="En Pañolero solo se listan materiales con control de stock físico. Los demás se consultan desde la pestaña Planilla de Retiros."
+              >
+                <Lock className="w-3 h-3 text-amber-400" />
+                <span>Solo con Control de Stock</span>
+              </span>
+            )
           )}
         </div>
 
