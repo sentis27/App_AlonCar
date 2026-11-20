@@ -210,18 +210,8 @@ export default function ResumenGerencialHeader({
           </div>
         ) : isRemitoView ? (
           <div className="flex flex-wrap items-center gap-2 flex-1">
-            <select
-              aria-label="Seleccionar Buque para Remito Comercial"
-              value={selectedShipId}
-              onChange={(e) => onChangeShip(e.target.value)}
-              className="w-full sm:w-auto bg-slate-950 border border-emerald-500/45 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white outline-none"
-            >
-              {selectableShips.map((s) => (
-                <option key={s.id} value={s.id}>Remito de Buque: {s.name} ({s.status || 'Activo'})</option>
-              ))}
-            </select>
-            <span className="text-[11px] text-emerald-300/80 bg-emerald-950/30 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
-              Módulo comercial independiente · Editá tarifas y líneas sin afectar el resumen contable
+            <span className="text-[11px] text-emerald-200 bg-emerald-950/40 border border-emerald-500/40 px-2.5 py-1 rounded-lg font-medium">
+              Mesa Independiente Multi-Barco · Consultá Resumen Gerencial o Matriz OTs en otro barco sin cambiar tu hoja de facturación actual
             </span>
           </div>
         ) : (

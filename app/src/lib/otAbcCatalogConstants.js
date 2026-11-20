@@ -37,6 +37,7 @@ export const OT_ABC_DATA_SOURCES = [
   { value: 'JEFE_DE_OBRA', label: 'Jefe de Obra', shortLabel: 'Jefe de obra' },
   { value: 'MOVIMIENTOS_BUQUE', label: 'Movimientos de Buque (Días)', shortLabel: 'Movimientos' },
   { value: 'PADRON_BUQUES', label: 'Padrón de Buques (Tanques)', shortLabel: 'Sale de buques' },
+  { value: 'PLANILLA_HORAS', label: 'Planilla de Horas (Grúas)', shortLabel: 'Horas' },
   { value: 'TERCEROS_MANUAL', label: 'Terceros (Carga manual)', shortLabel: 'Terceros' },
   { value: 'CARGA_MANUAL', label: 'Carga manual', shortLabel: 'Manual' }
 ]

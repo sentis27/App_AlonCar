@@ -34,6 +34,13 @@ export const ShipSchema = z
     informe_pintado_url: z.string().nullable().optional(),
     informe_pintado_name: z.string().nullable().optional(),
     informe_pintado_uploaded_at: z.string().nullable().optional(),
+    billing_workspace_status: z.enum(['NONE', 'EN_PREPARACION', 'ENVIADO_A_FACTURACION']).optional(),
+    billing_opened_at: z.string().nullable().optional(),
+    billing_sent_at: z.string().nullable().optional(),
+    billing_sent_by: z.string().nullable().optional(),
+    billing_budget_number: z.string().nullable().optional(),
+    billing_total_snapshot_usd: z.coerce.number().nullable().optional(),
+    billing_layout_meta: z.any().optional(),
     created_at: z.string().optional(),
   })
   .passthrough()

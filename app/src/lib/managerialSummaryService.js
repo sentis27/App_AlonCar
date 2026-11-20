@@ -54,6 +54,7 @@ import {
   mapWorkTypeToHoverCode
 } from './resumenCostHoverHelpers.js'
 import { buildRemitoRowsFromOtCatalog } from './otAbcRemitoAdapter.js'
+import { computeOtUnvaluedBreakdown, extractWoBillingMeta } from './billingSheetMath.js'
 
 export const RESUMEN_REALTIME_TABLES = [
   'ships', 'ship_stays', 'owners', 'work_orders', 'work_items', 'ot_templates', 'labor_logs',
@@ -138,13 +139,10 @@ export async function fetchManagerialData() {
     settingsRes,
     otTemplatesRes,
   ] = await Promise.all([
-    shipsRepository.listShips({ select: 'id, name, client_name, status, owner_id, vessel_type, eslora_mts, manga_mts, puntal_mts, superficie_casco_m2, current_location, is_active, created_at' }),
+    shipsRepository.listShips({ select: 'id, name, client_name, status, owner_id, matricula, vessel_type, eslora_mts, manga_mts, puntal_mts, superficie_casco_m2, technical_specs, current_location, is_active, billing_workspace_status, billing_opened_at, billing_sent_at, billing_sent_by, billing_budget_number, billing_total_snapshot_usd, billing_layout_meta, created_at' }),
     shipStaysRepository.listStays(),
-    ownersRepository.listOwners({ select: 'id, name, cuit, armador_name', orderBy: [] }),
-    workOrdersRepository.listWorkOrders({
-      select: 'id, ship_id, ot_number, title, description, work_type, assignment_type, budget_code, foreman_name, contractor_name, start_date, estimated_end_date, closed_at, status, is_tabulated, created_at, merged_into_wo_id, notes',
-      orderBy: [{ column: 'ot_number', ascending: true }],
-    }),
+    ownersRepository.listOwners({ select: 'id, name, cuit, armador_name, email_principal', orderBy: [] }),
+    workOrdersRepository.listWorkOrders({ select: 'id, ship_id, ot_number, title, description, work_type, assignment_type, budget_code, foreman_name, contractor_name, start_date, estimated_end_date, closed_at, status, is_tabulated, created_at, merged_into_wo_id, notes, billing_description, billing_notes, is_in_billing, billing_sort_order, billing_rubro_group, billing_pricing_mode, billing_mo_usd, billing_mat_usd, billing_unit_price_usd, billing_qty_override, billing_mo_tax, billing_mat_tax, foreman_review_status, foreman_review_note, foreman_review_requested_at, foreman_review_requested_by, foreman_review_resolved_at, foreman_review_resolved_by', orderBy: [{ column: 'ot_number', ascending: true }] }),
     workItemsRepository.listWorkItems({
       select: 'id, work_order_id, description, contractors, trade, foreman_name, work_type, assignment_type, specific_budget_id, status, voucher_type, voucher_number, created_at',
       orderBy: [],
@@ -859,6 +857,8 @@ export function computeShipManagerialSummary({
       const otNum = wo.ot_number || 'OT'
       const otTitle = wo.title || 'Sin título'
       const otDesc = wo.description || itemsDesc || 'Sin descripción registrada'
+      const unvaluedByOt = computeOtUnvaluedBreakdown({ otId: wo.id, laborRows: labs, materialRows: mats, thirdPartyRows: tps })
+
       return {
         id: wo.id,
         otNumber: otNum,
@@ -867,6 +867,8 @@ export function computeShipManagerialSummary({
         description: otDesc,
         workType: wo.work_type || 'HORA',
         status: wo.status || 'En Progreso',
+        ...extractWoBillingMeta(wo, woItems),
+        unvaluedByOt,
         ...bucket,
         matsCount: mats.length,
         labsCount: labs.length,
@@ -875,25 +877,20 @@ export function computeShipManagerialSummary({
     })
     .filter(Boolean)
 
-  // Costos cargados al buque sin OT asignada
+  // Costos cargados al buque sin OT asignada (en Facturación solo se notifican)
   const orphanMats = shipMats.filter((r) => !r.workOrderId)
   const orphanLabs = shipLabor.filter((r) => !r.workOrderId)
   const orphanTps = shipTps.filter((r) => !r.workOrderId)
+  let orphanSummary = null
   if (orphanMats.length > 0 || orphanLabs.length > 0 || orphanTps.length > 0) {
-    const orphanBucket = sumBucket(orphanMats, orphanLabs, orphanTps)
-    otRows.push({
-      id: 'SIN_OT',
-      otNumber: 'S/OT',
-      title: 'MOVIMIENTOS SIN OT ASIGNADA',
+    orphanSummary = {
+      id: 'SIN_OT', otNumber: 'S/OT', title: 'MOVIMIENTOS SIN OT ASIGNADA',
       otLabel: formatOtAnalysisLabel({ id: 'SIN_OT', otNumber: 'S/OT', title: 'MOVIMIENTOS SIN OT ASIGNADA' }),
-      description: 'Imputaciones cargadas al buque pendientes de vinculación a una OT',
-      workType: 'HORA',
-      status: 'Pendiente OT',
-      ...orphanBucket,
-      matsCount: orphanMats.length,
-      labsCount: orphanLabs.length,
-      tpsCount: orphanTps.length
-    })
+      description: 'Imputaciones cargadas al buque pendientes de vinculación a una OT', workType: 'HORA', status: 'Pendiente OT',
+      unvaluedByOt: computeOtUnvaluedBreakdown({ otId: 'SIN_OT', laborRows: orphanLabs, materialRows: orphanMats, thirdPartyRows: orphanTps }),
+      ...sumBucket(orphanMats, orphanLabs, orphanTps), matsCount: orphanMats.length, labsCount: orphanLabs.length, tpsCount: orphanTps.length
+    }
+    otRows.push(orphanSummary)
   }
 
   // Resolver OT activa para el bloque inferior
@@ -984,6 +981,7 @@ export function computeShipManagerialSummary({
     ship,
     totals,
     otRows,
+    orphanSummary,
     activeOt: resolvedOt,
     donutsShip,
     donutsOt,
@@ -1105,10 +1103,7 @@ export function buildRemitoAutoFeedRows({
       return acc + diff
     }, 0)
 
-  const anodesQty = materialRows
-    .filter((m) => m.shipId === ship.id && /anod/i.test(m.materialName || ''))
-    .reduce((acc, m) => acc + (Number(m.qty) || 0), 0)
-
+  // Ánodos (`GAL-001`) son provisión del armador: cantidad instalada informada por Jefe de Obra (no Pañol)
   const shipWos = workOrders.filter((w) => w.ship_id === ship.id)
   const hasValvulasOt = shipWos.some((w) => /valvul/i.test(`${w.title} ${w.description}`))
   const hasSondajeOt = shipWos.some((w) => /sondaj/i.test(`${w.title} ${w.description}`))
@@ -1119,7 +1114,7 @@ export function buildRemitoAutoFeedRows({
     if (code === 'VAR-004') return muelleDays
     if (code === 'GRU-001') return craneHours.shipGruaChica || 0
     if (code === 'GRU-002') return craneHours.shipGruaGrande || 0
-    if (code === 'GAL-001') return anodesQty
+    if (code === 'GAL-001') return 0
     if (code === 'SON-001') return hasSondajeOt ? 1 : 0
     if (code === 'VAL-001') return hasValvulasOt ? 1 : 0
     if (code === 'OBR-OT') return 1

@@ -14,6 +14,7 @@ import { WorkOrdersModalsContainer } from '../components/workOrders/WorkOrdersMo
 import CloseWorkOrderTreeModal from '../components/workOrders/CloseWorkOrderTreeModal'
 import ReopenWorkOrderModal from '../components/workOrders/ReopenWorkOrderModal'
 import WorkOrderUnifyModal from '../components/workOrders/WorkOrderUnifyModal'
+import ForemanBillingExpansionModal from '../components/workOrders/ForemanBillingExpansionModal'
 import { fetchWorkOrdersData, applyWoSinglePatchService, deleteWorkItemService, deleteWoService, closeEntireWorkOrderTreeService, reopenWorkOrderService } from '../lib/workOrdersService.js'
 import { duplicateWorkItemWithSyncService } from '../lib/workOrderHeaderSync.js'
 import { WO_GRID_COLUMNS, filterUnifiedRows, calculateWorkOrderStats, computeOtMetricsAndDates, buildContractorCatalog, buildUnifiedRows, isRowLockedDec011, hasThirdPartyPermission } from '../lib/workOrdersConstants.js'
@@ -68,6 +69,8 @@ export default function WorkOrders() {
   const [unifyingWo, setUnifyingWo] = useState(null)
   const [submittingCloseTree, setSubmittingCloseTree] = useState(false)
   const [submittingReopen, setSubmittingReopen] = useState(false)
+  const [isBillingExpansionOpen, setIsBillingExpansionOpen] = useState(false)
+  const requestedBillingExpansions = useMemo(() => workOrders.filter((w) => w.foreman_review_status === 'REQUESTED'), [workOrders])
 
   const showWoGridFeedback = useCallback((type, text) => {
     setStatusMessage({ type, text }); setTimeout(() => setStatusMessage(null), 3500)
@@ -229,6 +232,8 @@ export default function WorkOrders() {
           setTabFilter('unificado', 'selectedStatusFilter', nextStatus)
           if (activeMainTab !== 'unificado') setActiveMainTab('unificado')
         }}
+        pendingBillingExpansionsCount={requestedBillingExpansions.length}
+        onOpenBillingExpansionModal={() => setIsBillingExpansionOpen(true)}
       />
 
       {/* BLOQUE OPERATIVO UNIFICADO (ZONAS 3 Y 4) */}
@@ -281,6 +286,7 @@ export default function WorkOrders() {
       {/* MODAL CANÓNICO DE CIERRE DE ÁRBOL, REAPERTURA & UNIFICACIÓN */}
       <CloseWorkOrderTreeModal isOpen={Boolean(closingTreeWo)} onClose={() => setClosingTreeWo(null)} wo={closingTreeWo} items={closingTreeWo ? (itemsByWoMap[closingTreeWo.id] || []) : []} onConfirm={handleConfirmCloseTree} loading={submittingCloseTree} />
       <ReopenWorkOrderModal isOpen={Boolean(reopeningWo)} onClose={() => setReopeningWo(null)} wo={reopeningWo} items={reopeningWo ? (itemsByWoMap[reopeningWo.id] || []) : []} onConfirm={handleConfirmReopenWo} loading={submittingReopen} />
+      <ForemanBillingExpansionModal isOpen={isBillingExpansionOpen} onClose={() => setIsBillingExpansionOpen(false)} requestedOrders={requestedBillingExpansions} userName={profile?.full_name || user?.email || 'Jefe de Obra'} onResolved={async (wo) => { await loadData({ silent: true }); showWoGridFeedback('success', `Ampliación comercial de ${wo.ot_number || 'OT'} enviada a Gerencia.`) }} />
       {unifyingWo && (
         <WorkOrderUnifyModal key={unifyingWo.id} sourceWo={unifyingWo} ships={ships} workOrders={workOrders} workItems={workItems} user={user} onClose={() => setUnifyingWo(null)} onSuccess={() => loadData()} showFeedback={showWoGridFeedback} />
       )}

@@ -1,983 +1,503 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Ship } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
-import { CheckSquare, Square, RefreshCw, Settings2, Lock, Undo2, Trash2, CopyPlus, RotateCcw, ShieldAlert } from 'lucide-react'
-import KpiRadar from '../KpiRadar'
-import CrawlerSearchBar from '../CrawlerSearchBar'
-import GridRibbon from '../GridRibbon'
-import GridContextMenu from '../GridContextMenu'
-import GridStatusBarBottom from '../GridStatusBarBottom'
-import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
-import { useGridContextMenu } from '../../hooks/useGridContextMenu'
-import { matchesUniversalSearch } from '../../lib/searchEngine'
+import { computeShipManagerialSummary } from '../../lib/managerialSummaryService'
+import { evaluateShipWorkOrdersForGhostImport, isCaldereriaChapter } from '../../lib/billingMirrorEngine'
+import { computeBlockBillingBreakdown, paginateBillingBlocks, computePaginatedCumulativeBalances } from '../../lib/billingSheetMath'
 import {
-  BILLING_TEMPLATES,
-  REMITO_SPREADSHEET_COLUMNS,
-  formatUsd
-} from '../../lib/drydockCatalogConstants'
-import {
-  buildRemitoAutoFeedRows,
-  computeRemitoFinancialTotals
-} from '../../lib/managerialSummaryService'
+  openShipInBillingWorkspaceService,
+  sendShipToFinalBillingService,
+  saveShipBillingLayoutMetaService,
+  importShipWorkOrdersGhostService,
+  saveWorkOrderBillingPatchService,
+  saveWorkOrderBillingOrderBatchService,
+  requestBillingExpansionService
+} from '../../lib/billingWorkflowService'
+import { openCleanBillingPrintWindow } from '../../lib/billingPrintHelper'
+import BillingShipSidebarRail from './BillingShipSidebarRail'
+import BillingWorkspaceToolbar from './BillingWorkspaceToolbar'
+import BillingPrintableSheetPanel from './BillingPrintableSheetPanel'
 import AlfaRateCardModal from './AlfaRateCardModal'
 
+const BILLING_ACTIVE_SHIP_KEY = 'aloncar_independent_billing_ship_id'
+
 /**
- * Submódulo 3 (Arquetipo A: Gallo · Editable + Autoalimentado):
- * Remito Comercial & Tarifario Nivel Alfa.
- * Cumple Estándares 01–07 + Kit Canónico + Audit Logs.
+ * Mesa Independiente Multi-Barco de Pre-Facturación en 3 Columnas (V4):
+ * - 100% desvinculada del selector de barco del Resumen Gerencial / RESUMEN 2.
+ * - Col 1: Menú Lateral `🚢 EN FACTURACIÓN` (+ Sumar Barco / Enviar a Facturación).
+ * - Col 2: Sábana Blanca Paginada (`HOJA 1/N`) con edición en prosa in-situ, IVA vinculante y cierre acumulativo.
+ * - Col 3: Panel compacto de Costos y Alertas soldado en cabecera (`top-0`).
  */
 export default function RemitoComercialAlfaPanel({
-  ship,
-  shipStays = [],
+  allShips = [],
+  owners = [],
   workOrders = [],
-  shipSummary,
+  workItems = [],
   materialRows = [],
-  craneHours = {},
+  laborRows = [],
+  thirdPartyRows = [],
+  workers = [],
   alfaRateCard = [],
   otTemplates = [],
-  remitoState = null,
-  onPersistCellChange,
-  onPersistRowAction,
+  jumpToShipTarget = null,
+  onReloadData,
   onSaveAlfaRateCard,
   showFeedback
 }) {
   const { user, profile } = useAuth()
-  const initialFilters = useMemo(
-    () => resolveInitialModuleFilters(user, profile, 'resumen_remito'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
+  const actorName = profile?.full_name || user?.email || 'Gerencia'
 
-  const [templateId, setTemplateId] = useState(remitoState?.templateId || 'PUESTA_SECO_30M')
-  const [rows, setRows] = useState(() => {
-    if (Array.isArray(remitoState?.rows) && remitoState.rows.length > 0) {
-      return remitoState.rows
-    }
-    return buildRemitoAutoFeedRows({
-      ship, shipStays, workOrders, shipSummary, materialRows, craneHours, alfaRateCard, otTemplates,
-      templateId: 'PUESTA_SECO_30M', existingRows: []
-    })
+  const [billingShipState, setBillingShipState] = useState(() => {
+    try { return { shipId: window.localStorage.getItem(BILLING_ACTIVE_SHIP_KEY) || '', handledJumpTs: 0 } }
+    catch { return { shipId: '', handledJumpTs: 0 } }
   })
-
-  const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery)
-  const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
-  const [taxFilter, setTaxFilter] = useState(initialFilters.taxFilter)
-  const [inlineEdit, setInlineEdit] = useState(null) // { rowId, field, value }
+  const billingShipId = jumpToShipTarget?.shipId && jumpToShipTarget.ts > billingShipState.handledJumpTs
+    ? jumpToShipTarget.shipId
+    : billingShipState.shipId
+  const setBillingShipId = (nextId) => setBillingShipState({ shipId: nextId, handledJumpTs: jumpToShipTarget?.ts || Date.now() })
+  const [importing, setImporting] = useState(false)
+  const [sendingShip, setSendingShip] = useState(false)
   const [showAlfaModal, setShowAlfaModal] = useState(false)
-  const searchInputRef = useRef(null)
+  const [newBlockAutoFocusId, setNewBlockAutoFocusId] = useState(null)
 
-  const remitoViewsController = useModuleFilterMemory({
-    moduleKey: 'resumen_remito',
-    currentFilters: { searchQuery, kpiFilter, taxFilter },
-    setters: { searchQuery: setSearchQuery, kpiFilter: setKpiFilter, taxFilter: setTaxFilter },
-    hasActiveFilters: Boolean(searchQuery || kpiFilter !== 'ALL' || taxFilter !== 'ALL')
-  })
+  const activeFlushRef = useRef(null)
+  const registerFlush = (fn) => {
+    activeFlushRef.current = fn
+    return () => { if (activeFlushRef.current === fn) activeFlushRef.current = null }
+  }
 
-  // Rehidratar filas cuando cambia el buque o los datos persistidos desde Supabase
+  // Persistir el barco activo de la Mesa Independiente (nunca alterado por Resumen Gerencial)
   useEffect(() => {
-    const nextTpl = remitoState?.templateId || 'PUESTA_SECO_30M'
-    setTemplateId(nextTpl)
-    if (Array.isArray(remitoState?.rows) && remitoState.rows.length > 0) {
-      setRows(remitoState.rows)
-    } else if (ship) {
-      setRows(buildRemitoAutoFeedRows({
-        ship, shipStays, workOrders, shipSummary, materialRows, craneHours, alfaRateCard, otTemplates,
-        templateId: nextTpl, existingRows: []
-      }))
-    } else {
-      setRows([])
-    }
-    setInlineEdit(null)
-  }, [ship?.id, remitoState])
+    try {
+      if (billingShipId) window.localStorage.setItem(BILLING_ACTIVE_SHIP_KEY, billingShipId)
+    } catch { /* ignore */ }
+  }, [billingShipId])
 
-  const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      if (kpiFilter === 'EXENTO' && row.tax_type !== 'EXENTO') return false
-      if (kpiFilter === 'GRAVADO' && row.tax_type === 'EXENTO') return false
-      if (kpiFilter === 'ALFA_LOCK' && !row.is_alfa_locked) return false
-      if (kpiFilter === 'ACTIVE_LINES' && Number(row.quantity) <= 0) return false
-      if (taxFilter !== 'ALL' && row.tax_type !== taxFilter) return false
-      if (searchQuery && !matchesUniversalSearch(row, searchQuery)) return false
-      return true
-    })
-  }, [rows, kpiFilter, taxFilter, searchQuery])
-
-  const internalDirectCostUsd = Number(shipSummary?.totals?.directTotalUsd || 0)
-  const financialTotals = useMemo(
-    () => computeRemitoFinancialTotals(rows, internalDirectCostUsd),
-    [rows, internalDirectCostUsd]
+  const inPrepShips = useMemo(
+    () => (allShips || []).filter((s) => s.billing_workspace_status === 'EN_PREPARACION' && String(s.name || '').toUpperCase() !== 'ASTILLERO'),
+    [allShips]
   )
 
-  const kpiCards = useMemo(() => {
-    const activeLines = rows.filter((r) => Number(r.quantity) > 0)
-    const alfaCount = rows.filter((r) => r.is_alfa_locked).length
-    return [
-      {
-        id: 'GRAVADO',
-        label: 'Subtotal Gravado (21%)',
-        count: formatUsd(financialTotals.subtotalGravado, 0),
-        subtext: `IVA 21%: ${formatUsd(financialTotals.iva21Usd, 0)}`,
-        colorTheme: 'cyan'
-      },
-      {
-        id: 'EXENTO',
-        label: 'Subtotal Exento',
-        count: formatUsd(financialTotals.subtotalExento, 0),
-        subtext: 'Navegación / Exentos',
-        colorTheme: 'emerald'
-      },
-      {
-        id: 'ACTIVE_LINES',
-        label: 'Total Remito c/IVA',
-        count: formatUsd(financialTotals.totalRemitoUsd, 0),
-        subtext: `${activeLines.length} conceptos con cant. > 0`,
-        colorTheme: 'blue'
-      },
-      {
-        id: 'ALFA_LOCK',
-        label: 'Costo Directo Piso',
-        count: formatUsd(internalDirectCostUsd, 0),
-        subtext: `${alfaCount} tarifas Nivel Alfa`,
-        colorTheme: 'amber'
-      },
-      {
-        id: 'MARGEN',
-        label: 'Margen Real Obra',
-        count: formatUsd(financialTotals.margenRealUsd, 0),
-        subtext: `${financialTotals.margenPct}% s/Neto (EPP excluido)`,
-        colorTheme: financialTotals.margenRealUsd >= 0 ? 'purple' : 'rose'
-      }
+  const effectiveShipId = useMemo(() => {
+    if (billingShipId && (allShips || []).some((s) => s.id === billingShipId && s.billing_workspace_status !== 'NONE')) {
+      return billingShipId
+    }
+    return inPrepShips[0]?.id || ''
+  }, [billingShipId, allShips, inPrepShips])
+
+  const activeShip = useMemo(() => (allShips || []).find((s) => s.id === effectiveShipId) || null, [allShips, effectiveShipId])
+  const activeOwner = useMemo(() => (owners || []).find((o) => o.id === activeShip?.owner_id) || null, [owners, activeShip])
+
+  // Resumen financiero en VIVO exclusivo del barco activo en Facturación (independiente del Resumen Gerencial)
+  const billingShipSummary = useMemo(() => {
+    if (!activeShip) return null
+    return computeShipManagerialSummary({
+      shipId: activeShip.id,
+      ships: allShips,
+      workOrders,
+      workItems,
+      materialRows,
+      laborRows,
+      thirdPartyRows,
+      scope: 'mixto',
+      yearFilter: 'TODOS'
+    })
+  }, [activeShip, allShips, workOrders, workItems, materialRows, laborRows, thirdPartyRows])
+
+  const otRowMap = useMemo(() => {
+    const m = new Map()
+    ;(billingShipSummary?.otRows || []).forEach((r) => m.set(r.id, r))
+    return m
+  }, [billingShipSummary])
+
+  const activeShipWos = useMemo(
+    () => (activeShip ? workOrders.filter((w) => w.ship_id === activeShip.id && !w.merged_into_wo_id) : []),
+    [activeShip, workOrders]
+  )
+
+  // Evaluación SIN IA para Importar Todo + Alertas de OTs con descripción vacía
+  const ghostEval = useMemo(() => evaluateShipWorkOrdersForGhostImport({
+    shipWos: activeShipWos,
+    workItems,
+    laborRows,
+    materialRows,
+    thirdPartyRows,
+    workers,
+    otTemplates
+  }), [activeShipWos, workItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates])
+
+  // Construir lista ordenada unificada: OTs en billing + delimitadores/bloques libres en `ships.billing_layout_meta`
+  const orderedBlocks = useMemo(() => {
+    if (!activeShip) return []
+    const layoutMeta = activeShip.billing_layout_meta || {}
+    const customBlocks = Array.isArray(layoutMeta.customBlocks) ? layoutMeta.customBlocks : []
+    const fontSizes = layoutMeta.fontSizes || {}
+
+    const woBlocks = activeShipWos
+      .filter((w) => w.is_in_billing)
+      .map((w) => ({
+        id: `wo_${w.id}`,
+        workOrderId: w.id,
+        blockType: 'WORK_ORDER',
+        sortOrder: Number(w.billing_sort_order) || 1000,
+        billing_description: w.billing_description || '',
+        billing_rubro_group: w.billing_rubro_group || '',
+        billing_pricing_mode: w.billing_pricing_mode || 'MO_MAT',
+        billing_mo_usd: Number(w.billing_mo_usd) || 0,
+        billing_mat_usd: Number(w.billing_mat_usd) || 0,
+        billing_unit_price_usd: Number(w.billing_unit_price_usd) || 0,
+        billing_qty_override: w.billing_qty_override ?? null,
+        billing_mo_tax: w.billing_mo_tax || 'EXENTO',
+        billing_mat_tax: w.billing_mat_tax || 'EXENTO',
+        fontSizePx: fontSizes[w.id] || 12
+      }))
+
+    const merged = [
+      ...woBlocks,
+      ...customBlocks.map((cb) => ({
+        ...cb,
+        sortOrder: Number(cb.sortOrder) || 1000,
+        autoFocus: cb.id === newBlockAutoFocusId
+      }))
     ]
-  }, [rows, financialTotals, internalDirectCostUsd])
+    return merged.sort((a, b) => a.sortOrder - b.sortOrder)
+  }, [activeShip, activeShipWos, newBlockAutoFocusId])
 
-  const commitRowsUpdate = async ({
-    nextRows,
-    nextTpl = templateId,
-    actionType = 'ROW_EDIT',
-    rowId = 'batch',
-    rowLabel = 'Remito Comercial',
-    field = null,
-    oldValue = null,
-    newValue = null,
-    batchUpdates = null,
-    changes = {}
-  }) => {
-    setRows(nextRows)
-    if (!ship?.id) return
-
-    const nextShipRemitoState = {
-      templateId: nextTpl,
-      updatedAt: new Date().toISOString(),
-      rows: nextRows
+  // Subtotales por rubro para mostrar frente a cada Delimitador de Rubro
+  const rubroSubtotalsMap = useMemo(() => {
+    const map = {}
+    let currentLabel = ''
+    for (const b of orderedBlocks) {
+      if (b.blockType === 'RUBRO_DELIMITER') {
+        currentLabel = b.label || ''
+        if (!map[currentLabel]) map[currentLabel] = { costUsd: 0, weightKg: 0 }
+      } else if (currentLabel && b.workOrderId) {
+        const ot = otRowMap.get(b.workOrderId)
+        if (ot) {
+          map[currentLabel].costUsd += Number(ot.directTotalUsd) || 0
+          map[currentLabel].weightKg += Number(ot.weightKg) || 0
+        }
+      }
     }
+    return map
+  }, [orderedBlocks, otRowMap])
 
+  const pages = useMemo(() => paginateBillingBlocks(orderedBlocks), [orderedBlocks])
+  const { pageSummaries, grandTotal } = useMemo(
+    () => computePaginatedCumulativeBalances(pages, billingShipSummary?.totals?.directTotalUsd || 0),
+    [pages, billingShipSummary]
+  )
+
+  // Metadata resumida para las tarjetas del Menú Lateral Izquierdo
+  const shipCardMetaMap = useMemo(() => {
+    const map = {}
+    for (const s of allShips || []) {
+      if (s.billing_workspace_status === 'NONE') continue
+      const sWos = workOrders.filter((w) => w.ship_id === s.id && w.is_in_billing)
+      let totalUsd = 0
+      for (const w of sWos) totalUsd += computeBlockBillingBreakdown(w).totalUsd
+      const custom = Array.isArray(s.billing_layout_meta?.customBlocks) ? s.billing_layout_meta.customBlocks : []
+      for (const c of custom) if (c.blockType === 'FREE_BLOCK') totalUsd += computeBlockBillingBreakdown(c).totalUsd
+      const hasReq = workOrders.some((w) => w.ship_id === s.id && w.foreman_review_status === 'REQUESTED')
+      map[s.id] = { totalUsd, otCount: sWos.length, hasAlerts: hasReq }
+    }
+    return map
+  }, [allShips, workOrders])
+
+  const handleSwitchShip = (nextShipId) => {
+    activeFlushRef.current?.()
+    setNewBlockAutoFocusId(null)
+    setBillingShipId(nextShipId)
+  }
+
+  const handleAddShipToWorkspace = async (ship) => {
     try {
-      if (field !== null && actionType === 'CELL_EDIT') {
-        await onPersistCellChange({
-          shipId: ship.id,
-          shipName: ship.name,
-          nextShipRemitoState,
-          rowId,
-          rowLabel,
-          field,
-          oldValue,
-          newValue
-        })
-      } else {
-        await onPersistRowAction({
-          actionType,
-          shipId: ship.id,
-          shipName: ship.name,
-          nextShipRemitoState,
-          rowId,
-          rowLabel,
-          changes,
-          batchUpdates
-        })
-      }
+      activeFlushRef.current?.()
+      await openShipInBillingWorkspaceService({ ship, user: actorName })
+      setBillingShipId(ship.id)
+      await onReloadData?.()
+      showFeedback?.('success', `Barco ${ship.name} abierto en tu Mesa de Facturación.`)
     } catch (err) {
-      showFeedback?.('error', `Error al guardar con auditoría: ${err.message}`)
+      showFeedback?.('error', err.message)
     }
   }
 
-  // Motor Batch del Hook Canónico (Paste 2D, Fill Down, Undo/Redo, Supr)
-  const handleGridBatchUpdate = async ({
-    colKey,
-    newValue,
-    targetIds,
-    revertMap,
-    isRevert,
-    actionLabel
-  }) => {
-    const colDef = REMITO_SPREADSHEET_COLUMNS.find((c) => c.key === colKey)
-    if (!colDef || colDef.readOnly) return
-
-    const updatesForAudit = []
-    const nextRows = rows.map((row) => {
-      const targetVal = isRevert
-        ? revertMap?.[row.id]
-        : targetIds?.includes(row.id)
-          ? newValue
-          : undefined
-
-      if (targetVal === undefined) return row
-
-      const cleanVal = colDef.isNumeric ? Number(targetVal) || 0 : String(targetVal ?? '')
-      updatesForAudit.push({
-        recordId: `${ship?.id}::${row.id}`,
-        recordName: `${row.line_code} · ${row.concept}`,
-        field: colKey,
-        fieldLabel: colDef.label,
-        oldValue: row[colKey],
-        newValue: cleanVal
+  const handleImportAll = async () => {
+    if (!activeShip) return
+    if (ghostEval.readyToImport.length === 0) {
+      showFeedback?.('success', 'No hay nuevas OTs con descripción cargada pendientes de importar.')
+      return
+    }
+    try {
+      setImporting(true)
+      const { importedCount } = await importShipWorkOrdersGhostService({
+        ship: activeShip,
+        readyToImport: ghostEval.readyToImport,
+        user: actorName
       })
+      await onReloadData?.()
+      showFeedback?.('success', `${importedCount} OT(s) importadas en modo fantasma y ordenadas automáticamente.`)
+    } catch (err) {
+      showFeedback?.('error', err.message)
+    } finally {
+      setImporting(false)
+    }
+  }
 
-      return {
-        ...row,
-        [colKey]: cleanVal,
-        ...(colKey === 'quantity' ? { manualQtyOverride: true } : {}),
-        ...(colKey === 'unit_price_usd' ? { is_alfa_locked: false } : {})
+  const handleNotifyEmptyOts = async () => {
+    if (!activeShip) return
+    try {
+      for (const al of ghostEval.emptyDescriptionAlerts) {
+        const wo = activeShipWos.find((w) => w.id === al.workOrderId)
+        if (wo) {
+          await requestBillingExpansionService({
+            wo,
+            ship: activeShip,
+            note: 'OT detectada con descripción vacía al intentar importar a Facturación.',
+            user: actorName
+          })
+        }
+      }
+      await onReloadData?.()
+      showFeedback?.('success', `Se notificó al Jefe de Obra y Administrador por ${ghostEval.emptyDescriptionAlerts.length} OT(s) sin descripción.`)
+    } catch (err) {
+      showFeedback?.('error', err.message)
+    }
+  }
+
+  const saveLayoutMeta = async (nextMeta, nextBudget) => {
+    if (!activeShip) return
+    await saveShipBillingLayoutMetaService({
+      shipId: activeShip.id,
+      shipName: activeShip.name,
+      layoutMeta: nextMeta,
+      budgetNumber: nextBudget,
+      user: actorName
+    })
+    await onReloadData?.()
+  }
+
+  const handleAddRubroDelimiter = async (code, label) => {
+    if (!activeShip) return
+    const meta = activeShip.billing_layout_meta || {}
+    const existing = Array.isArray(meta.customBlocks) ? meta.customBlocks : []
+    const maxSort = orderedBlocks.reduce((m, b) => Math.max(m, b.sortOrder || 0), 0)
+    const nextBlock = { id: `delim_${Date.now()}`, blockType: 'RUBRO_DELIMITER', code, label, sortOrder: maxSort + 10 }
+    await saveLayoutMeta({ ...meta, customBlocks: [...existing, nextBlock] })
+  }
+
+  const handleAddFreeBlock = async () => {
+    if (!activeShip) return
+    const meta = activeShip.billing_layout_meta || {}
+    const existing = Array.isArray(meta.customBlocks) ? meta.customBlocks : []
+    const maxSort = orderedBlocks.reduce((m, b) => Math.max(m, b.sortOrder || 0), 0)
+    const id = `free_${Date.now()}`
+    const nextBlock = {
+      id, blockType: 'FREE_BLOCK', sortOrder: maxSort + 10, billing_description: '',
+      billing_pricing_mode: 'MO_MAT', billing_mo_usd: 0, billing_mat_usd: 0,
+      billing_unit_price_usd: 0, billing_qty_override: null, billing_mo_tax: 'EXENTO', billing_mat_tax: 'EXENTO', fontSizePx: 12
+    }
+    setNewBlockAutoFocusId(id)
+    await saveLayoutMeta({ ...meta, customBlocks: [...existing, nextBlock] })
+  }
+
+  const handleCommitProse = async ({ shipId, blockId, nextHtml, fontSizePx }) => {
+    const targetShip = (allShips || []).find((s) => s.id === shipId) || activeShip
+    if (!targetShip) return
+    if (String(blockId).startsWith('wo_')) {
+      const woId = blockId.slice(3)
+      const wo = workOrders.find((w) => w.id === woId)
+      await saveWorkOrderBillingPatchService({
+        woId, shipName: targetShip.name, otLabel: `${wo?.ot_number || 'OT'} ${wo?.title || ''}`,
+        patch: { billing_description: nextHtml }, field: 'billing_description',
+        oldValue: wo?.billing_description || '', newValue: nextHtml, user: actorName
+      })
+      const meta = targetShip.billing_layout_meta || {}
+      if (fontSizePx && meta.fontSizes?.[woId] !== fontSizePx) {
+        await saveShipBillingLayoutMetaService({
+          shipId: targetShip.id, shipName: targetShip.name,
+          layoutMeta: { ...meta, fontSizes: { ...(meta.fontSizes || {}), [woId]: fontSizePx } }, user: actorName
+        })
+      }
+      await onReloadData?.()
+    } else {
+      const meta = targetShip.billing_layout_meta || {}
+      const custom = (meta.customBlocks || []).map((b) => (b.id === blockId ? { ...b, billing_description: nextHtml, fontSizePx } : b))
+      await saveShipBillingLayoutMetaService({ shipId: targetShip.id, shipName: targetShip.name, layoutMeta: { ...meta, customBlocks: custom }, user: actorName })
+      await onReloadData?.()
+    }
+  }
+
+  const handleCommitPriceField = async (block, field, val) => {
+    if (!activeShip) return
+    if (block.workOrderId) {
+      await saveWorkOrderBillingPatchService({
+        woId: block.workOrderId, shipName: activeShip.name, otLabel: block.id,
+        patch: { [field]: val }, field, oldValue: block[field], newValue: val, user: actorName
+      })
+      await onReloadData?.()
+    } else {
+      const meta = activeShip.billing_layout_meta || {}
+      const custom = (meta.customBlocks || []).map((b) => (b.id === block.id ? { ...b, [field]: val } : b))
+      await saveLayoutMeta({ ...meta, customBlocks: custom })
+    }
+  }
+
+  const handleToggleTax = (block, taxField) => {
+    const nextVal = block[taxField] === 'GRAVADO_21' ? 'EXENTO' : 'GRAVADO_21'
+    handleCommitPriceField(block, taxField, nextVal)
+  }
+
+  const handleChangePricingMode = (block, mode) => handleCommitPriceField(block, 'billing_pricing_mode', mode)
+
+  const handleRemoveBlock = async (block) => {
+    if (!activeShip) return
+    if (block.workOrderId) {
+      await saveWorkOrderBillingPatchService({
+        woId: block.workOrderId, shipName: activeShip.name, otLabel: block.id,
+        patch: { is_in_billing: false }, field: 'is_in_billing', oldValue: true, newValue: false, user: actorName
+      })
+      await onReloadData?.()
+    } else {
+      const meta = activeShip.billing_layout_meta || {}
+      await saveLayoutMeta({ ...meta, customBlocks: (meta.customBlocks || []).filter((b) => b.id !== block.id) })
+    }
+  }
+
+  const handleReorderBlocks = async (dragId, targetId) => {
+    if (!activeShip) return
+    const list = [...orderedBlocks]
+    const fromIdx = list.findIndex((b) => b.id === dragId)
+    const toIdx = list.findIndex((b) => b.id === targetId)
+    if (fromIdx === -1 || toIdx === -1) return
+    const [moved] = list.splice(fromIdx, 1)
+    list.splice(toIdx, 0, moved)
+
+    let currentRubro = ''
+    const woUpdates = []
+    const nextCustom = []
+    list.forEach((b, idx) => {
+      const nextSort = (idx + 1) * 10
+      if (b.blockType === 'RUBRO_DELIMITER') {
+        currentRubro = b.code || b.label || ''
+        nextCustom.push({ ...b, sortOrder: nextSort })
+      } else if (b.workOrderId) {
+        const nextRubro = currentRubro || b.billing_rubro_group || (isCaldereriaChapter(currentRubro) ? 'CALDERERIA' : '')
+        woUpdates.push({ id: b.workOrderId, patch: { billing_sort_order: nextSort, ...(currentRubro ? { billing_rubro_group: nextRubro } : {}) } })
+      } else {
+        nextCustom.push({ ...b, sortOrder: nextSort })
       }
     })
 
-    if (updatesForAudit.length === 0) return
-
-    await commitRowsUpdate({
-      nextRows,
-      actionType: 'BATCH_PASTE',
-      rowId: updatesForAudit[0]?.recordId || 'batch',
-      rowLabel: `${updatesForAudit.length} celdas (${actionLabel || 'Lote'})`,
-      batchUpdates: updatesForAudit
-    })
-    showFeedback?.('success', `${updatesForAudit.length} celdas actualizadas y auditadas.`)
+    await saveWorkOrderBillingOrderBatchService({ updates: woUpdates, shipName: activeShip.name, user: actorName })
+    await saveLayoutMeta({ ...(activeShip.billing_layout_meta || {}), customBlocks: nextCustom })
   }
 
-  const grid = useSpreadsheetGrid({
-    rows: filteredRows,
-    columns: REMITO_SPREADSHEET_COLUMNS,
-    getRowId: (r) => r.id,
-    storageKey: `aloncar_grid_remito_${ship?.id || 'default'}`,
-    onBatchUpdate: handleGridBatchUpdate,
-    canEditCell: (_row, colKey) => !REMITO_SPREADSHEET_COLUMNS.find((c) => c.key === colKey)?.readOnly,
-    onCellActivate: (row, colDef) => {
-      if (colDef.readOnly) return
-      setInlineEdit({
-        rowId: row.id,
-        field: colDef.key,
-        value: row[colDef.key] ?? ''
+  const handleSendShipToFinalBilling = async () => {
+    if (!activeShip) return
+    if (!window.confirm(`¿Enviar "${activeShip.name}" a la bandeja de Listos para Facturar con saldo ${grandTotal.totalUsd.toFixed(2)} USD? Desaparecerá de tu lista activa.`)) return
+    try {
+      setSendingShip(true)
+      activeFlushRef.current?.()
+      await sendShipToFinalBillingService({
+        ship: activeShip,
+        totalSnapshotUsd: grandTotal.totalUsd,
+        budgetNumber: activeShip.billing_budget_number || '',
+        user: actorName
       })
-    },
-    onFocusSearch: () => {
-      searchInputRef.current?.focus()
-      searchInputRef.current?.select()
-    },
-    showFeedback
-  })
-
-  const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
-
-  const commitInlineEdit = async () => {
-    if (!inlineEdit) return
-    const { rowId, field, value } = inlineEdit
-    setInlineEdit(null)
-
-    const targetRow = rows.find((r) => r.id === rowId)
-    if (!targetRow) return
-
-    const colDef = REMITO_SPREADSHEET_COLUMNS.find((c) => c.key === field)
-    const parsedVal = colDef?.isNumeric ? Math.max(0, Number(value) || 0) : String(value ?? '')
-    const prevVal = targetRow[field]
-    if (String(parsedVal) === String(prevVal ?? '')) return
-
-    const nextRows = rows.map((r) =>
-      r.id === rowId
-        ? {
-            ...r,
-            [field]: parsedVal,
-            ...(field === 'quantity' ? { manualQtyOverride: true } : {}),
-            ...(field === 'unit_price_usd' ? { is_alfa_locked: false } : {})
-          }
-        : r
-    )
-
-    grid.pushUndoAction({
-      colKey: field,
-      previousValues: { [rowId]: prevVal },
-      newValue: parsedVal,
-      actionLabel: `Edición ${colDef?.label || field}`
-    })
-
-    await commitRowsUpdate({
-      nextRows,
-      actionType: 'CELL_EDIT',
-      rowId,
-      rowLabel: `${targetRow.line_code} · ${targetRow.concept}`,
-      field,
-      oldValue: prevVal,
-      newValue: parsedVal
-    })
-  }
-
-  const handleInsertRowAt = async (insertIdx = rows.length) => {
-    const newRow = {
-      id: `rem_${ship?.id || 's'}_custom_${Date.now()}`,
-      line_code: 'EXT-01',
-      rubro: 'ADICIONALES DE OBRA',
-      concept: 'Nuevo ítem adicional de remito comercial',
-      source_module: 'Alta Manual Gerencia',
-      unit: 'Global',
-      quantity: 1,
-      unit_price_usd: 0,
-      tax_type: 'GRAVADO_21',
-      is_alfa_locked: false,
-      manualQtyOverride: true,
-      observations: ''
+      const nextActive = inPrepShips.find((s) => s.id !== activeShip.id)
+      setBillingShipId(nextActive?.id || '')
+      await onReloadData?.()
+      showFeedback?.('success', `${activeShip.name} enviado a Facturación / Listos para Cobrar.`)
+    } catch (err) {
+      showFeedback?.('error', err.message)
+    } finally {
+      setSendingShip(false)
     }
-
-    const nextRows = [...rows]
-    nextRows.splice(insertIdx, 0, newRow)
-
-    await commitRowsUpdate({
-      nextRows,
-      actionType: 'ROW_INSERT',
-      rowId: newRow.id,
-      rowLabel: newRow.concept,
-      changes: { inserted: newRow }
-    })
-    showFeedback?.('success', 'Ítem agregado al remito comercial.')
-  }
-
-  const handleDuplicateRow = async (row) => {
-    const idx = rows.findIndex((r) => r.id === row.id)
-    const copy = {
-      ...row,
-      id: `rem_${ship?.id || 's'}_dup_${Date.now()}`,
-      concept: `${row.concept} (Copia)`,
-      manualQtyOverride: true
-    }
-    const nextRows = [...rows]
-    nextRows.splice(idx >= 0 ? idx + 1 : rows.length, 0, copy)
-
-    await commitRowsUpdate({
-      nextRows,
-      actionType: 'ROW_DUPLICATE',
-      rowId: copy.id,
-      rowLabel: copy.concept,
-      changes: { duplicated_from: row.line_code }
-    })
-    showFeedback?.('success', 'Fila duplicada.')
-  }
-
-  const handleDeleteRow = async (row) => {
-    const nextRows = rows.filter((r) => r.id !== row.id)
-    await commitRowsUpdate({
-      nextRows,
-      actionType: 'ROW_DELETE',
-      rowId: row.id,
-      rowLabel: `${row.line_code} · ${row.concept}`,
-      changes: { deleted_code: row.line_code, concept: row.concept }
-    })
-    showFeedback?.('success', 'Ítem eliminado del remito con trazabilidad.')
-  }
-
-  const handleBulkTaxChange = async (nextTax) => {
-    if (grid.selectedRowIds.size === 0) return
-    const nextRows = rows.map((r) =>
-      grid.selectedRowIds.has(r.id) ? { ...r, tax_type: nextTax } : r
-    )
-    await commitRowsUpdate({
-      nextRows,
-      actionType: 'BULK_TAX_UPDATE',
-      rowId: 'bulk',
-      rowLabel: `${grid.selectedRowIds.size} filas -> ${nextTax}`,
-      changes: { count: grid.selectedRowIds.size, tax_type: nextTax }
-    })
-    grid.clearSelectedRows()
-  }
-
-  const handleBulkDelete = async () => {
-    if (grid.selectedRowIds.size === 0) return
-    const count = grid.selectedRowIds.size
-    const nextRows = rows.filter((r) => !grid.selectedRowIds.has(r.id))
-    await commitRowsUpdate({
-      nextRows,
-      actionType: 'BULK_DELETE',
-      rowId: 'bulk_delete',
-      rowLabel: `${count} ítems eliminados`,
-      changes: { deletedCount: count }
-    })
-    grid.clearSelectedRows()
-  }
-
-  const handleResyncFromSheets = async (targetTpl = templateId) => {
-    const synced = buildRemitoAutoFeedRows({
-      ship, shipStays, workOrders, shipSummary, materialRows, craneHours, alfaRateCard, otTemplates,
-      templateId: targetTpl, existingRows: targetTpl === templateId ? rows : []
-    })
-    await commitRowsUpdate({
-      nextRows: synced,
-      nextTpl: targetTpl,
-      actionType: 'RESYNC_AUTO_FEED',
-      rowId: ship?.id || 'ship',
-      rowLabel: `Resincronización Plantilla ${targetTpl}`,
-      changes: { templateId: targetTpl, count: synced.length }
-    })
-    showFeedback?.('success', 'Remito re-sincronizado desde Estadías, Pañol, OTs y Resumen GS-004.')
-  }
-
-  const handleTemplateChange = async (nextTpl) => {
-    setTemplateId(nextTpl)
-    await handleResyncFromSheets(nextTpl)
-  }
-
-  function getSpreadsheetCellProps(rowIndex, colKey) {
-    const colIdx = REMITO_SPREADSHEET_COLUMNS.findIndex((c) => c.key === colKey)
-    if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
-
-    const isActive = grid.isCellActive(rowIndex, colIdx)
-    const isSelected = grid.isCellSelected(rowIndex, colIdx)
-    const isFillPreview = grid.isCellInFillPreview(rowIndex, colIdx)
-    const renderHandle = grid.shouldRenderFillHandle(rowIndex, colIdx)
-
-    return {
-      renderHandle,
-      domProps: {
-        onClick: (e) => grid.handleCellClick(rowIndex, colIdx, e),
-        onMouseDown: (e) => grid.handleCellMouseDown(rowIndex, colIdx, e),
-        onMouseEnter: () => grid.handleCellMouseEnter(rowIndex, colIdx)
-      },
-      className: `relative select-none transition-colors ${
-        isActive
-          ? 'ring-2 ring-cyan-400 bg-cyan-950/45 z-20 outline-none'
-          : isFillPreview
-            ? 'bg-emerald-900/35 border-y border-dashed border-emerald-400'
-            : isSelected
-              ? 'bg-cyan-900/25'
-              : ''
-      }`
-    }
-  }
-
-  const hasFilters = Boolean(searchQuery || kpiFilter !== 'ALL' || taxFilter !== 'ALL')
-  const clearFilters = () => {
-    setSearchQuery('')
-    setKpiFilter('ALL')
-    setTaxFilter('ALL')
-  }
-
-  if (!ship) {
-    return (
-      <div className="bg-slate-900/70 border border-slate-700 rounded-xl p-8 text-center text-slate-400">
-        Seleccioná un buque para abrir el Remito Comercial Gallo.
-      </div>
-    )
   }
 
   return (
-    <div className="space-y-3">
-      {/* Cabecera operativa Remito Alfa: Template + Autoalimentación + Botón Tarifario Alfa */}
-      <div className="bg-slate-900/80 border border-emerald-500/35 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold uppercase text-emerald-300">Plantilla:</span>
-            <select
-              value={templateId}
-              onChange={(e) => handleTemplateChange(e.target.value)}
-              className="bg-slate-950 border border-emerald-500/40 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white outline-none"
-            >
-              {BILLING_TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => handleResyncFromSheets(templateId)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border border-cyan-400/40 cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Resincronizar desde Planillas
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowAlfaModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 cursor-pointer"
-          >
-            <Settings2 className="w-3.5 h-3.5" />
-            Tarifario Nivel Alfa ({alfaRateCard.length})
-          </button>
-        </div>
-
-        {/* Bloque resumen económico Nivel Alfa */}
-        <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums">
-          <div className="bg-slate-950/90 border border-slate-700 rounded-lg px-2.5 py-1">
-            <span className="text-slate-400 mr-1">Exento:</span>
-            <strong className="text-emerald-300">{formatUsd(financialTotals.subtotalExento)}</strong>
-          </div>
-          <div className="bg-slate-950/90 border border-slate-700 rounded-lg px-2.5 py-1">
-            <span className="text-slate-400 mr-1">Gravado + IVA:</span>
-            <strong className="text-cyan-300">
-              {formatUsd(financialTotals.subtotalGravado + financialTotals.iva21Usd)}
-            </strong>
-          </div>
-          <div className="bg-emerald-950/60 border border-emerald-400/50 rounded-lg px-3 py-1">
-            <span className="text-emerald-200 mr-1 font-bold">TOTAL REMITO:</span>
-            <strong className="text-white text-sm font-black">
-              {formatUsd(financialTotals.totalRemitoUsd)}
-            </strong>
-          </div>
-        </div>
-      </div>
-
-      {/* ZONA 2: KPI RADAR */}
-      <div className="alon-zone-kpis p-3 bg-slate-900/70">
-        <KpiRadar
-          title="💰 RADAR COMERCIAL NIVEL ALFA & MARGEN REAL DE OBRA"
-          subtitle="Clic en cualquier tarjeta para acotar ítems · Margen compara Neto vs Costo Directo GS-004 (sin EPP)"
-          cards={kpiCards}
-          activeFilterId={kpiFilter === 'ALL' ? null : kpiFilter}
-          onCardClick={(id) => {
-            if (id !== 'MARGEN') setKpiFilter((prev) => (prev === id ? 'ALL' : id))
-          }}
-        />
-      </div>
-
-      {/* ZONA 3: TOOLBAR */}
-      <div className="alon-zone-toolbar p-3 bg-slate-900/70 flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex flex-wrap items-center gap-2.5 flex-1">
-          <CrawlerSearchBar
-            ref={searchInputRef}
-            inputRef={searchInputRef}
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onClear={() => setSearchQuery('')}
-            viewsController={remitoViewsController}
-            placeholder="Buscar ítem, código Alfa, origen, notas... (Ctrl+F)"
-          />
-
-          <select
-            value={taxFilter}
-            onChange={(e) => setTaxFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none"
-          >
-            <option value="ALL">Alícuota: Todas</option>
-            <option value="GRAVADO_21">Gravado 21%</option>
-            <option value="EXENTO">Exento</option>
-          </select>
-
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-cyan-200 border border-slate-600 cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Limpiar
-            </button>
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={() => grid.undo()}
-          disabled={!grid.canUndo}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-cyan-200 border border-cyan-500/40 cursor-pointer"
-        >
-          <Undo2 className="w-3.5 h-3.5" />
-          Deshacer (Ctrl+Z)
-        </button>
-      </div>
-
-      {/* ZONA 4: GRILLA INDUSTRIAL CANÓNICA (useSpreadsheetGrid) */}
-      <div className="alon-zone-grid flex flex-col bg-slate-900/80 overflow-hidden">
-        <GridRibbon
-          activeCellBadge={grid.activeCellBadge}
-          onInsertRow={() => handleInsertRowAt(rows.length)}
-          insertRowLabel="+ Insertar Ítem"
-          undoCount={grid.undoStack?.length || 0}
-          totalRows={filteredRows.length}
-          entityName="ítems"
-          exportRows={filteredRows.map((r) => ({
-            ...r,
-            net_usd: REMITO_SPREADSHEET_COLUMNS.find((c) => c.key === 'net_usd').getValue(r),
-            total_usd: REMITO_SPREADSHEET_COLUMNS.find((c) => c.key === 'total_usd').getValue(r)
-          }))}
-          exportFilename={`remito_comercial_${ship.name.replace(/\s+/g, '_')}.xls`}
-          exportColumns={REMITO_SPREADSHEET_COLUMNS}
-        />
-
-        <div
-          tabIndex={0}
-          onKeyDown={grid.handleKeyDown}
-          onPaste={grid.handlePaste}
-          ref={grid.gridContainerRef}
-          className="alon-grid-scroll max-h-[55vh] overflow-auto outline-none"
-        >
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className="sticky top-0 z-20 alon-grid-thead backdrop-blur-md">
-              <tr>
-                {/* Columna 0 Canónica: Checkbox Maestro + # */}
-                <th className="py-2 px-1.5 w-10 text-center select-none">
-                  <div className="flex flex-col items-center justify-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => grid.toggleSelectAll()}
-                      className="text-slate-400 hover:text-cyan-400 cursor-pointer"
-                      title="Seleccionar todas las filas visibles"
-                    >
-                      {filteredRows.length > 0 && grid.selectedRowIds.size === filteredRows.length ? (
-                        <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
-                      ) : (
-                        <Square className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                    <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
-                  </div>
-                </th>
-                <th className="py-2 px-2 w-24">Código ✎</th>
-                <th className="py-2 px-2 min-w-[230px]">Concepto / Ítem del Remito ✎</th>
-                <th className="py-2 px-2">Origen Autoalimentado</th>
-                <th className="py-2 px-2 w-20">Unid. ✎</th>
-                <th className="py-2 px-2 w-24 text-right">Cantidad ✎</th>
-                <th className="py-2 px-2 w-28 text-right">P.Unit US$ ✎</th>
-                <th className="py-2 px-2 w-24 text-center">IVA 21% ✎</th>
-                <th className="py-2 px-2 w-28 text-right">Neto US$</th>
-                <th className="py-2 px-2 w-28 text-right">Total c/IVA</th>
-                <th className="py-2 px-2 min-w-[160px]">Notas / Criterio ✎</th>
-                <th className="py-2 px-2 w-20 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/70">
-              {filteredRows.map((row, rowIndex) => {
-                const isSelected = grid.isRowSelected(row.id)
-                const qtyNum = Number(row.quantity) || 0
-                const unitPrice = Number(row.unit_price_usd) || 0
-                const netUsd = qtyNum * unitPrice
-                const totalWithTax = row.tax_type === 'EXENTO' ? netUsd : netUsd * 1.21
-
-                const renderEditableCell = (colKey, displayNode, extraClass = '') => {
-                  const cp = getSpreadsheetCellProps(rowIndex, colKey)
-                  const isEditingThis =
-                    inlineEdit?.rowId === row.id && inlineEdit?.field === colKey
-                  const colDef = REMITO_SPREADSHEET_COLUMNS.find((c) => c.key === colKey)
-
-                  return (
-                    <td
-                      {...cp.domProps}
-                      onDoubleClick={() => {
-                        if (!colDef?.readOnly) {
-                          setInlineEdit({ rowId: row.id, field: colKey, value: row[colKey] ?? '' })
-                        }
-                      }}
-                      className={`py-2 px-2 ${extraClass} ${cp.className}`}
-                    >
-                      {isEditingThis ? (
-                        colKey === 'tax_type' ? (
-                          <select
-                            autoFocus
-                            value={inlineEdit.value}
-                            onChange={(e) =>
-                              setInlineEdit((prev) => ({ ...prev, value: e.target.value }))
-                            }
-                            onBlur={() => commitInlineEdit()}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') commitInlineEdit()
-                              if (e.key === 'Escape') setInlineEdit(null)
-                            }}
-                            className="w-full bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-xs text-white outline-none"
-                          >
-                            <option value="GRAVADO_21">Gravado 21%</option>
-                            <option value="EXENTO">Exento</option>
-                          </select>
-                        ) : (
-                          <input
-                            autoFocus
-                            type={colDef?.isNumeric ? 'number' : 'text'}
-                            step={colDef?.isNumeric ? 'any' : undefined}
-                            value={inlineEdit.value}
-                            onChange={(e) =>
-                              setInlineEdit((prev) => ({ ...prev, value: e.target.value }))
-                            }
-                            onBlur={() => commitInlineEdit()}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') commitInlineEdit()
-                              if (e.key === 'Escape') setInlineEdit(null)
-                            }}
-                            className={`w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white outline-none ${
-                              colDef?.isNumeric ? 'text-right tabular-nums' : ''
-                            }`}
-                          />
-                        )
-                      ) : (
-                        displayNode
-                      )}
-
-                      {cp.renderHandle && (
-                        <div
-                          onMouseDown={grid.handleFillHandleMouseDown}
-                          onDoubleClick={grid.handleFillHandleDoubleClick}
-                          className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow"
-                          title="Arrastrar hacia abajo para rellenar (Ctrl+D)"
-                        />
-                      )}
-                    </td>
-                  )
-                }
-
-                return (
-                  <tr
-                    key={row.id}
-                    onContextMenu={(e) =>
-                      openMenu(
-                        e,
-                        row,
-                        rowIndex,
-                        {
-                          entityType: 'remito_comercial',
-                          recordId: `${ship.id}::${row.id}`,
-                          recordLabel: `${row.line_code} · ${row.concept}`
-                        },
-                        grid
-                      )
-                    }
-                    className={`transition-colors ${
-                      isSelected
-                        ? 'bg-cyan-950/30 text-white'
-                        : qtyNum > 0
-                          ? 'hover:bg-slate-800/45 text-slate-200'
-                          : 'hover:bg-slate-800/35 text-slate-500'
-                    }`}
-                  >
-                    {/* Columna 0 Canónica */}
-                    <td className="py-1.5 px-1.5 text-center w-10 select-none">
-                      <div className="flex flex-col items-center justify-center gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => grid.toggleSelectRow(row.id)}
-                          className="text-slate-500 hover:text-cyan-400 cursor-pointer"
-                        >
-                          {isSelected ? (
-                            <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
-                          ) : (
-                            <Square className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openMenu(
-                              e,
-                              row,
-                              rowIndex,
-                              {
-                                entityType: 'remito_comercial',
-                                recordId: `${ship.id}::${row.id}`,
-                                recordLabel: `${row.line_code} · ${row.concept}`
-                              },
-                              grid
-                            )
-                          }}
-                          className="text-[10px] font-mono text-slate-400 hover:text-cyan-300 cursor-pointer"
-                          title="Clic para menú contextual e historial audit_logs"
-                        >
-                          {rowIndex + 1}
-                        </button>
-                      </div>
-                    </td>
-
-                    {renderEditableCell(
-                      'line_code',
-                      <span className="font-mono font-bold text-emerald-300">{row.line_code}</span>
-                    )}
-
-                    {renderEditableCell(
-                      'concept',
-                      <div>
-                        <div className="font-semibold text-white">{row.concept}</div>
-                        {row.line_code === 'OBR-OT' && (
-                          <div className="text-[10px] text-amber-300 flex items-center gap-1 mt-0.5">
-                            <ShieldAlert className="w-3 h-3" />
-                            Piso Directo GS-004: {formatUsd(internalDirectCostUsd)}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {renderEditableCell(
-                      'source_module',
-                      <span className="text-[11px] text-slate-400">{row.source_module}</span>
-                    )}
-
-                    {renderEditableCell(
-                      'unit',
-                      <span className="text-slate-300">{row.unit}</span>
-                    )}
-
-                    {renderEditableCell(
-                      'quantity',
-                      <span className="font-bold tabular-nums">{qtyNum}</span>,
-                      'text-right'
-                    )}
-
-                    {renderEditableCell(
-                      'unit_price_usd',
-                      <span className="inline-flex items-center justify-end gap-1 font-bold text-emerald-300 tabular-nums">
-                        {row.is_alfa_locked && <Lock className="w-3 h-3 text-emerald-400" />}
-                        {formatUsd(unitPrice)}
-                      </span>,
-                      'text-right'
-                    )}
-
-                    {renderEditableCell(
-                      'tax_type',
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          row.tax_type === 'EXENTO'
-                            ? 'bg-emerald-500/20 text-emerald-300'
-                            : 'bg-cyan-500/20 text-cyan-300'
-                        }`}
-                      >
-                        {row.tax_type === 'EXENTO' ? 'Exento' : 'IVA 21%'}
-                      </span>,
-                      'text-center'
-                    )}
-
-                    {renderEditableCell(
-                      'net_usd',
-                      <span className="font-semibold text-slate-100 tabular-nums">
-                        {formatUsd(netUsd)}
-                      </span>,
-                      'text-right'
-                    )}
-
-                    {renderEditableCell(
-                      'total_usd',
-                      <span className="font-extrabold text-cyan-300 tabular-nums">
-                        {formatUsd(totalWithTax)}
-                      </span>,
-                      'text-right'
-                    )}
-
-                    {renderEditableCell(
-                      'observations',
-                      <span className="text-slate-400 truncate block max-w-[200px]" title={row.observations}>
-                        {row.observations || '—'}
-                      </span>
-                    )}
-
-                    <td className="py-2 px-2 text-right whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicateRow(row)}
-                        className="p-1 text-slate-400 hover:text-cyan-300 cursor-pointer"
-                        title="Duplicar ítem"
-                      >
-                        <CopyPlus className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRow(row)}
-                        className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
-                        title="Eliminar ítem"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* MENÚ CONTEXTUAL CANÓNICO */}
-        {menuTarget && (
-          <GridContextMenu
-            target={menuTarget}
-            onClose={closeMenu}
-            onCopyCell={grid.copyActiveCell}
-            onCopyRow={grid.copyRow}
-            onPaste={grid.pasteToActiveOrRange}
-            onDeleteCell={grid.deleteActiveCellOrRange}
-            onInsertRowAbove={() => handleInsertRowAt(menuTarget.rowIndex)}
-            onInsertRowBelow={() => handleInsertRowAt(menuTarget.rowIndex + 1)}
-            onDuplicateRow={handleDuplicateRow}
-            onDeleteRow={handleDeleteRow}
-            entityType="remito_comercial"
-            recordId={`${ship.id}::${menuTarget.row?.id}`}
-            recordLabel={`${menuTarget.row?.line_code || ''} · ${menuTarget.row?.concept || ''}`}
-          />
-        )}
-
-        {/* ZONA 5: BARRA DE ESTADO Y ACCIONES MASIVAS */}
-        <GridStatusBarBottom
-          isFixed={false}
-          filteredCount={filteredRows.length}
-          totalCount={rows.length}
-          entityName="ítems"
-          hasActiveFilter={hasFilters}
-          onClearFilters={clearFilters}
-          selectionStats={grid.selectionStats}
-          onClearSelection={() => grid.setSelectionRange(null)}
-          customSelection={
-            grid.selectedRowIds.size > 0
-              ? {
-                  count: grid.selectedRowIds.size,
-                  label: 'ítems seleccionados',
-                  onClear: () => grid.clearSelectedRows()
-                }
-              : null
-          }
-          extraActions={
-            grid.selectedRowIds.size > 0 ? (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleBulkTaxChange('EXENTO')}
-                  className="px-2 py-1 rounded bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-400/40 text-[11px] font-bold cursor-pointer"
-                >
-                  Marcar Exento
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleBulkTaxChange('GRAVADO_21')}
-                  className="px-2 py-1 rounded bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 border border-cyan-400/40 text-[11px] font-bold cursor-pointer"
-                >
-                  Gravado 21%
-                </button>
-                <button
-                  type="button"
-                  onClick={handleBulkDelete}
-                  className="px-2 py-1 rounded bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-400/40 text-[11px] font-bold cursor-pointer"
-                >
-                  Eliminar ({grid.selectedRowIds.size})
-                </button>
-              </div>
-            ) : null
-          }
-          globalAggregates={[
-            { label: 'SUBTOTAL NETO', value: formatUsd(financialTotals.subtotalNetoUsd) },
-            { label: 'IVA 21%', value: formatUsd(financialTotals.iva21Usd) },
-            { label: 'TOTAL REMITO', value: formatUsd(financialTotals.totalRemitoUsd), highlight: true },
-            {
-              label: `MARGEN (${financialTotals.margenPct}%)`,
-              value: formatUsd(financialTotals.margenRealUsd)
-            }
-          ]}
-        />
-      </div>
-
-      <AlfaRateCardModal
-        isOpen={showAlfaModal}
-        onClose={() => setShowAlfaModal(false)}
-        rateCard={alfaRateCard}
-        onSaveRateItem={onSaveAlfaRateCard}
+    <div className="flex flex-col lg:flex-row gap-3 items-start">
+      {/* COLUMNA 1: Menú Lateral Multi-Barco Independiente */}
+      <BillingShipSidebarRail
+        ships={allShips}
+        activeShipId={effectiveShipId}
+        shipCardMetaMap={shipCardMetaMap}
+        onSelectShip={handleSwitchShip}
+        onAddShipToWorkspace={handleAddShipToWorkspace}
+        onReopenShipFromSent={handleAddShipToWorkspace}
       />
+
+      {/* COLUMNAS 2 y 3: Sábana Blanca Paginada + Costos Compactos Soldados en Cabecera */}
+      <div className="flex-1 min-w-0 space-y-3 w-full">
+        {!activeShip ? (
+          <div className="bg-slate-900/70 border border-dashed border-slate-700 rounded-2xl p-12 text-center space-y-2">
+            <Ship className="w-10 h-10 text-emerald-400 mx-auto" />
+            <h3 className="text-base font-black text-white">Mesa Independiente Multi-Barco de Facturación</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              Tocá <strong>&quot;+ Sumar&quot;</strong> en el menú izquierdo para abrir la sábana blanca de un barco (o usá el botón <strong>Facturar</strong> en cualquier OT de RESUMEN 2).
+            </p>
+          </div>
+        ) : (
+          <>
+            <BillingWorkspaceToolbar
+              shipName={activeShip.name}
+              readyToImportCount={ghostEval.readyToImport.length}
+              emptyDescriptionAlerts={ghostEval.emptyDescriptionAlerts}
+              orphanSummary={billingShipSummary?.orphanSummary}
+              importing={importing}
+              sendingToBilling={sendingShip}
+              isSentMode={activeShip.billing_workspace_status === 'ENVIADO_A_FACTURACION'}
+              onImportAll={handleImportAll}
+              onNotifyEmptyOts={handleNotifyEmptyOts}
+              onAddRubroDelimiter={handleAddRubroDelimiter}
+              onAddFreeBlock={handleAddFreeBlock}
+              onPrintCleanPdf={() => openCleanBillingPrintWindow({
+                ship: activeShip, owner: activeOwner, budgetNumber: activeShip.billing_budget_number || '',
+                pages, pageSummaries, otRowMap
+              })}
+              onOpenAlfaModal={() => setShowAlfaModal(true)}
+              onSendShipToFinalBilling={handleSendShipToFinalBilling}
+            />
+
+            <BillingPrintableSheetPanel
+              ship={activeShip}
+              owner={activeOwner}
+              budgetNumber={activeShip.billing_budget_number || ''}
+              onChangeBudgetNumber={(val) => saveLayoutMeta(activeShip.billing_layout_meta || {}, val)}
+              pages={pages}
+              pageSummaries={pageSummaries}
+              grandTotal={grandTotal}
+              otRowMap={otRowMap}
+              rubroSubtotalsMap={rubroSubtotalsMap}
+              onCommitProse={handleCommitProse}
+              onCommitPriceField={handleCommitPriceField}
+              onToggleTax={handleToggleTax}
+              onChangePricingMode={handleChangePricingMode}
+              onRequestExpansion={async (otRow, note) => {
+                const wo = activeShipWos.find((w) => w.id === otRow.id)
+                if (!wo) return
+                await requestBillingExpansionService({ wo, ship: activeShip, note, user: actorName })
+                await onReloadData?.()
+                showFeedback?.('success', `Acuse de ampliación enviado a ${otRow.foremanName || 'Jefe de Obra'} + Administrador.`)
+              }}
+              onRemoveBlock={handleRemoveBlock}
+              onAddFreeBlock={handleAddFreeBlock}
+              onReorderBlocks={handleReorderBlocks}
+              registerFlush={registerFlush}
+            />
+          </>
+        )}
+      </div>
+
+      {showAlfaModal && (
+        <AlfaRateCardModal
+          isOpen={showAlfaModal}
+          onClose={() => setShowAlfaModal(false)}
+          rates={alfaRateCard}
+          onSave={onSaveAlfaRateCard}
+        />
+      )}
     </div>
   )
 }

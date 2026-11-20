@@ -96,7 +96,7 @@ export function buildRemitoRowsFromOtCatalog({
       if (line.data_source === 'MOVIMIENTOS_BUQUE') {
         if (upperConcept.includes('VARADERO')) autoQty = varaderoDays
         else if (upperConcept.includes('MUELLE')) autoQty = muelleDays
-      } else if (upperConcept.includes('GRUA') || upperConcept.includes('GRÚA')) {
+      } else if (line.data_source === 'PLANILLA_HORAS' || upperConcept.includes('GRUA') || upperConcept.includes('GRÚA')) {
         if (upperConcept.includes('8 TON')) autoQty = craneHours.shipGruaChica || 0
         else if (upperConcept.includes('60 TON')) autoQty = craneHours.shipGruaGrande || 0
       }

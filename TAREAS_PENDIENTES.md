@@ -7,6 +7,10 @@ Lista de trabajo activa priorizada por fase y criticidad.
 
 ## 📌 Pendientes Operativos y Módulos Futuros Acordados
 
+- [ ] **Patrón Arquitectónico Acordado — Expansión Relacional de Columnas sobre Entidad Madre (Anti-JSON Global):**
+  - **Criterio validado (`2026-11-19`, Migración `0049`):** Cuando una entidad operativa (ej. `work_orders`, `ships`, y en futuros ciclos `purchase_orders`, `third_party_services`, `tesoreria`) avanza a etapas comerciales o administrativas nuevas, **ampliar columnas específicas sobre la fila de esa entidad madre** en Supabase en lugar de concentrar todos los registros en un único JSON de `system_settings`. Evita colisiones concurrentes entre Gerencia, Administración y Jefes de Obra, y mantiene trazabilidad atómica por registro.
+- [ ] **Bandeja Posterior de Cobro / Menú de Facturación Final al Cliente (Siguiente Etapa tras `[🚀 Enviar a Facturación]`):**
+  - **Alcance:** Recibe los buques cuyo `ships.billing_workspace_status = 'ENVIADO_A_FACTURACION'` con su saldo consolidado (`billing_total_snapshot_usd`), desapareciendo de la mesa activa de preparación para gestionar envío formal al cliente, seguimiento de pago y cobro.
 - [ ] **Atajos de Vistas de Filtro Guardadas en Dashboard por Usuario (`/`):**
   - **Estado:** Pendiente de definición visual/UX por el usuario (cinta de atajos arriba vs. tarjetas por módulo vs. gaveta con detalle).
   - **Base técnica:** Consumirá `filterViewsService.js` / `system_settings` (`user_saved_filter_views`, máx. 5 vistas por usuario y módulo) para abrir en 1 clic cualquier módulo con la vista favorita aplicada.

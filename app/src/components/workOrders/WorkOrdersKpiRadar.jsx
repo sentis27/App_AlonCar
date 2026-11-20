@@ -1,17 +1,30 @@
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Ship } from 'lucide-react'
+import { AlertTriangle, Ship, Megaphone } from 'lucide-react'
 
 export default function WorkOrdersKpiRadar({
   stats,
   selectedStatusFilter,
-  setSelectedStatusFilter
+  setSelectedStatusFilter,
+  pendingBillingExpansionsCount = 0,
+  onOpenBillingExpansionModal
 }) {
   return (
     <div className="alon-zone-kpis rounded-2xl p-4 shadow-xl font-sans">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <span className="text-[11px] font-black uppercase tracking-wider text-amber-400">
           📊 Radar de KPIs & Estados Operativos • Clic en cualquier tarjeta para filtrar
         </span>
+        {pendingBillingExpansionsCount > 0 && (
+          <button
+            type="button"
+            onClick={onOpenBillingExpansionModal}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/20 hover:bg-orange-500/30 border border-orange-400 text-orange-200 text-[11px] font-black cursor-pointer animate-pulse"
+            title="Gerencia solicitó ampliar el detalle comercial (billing_description) de estas OTs"
+          >
+            <Megaphone className="w-3.5 h-3.5 text-orange-300" />
+            <span>Ampliación Gerencia: {pendingBillingExpansionsCount} pendiente(s)</span>
+          </button>
+        )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* KPI ALERTA: IMPUTACIONES SIN OT EN EL ERP */}

@@ -4,6 +4,7 @@ import { Loader2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { RESUMEN_GERENCIAL_TABS } from '../lib/drydockCatalogConstants'
 import { useResumenGerencialState } from '../hooks/useResumenGerencialState'
+import { requestBillingExpansionService, sendSingleOtToBillingService } from '../lib/billingWorkflowService'
 import ResumenGerencialHeader from '../components/resumenGerencial/ResumenGerencialHeader'
 import ResumenObraCostosPanel from '../components/resumenGerencial/ResumenObraCostosPanel'
 import ResumenMatrizOtsPanel from '../components/resumenGerencial/ResumenMatrizOtsPanel'
@@ -25,10 +26,10 @@ export default function ResumenGerencial() {
   const [activeCostSheet, setActiveCostSheet] = useState('materiales')
   const [costSheetScope, setCostSheetScope] = useState('GENERAL')
   const [costSheetInitialKpi, setCostSheetInitialKpi] = useState('ALL')
+  const [billingJumpTarget, setBillingJumpTarget] = useState(null)
 
-  const state = useResumenGerencialState({
-    actorName: profile?.full_name || user?.email || 'Dirección'
-  })
+  const actorName = profile?.full_name || user?.email || 'Dirección'
+  const state = useResumenGerencialState({ actorName })
 
   useEffect(() => {
     const t = searchParams.get('tab')
@@ -123,6 +124,30 @@ export default function ResumenGerencial() {
                 switchTab('resumen')
               }}
               onBackToSummary={() => switchTab('resumen')}
+              onRequestExpansion={async (otRow) => {
+                const wo = (state.data?.workOrders || []).find((w) => w.id === otRow.id)
+                if (!wo) return
+                await requestBillingExpansionService({ wo, ship: state.shipSummary?.ship, user: actorName })
+                await state.loadAll({ silent: true })
+                state.showFeedback('success', `Ampliación solicitada a ${otRow.foremanName || 'Jefe de Obra'} + Administrador.`)
+              }}
+              onSendOtToBilling={async (otRow) => {
+                const wo = (state.data?.workOrders || []).find((w) => w.id === otRow.id)
+                const ship = state.shipSummary?.ship
+                if (!wo || !ship) return
+                const woItems = (state.data?.workItems || []).filter((i) => i.work_order_id === wo.id)
+                const shipMaxSort = (state.data?.workOrders || [])
+                  .filter((w) => w.ship_id === ship.id && w.is_in_billing)
+                  .reduce((m, w) => Math.max(m, Number(w.billing_sort_order) || 0), 0)
+                await sendSingleOtToBillingService({
+                  ship, wo, woItems, laborRows: state.laborRows, materialRows: state.materialRows,
+                  thirdPartyRows: state.thirdPartyRows, workers: state.data?.workers || [],
+                  otTemplates: state.data?.otTemplates || [], nextSortOrder: shipMaxSort + 10, user: actorName
+                })
+                await state.loadAll({ silent: true })
+                setBillingJumpTarget({ shipId: ship.id, ts: Date.now() })
+                switchTab('remito')
+              }}
             />
           )}
 
@@ -202,17 +227,18 @@ export default function ResumenGerencial() {
 
           {activeTab === 'remito' && (
             <RemitoComercialAlfaPanel
-              ship={state.shipSummary?.ship}
-              shipStays={state.data?.shipStays || []}
+              allShips={state.data?.ships || []}
+              owners={state.data?.owners || []}
               workOrders={state.data?.workOrders || []}
-              shipSummary={state.shipSummary}
+              workItems={state.data?.workItems || []}
               materialRows={state.materialRows}
-              craneHours={state.shipSummary?.craneHours || {}}
+              laborRows={state.laborRows}
+              thirdPartyRows={state.thirdPartyRows}
+              workers={state.data?.workers || []}
               alfaRateCard={state.data?.alfaRateCard || []}
               otTemplates={state.data?.otTemplates || []}
-              remitoState={state.data?.remitosByShip?.[state.selectedShipId] || null}
-              onPersistCellChange={state.handlePersistRemitoCellChange}
-              onPersistRowAction={state.handlePersistRemitoRowAction}
+              jumpToShipTarget={billingJumpTarget}
+              onReloadData={() => state.loadAll({ silent: true })}
               onSaveAlfaRateCard={state.handleSaveAlfaRateCard}
               showFeedback={state.showFeedback}
             />

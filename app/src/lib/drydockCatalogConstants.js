@@ -201,7 +201,7 @@ export const DEFAULT_DRYDOCK_RATE_CARD_ALFA = [
     unit: 'Hora',
     unit_price_usd: 130,
     tax_type: 'GRAVADO_21',
-    source_module: 'Resumen GS-004 · Grúa Chica',
+    source_module: 'Planilla de Horas (labor_logs)',
     open_field_label: 'Horas de uso',
     template_scopes: ['PUESTA_SECO_30M', 'REPARACION_AFLOTE']
   },
@@ -213,7 +213,7 @@ export const DEFAULT_DRYDOCK_RATE_CARD_ALFA = [
     unit: 'Hora',
     unit_price_usd: 240,
     tax_type: 'GRAVADO_21',
-    source_module: 'Resumen GS-004 · Grúa Grande',
+    source_module: 'Planilla de Horas (labor_logs)',
     open_field_label: 'Horas de uso',
     template_scopes: ['PUESTA_SECO_30M']
   },
@@ -261,7 +261,7 @@ export const DEFAULT_DRYDOCK_RATE_CARD_ALFA = [
     unit: 'Unidad',
     unit_price_usd: 39,
     tax_type: 'EXENTO',
-    source_module: 'Pañol · Movimientos Ánodos',
+    source_module: 'Jefe de Obra (Cantidad instalada)',
     open_field_label: 'Cantidad instalada',
     template_scopes: ['PUESTA_SECO_30M']
   },

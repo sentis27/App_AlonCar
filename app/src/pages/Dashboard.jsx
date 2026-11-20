@@ -14,6 +14,7 @@ import { saveMacroVariables } from '../lib/macroVariablesService'
 import { fetchPendingBudgetAlertsForMariaService } from '../lib/workOrdersService'
 import { fetchPendingContractAlertsForMariaService } from '../lib/contractorDeductionsService'
 import { fetchDashboardZeroCostAlerts } from '../lib/zeroCostAlertsService'
+import { fetchBillingExpansionAlertsService } from '../lib/billingWorkflowService'
 import {
   DASHBOARD_REALTIME_TABLES,
   fetchDashboardStatsService,
@@ -22,6 +23,7 @@ import {
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import MariaJoseBudgetAlertsCard from '../components/workOrders/MariaJoseBudgetAlertsCard'
 import MariaJoseContractAlertsCard from '../components/personal/MariaJoseContractAlertsCard'
+import BillingExpansionAlertsCard from '../components/workOrders/BillingExpansionAlertsCard'
 import ZeroCostDashboardAlertCard from '../components/ZeroCostDashboardAlertCard'
 import DashboardMacroPanel from '../components/dashboard/DashboardMacroPanel'
 import DashboardOperationsGuide from '../components/dashboard/DashboardOperationsGuide'
@@ -48,16 +50,18 @@ export default function Dashboard() {
   const [pendingBudgetAlerts, setPendingBudgetAlerts] = useState([])
   const [pendingContractAlerts, setPendingContractAlerts] = useState([])
   const [zeroCostAlerts, setZeroCostAlerts] = useState(null)
+  const [billingExpansionAlerts, setBillingExpansionAlerts] = useState({ requested: [], resolved: [] })
 
   const loadAllDashboard = useCallback(async ({ silent = false } = {}) => {
     try {
       if (!silent) setLoading(true)
-      const [statsData, macroData, budgetData, contractData, zeroCostData] = await Promise.all([
+      const [statsData, macroData, budgetData, contractData, zeroCostData, expansionData] = await Promise.all([
         fetchDashboardStatsService(),
         fetchMacroVariablesService(),
         fetchPendingBudgetAlertsForMariaService(),
         fetchPendingContractAlertsForMariaService({ syncFirst: !silent }),
-        fetchDashboardZeroCostAlerts()
+        fetchDashboardZeroCostAlerts(),
+        fetchBillingExpansionAlertsService()
       ])
 
       setStats(statsData)
@@ -74,6 +78,7 @@ export default function Dashboard() {
       setPendingBudgetAlerts(budgetData)
       setPendingContractAlerts(contractData)
       setZeroCostAlerts(zeroCostData)
+      setBillingExpansionAlerts(expansionData)
     } catch (err) {
       console.warn('Error cargando métricas del Dashboard:', err)
     } finally {
@@ -195,6 +200,13 @@ export default function Dashboard() {
           )
         })}
       </div>
+
+      <BillingExpansionAlertsCard
+        requested={billingExpansionAlerts.requested}
+        resolved={billingExpansionAlerts.resolved}
+        userName={profile?.full_name || user?.email || 'Usuario'}
+        onUpdated={() => loadAllDashboard({ silent: true })}
+      />
 
       <ZeroCostDashboardAlertCard alerts={zeroCostAlerts} />
 
