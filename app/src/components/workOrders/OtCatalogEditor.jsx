@@ -7,7 +7,7 @@ import {
   OT_ABC_CATEGORIES,
   OT_ABC_DATA_SOURCES,
   OT_ABC_TAX_OPTIONS,
-  buildOperationalDescriptionFromLines,
+  buildBillingDescriptionFromLines,
   computeTemplateTaxSummary,
   createEmptyOtAbcLineItem,
   normalizeOtAbcLineItems
@@ -27,6 +27,7 @@ export default function OtCatalogEditor({
     name: String(initialDraft?.name || '').toUpperCase(),
     category: initialDraft?.category === 'Intermediaria' ? 'Intermedia' : (initialDraft?.category || ''),
     description: initialDraft?.description || '',
+    description_billing: initialDraft?.description_billing || '',
     fixed_notes: initialDraft?.fixed_notes || '',
     default_tax_type: initialDraft?.default_tax_type || 'EXENTO',
     default_data_source: initialDraft?.default_data_source || 'JEFE_DE_OBRA',
@@ -56,9 +57,9 @@ export default function OtCatalogEditor({
     }))
   }
 
-  const handleSyncDescription = () => {
-    const generated = buildOperationalDescriptionFromLines(draft.line_items, draft.fixed_notes)
-    if (generated) setDraft((prev) => ({ ...prev, description: generated }))
+  const handleSyncBillingDescription = () => {
+    const generated = buildBillingDescriptionFromLines(draft.line_items, draft.fixed_notes)
+    if (generated) setDraft((prev) => ({ ...prev, description_billing: generated }))
   }
 
   return (
@@ -110,20 +111,32 @@ export default function OtCatalogEditor({
         <CanonicalStepperStep
           step={2}
           helpEntry={OT_CATALOG_STEP_HELP[2]}
-          title="DESCRIPCIÓN OPERATIVA Y EXCLUSIONES"
-          subtitle="Solo esto se importa en /ots"
+          title="DESCRIPCIÓN OPERATIVA (/ots) vs FACTURACIÓN (description_billing)"
+          subtitle="Operativa va al taller · Billing entra automático a Facturación"
           headerRight={
-            <button type="button" tabIndex={-1} onClick={handleSyncDescription} className="px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1 cursor-pointer">
-              <RefreshCw className="w-3 h-3" /><span>Sincronizar desde renglones</span>
+            <button type="button" tabIndex={-1} onClick={handleSyncBillingDescription} className="px-2 py-0.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1 cursor-pointer">
+              <RefreshCw className="w-3 h-3" /><span>Generar Billing desde renglones</span>
             </button>
           }
         >
           <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-            <div className="md:col-span-8">
-              <textarea rows={2} value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} placeholder="Texto estándar que recibirán los usuarios de carga de datos al abrir esta OT..." className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-cyan-400 focus:outline-none" />
+            <div className="md:col-span-4 space-y-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                Operativa (Taller / `/ots`)
+              </label>
+              <textarea rows={3} value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} placeholder="Detalle corto y claro para el equipo de obra..." className="w-full bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-400 focus:outline-none" />
             </div>
-            <div className="md:col-span-4">
-              <textarea rows={2} value={draft.fixed_notes} onChange={(e) => setDraft((p) => ({ ...p, fixed_notes: e.target.value }))} placeholder="Notas Fijas / Exclusiones (Ej: Provisión del armador)..." className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-400 focus:outline-none" />
+            <div className="md:col-span-5 space-y-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-emerald-300">
+                Facturación (`description_billing`)
+              </label>
+              <textarea rows={3} value={draft.description_billing} onChange={(e) => setDraft((p) => ({ ...p, description_billing: e.target.value }))} placeholder="Prosa comercial completa que se importa automáticamente a la Sábana Blanca..." className="w-full bg-slate-950 border border-emerald-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-emerald-400 focus:outline-none" />
+            </div>
+            <div className="md:col-span-3 space-y-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                Notas Fijas / Exclusiones
+              </label>
+              <textarea rows={3} value={draft.fixed_notes} onChange={(e) => setDraft((p) => ({ ...p, fixed_notes: e.target.value }))} placeholder="Ej: Provisión del armador..." className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:border-cyan-400 focus:outline-none" />
             </div>
           </div>
         </CanonicalStepperStep>

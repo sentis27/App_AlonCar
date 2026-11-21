@@ -1,22 +1,18 @@
 import React, { useState } from 'react'
-import { Megaphone, AlertTriangle, CheckCircle2, Trash2, X } from 'lucide-react'
+import { Megaphone, AlertTriangle, CheckCircle2, Trash2, X, RefreshCw } from 'lucide-react'
 import { formatUsd } from '../../lib/drydockCatalogConstants'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
- * Columna 3 (Derecha, Compacta y Soldada a la Cabecera `top-0` de cada OT):
- * Respeta el orden exacto aprobado en la Versión 4:
- * - Cabecera Naranja: `OT-XX · Nombre` + `[Estado]` + `TOTAL OT: $...` arriba a la derecha.
- * - Cuerpo Compacto 3 secciones:
- *     Izquierda: `M.O.` y `MAT.` apilados | Centro: `ACCIONES` (`[📣 Ampliar]`, modo precio) | Derecha: `HORAS`
- * - Pie de Tarjeta: Franja amarilla `⚠️ X SIN VALORIZAR` con las 4 píldoras `[Hs | 3ros | Comp | Mat]`
- *   y ventana emergente con el detalle exacto de contratistas, materiales u horas en $0.
+ * Columna 3 (Derecha, Compacta y Soldada a la Cabecera `top-0` de cada OT).
  */
 export default function BillingRightCostCard({
   block,
   otRow,
+  matchedTemplate = null,
   rubroSubtotal = null,
   onRequestExpansion,
+  onRefreshFromCatalog,
   onChangePricingMode,
   onRemoveBlock
 }) {
@@ -147,14 +143,26 @@ export default function BillingRightCostCard({
         <div className="px-1.5 py-1 flex flex-col items-center justify-center gap-1">
           <div className="flex items-center justify-between w-full gap-1">
             <span className="text-[8px] font-black uppercase text-rose-300 tracking-wider">ACCIONES</span>
-            <button
-              type="button"
-              onClick={() => onRemoveBlock?.(block)}
-              className="text-slate-500 hover:text-rose-400 cursor-pointer"
-              title="Quitar esta OT de la hoja (no borra la OT del taller)"
-            >
-              <Trash2 className="w-2.5 h-2.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              {matchedTemplate && (
+                <button
+                  type="button"
+                  onClick={() => onRefreshFromCatalog?.(block, matchedTemplate)}
+                  className="text-emerald-400 hover:text-emerald-200 cursor-pointer"
+                  title={`Traer description_billing oficial del Catálogo OT.ABC (${matchedTemplate.name})`}
+                >
+                  <RefreshCw className="w-2.5 h-2.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onRemoveBlock?.(block)}
+                className="text-slate-500 hover:text-rose-400 cursor-pointer"
+                title="Quitar esta OT de la hoja (no borra la OT del taller)"
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+              </button>
+            </div>
           </div>
           <button
             type="button"

@@ -6,6 +6,7 @@
  */
 
 import { isCaldereriaChapter } from './billingMirrorEngine.js'
+import { resolveBlockBillingQty } from './billingSheetMath.js'
 
 function fmtMoney(val) {
   const n = Number(val) || 0
@@ -33,9 +34,8 @@ export function openCleanBillingPrintWindow({ ship, owner, budgetNumber = '', pa
       const otRow = block.workOrderId ? otRowMap.get(block.workOrderId) : null
       const isCald = isCaldereriaChapter(activeRubro || block.billing_rubro_group)
       const mode = block.billing_pricing_mode || 'MO_MAT'
-      const qtyVal = mode === 'UNITARIO'
-        ? (block.billing_qty_override ?? 1)
-        : (block.billing_qty_override ?? (isCald && otRow?.weightKg > 0 ? otRow.weightKg : ''))
+      const resolvedQty = resolveBlockBillingQty(block, { isCaldereria: isCald, weightKg: otRow?.weightKg || 0 })
+      const qtyVal = resolvedQty == null ? '' : resolvedQty
       const unitTot = mode === 'UNITARIO' ? Number(((Number(qtyVal) || 0) * (Number(block.billing_unit_price_usd) || 0)).toFixed(2)) : 0
 
       let conceptSuffix = ''
@@ -99,8 +99,10 @@ export function openCleanBillingPrintWindow({ ship, owner, budgetNumber = '', pa
   const win = window.open('', '_blank', 'width=980,height=800')
   if (!win) return
   win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><title>Presupuesto ${escapeHtml(ship?.name || '')}</title><style>
+    @page{size:A4 portrait;margin:0}
     body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#e5e7eb;color:#111}
-    .sheet-page{background:#fff;width:210mm;min-height:282mm;margin:0 auto 18px;padding:10mm;box-sizing:border-box;display:flex;flex-direction:column;border:1px solid #111;page-break-after:always}
+    .sheet-page{background:#fff;width:210mm;min-height:297mm;margin:0 auto 18px;padding:10mm;box-sizing:border-box;display:flex;flex-direction:column;border:1px solid #111;page-break-after:always}
+    .sheet-page:last-child{page-break-after:auto}
     .doc-header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:6px;font-size:11px}
     .brand{font-weight:900;font-size:13px;margin-bottom:4px}.doc-meta{text-align:right}.presup{font-weight:700;border-bottom:1px solid #111;display:inline-block;margin:2px 0}.page-badge{background:#d1d5db;font-weight:900;padding:2px 8px;display:inline-block;margin-top:2px}
     .chars{font-size:10px;padding:4px 0;border-bottom:1px solid #111}

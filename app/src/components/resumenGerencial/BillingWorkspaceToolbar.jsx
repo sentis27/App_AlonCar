@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Download, Plus, Printer, Rocket, Settings2, AlertTriangle, Megaphone, FolderPlus } from 'lucide-react'
+import { Download, Plus, Printer, Rocket, AlertTriangle, Megaphone, FolderPlus } from 'lucide-react'
 import { OFFICIAL_RUBROS_CATALOG } from '../../lib/tradesCatalog'
 import { formatUsd } from '../../lib/drydockCatalogConstants'
 
@@ -25,7 +25,6 @@ export default function BillingWorkspaceToolbar({
   onAddRubroDelimiter,
   onAddFreeBlock,
   onPrintCleanPdf,
-  onOpenAlfaModal,
   onSendShipToFinalBilling
 }) {
   const [showRubroMenu, setShowRubroMenu] = useState(false)
@@ -109,16 +108,6 @@ export default function BillingWorkspaceToolbar({
           >
             <Printer className="w-3.5 h-3.5" />
             <span>PDF Cliente</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenAlfaModal}
-            className="px-2 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-500/40 text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
-            title="Tarifario Maestro Nivel Alfa"
-          >
-            <Settings2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Tarifario</span>
           </button>
         </div>
 

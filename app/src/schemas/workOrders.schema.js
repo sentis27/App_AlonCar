@@ -23,6 +23,7 @@ export const WorkOrderSchema = z
     closed_at: z.string().nullable().optional(),
     allow_post_billing_costs: z.boolean().default(false),
     is_tabulated: z.boolean().default(false),
+    ot_template_id: z.string().uuid().nullable().optional(),
     merged_into_wo_id: z.string().uuid().nullable().optional(),
     notes: z.string().nullable().optional(),
     billing_description: z.string().nullable().optional(),

@@ -9,6 +9,7 @@ export const OtTemplateSchema = z
     id: z.string().uuid().optional(),
     name: z.string().trim().min(1, 'El nombre de la plantilla OT.ABC es obligatorio'),
     description: z.string().nullable().optional(),
+    description_billing: z.string().nullable().optional(),
     category: z.string().nullable().optional(),
     sort_order: z.coerce.number().int().min(0).optional(),
     fixed_notes: z.string().nullable().optional(),

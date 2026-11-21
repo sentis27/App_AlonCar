@@ -2,47 +2,21 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Ship } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { computeShipManagerialSummary } from '../../lib/managerialSummaryService'
-import { evaluateShipWorkOrdersForGhostImport, isCaldereriaChapter } from '../../lib/billingMirrorEngine'
+import { evaluateShipWorkOrdersForGhostImport, isCaldereriaChapter, matchOtToAbcTemplate, buildCatalogBillingProse } from '../../lib/billingMirrorEngine'
 import { computeBlockBillingBreakdown, paginateBillingBlocks, computePaginatedCumulativeBalances } from '../../lib/billingSheetMath'
-import {
-  openShipInBillingWorkspaceService,
-  sendShipToFinalBillingService,
-  saveShipBillingLayoutMetaService,
-  importShipWorkOrdersGhostService,
-  saveWorkOrderBillingPatchService,
-  saveWorkOrderBillingOrderBatchService,
-  requestBillingExpansionService
-} from '../../lib/billingWorkflowService'
+import { openShipInBillingWorkspaceService, sendShipToFinalBillingService, saveShipBillingLayoutMetaService, importShipWorkOrdersGhostService, saveWorkOrderBillingPatchService, saveWorkOrderBillingOrderBatchService, requestBillingExpansionService } from '../../lib/billingWorkflowService'
 import { openCleanBillingPrintWindow } from '../../lib/billingPrintHelper'
 import BillingShipSidebarRail from './BillingShipSidebarRail'
 import BillingWorkspaceToolbar from './BillingWorkspaceToolbar'
 import BillingPrintableSheetPanel from './BillingPrintableSheetPanel'
-import AlfaRateCardModal from './AlfaRateCardModal'
 
 const BILLING_ACTIVE_SHIP_KEY = 'aloncar_independent_billing_ship_id'
 
-/**
- * Mesa Independiente Multi-Barco de Pre-Facturación en 3 Columnas (V4):
- * - 100% desvinculada del selector de barco del Resumen Gerencial / RESUMEN 2.
- * - Col 1: Menú Lateral `🚢 EN FACTURACIÓN` (+ Sumar Barco / Enviar a Facturación).
- * - Col 2: Sábana Blanca Paginada (`HOJA 1/N`) con edición en prosa in-situ, IVA vinculante y cierre acumulativo.
- * - Col 3: Panel compacto de Costos y Alertas soldado en cabecera (`top-0`).
- */
+/** Mesa Independiente Multi-Barco de Pre-Facturación en 3 Columnas (V4). */
 export default function RemitoComercialAlfaPanel({
-  allShips = [],
-  owners = [],
-  workOrders = [],
-  workItems = [],
-  materialRows = [],
-  laborRows = [],
-  thirdPartyRows = [],
-  workers = [],
-  alfaRateCard = [],
-  otTemplates = [],
-  jumpToShipTarget = null,
-  onReloadData,
-  onSaveAlfaRateCard,
-  showFeedback
+  allShips = [], owners = [], workOrders = [], workItems = [], materialRows = [],
+  laborRows = [], thirdPartyRows = [], workers = [], otTemplates = [],
+  jumpToShipTarget = null, onReloadData, showFeedback
 }) {
   const { user, profile } = useAuth()
   const actorName = profile?.full_name || user?.email || 'Gerencia'
@@ -57,7 +31,6 @@ export default function RemitoComercialAlfaPanel({
   const setBillingShipId = (nextId) => setBillingShipState({ shipId: nextId, handledJumpTs: jumpToShipTarget?.ts || Date.now() })
   const [importing, setImporting] = useState(false)
   const [sendingShip, setSendingShip] = useState(false)
-  const [showAlfaModal, setShowAlfaModal] = useState(false)
   const [newBlockAutoFocusId, setNewBlockAutoFocusId] = useState(null)
 
   const activeFlushRef = useRef(null)
@@ -114,6 +87,15 @@ export default function RemitoComercialAlfaPanel({
     () => (activeShip ? workOrders.filter((w) => w.ship_id === activeShip.id && !w.merged_into_wo_id) : []),
     [activeShip, workOrders]
   )
+
+  const matchedTemplateByWoId = useMemo(() => {
+    const map = new Map()
+    for (const wo of activeShipWos) {
+      const tpl = matchOtToAbcTemplate(wo, otTemplates)
+      if (tpl) map.set(wo.id, tpl)
+    }
+    return map
+  }, [activeShipWos, otTemplates])
 
   // Evaluación SIN IA para Importar Todo + Alertas de OTs con descripción vacía
   const ghostEval = useMemo(() => evaluateShipWorkOrdersForGhostImport({
@@ -343,6 +325,19 @@ export default function RemitoComercialAlfaPanel({
     }
   }
 
+  const handleRefreshFromCatalog = async (block, matchedTpl) => {
+    if (!activeShip || !block?.workOrderId || !matchedTpl) return
+    const wo = activeShipWos.find((w) => w.id === block.workOrderId)
+    const nextProse = buildCatalogBillingProse(matchedTpl, wo?.title)
+    if (!nextProse || !window.confirm(`¿Reemplazar el texto actual de "${wo?.title || matchedTpl.name}" por la descripción de facturación oficial del Catálogo OT.ABC?`)) return
+    await saveWorkOrderBillingPatchService({
+      woId: block.workOrderId, shipName: activeShip.name, otLabel: `${wo?.ot_number || 'OT'} ${wo?.title || matchedTpl.name}`,
+      patch: { billing_description: nextProse }, field: 'billing_description', oldValue: block.billing_description || '', newValue: nextProse, user: actorName
+    })
+    await onReloadData?.()
+    showFeedback?.('success', `Descripción de facturación actualizada desde Catálogo OT.ABC (${matchedTpl.name}).`)
+  }
+
   const handleToggleTax = (block, taxField) => {
     const nextVal = block[taxField] === 'GRAVADO_21' ? 'EXENTO' : 'GRAVADO_21'
     handleCommitPriceField(block, taxField, nextVal)
@@ -456,7 +451,6 @@ export default function RemitoComercialAlfaPanel({
                 ship: activeShip, owner: activeOwner, budgetNumber: activeShip.billing_budget_number || '',
                 pages, pageSummaries, otRowMap
               })}
-              onOpenAlfaModal={() => setShowAlfaModal(true)}
               onSendShipToFinalBilling={handleSendShipToFinalBilling}
             />
 
@@ -469,6 +463,7 @@ export default function RemitoComercialAlfaPanel({
               pageSummaries={pageSummaries}
               grandTotal={grandTotal}
               otRowMap={otRowMap}
+              matchedTemplateByWoId={matchedTemplateByWoId}
               rubroSubtotalsMap={rubroSubtotalsMap}
               onCommitProse={handleCommitProse}
               onCommitPriceField={handleCommitPriceField}
@@ -481,6 +476,7 @@ export default function RemitoComercialAlfaPanel({
                 await onReloadData?.()
                 showFeedback?.('success', `Acuse de ampliación enviado a ${otRow.foremanName || 'Jefe de Obra'} + Administrador.`)
               }}
+              onRefreshFromCatalog={handleRefreshFromCatalog}
               onRemoveBlock={handleRemoveBlock}
               onAddFreeBlock={handleAddFreeBlock}
               onReorderBlocks={handleReorderBlocks}
@@ -489,15 +485,6 @@ export default function RemitoComercialAlfaPanel({
           </>
         )}
       </div>
-
-      {showAlfaModal && (
-        <AlfaRateCardModal
-          isOpen={showAlfaModal}
-          onClose={() => setShowAlfaModal(false)}
-          rates={alfaRateCard}
-          onSave={onSaveAlfaRateCard}
-        />
-      )}
     </div>
   )
 }

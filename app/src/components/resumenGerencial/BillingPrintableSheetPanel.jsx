@@ -1,7 +1,14 @@
 import React, { useMemo, useState } from 'react'
 import { GripVertical } from 'lucide-react'
 import { isCaldereriaChapter } from '../../lib/billingMirrorEngine'
-import { PAIRED_GRID_CLASS as PAIRED_GRID, SHEET_COLS_CLASS as SHEET_COLS, formatMoneyClean, annotateBillingPages } from '../../lib/billingSheetMath'
+import {
+  PAIRED_GRID_CLASS as PAIRED_GRID,
+  SHEET_COLS_CLASS as SHEET_COLS,
+  formatMoneyClean,
+  annotateBillingPages,
+  resolveBlockBillingQty,
+  computeA4RemainingSpacerPx
+} from '../../lib/billingSheetMath'
 import BillingInlineProseCell from './BillingInlineProseCell'
 import BillingRightCostCard from './BillingRightCostCard'
 import {
@@ -24,12 +31,14 @@ export default function BillingPrintableSheetPanel({
   pageSummaries = [],
   grandTotal,
   otRowMap = new Map(),
+  matchedTemplateByWoId = new Map(),
   rubroSubtotalsMap = {},
   onCommitProse,
   onCommitPriceField,
   onToggleTax,
   onChangePricingMode,
   onRequestExpansion,
+  onRefreshFromCatalog,
   onRemoveBlock,
   onAddFreeBlock,
   onReorderBlocks,
@@ -53,6 +62,7 @@ export default function BillingPrintableSheetPanel({
       {annotatedPages.map((pageEntries, pageIdx) => {
         const summary = pageSummaries[pageIdx] || { pageNumber: pageIdx + 1, totalPages: annotatedPages.length, exentoUsd: 0, gravadoUsd: 0, ivaUsd: 0, totalUsd: 0 }
         const isLastPage = pageIdx === annotatedPages.length - 1
+        const remainingA4Px = computeA4RemainingSpacerPx(pages[pageIdx], pageIdx)
 
         return (
           <div key={`page_${pageIdx}`} className="space-y-0">
@@ -68,11 +78,10 @@ export default function BillingPrintableSheetPanel({
 
             {pageEntries.map(({ block, isDelimiter, itemIndex, activeRubroLabel }) => {
               const otRow = block.workOrderId ? otRowMap.get(block.workOrderId) : null
+              const matchedTpl = block.workOrderId ? matchedTemplateByWoId.get(block.workOrderId) || null : null
               const isCaldereria = isCaldereriaChapter(activeRubroLabel || block.billing_rubro_group)
               const pricingMode = block.billing_pricing_mode || 'MO_MAT'
-              const qtyDisplay = pricingMode === 'UNITARIO'
-                ? (block.billing_qty_override ?? 1)
-                : (block.billing_qty_override ?? (isCaldereria && otRow?.weightKg > 0 ? otRow.weightKg : null))
+              const qtyDisplay = resolveBlockBillingQty(block, { isCaldereria, weightKg: otRow?.weightKg || 0 })
               const unitLineTotal = pricingMode === 'UNITARIO'
                 ? Number(((Number(qtyDisplay) || 0) * (Number(block.billing_unit_price_usd) || 0)).toFixed(2))
                 : 0
@@ -155,8 +164,10 @@ export default function BillingPrintableSheetPanel({
                     <BillingRightCostCard
                       block={block}
                       otRow={otRow}
+                      matchedTemplate={matchedTpl}
                       rubroSubtotal={isDelimiter ? rubroSubtotalsMap[block.label] : null}
                       onRequestExpansion={onRequestExpansion}
+                      onRefreshFromCatalog={onRefreshFromCatalog}
                       onChangePricingMode={onChangePricingMode}
                       onRemoveBlock={onRemoveBlock}
                     />
@@ -164,6 +175,22 @@ export default function BillingPrintableSheetPanel({
                 </div>
               )
             })}
+
+            {remainingA4Px > 24 && (
+              <div className={PAIRED_GRID}>
+                <div style={{ minHeight: `${remainingA4Px}px` }} className={`${SHEET_COLS} bg-white border-x border-slate-400 select-none`}>
+                  <div className="border-r border-slate-200" />
+                  <div className="border-r border-slate-300" />
+                  <div className="border-r border-slate-300" />
+                  <div className="border-r border-slate-300" />
+                  <div className="border-r border-slate-300" />
+                  <div className="border-r border-slate-300" />
+                  <div className="bg-rose-50/40" />
+                </div>
+                <div className="hidden xl:block bg-rose-600" />
+                <div />
+              </div>
+            )}
 
             <BillingSheetPageFooter summary={summary} isLastPage={isLastPage} onAddFreeBlock={onAddFreeBlock} />
           </div>

@@ -168,9 +168,11 @@ export default function OtCatalogLineItemsTable({
                           type="number"
                           step="0.01"
                           min="0"
-                          value={row.unit_price_usd}
-                          onChange={(e) => onUpdateLine(idx, { unit_price_usd: Number(e.target.value) || 0 })}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-[11px] text-emerald-300 font-mono font-bold text-right tabular-nums"
+                          placeholder="0"
+                          value={Number(row.unit_price_usd) === 0 ? '' : row.unit_price_usd}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => onUpdateLine(idx, { unit_price_usd: e.target.value === '' ? 0 : (Number(e.target.value) || 0) })}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-[11px] text-emerald-300 font-mono font-bold text-right tabular-nums placeholder:text-slate-600"
                         />
                       )}
                     </td>

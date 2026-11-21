@@ -185,7 +185,7 @@ export default function OtCatalogModal({
               )}
               <button
                 type="button"
-                onClick={() => setTemplateEdit({ name: '', description: '', category: '', line_items: [] })}
+                onClick={() => setTemplateEdit({ name: '', description: '', description_billing: '', category: '', line_items: [] })}
                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 rounded-xl font-bold flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />

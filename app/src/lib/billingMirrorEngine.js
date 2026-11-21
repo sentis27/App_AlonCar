@@ -1,25 +1,16 @@
 /**
- * billingMirrorEngine.js
- * Motor puro y determinístico (100% SIN IA) para clasificación y ordenamiento automático
- * de Órdenes de Trabajo al importar en Modo Fantasma hacia la Sábana Blanca.
+ * billingMirrorEngine.js — Clasificación e importación determinística (100% SIN IA) hacia la Sábana Blanca.
  */
-
 import { normalizeText, parseWorkerTrades } from './tradesCatalog.js'
+import { resolveTemplateBillingDescription } from './otAbcCatalogConstants.js'
 
 export const BILLABLE_OT_STATUSES = new Set([
-  'EN EJECUCION',
-  'EN PROGRESO',
-  'FINALIZADO',
-  'PENDIENTE REMITO',
-  'REMITO REALIZADO/PDTE FIRMA',
-  'FINALIZADO COSTO FINAL DE OBRA'
+  'EN EJECUCION', 'EN PROGRESO', 'FINALIZADO', 'PENDIENTE REMITO',
+  'REMITO REALIZADO/PDTE FIRMA', 'FINALIZADO COSTO FINAL DE OBRA'
 ])
 
 export const EXCLUDED_OT_STATUSES = new Set([
-  'DESESTIMADO',
-  'CANCELADA',
-  'PENDIENTE DE INICIO',
-  'FACTURADO'
+  'DESESTIMADO', 'CANCELADA', 'PENDIENTE DE INICIO', 'FACTURADO'
 ])
 
 export const BILLING_CHAPTER_SEQUENCE = [
@@ -67,8 +58,26 @@ function mapRawRubroToChapterKey(rawRubro = '') {
   return null
 }
 
+function escapeHtmlBasic(str = '') {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+export function buildCatalogBillingProse(tpl, fallbackTitle = '') {
+  if (!tpl) return ''
+  const titleUpper = String(tpl.name || fallbackTitle || '').trim().toUpperCase()
+  const rawBilling = resolveTemplateBillingDescription(tpl)
+  if (!rawBilling) return titleUpper ? `<b>${escapeHtmlBasic(titleUpper)}</b>` : ''
+  const lines = rawBilling.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const bodyHtml = lines.map((l) => escapeHtmlBasic(l)).join('<br/>')
+  return titleUpper ? `<b>${escapeHtmlBasic(titleUpper)}</b><br/>${bodyHtml}` : bodyHtml
+}
+
 export function matchOtToAbcTemplate(wo, otTemplates = []) {
   if (!wo || !Array.isArray(otTemplates) || otTemplates.length === 0) return null
+  if (wo.ot_template_id) {
+    const byId = otTemplates.find((tpl) => tpl.id === wo.ot_template_id)
+    if (byId) return byId
+  }
   const titleNorm = normalizeText(wo.title || '')
   if (!titleNorm) return null
 
@@ -185,40 +194,25 @@ export function isWorkOrderBillableStatus(wo, woItems = []) {
   return !EXCLUDED_OT_STATUSES.has(woStatus) && BILLABLE_OT_STATUSES.has(woStatus)
 }
 
-export function buildInitialGhostProse(wo, woItems = []) {
+export function buildInitialGhostProse(wo, woItems = [], matchedTemplate = null) {
+  if (matchedTemplate && resolveTemplateBillingDescription(matchedTemplate)) {
+    return { hasEmpty: false, emptyCount: 0, prose: buildCatalogBillingProse(matchedTemplate, wo?.title), fromCatalog: true }
+  }
   const validItems = (woItems || []).filter((i) => normalizeText(i.status) !== 'DESESTIMADO')
   const titleUpper = String(wo?.title || '').trim().toUpperCase()
-
   if (validItems.length > 0) {
     const emptySubtasks = validItems.filter((i) => !String(i.description || '').trim())
-    if (emptySubtasks.length > 0) return { hasEmpty: true, emptyCount: emptySubtasks.length, prose: '' }
+    if (emptySubtasks.length > 0) return { hasEmpty: true, emptyCount: emptySubtasks.length, prose: '', fromCatalog: false }
     const bodyLines = validItems.map((i) => String(i.description).trim())
-    const prose = titleUpper ? `<b>${titleUpper}</b><br/>${bodyLines.join('<br/>')}` : bodyLines.join('<br/>')
-    return { hasEmpty: false, emptyCount: 0, prose }
+    return { hasEmpty: false, emptyCount: 0, prose: titleUpper ? `<b>${titleUpper}</b><br/>${bodyLines.join('<br/>')}` : bodyLines.join('<br/>'), fromCatalog: false }
   }
-
   const woDesc = String(wo?.description || '').trim()
-  if (!woDesc) return { hasEmpty: true, emptyCount: 1, prose: '' }
-  const prose = titleUpper && normalizeText(woDesc) !== normalizeText(titleUpper)
-    ? `<b>${titleUpper}</b><br/>${woDesc}`
-    : `<b>${titleUpper || woDesc}</b>`
-  return { hasEmpty: false, emptyCount: 0, prose }
+  if (!woDesc) return { hasEmpty: true, emptyCount: 1, prose: '', fromCatalog: false }
+  const prose = titleUpper && normalizeText(woDesc) !== normalizeText(titleUpper) ? `<b>${titleUpper}</b><br/>${woDesc}` : `<b>${titleUpper || woDesc}</b>`
+  return { hasEmpty: false, emptyCount: 0, prose, fromCatalog: false }
 }
 
-/**
- * Evalúa las OTs del barco para importación única en Modo Fantasma:
- * - Nunca sobreescribe OTs ya importadas o con `billing_description` no vacía (incluso 1 espacio).
- * - OTs sin descripción operativa NO se importan (pasan a `emptyDescriptionAlerts`).
- */
-export function evaluateShipWorkOrdersForGhostImport({
-  shipWos = [],
-  workItems = [],
-  laborRows = [],
-  materialRows = [],
-  thirdPartyRows = [],
-  workers = [],
-  otTemplates = []
-}) {
+export function evaluateShipWorkOrdersForGhostImport({ shipWos = [], workItems = [], laborRows = [], materialRows = [], thirdPartyRows = [], workers = [], otTemplates = [] }) {
   const wiByWo = new Map()
   for (const wi of workItems || []) {
     if (!wiByWo.has(wi.work_order_id)) wiByWo.set(wi.work_order_id, [])
@@ -235,7 +229,11 @@ export function evaluateShipWorkOrdersForGhostImport({
     if (alreadyUploaded) { alreadyInBilling.push(wo); continue }
     if (!isWorkOrderBillableStatus(wo, woItems)) continue
 
-    const ghost = buildInitialGhostProse(wo, woItems)
+    const classification = inferOtChapterDeterministic({
+      wo, woItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates
+    })
+
+    const ghost = buildInitialGhostProse(wo, woItems, classification.matchedTemplate)
     if (ghost.hasEmpty) {
       emptyDescriptionAlerts.push({
         workOrderId: wo.id,
@@ -248,10 +246,6 @@ export function evaluateShipWorkOrdersForGhostImport({
       continue
     }
 
-    const classification = inferOtChapterDeterministic({
-      wo, woItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates
-    })
-
     readyCandidates.push({
       workOrderId: wo.id,
       wo,
@@ -262,6 +256,7 @@ export function evaluateShipWorkOrdersForGhostImport({
         billing_rubro_group: classification.chapterKey,
         billing_pricing_mode: classification.defaultPricingMode,
         billing_unit_price_usd: classification.defaultUnitPriceUsd,
+        ...(classification.defaultPricingMode === 'UNITARIO' ? { billing_qty_override: 1 } : {}),
         billing_mo_tax: classification.defaultTaxType,
         billing_mat_tax: classification.defaultTaxType
       }

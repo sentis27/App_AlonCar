@@ -6,7 +6,11 @@ import { PAIRED_GRID_CLASS as PAIRED_GRID, SHEET_COLS_CLASS as SHEET_COLS, forma
 export function InlineNumberCell({ value, placeholder = '0,00', onCommit }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
-  const start = () => { setDraft(value == null ? '' : String(value)); setEditing(true) }
+  const start = () => {
+    const num = Number(value)
+    setDraft(value == null || !Number.isFinite(num) || num === 0 ? '' : String(value))
+    setEditing(true)
+  }
   const commit = () => {
     setEditing(false)
     const parsed = draft.trim() === '' ? 0 : Number(draft.replace(',', '.'))
@@ -18,11 +22,13 @@ export function InlineNumberCell({ value, placeholder = '0,00', onCommit }) {
         type="text"
         inputMode="decimal"
         autoFocus
+        placeholder={placeholder}
         value={draft}
+        onFocus={(e) => e.target.select()}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => commit()}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
-        className="w-full bg-white text-slate-950 border border-sky-500 rounded px-1 py-0.5 text-right text-[11px] font-mono font-bold outline-none"
+        className="w-full bg-white text-slate-950 border border-sky-500 rounded px-1 py-0.5 text-right text-[11px] font-mono font-bold outline-none placeholder:text-slate-300"
       />
     )
   }
@@ -36,7 +42,11 @@ export function InlineNumberCell({ value, placeholder = '0,00', onCommit }) {
 export function InlineQtyCell({ value, isKgMode = false, onCommit }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
-  const start = () => { setDraft(value == null ? '' : String(value)); setEditing(true) }
+  const start = () => {
+    const num = Number(value)
+    setDraft(value == null || !Number.isFinite(num) || num === 0 ? '' : String(value))
+    setEditing(true)
+  }
   const commit = () => {
     setEditing(false)
     if (draft.trim() === '') { onCommit?.(null); return }
@@ -49,11 +59,13 @@ export function InlineQtyCell({ value, isKgMode = false, onCommit }) {
         type="text"
         inputMode="decimal"
         autoFocus
+        placeholder="0"
         value={draft}
+        onFocus={(e) => e.target.select()}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => commit()}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
-        className="w-full bg-white text-slate-950 border border-sky-500 rounded px-1 py-0.5 text-right text-[10px] font-mono font-bold outline-none"
+        className="w-full bg-white text-slate-950 border border-sky-500 rounded px-1 py-0.5 text-right text-[10px] font-mono font-bold outline-none placeholder:text-slate-300"
       />
     )
   }
@@ -101,7 +113,10 @@ export function BillingSheetPageHeader({ ship, owner, budgetNumber, onChangeBudg
                   </button>
                 )}
               </div>
-              <div>
+              <div className="inline-flex items-center gap-1">
+                <span className="inline-block border border-slate-400 bg-slate-100 text-slate-700 px-1.5 py-0.5 text-[9px] font-mono font-bold" title="Formato estándar ISO A4 vertical (210 × 297 mm)">
+                  A4
+                </span>
                 <span className="inline-block bg-slate-300 text-slate-950 px-2.5 py-0.5 text-[11px] font-black tracking-wide">
                   HOJA {summary.pageNumber}/{summary.totalPages}
                 </span>

@@ -1,22 +1,35 @@
 /**
- * billingSheetMath.js
- * Cálculos puros de facturación y alertas por OT:
- * 1. Desglose en vivo de Ítems Sin Valorizar ($0 / Pendientes "R"): [Hs | 3ros | Comp | Mat].
- * 2. Proyección de campos comerciales de `work_orders` hacia `otRows` (sin inflar servicios padres).
- * 3. Balance por bloque (MO+MAT, Unitario con bonificaciones negativas, Sin Cargo)
- *    y Transporte Acumulado al pie de cada Hoja 1/N (Exento / Gravado / IVA 21% / Total).
+ * billingSheetMath.js — Cálculos puros de facturación, alertas por OT y balance acumulativo por hoja.
  */
+import {
+  A4_SHEET_METRICS,
+  PAIRED_GRID_CLASS,
+  SHEET_COLS_CLASS,
+  estimateBillingBlockHeightPx,
+  paginateBillingBlocks,
+  computeA4RemainingSpacerPx
+} from './billingA4Layout.js'
 
-function round2(n) {
-  return Number((Number(n) || 0).toFixed(2))
-}
+export { A4_SHEET_METRICS, PAIRED_GRID_CLASS, SHEET_COLS_CLASS, estimateBillingBlockHeightPx, paginateBillingBlocks, computeA4RemainingSpacerPx }
 
-export const PAIRED_GRID_CLASS = 'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_5px_315px] xl:gap-x-2 items-stretch'
-export const SHEET_COLS_CLASS = 'grid grid-cols-[20px_28px_46px_minmax(0,1fr)_72px_82px_40px]'
+function round2(n) { return Number((Number(n) || 0).toFixed(2)) }
 
 export function formatMoneyClean(val) {
   const n = Number(val) || 0
   return `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+export function resolveBlockBillingQty(block = {}, { isCaldereria = false, weightKg = 0 } = {}) {
+  const mode = block?.billing_pricing_mode || 'MO_MAT'
+  if (mode === 'UNITARIO') {
+    const parsed = Number(block.billing_qty_override ?? block.quantity ?? 1)
+    return Number.isFinite(parsed) ? parsed : 1
+  }
+  if (block.billing_qty_override != null) {
+    const parsed = Number(block.billing_qty_override)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return isCaldereria && Number(weightKg) > 0 ? Number(weightKg) : null
 }
 
 /**
@@ -142,7 +155,7 @@ export function computeBlockBillingBreakdown(block = {}) {
   let gravadoUsd = 0
 
   if (mode === 'UNITARIO') {
-    const qty = Number(block.billing_qty_override ?? block.quantity ?? 0) || 0
+    const qty = Number(resolveBlockBillingQty(block)) || 0
     const unitPrice = Number(block.billing_unit_price_usd) || 0
     const net = round2(qty * unitPrice)
     if (block.billing_mo_tax === 'GRAVADO_21') gravadoUsd += net
@@ -166,34 +179,6 @@ export function computeBlockBillingBreakdown(block = {}) {
     ivaUsd,
     totalUsd: round2(exentoUsd + gravadoUsd + ivaUsd)
   }
-}
-
-/**
- * Paginación lógica por peso visual de líneas para armar Hojas A4 (HOJA 1/N ... HOJA N/N)
- * y calcular el balance acumulativo (Transporte) al cierre de cada hoja.
- */
-export function paginateBillingBlocks(blocks = [], maxUnitsPerPage = 24) {
-  if (!Array.isArray(blocks) || blocks.length === 0) return [[]]
-  const pages = []
-  let current = []
-  let currentWeight = 0
-
-  for (const block of blocks) {
-    const plain = String(block.billing_description || block.label || '').replace(/<[^>]+>/g, '\n')
-    const lineCount = Math.max(2, plain.split(/\n+/).filter(Boolean).length)
-    const blockWeight = block.blockType === 'RUBRO_DELIMITER' ? 2 : Math.min(18, Math.max(4, lineCount + 2))
-
-    if (current.length > 0 && currentWeight + blockWeight > maxUnitsPerPage) {
-      pages.push(current)
-      current = [block]
-      currentWeight = blockWeight
-    } else {
-      current.push(block)
-      currentWeight += blockWeight
-    }
-  }
-  if (current.length > 0) pages.push(current)
-  return pages
 }
 
 export function annotateBillingPages(pages = [[]]) {

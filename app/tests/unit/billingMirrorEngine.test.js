@@ -7,8 +7,14 @@ import {
 import {
   computeOtUnvaluedBreakdown,
   computeBlockBillingBreakdown,
-  computePaginatedCumulativeBalances
+  computePaginatedCumulativeBalances,
+  resolveBlockBillingQty,
+  paginateBillingBlocks,
+  computeA4RemainingSpacerPx,
+  A4_SHEET_METRICS,
+  PAIRED_GRID_CLASS
 } from '../../src/lib/billingSheetMath.js'
+import { buildOperationalSelectionFromTemplate } from '../../src/lib/otAbcCatalogConstants.js'
 
 describe('billingMirrorEngine (100% SIN IA)', () => {
   it('ordena OT.ABC primero, luego CALDERERIA (con KG activos) y ELECTRICIDAD por rubro real de costos', () => {
@@ -100,5 +106,88 @@ describe('billingSheetMath (4 píldoras sin valorizar + acumulación por hoja)',
     expect(pageSummaries[0]).toMatchObject({ pageNumber: 1, totalPages: 2, exentoUsd: 3200, gravadoUsd: 540, ivaUsd: 113.4, totalUsd: 3853.4 })
     expect(pageSummaries[1]).toMatchObject({ pageNumber: 2, totalPages: 2, exentoUsd: 3200, gravadoUsd: 1340, ivaUsd: 281.4, totalUsd: 4821.4 })
     expect(grandTotal.margenRealUsd).toBe(2040)
+  })
+
+  it('OT perteneciente al catálogo OT.ABC ignora descripción operativa e importa description_billing (incluso si operativa está vacía)', () => {
+    const otTemplates = [
+      {
+        id: 'tpl-valv',
+        name: 'VALVULAS DE CASCO E INTERMEDIARIAS',
+        sort_order: 7,
+        description: 'Desmontar, volver a montar las válvulas y llevarlas al taller para su recorrido.',
+        description_billing: '• Des/Armar, limpiar, arenar y pintar válvulas de toma de mar\n• Revisión de válvulas de salida a casco de 1" a 2"',
+        default_tax_type: 'EXENTO',
+        line_items: [{ unit_price_usd: 165 }]
+      },
+      {
+        id: 'tpl-car',
+        name: 'CARENADO DE CASCO',
+        sort_order: 13,
+        description: 'Lavado de casco, pintura de casco, pintar cartelería de flotación.',
+        description_billing: '1) LAVADO DE CASCO: Lavado con agua dulce.\n2) CARENADO DE CASCO: Hidro arenado SA1.\nPinturas y diluyente provistas por el armador.',
+        default_tax_type: 'EXENTO',
+        line_items: [{ row_type: 'SUBWORK', subwork_title: '1) LAVADO DE CASCO', concept: 'Lavado largo...', unit_price_usd: 1750 }]
+      }
+    ]
+    const shipWos = [
+      { id: 'w_valv', ot_number: 'OT-2', ot_template_id: 'tpl-valv', title: 'VALVULAS DE CASCO E INTERMEDIARIAS', description: 'Pintar valvulas', status: 'En ejecución' },
+      { id: 'w_car', ot_number: 'OT-8', title: 'CARENADO DE CASCO', description: '', status: 'En ejecución' },
+      { id: 'w_libre', ot_number: 'OT-3', title: 'CAMBIO CHAPA', description: 'Parche ventana en casco', status: 'En ejecución' }
+    ]
+    const workItems = [
+      { work_order_id: 'w_valv', description: 'recorrido de valvulas', status: 'En ejecución' }
+    ]
+
+    const res = evaluateShipWorkOrdersForGhostImport({ shipWos, workItems, otTemplates })
+    expect(res.emptyDescriptionAlerts).toHaveLength(0)
+
+    const valv = res.readyToImport.find((r) => r.workOrderId === 'w_valv')
+    const car = res.readyToImport.find((r) => r.workOrderId === 'w_car')
+    const libre = res.readyToImport.find((r) => r.workOrderId === 'w_libre')
+
+    expect(valv.patch.billing_description).toContain('Des/Armar, limpiar, arenar')
+    expect(valv.patch.billing_description).not.toContain('recorrido de valvulas')
+    expect(valv.patch.billing_qty_override).toBe(1)
+
+    expect(car.patch.billing_description).toContain('Hidro arenado SA1')
+    expect(car.patch.billing_description).toContain('Pinturas y diluyente provistas por el armador')
+
+    expect(libre.patch.billing_description).toContain('Parche ventana en casco')
+
+    const opSel = buildOperationalSelectionFromTemplate(otTemplates[1])
+    expect(opSel.description).toBe('Lavado de casco, pintura de casco, pintar cartelería de flotación.')
+    expect(opSel.subworks).toHaveLength(0)
+  })
+
+  it('UNITARIO con billing_qty_override null asume 1 en totales y respeta 0 explícito; layout A4 mantiene 210x297mm', () => {
+    expect(resolveBlockBillingQty({ billing_pricing_mode: 'UNITARIO', billing_qty_override: null })).toBe(1)
+    expect(resolveBlockBillingQty({ billing_pricing_mode: 'UNITARIO', billing_qty_override: 0 })).toBe(0)
+
+    const bNullQty = computeBlockBillingBreakdown({
+      billing_pricing_mode: 'UNITARIO',
+      billing_qty_override: null,
+      billing_unit_price_usd: 165,
+      billing_mo_tax: 'EXENTO'
+    })
+    expect(bNullQty.totalUsd).toBe(165)
+
+    const bZeroQty = computeBlockBillingBreakdown({
+      billing_pricing_mode: 'UNITARIO',
+      billing_qty_override: 0,
+      billing_unit_price_usd: 165,
+      billing_mo_tax: 'EXENTO'
+    })
+    expect(bZeroQty.totalUsd).toBe(0)
+
+    expect(A4_SHEET_METRICS.widthMm).toBe(210)
+    expect(A4_SHEET_METRICS.heightMm).toBe(297)
+    expect(PAIRED_GRID_CLASS).toContain('210mm')
+    const pages = paginateBillingBlocks([
+      { id: '1', billing_description: 'A'.repeat(900), billing_pricing_mode: 'MO_MAT' },
+      { id: '2', billing_description: 'B'.repeat(900), billing_pricing_mode: 'MO_MAT' },
+      { id: '3', billing_description: 'C'.repeat(900), billing_pricing_mode: 'MO_MAT' }
+    ])
+    expect(pages.length).toBeGreaterThanOrEqual(2)
+    expect(computeA4RemainingSpacerPx([{ id: '1', billing_description: 'Corto' }], 0)).toBeGreaterThan(500)
   })
 })

@@ -7,6 +7,7 @@
 import { auditService, isInvalidEventOrObjectScalar } from './auditService.js'
 import { otTemplatesRepository } from '../repositories/otTemplatesRepository.js'
 import {
+  buildBillingDescriptionFromLines,
   buildOperationalDescriptionFromLines,
   computeTemplateTaxSummary,
   normalizeOtAbcCategory,
@@ -40,6 +41,8 @@ export async function saveOtTemplateCompleteService(templateEdit, totalTemplates
   const cleanFixedNotes = String(templateEdit?.fixed_notes || '').trim() || null
   const manualDesc = String(templateEdit?.description || '').trim()
   const finalDesc = manualDesc || buildOperationalDescriptionFromLines(normalizedLines, cleanFixedNotes) || null
+  const manualBillingDesc = String(templateEdit?.description_billing || '').trim()
+  const finalBillingDesc = manualBillingDesc || buildBillingDescriptionFromLines(normalizedLines, cleanFixedNotes) || finalDesc || null
 
   const summary = computeTemplateTaxSummary({
     line_items: normalizedLines,
@@ -50,6 +53,7 @@ export async function saveOtTemplateCompleteService(templateEdit, totalTemplates
     name: cleanName,
     category: normalizeOtAbcCategory(templateEdit?.category),
     description: finalDesc,
+    description_billing: finalBillingDesc,
     fixed_notes: cleanFixedNotes,
     default_tax_type: summary.taxMode,
     default_data_source: normalizeOtAbcDataSource(templateEdit?.default_data_source),

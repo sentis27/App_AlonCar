@@ -235,11 +235,9 @@ export default function ResumenGerencial() {
               laborRows={state.laborRows}
               thirdPartyRows={state.thirdPartyRows}
               workers={state.data?.workers || []}
-              alfaRateCard={state.data?.alfaRateCard || []}
               otTemplates={state.data?.otTemplates || []}
               jumpToShipTarget={billingJumpTarget}
               onReloadData={() => state.loadAll({ silent: true })}
-              onSaveAlfaRateCard={state.handleSaveAlfaRateCard}
               showFeedback={state.showFeedback}
             />
           )}

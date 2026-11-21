@@ -319,18 +319,11 @@ export async function saveWorkOrderService({
       const normalizedBudget = normalizeSpecificBudgetId(workForm.assignment_type, workForm.specific_budget_id)
 
       const { data: newWo, error: woErr } = await workOrdersRepository.insertOne({
-        ship_id: workForm.ship_id,
-        ot_number: consecutiveOtNum,
-        title: itemTitle,
-        description: itemDesc || null,
+        ship_id: workForm.ship_id, ot_number: consecutiveOtNum, title: itemTitle, description: itemDesc || null,
         status: itemStatus === 'En ejecución' ? 'En Progreso' : itemStatus === 'Desestimado' ? 'Cancelada' : 'Pendiente',
-        work_type: workForm.work_type,
-        assignment_type: workForm.assignment_type,
-        budget_code: normalizedBudget,
-        foreman_name: workForm.foreman_name,
-        contractor_name: workForm.contractors.join(', ') || null,
-        is_tabulated: true,
-        start_date: todayIso,
+        work_type: workForm.work_type, assignment_type: workForm.assignment_type, budget_code: normalizedBudget,
+        foreman_name: workForm.foreman_name, contractor_name: workForm.contractors.join(', ') || null,
+        is_tabulated: true, ot_template_id: batchItem.template_id || null, start_date: todayIso,
       })
       if (woErr) throw new Error(woErr)
       const createdWoId = newWo.id
@@ -403,6 +396,7 @@ export async function saveWorkOrderService({
       foreman_name: workForm.foreman_name,
       contractor_name: workForm.contractors.join(', ') || null,
       is_tabulated: workForm.ot_creation_type === 'tabulada',
+      ot_template_id: workForm.ot_creation_type === 'tabulada' ? (workForm.selected_template_id || null) : null,
       start_date: todayIso,
     })
     if (woErr) throw new Error(woErr)

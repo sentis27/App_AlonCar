@@ -61,13 +61,14 @@ export const OT_CATALOG_STEP_HELP = {
     id: 'ot_catalog_step_2',
     module: 'ot_catalog',
     step: 2,
-    title: 'PASO 2 · DESCRIPCIÓN OPERATIVA Y EXCLUSIONES',
+    title: 'PASO 2 · DESCRIPCIÓN OPERATIVA VS FACTURACIÓN',
     uiBullets: [
-      { label: 'Texto para /ots', text: 'Solo esta descripción y notas fijas se importan a la Orden de Trabajo al usar la plantilla.' },
-      { label: 'Sincronización', text: 'Usá "Sincronizar desde renglones" para reconstruir el texto limpio automáticamente desde la tabla del Paso 3.' }
+      { label: 'Operativa (Taller / /ots)', text: 'Texto corto y directo que recibe el equipo al abrir la OT para ejecutar y cargar costos sin confusión.' },
+      { label: 'Facturación (description_billing)', text: 'Prosa comercial completa que Facturación importa automáticamente para toda OT del catálogo ABC (ignorando la descripción operativa).' },
+      { label: 'Generar desde renglones', text: 'Reconstruye automáticamente description_billing a partir de la tabla del Paso 3 y las notas fijas.' }
     ],
     aiRuleContext:
-      'Regla de Texto Operativo OT.ABC: Separa la descripción técnica de taller de los parámetros comerciales/tarifarios confidenciales.'
+      'Regla Dual OT.ABC: ot_templates.description es la consigna operativa corta para /ots; ot_templates.description_billing es la prosa comercial oficial importada automáticamente por Facturación (ignorando la descripción operativa de la OT).'
   },
   3: {
     id: 'ot_catalog_step_3',

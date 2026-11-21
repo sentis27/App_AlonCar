@@ -131,11 +131,11 @@ export async function sendSingleOtToBillingService({
     return { alreadyImported: true, woId: wo.id }
   }
 
-  const ghost = buildInitialGhostProse(wo, woItems)
-  const fallbackProse = `<b>${String(wo.title || 'TRABAJO').toUpperCase()}</b>`
   const classification = inferOtChapterDeterministic({
     wo, woItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates
   })
+  const ghost = buildInitialGhostProse(wo, woItems, classification.matchedTemplate)
+  const fallbackProse = `<b>${String(wo.title || 'TRABAJO').toUpperCase()}</b>`
 
   const patch = {
     is_in_billing: true,
@@ -143,6 +143,7 @@ export async function sendSingleOtToBillingService({
     billing_rubro_group: classification.chapterKey,
     billing_pricing_mode: classification.defaultPricingMode,
     billing_unit_price_usd: classification.defaultUnitPriceUsd,
+    ...(classification.defaultPricingMode === 'UNITARIO' ? { billing_qty_override: 1 } : {}),
     billing_mo_tax: classification.defaultTaxType,
     billing_mat_tax: classification.defaultTaxType,
     billing_sort_order: nextSortOrder

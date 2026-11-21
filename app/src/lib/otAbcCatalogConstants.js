@@ -8,24 +8,9 @@
 export const OT_ABC_CATEGORIES = ['Renovación', 'Intermedia', 'Ambas']
 
 export const OT_ABC_TAX_OPTIONS = [
-  {
-    value: 'EXENTO',
-    label: 'Exento (NO)',
-    shortLabel: 'Exento',
-    badgeClass: 'bg-rose-950/70 text-rose-200 border-rose-500/50'
-  },
-  {
-    value: 'GRAVADO_21',
-    label: 'Gravado 21% (SÍ)',
-    shortLabel: 'IVA 21%',
-    badgeClass: 'bg-emerald-950/70 text-emerald-200 border-emerald-500/50'
-  },
-  {
-    value: 'MIXTO',
-    label: 'Mixto (por renglón)',
-    shortLabel: 'Mixto',
-    badgeClass: 'bg-amber-950/70 text-amber-200 border-amber-500/50'
-  }
+  { value: 'EXENTO', label: 'Exento (NO)', shortLabel: 'Exento', badgeClass: 'bg-rose-950/70 text-rose-200 border-rose-500/50' },
+  { value: 'GRAVADO_21', label: 'Gravado 21% (SÍ)', shortLabel: 'IVA 21%', badgeClass: 'bg-emerald-950/70 text-emerald-200 border-emerald-500/50' },
+  { value: 'MIXTO', label: 'Mixto (por renglón)', shortLabel: 'Mixto', badgeClass: 'bg-amber-950/70 text-amber-200 border-amber-500/50' }
 ]
 
 export const OT_ABC_LINE_TAX_OPTIONS = [
@@ -152,31 +137,52 @@ export function buildOperationalDescriptionFromLines(lineItems = [], fixedNotes 
 }
 
 /**
- * Extrae únicamente los sub-trabajos (ej. bloque amarillo de CARENADO DE CASCO)
- * con solo título + descripción técnica operativa para crear work_items independientes.
+ * Construye prosa comercial completa (`description_billing`) desde renglones tabulados + notas fijas.
  */
+export function buildBillingDescriptionFromLines(lineItems = [], fixedNotes = '') {
+  const lines = normalizeOtAbcLineItems(lineItems)
+  const parts = []
+  for (const row of lines) {
+    if (row.row_type === 'SUBWORK') {
+      const title = row.subwork_title ? `${row.subwork_title}: ` : ''
+      if (row.concept || title) parts.push(`${title}${row.concept}`.trim())
+    } else if (row.row_type === 'ITEM' && row.concept) {
+      parts.push(`• ${row.concept}`)
+    } else if (row.row_type === 'NOTE' && row.concept) {
+      parts.push(row.concept)
+    }
+  }
+  const cleanNotes = String(fixedNotes || '').trim()
+  const joined = parts.join('\n')
+  if (cleanNotes && !joined.toLowerCase().includes(cleanNotes.toLowerCase())) {
+    return joined ? `${joined}\n${cleanNotes}` : cleanNotes
+  }
+  return joined
+}
+
+export function resolveTemplateBillingDescription(tpl) {
+  if (!tpl) return ''
+  const explicit = String(tpl.description_billing || '').trim()
+  if (explicit) return explicit
+  return buildBillingDescriptionFromLines(tpl.line_items, tpl.fixed_notes) || String(tpl.description || '').trim()
+}
+
 export function extractOperationalSubworks(tpl) {
   const lines = normalizeOtAbcLineItems(tpl?.line_items)
   const subworks = lines.filter((l) => l.row_type === 'SUBWORK' && (l.subwork_title || l.concept))
   return subworks.map((sw) => ({
     title: sw.subwork_title || 'SUB-TRABAJO',
-    description: sw.subwork_title
-      ? (sw.concept ? `${sw.subwork_title}: ${sw.concept}` : sw.subwork_title)
-      : sw.concept
+    description: sw.subwork_title || sw.concept
   }))
 }
 
-/**
- * Proyección segura del Catálogo OT.ABC hacia la creación operativa de OTs (`/ots`).
- * Garantiza que precios, IVA y origen comercial queden clasificados y jamás viajen a la OT operativa.
- */
 export function buildOperationalSelectionFromTemplate(tpl, status = 'En ejecución') {
   const upperName = String(tpl?.name || '').trim().toUpperCase()
-  const subworks = extractOperationalSubworks(tpl)
-  const cleanDescription =
-    String(tpl?.description || '').trim() ||
-    buildOperationalDescriptionFromLines(tpl?.line_items, tpl?.fixed_notes)
-
+  const manualOpDesc = String(tpl?.description || '').trim()
+  const billingDesc = String(tpl?.description_billing || '').trim()
+  const hasDedicatedOpDesc = Boolean(manualOpDesc && billingDesc && manualOpDesc !== billingDesc)
+  const subworks = hasDedicatedOpDesc ? [] : extractOperationalSubworks(tpl)
+  const cleanDescription = manualOpDesc || buildOperationalDescriptionFromLines(tpl?.line_items, tpl?.fixed_notes)
   return {
     template_id: tpl?.id || null,
     ot_title: upperName,
