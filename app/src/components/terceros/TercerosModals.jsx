@@ -12,10 +12,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Wrench,
-  Building2,
-  FileText,
-  DollarSign,
-  Ship,
   Search,
   X,
   ChevronDown,
@@ -46,6 +42,12 @@ import { getEnabledWorkersAndContractors } from '../../lib/allocationEngine.js'
 import { deduplicateWorkOrdersWithScope } from '../../lib/workOrdersConstants.js'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
+import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import {
+  TERCEROS_SERVICE_STEP_HELP,
+  TERCEROS_EVOLUTION_STEP_HELP,
+  TERCEROS_AUDIT_STEP_HELP
+} from '../../lib/businessHelpRegistry.js'
 import FormulaNumericInput from '../canonical/FormulaNumericInput.jsx'
 import { evaluateFormulaInput, getEditableCellInitialValue } from '../../lib/formulaEngine.js'
 
@@ -436,664 +438,323 @@ export function TercerosModalsContainer({
   return (
     <>
       {/* ==================================================================== */}
-      {/* MODAL 1: CARGA GUIADA EN CASCADA (Barco -> Contratista 3ros -> OT)   */}
+      {/* MODAL 1: CARGA GUIADA EN CASCADA (STEPPER VERTICAL ZERO-SCROLL 1..4) */}
       {/* ==================================================================== */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="alon-modal-card max-w-5xl animate-in fade-in zoom-in-95">
-            <div className="alon-modal-header">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 font-bold shrink-0">
-                  <Wrench className="w-3.5 h-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-black text-white truncate">
-                    {editingService ? 'Editar Comprobante de Terceros' : 'Carga Guiada de Gasto de Terceros (GS-005)'}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 truncate">
-                    Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Cascada de Obra ➔ 2° Tipo Comprobante ➔ 3° Observaciones ➔ 4° N° Comprobantes ➔ 5° Importes.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                tabIndex={-1}
-                onClick={() => setIsModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitService} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
-              <div className="alon-modal-body">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
-                  {/* COLUMNA IZQUIERDA: BLOQUES 1, 2 Y 3 */}
-                  <div className="space-y-3">
-                    {/* BLOQUE 1: CASCADA DE IMPUTACIÓN DE OBRA */}
-                    <div className="alon-chunk-sky space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
-                        <span className="font-black text-sky-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                          <Ship className="w-3.5 h-3.5 text-sky-400" />
-                          <span>1. Cascada de Imputación de Obra</span>
-                        </span>
-                        <span className="text-[10px] text-slate-400">Buque ➔ Contratista [3ros] ➔ OT</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        {/* PASO 1: SELECCIONAR BARCO */}
-                        <div>
-                          <label className="block font-bold text-slate-300 text-[11px] mb-1">
-                            1° Buque / Embarcación <span className="text-rose-400">*</span>
-                          </label>
-                          <select
-                            autoFocus
-                            required
-                            value={formData.ship_id}
-                            onChange={(e) => {
-                              const newShipId = e.target.value
-                              setFormData((prev) => ({
-                                ...prev,
-                                ship_id: newShipId,
-                                work_order_id: ''
-                              }))
-                            }}
-                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-cyan-400 text-xs"
-                          >
-                            <option value="">-- Seleccionar Buque --</option>
-                            {ships.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name} {s.current_location ? `[${s.current_location}]` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* PASO 3: SELECCIONAR ORDEN DE TRABAJO */}
-                        <div>
-                          <label className="block font-bold text-slate-300 text-[11px] mb-1">
-                            3° Orden de Trabajo (OT)
-                          </label>
-                          <WorkOrderSelectorWithHover
-                            value={formData.work_order_id}
-                            onChange={(newWoId) => setFormData((prev) => ({ ...prev, work_order_id: newWoId }))}
-                            availableWos={availableWorkOrdersForSelectedShip}
-                            ship={ships.find((s) => String(s.id) === String(formData.ship_id))}
-                            workItems={workItems}
-                            allWorkOrders={workOrders}
-                            contractorName={formData.contractor_name}
-                            disabled={!formData.ship_id}
-                            placeholder={!formData.ship_id ? '-- 1° elija buque --' : '-- ⚠️ Dejar OT en blanco --'}
-                            showPreviewCard={false}
-                          />
-                        </div>
-                      </div>
-
-                      {/* PASO 2: SELECCIONAR CONTRATISTA */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <label className="font-bold text-slate-300 text-[11px] flex items-center gap-1">
-                            <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>2° Contratista o Taller Autorizado [3ros] ({contractors.length}) <span className="text-rose-400">*</span></span>
-                          </label>
-                          {!formData.is_manual_trade && formData.trade && (
-                            <span className="text-[10px] font-bold text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/60">
-                              Rubro: {formData.trade}
-                            </span>
-                          )}
-                        </div>
-
-                        <SearchableContractorSelect
-                          contractors={contractors}
-                          value={formData.contractor_name}
-                          onChange={handleContractorSelect}
-                        />
-
-                        {/* MANEJO DE RUBRO MANUAL / POLIRRUBRO */}
-                        {formData.is_manual_trade && (
-                          <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/50 space-y-1 mt-1.5">
-                            <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[10px]">
-                              <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
-                              <span>Proveedor Polirrubro (MANUAL): Seleccione el rubro aplicable al trabajo</span>
-                            </div>
-                            <select
-                              required
-                              value={formData.trade}
-                              onChange={(e) => setFormData((prev) => ({ ...prev, trade: e.target.value }))}
-                              className="w-full bg-slate-950 border border-amber-600/70 rounded-lg px-2.5 py-1 text-amber-200 text-xs focus:outline-none"
-                            >
-                              <option value="">-- Seleccionar Rubro Oficial --</option>
-                              {OFFICIAL_TRADES.map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* BLOQUE 2: TIPO DE COMPROBANTE PRINCIPAL */}
-                    <div className="alon-chunk-amber space-y-1.5">
-                      <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
-                        <span className="font-black text-amber-400 uppercase tracking-wider text-[11px]">
-                          2. Tipo de Comprobante Principal (DEC-017) *
-                        </span>
-                      </div>
-                      <select
-                        value={formData.voucher_type}
-                        onChange={(e) => {
-                          const vCode = e.target.value
-                          setFormData((prev) => ({
-                            ...prev,
-                            voucher_type: vCode
-                          }))
-                        }}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-amber-400 text-xs"
-                      >
-                        {VOUCHER_TYPES.map((v) => (
-                          <option key={v.code} value={v.code}>
-                            {v.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-slate-400 italic leading-snug">
-                        {VOUCHER_TYPES.find((v) => v.code === formData.voucher_type)?.description}
-                      </p>
-                    </div>
-
-                    {/* BLOQUE 3: OBSERVACIONES TÉCNICAS Y ADMINISTRATIVAS */}
-                    <div className="alon-chunk-indigo space-y-2">
-                      <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
-                        <span className="font-black text-indigo-400 uppercase tracking-wider text-[11px]">
-                          3. Observaciones Técnicas y Administrativas
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 gap-2">
-                        <div>
-                          <label className="block font-bold text-slate-300 text-[11px] mb-1">
-                            Observaciones Directas (Detalle técnico de la tarea ejecutada)
-                          </label>
-                          <textarea
-                            rows={2}
-                            placeholder="Describa el trabajo realizado por el contratista en la obra..."
-                            value={formData.direct_observations}
-                            onChange={(e) => setFormData((prev) => ({ ...prev, direct_observations: e.target.value }))}
-                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block font-bold text-slate-300 text-[11px] mb-1">
-                            Observaciones Específicas (Administración / Reclamo de Facturas)
-                          </label>
-                          <textarea
-                            rows={2}
-                            placeholder="Notas contables, reclamos de facturas pendientes, condiciones de pago..."
-                            value={formData.specific_observations}
-                            onChange={(e) => setFormData((prev) => ({ ...prev, specific_observations: e.target.value }))}
-                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* COLUMNA DERECHA: BLOQUES 4 Y 5 */}
-                  <div className="space-y-3">
-                    {/* BLOQUE 4: IDENTIFICACIÓN DE COMPROBANTES ASOCIADOS */}
-                    <div className="alon-chunk-purple space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-purple-500/20 pb-1">
-                        <span className="font-black text-purple-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                          <FileText className="w-3.5 h-3.5 text-purple-400" />
-                          <span>4. Identificación de Comprobantes Asociados</span>
-                        </span>
-                        <span className="text-[10px] text-slate-400">Múltiples admitidos</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        {/* 1. Nº Presupuesto Interno (PRC) */}
-                        <div className="space-y-1">
-                          <label className="font-bold text-[11px] flex items-center justify-between">
-                            <span className={formData.voucher_type === 'PRC' ? 'text-amber-300 font-black' : 'text-slate-300'}>
-                              Nº Presupuesto (PRC) {formData.voucher_type === 'PRC' && '*'}
-                            </span>
-                            <span className="text-[9px] text-amber-500 font-mono">PRC</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Ej: 104 o PRC-2026-01"
-                            value={formData.budget_number || ''}
-                            onChange={(e) => setFormData(prev => ({ ...prev, budget_number: e.target.value }))}
-                            className={`w-full bg-slate-900 border rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none ${
-                              formData.voucher_type === 'PRC' && !formData.budget_number?.trim()
-                                ? 'border-amber-500/80 focus:border-amber-400'
-                                : 'border-slate-700 focus:border-cyan-400'
-                            }`}
-                          />
-                        </div>
-
-                        {/* 2. Nº Factura Fiscal (FCR) */}
-                        <div className="space-y-1">
-                          <label className="font-bold text-[11px] flex items-center justify-between">
-                            <span className={['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(formData.voucher_type) ? 'text-emerald-300 font-black' : 'text-slate-300'}>
-                              Nº Factura Fiscal
-                            </span>
-                            <span className="text-[9px] text-emerald-500 font-mono">FCR / FCA</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Ej: FAC-B-0004-00012480"
-                            value={formData.invoice_number || ''}
-                            onChange={(e) => setFormData(prev => ({ ...prev, invoice_number: e.target.value }))}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                          />
-                        </div>
-
-                        {/* 3. Nº Remito Alon Car */}
-                        <div className="space-y-1">
-                          <label className="font-bold text-slate-300 text-[11px] flex items-center justify-between">
-                            <span>Nº Remito Alon Car</span>
-                            <span className="text-[9px] text-cyan-500 font-mono">PAÑOL</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Ej: 1042 (Cruce Pañol)"
-                            value={formData.internal_remito_number || ''}
-                            onChange={(e) => setFormData(prev => ({ ...prev, internal_remito_number: e.target.value }))}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                          />
-                        </div>
-
-                        {/* 4. Nº Remito Proveedor */}
-                        <div className="space-y-1">
-                          <label className="font-bold text-slate-300 text-[11px] flex items-center justify-between">
-                            <span>Nº Remito Proveedor</span>
-                            <span className="text-[9px] text-purple-400 font-mono">RPF / RMO</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Ej: RMO-789"
-                            value={formData.supplier_remito_number || ''}
-                            onChange={(e) => setFormData(prev => ({ ...prev, supplier_remito_number: e.target.value }))}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* BLOQUE 5: FECHA DE CARGA, IMPORTE AR$ Y CONVERSIÓN US$ */}
-                    <div className="alon-chunk-emerald space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
-                        <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                          <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>5. Fecha de Carga, Importe AR$ y Conversión US$</span>
-                        </span>
-                        <span className="text-[10px] text-emerald-300 font-mono">Quincena Oficial</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <div className="space-y-1">
-                          <label className="font-bold text-slate-300 text-[11px] block">
-                            Fecha de Carga (A mano) <span className="text-rose-400">*</span>
-                          </label>
-                          <input
-                            type="date"
-                            required
-                            value={formData.entry_date}
-                            onChange={(e) => {
-                              const newDate = e.target.value
-                              const { usd_rate, amount_usd } = computeEntryDateOrAmountChange(newDate, formData.amount_ars, macroVariables)
-                              setFormData((prev) => ({
-                                ...prev,
-                                entry_date: newDate,
-                                service_date: newDate,
-                                usd_rate,
-                                amount_usd
-                              }))
-                            }}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 font-mono text-xs"
-                          />
-                          <span className="text-[10px] text-slate-500 block">Fija cotización de quincena</span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="font-bold text-amber-300 text-[11px] block">
-                            Importe AR$ <span className="text-rose-400">*</span>
-                          </label>
-                          <div className="relative">
-                            <FormulaNumericInput
-                              variant="field"
-                              currencyPrefix="$"
-                              maxDecimals={2}
-                              placeholder="0.00 o =42+45"
-                              disabled={editingService && !canEditAmounts}
-                              value={formData.amount_ars}
-                              onChange={(newArs) => {
-                                const { usd_rate, amount_usd } = computeEntryDateOrAmountChange(formData.entry_date, newArs, macroVariables)
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  amount_ars: newArs,
-                                  usd_rate,
-                                  amount_usd
-                                }))
-                              }}
-                              title="Monto en pesos o fórmula (=42+45, +42+45)"
-                              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-2.5 pr-7 py-1.5 text-white font-mono font-bold text-xs focus:outline-none focus:border-amber-400 disabled:opacity-50"
-                            />
-                            {editingService && !canEditAmounts && (
-                              <Lock className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2" title="Edición de montos bloqueada" />
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-500 block">Monto en pesos (acepta =42+45 o +42+45)</span>
-                        </div>
-                      </div>
-
-                      <div className="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/30 flex items-center justify-between gap-2">
-                        <div>
-                          <span className="text-[10px] font-bold text-cyan-300 flex items-center gap-1">
-                            <Lock className="w-3 h-3 text-cyan-400" />
-                            Cotiz. Dólar Intocable: ${Number(formData.usd_rate).toLocaleString('es-AR')}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono block">
-                            {(() => {
-                              const parsed = evaluateFormulaInput(formData.amount_ars, { allowNegative: false, maxDecimals: 2, emptyValue: 0 })
-                              const arsNum = parsed.ok ? (parsed.value || 0) : 0
-                              return arsNum > 0 && formData.usd_rate > 0
-                                ? `$${arsNum.toLocaleString('es-AR')} ÷ $${formData.usd_rate}`
-                                : 'Calculado automáticamente según fecha'
-                            })()}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-emerald-400 uppercase font-bold block">Equivalente</span>
-                          <span className="text-sm font-black font-mono text-white">US$ {formData.amount_usd}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* BOTONES DE ACCIÓN FIJOS */}
-              <div className="alon-modal-footer">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingService}
-                  className="px-5 py-1.5 bg-gradient-to-r from-cyan-400 to-blue-500 hover:brightness-110 text-slate-950 rounded-xl text-xs font-extrabold flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
-                >
-                  {savingService ? (
-                    <>
-                      <Clock className="w-4 h-4 animate-spin" />
-                      <span>Guardando...</span>
-                    </>
-                  ) : (
-                    <span>{editingService ? 'Actualizar Comprobante' : 'Guardar Comprobante'}</span>
-                  )}
-                </button>
-              </div>
-            </form>
+      <CanonicalStepperModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        maxWidthClass="max-w-6xl"
+        icon={
+          <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 font-bold">
+            <Wrench className="w-3.5 h-3.5" />
           </div>
-        </div>
-      )}
+        }
+        title={editingService ? 'EDITAR COMPROBANTE DE TERCEROS' : 'CARGA GUIADA DE GASTO DE TERCEROS (GS-005)'}
+        onSubmit={handleSubmitService}
+        footerLeft={
+          <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">
+            Cancelar
+          </button>
+        }
+        footerRight={
+          <button type="submit" disabled={savingService} className="px-5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+            {savingService ? (
+              <><Clock className="w-4 h-4 animate-spin" /><span>Guardando...</span></>
+            ) : (
+              <span>{editingService ? 'Actualizar Comprobante' : 'Guardar Comprobante'}</span>
+            )}
+          </button>
+        }
+      >
+        <CanonicalStepperStep
+          step={1}
+          helpEntry={TERCEROS_SERVICE_STEP_HELP[1]}
+          title="CASCADA DE IMPUTACIÓN DE OBRA"
+          subtitle="Buque ➔ Contratista [3ros] ➔ OT"
+          headerRight={
+            !formData.is_manual_trade && formData.trade ? (
+              <span className="text-[10px] font-bold text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60">
+                Rubro: {formData.trade}
+              </span>
+            ) : null
+          }
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+            <div>
+              <label className="block font-semibold text-slate-400 text-[11px] mb-1">Buque / Embarcación <span className="text-rose-400">*</span></label>
+              <select
+                autoFocus
+                required
+                value={formData.ship_id}
+                onChange={(e) => setFormData((prev) => ({ ...prev, ship_id: e.target.value, work_order_id: '' }))}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-cyan-400 text-xs"
+              >
+                <option value="">-- Seleccionar Buque --</option>
+                {ships.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} {s.current_location ? `[${s.current_location}]` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-400 text-[11px] mb-1">Contratista / Taller [3ros] ({contractors.length}) <span className="text-rose-400">*</span></label>
+              <SearchableContractorSelect contractors={contractors} value={formData.contractor_name} onChange={handleContractorSelect} />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-400 text-[11px] mb-1">Orden de Trabajo (OT)</label>
+              <WorkOrderSelectorWithHover
+                value={formData.work_order_id}
+                onChange={(newWoId) => setFormData((prev) => ({ ...prev, work_order_id: newWoId }))}
+                availableWos={availableWorkOrdersForSelectedShip}
+                ship={ships.find((s) => String(s.id) === String(formData.ship_id))}
+                workItems={workItems}
+                allWorkOrders={workOrders}
+                contractorName={formData.contractor_name}
+                disabled={!formData.ship_id}
+                placeholder={!formData.ship_id ? '-- 1° elija buque --' : '-- ⚠️ Dejar OT en blanco --'}
+                showPreviewCard={false}
+              />
+            </div>
+          </div>
+
+          {formData.is_manual_trade && (
+            <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/50 flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px] shrink-0">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                <span>Proveedor Polirrubro (MANUAL):</span>
+              </div>
+              <select required value={formData.trade} onChange={(e) => setFormData((prev) => ({ ...prev, trade: e.target.value }))} className="flex-1 min-w-[200px] bg-slate-950 border border-amber-600/70 rounded-lg px-2.5 py-1 text-amber-200 text-xs focus:outline-none">
+                <option value="">-- Seleccionar Rubro Oficial --</option>
+                {OFFICIAL_TRADES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          )}
+        </CanonicalStepperStep>
+
+        <CanonicalStepperStep step={2} helpEntry={TERCEROS_SERVICE_STEP_HELP[2]} title="COMPROBANTE PRINCIPAL Y NÚMEROS ASOCIADOS (DEC-017)">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5">
+            <div>
+              <label className="block font-semibold text-amber-300 text-[11px] mb-1">Tipo Comprobante <span className="text-rose-400">*</span></label>
+              <select value={formData.voucher_type} onChange={(e) => setFormData((prev) => ({ ...prev, voucher_type: e.target.value }))} className="w-full bg-slate-950 border border-amber-500/50 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-amber-400 text-xs">
+                {VOUCHER_TYPES.map((v) => <option key={v.code} value={v.code}>{v.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="flex items-center justify-between font-semibold text-[11px] mb-1">
+                <span className={formData.voucher_type === 'PRC' ? 'text-amber-300 font-black' : 'text-slate-400'}>Nº Presup. {formData.voucher_type === 'PRC' && '*'}</span>
+                <span className="text-[9px] text-amber-500 font-mono">PRC</span>
+              </label>
+              <input type="text" placeholder="Ej: 104 / PRC-01" value={formData.budget_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, budget_number: e.target.value }))} className={`w-full bg-slate-950 border rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none ${formData.voucher_type === 'PRC' && !formData.budget_number?.trim() ? 'border-amber-500/80' : 'border-slate-700 focus:border-cyan-400'}`} />
+            </div>
+            <div>
+              <label className="flex items-center justify-between font-semibold text-[11px] mb-1">
+                <span className={['FCR', 'FCA', 'FAC', 'REC', 'FCB', 'FCC'].includes(formData.voucher_type) ? 'text-emerald-300 font-black' : 'text-slate-400'}>Nº Factura Fiscal</span>
+                <span className="text-[9px] text-emerald-500 font-mono">FCR/FCA</span>
+              </label>
+              <input type="text" placeholder="FAC-B-0004-..." value={formData.invoice_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, invoice_number: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between font-semibold text-slate-400 text-[11px] mb-1">
+                <span>Nº Remito AlonCar</span>
+                <span className="text-[9px] text-cyan-500 font-mono">PAÑOL</span>
+              </label>
+              <input type="text" placeholder="Ej: 1042" value={formData.internal_remito_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, internal_remito_number: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400" />
+            </div>
+            <div>
+              <label className="flex items-center justify-between font-semibold text-slate-400 text-[11px] mb-1">
+                <span>Nº Remito Prov.</span>
+                <span className="text-[9px] text-purple-400 font-mono">RPF/RMO</span>
+              </label>
+              <input type="text" placeholder="Ej: RMO-789" value={formData.supplier_remito_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, supplier_remito_number: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400" />
+            </div>
+          </div>
+        </CanonicalStepperStep>
+
+        <CanonicalStepperStep step={3} helpEntry={TERCEROS_SERVICE_STEP_HELP[3]} title="FECHA DE CARGA, IMPORTE AR$ Y CONVERSIÓN US$">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 items-end">
+            <div>
+              <label className="block font-semibold text-slate-400 text-[11px] mb-1">Fecha de Carga (Fija Quincena) <span className="text-rose-400">*</span></label>
+              <input
+                type="date"
+                required
+                value={formData.entry_date}
+                onChange={(e) => {
+                  const newDate = e.target.value
+                  const { usd_rate, amount_usd } = computeEntryDateOrAmountChange(newDate, formData.amount_ars, macroVariables)
+                  setFormData((prev) => ({ ...prev, entry_date: newDate, service_date: newDate, usd_rate, amount_usd }))
+                }}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 font-mono text-xs"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-amber-300 text-[11px] mb-1">Importe AR$ (Acepta =42+45) <span className="text-rose-400">*</span></label>
+              <div className="relative">
+                <FormulaNumericInput
+                  variant="field"
+                  currencyPrefix="$"
+                  maxDecimals={2}
+                  placeholder="0.00 o =42+45"
+                  disabled={editingService && !canEditAmounts}
+                  value={formData.amount_ars}
+                  onChange={(newArs) => {
+                    const { usd_rate, amount_usd } = computeEntryDateOrAmountChange(formData.entry_date, newArs, macroVariables)
+                    setFormData((prev) => ({ ...prev, amount_ars: newArs, usd_rate, amount_usd }))
+                  }}
+                  title="Monto en pesos o fórmula (=42+45, +42+45)"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-2.5 pr-7 py-1.5 text-white font-mono font-bold text-xs focus:outline-none focus:border-amber-400 disabled:opacity-50"
+                />
+                {editingService && !canEditAmounts && <Lock className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2" title="Edición de montos bloqueada" />}
+              </div>
+            </div>
+            <div className="px-3 py-1.5 rounded-lg bg-slate-950 border border-emerald-500/40 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold text-cyan-300 flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-cyan-400 shrink-0" />
+                  <span>Dólar: ${Number(formData.usd_rate).toLocaleString('es-AR')}</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono block truncate">
+                  {(() => {
+                    const parsed = evaluateFormulaInput(formData.amount_ars, { allowNegative: false, maxDecimals: 2, emptyValue: 0 })
+                    const arsNum = parsed.ok ? (parsed.value || 0) : 0
+                    return arsNum > 0 && formData.usd_rate > 0 ? `$${arsNum.toLocaleString('es-AR')} ÷ $${formData.usd_rate}` : 'Automático según fecha'
+                  })()}
+                </span>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-[9px] text-emerald-400 uppercase font-bold block">Equivalente</span>
+                <span className="text-sm font-black font-mono text-white">US$ {formData.amount_usd}</span>
+              </div>
+            </div>
+          </div>
+        </CanonicalStepperStep>
+
+        <CanonicalStepperStep step={4} helpEntry={TERCEROS_SERVICE_STEP_HELP[4]} title="OBSERVACIONES TÉCNICAS Y ADMINISTRATIVAS" isLast={true}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            <div>
+              <label className="block font-semibold text-slate-400 text-[11px] mb-1">Observaciones Directas (Detalle técnico de la tarea)</label>
+              <input type="text" placeholder="Describa el trabajo realizado por el contratista en la obra..." value={formData.direct_observations} onChange={(e) => setFormData((prev) => ({ ...prev, direct_observations: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs" />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-400 text-[11px] mb-1">Observaciones Específicas (Admin / Reclamo Facturas)</label>
+              <input type="text" placeholder="Notas contables, reclamos pendientes, condiciones de pago..." value={formData.specific_observations} onChange={(e) => setFormData((prev) => ({ ...prev, specific_observations: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs" />
+            </div>
+          </div>
+        </CanonicalStepperStep>
+      </CanonicalStepperModal>
 
       {/* ==================================================================== */}
       {/* MODAL 2: EVOLUCIÓN RÁPIDA DE COMPROBANTE (RMO / RPF -> FCR o SDT)     */}
       {/* ==================================================================== */}
       {evolvingService && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-500/50 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center border border-amber-500/40 font-bold">
-                  ⚡
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Evolución de Comprobante (DEC-017)</h3>
-                  <p className="text-xs text-amber-300/80">
-                    Pasar {evolvingService.voucher_type} a Factura Oficial Definitiva (FCR)
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEvolvingService(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleConfirmEvolutionSubmit} className="p-6 space-y-4 text-xs">
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-                <p className="font-bold text-slate-200">
-                  Proveedor: <span className="text-cyan-400">{evolvingService.contractor_name}</span>
-                </p>
-                <p className="text-slate-400">
-                  Comprobante actual: <span className="font-mono text-amber-300 font-bold">{evolvingService.voucher_type}</span> ({evolvingService.voucher_number || 'S/N'})
-                </p>
-                <p className="text-slate-400">
-                  Importe actual registrado: <span className="font-mono text-white font-bold">${Number(evolvingService.amount_ars).toLocaleString('es-AR')}</span>
-                </p>
-              </div>
-
-              {/* Tipo de Destino */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-                  Evolucionar a *
-                </label>
-                <select
-                  value={evolutionForm.target_voucher_type}
-                  onChange={(e) => setEvolutionForm((prev) => ({ ...prev, target_voucher_type: e.target.value }))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-400 font-bold"
-                >
+        <CanonicalStepperModal
+          isOpen={true}
+          onClose={() => setEvolvingService(null)}
+          maxWidthClass="max-w-4xl"
+          icon={<div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center border border-amber-500/40 font-bold">⚡</div>}
+          title={`EVOLUCIÓN DE COMPROBANTE (DEC-017) — ${evolvingService.contractor_name}`}
+          headerBadges={
+            <span className="px-2 py-0.5 rounded-full bg-amber-950/70 border border-amber-500/40 text-amber-300 text-[10px] font-mono font-bold">
+              {evolvingService.voucher_type} ({evolvingService.voucher_number || 'S/N'}) · ${Number(evolvingService.amount_ars).toLocaleString('es-AR')}
+            </span>
+          }
+          onSubmit={handleConfirmEvolutionSubmit}
+          footerLeft={
+            <button type="button" onClick={() => setEvolvingService(null)} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer">
+              Cancelar
+            </button>
+          }
+          footerRight={
+            <button type="submit" disabled={savingEvolution} className="px-5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl cursor-pointer shadow-md disabled:opacity-50">
+              {savingEvolution ? 'Evolucionando...' : 'Confirmar Pase a Factura Oficial'}
+            </button>
+          }
+        >
+          <CanonicalStepperStep step={1} helpEntry={TERCEROS_EVOLUTION_STEP_HELP[1]} title="COMPROBANTE DESTINO Y NÚMERO OFICIAL">
+            <div className={`grid grid-cols-1 gap-2.5 ${evolutionForm.target_voucher_type === 'FCR' ? 'sm:grid-cols-2' : ''}`}>
+              <div>
+                <label className="block font-semibold text-slate-400 text-[11px] mb-1">Evolucionar a <span className="text-rose-400">*</span></label>
+                <select value={evolutionForm.target_voucher_type} onChange={(e) => setEvolutionForm((prev) => ({ ...prev, target_voucher_type: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-400 font-bold">
                   <option value="FCR">FCR - Factura Fiscal Oficial Definitiva (Recomendado)</option>
-                  {evolvingService.voucher_type === 'RMO' && (
-                    <option value="SDT">SDT - Sin Documentación Fiscal (Cierre excepcional)</option>
-                  )}
+                  {evolvingService.voucher_type === 'RMO' && <option value="SDT">SDT - Sin Documentación Fiscal (Cierre excepcional)</option>}
                 </select>
               </div>
-
-              {/* Número de Factura */}
               {evolutionForm.target_voucher_type === 'FCR' && (
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-                    Número de Factura Fiscal Oficial *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: FAC-A-0001-00012345"
-                    value={evolutionForm.new_voucher_number}
-                    onChange={(e) => setEvolutionForm((prev) => ({ ...prev, new_voucher_number: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
-                  />
+                <div>
+                  <label className="block font-semibold text-slate-400 text-[11px] mb-1">Número de Factura Fiscal <span className="text-rose-400">*</span></label>
+                  <input type="text" required autoFocus placeholder="Ej: FAC-A-0001-00012345" value={evolutionForm.new_voucher_number} onChange={(e) => setEvolutionForm((prev) => ({ ...prev, new_voucher_number: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-amber-400" />
                 </div>
               )}
+            </div>
+          </CanonicalStepperStep>
 
-              {/* Fecha y Monto Final */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-300 text-[11px]">
-                    Fecha de Factura
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={evolutionForm.voucher_date}
-                    onChange={(e) => setEvolutionForm((prev) => ({ ...prev, voucher_date: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono text-xs focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-300 text-[11px]">
-                    Monto Final Facturado AR$
-                  </label>
-                  <FormulaNumericInput
-                    variant="field"
-                    currencyPrefix="$"
-                    maxDecimals={2}
-                    disabled={!canEditAmounts}
-                    value={evolutionForm.final_amount_ars}
-                    onChange={(val) => setEvolutionForm((prev) => ({ ...prev, final_amount_ars: val }))}
-                    placeholder="Monto final o =42+45"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono font-bold text-xs focus:outline-none disabled:opacity-50"
-                  />
-                </div>
+          <CanonicalStepperStep step={2} helpEntry={TERCEROS_EVOLUTION_STEP_HELP[2]} title="FECHA, MONTO FINAL Y CONSTANCIA" isLast={true}>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+              <div>
+                <label className="block font-semibold text-slate-400 text-[11px] mb-1">Fecha de Factura</label>
+                <input type="date" required value={evolutionForm.voucher_date} onChange={(e) => setEvolutionForm((prev) => ({ ...prev, voucher_date: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none" />
               </div>
-
-              {/* Notas de Evolución */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 text-[11px]">
-                  Constancia / Motivo del Pase
-                </label>
-                <textarea
-                  rows={2}
-                  value={evolutionForm.evolution_notes}
-                  onChange={(e) => setEvolutionForm((prev) => ({ ...prev, evolution_notes: e.target.value }))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none"
-                />
+              <div>
+                <label className="block font-semibold text-slate-400 text-[11px] mb-1">Monto Final AR$</label>
+                <FormulaNumericInput variant="field" currencyPrefix="$" maxDecimals={2} disabled={!canEditAmounts} value={evolutionForm.final_amount_ars} onChange={(val) => setEvolutionForm((prev) => ({ ...prev, final_amount_ars: val }))} placeholder="Monto final o =42+45" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono font-bold text-xs focus:outline-none disabled:opacity-50" />
               </div>
-
-              {/* Botones */}
-              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setEvolvingService(null)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingEvolution}
-                  className="px-5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:brightness-110 text-slate-950 font-extrabold rounded-xl flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
-                >
-                  {savingEvolution ? 'Evolucionando...' : 'Confirmar Pase a Factura Oficial'}
-                </button>
+              <div className="md:col-span-2">
+                <label className="block font-semibold text-slate-400 text-[11px] mb-1">Constancia / Motivo del Pase</label>
+                <input type="text" value={evolutionForm.evolution_notes} onChange={(e) => setEvolutionForm((prev) => ({ ...prev, evolution_notes: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none" />
               </div>
-            </form>
-          </div>
-        </div>
+            </div>
+          </CanonicalStepperStep>
+        </CanonicalStepperModal>
       )}
 
       {/* ==================================================================== */}
       {/* MODAL 3: AUDITORÍA TÉCNICA (Jefes de Obra)                           */}
       {/* ==================================================================== */}
       {auditingService && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
-              <div className="flex items-center gap-2">
-                <FileCheck className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-base font-bold text-white">Conformidad Técnica de Obra</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAuditingService(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
+        <CanonicalStepperModal
+          isOpen={true}
+          onClose={() => setAuditingService(null)}
+          maxWidthClass="max-w-4xl"
+          icon={<FileCheck className="w-5 h-5 text-emerald-400" />}
+          title={`CONFORMIDAD TÉCNICA — ${auditingService.contractor_name} (${auditingService.voucher_type})`}
+          headerBadges={
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
+              <span>{shipMap.get(auditingService.ship_id)?.name || 'Sin Buque'} ·</span>
+              <CanonicalOtBadge wo={otMap.get(auditingService.work_order_id) || null} ship={shipMap.get(auditingService.ship_id) || null} workItems={workItems} workOrders={workOrders} variant="inline" className="text-xs" />
             </div>
-
-            <form onSubmit={handleSaveAuditSubmit} className="p-6 space-y-4 text-xs">
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-                <p className="font-bold text-slate-200">
-                  {auditingService.contractor_name} — <span className="text-cyan-400">{auditingService.voucher_type}</span>
-                </p>
-                <div className="text-slate-400 flex items-center gap-1.5 flex-wrap">
-                  <span>Buque: {shipMap.get(auditingService.ship_id)?.name || 'Sin Buque'} |</span>
-                  <CanonicalOtBadge
-                    wo={otMap.get(auditingService.work_order_id) || null}
-                    ship={shipMap.get(auditingService.ship_id) || null}
-                    workItems={workItems}
-                    workOrders={workOrders}
-                    variant="inline"
-                    className="text-xs"
-                  />
-                </div>
-                {auditingService.direct_observations && (
-                  <p className="text-slate-500 text-[11px] italic">
-                    "{auditingService.direct_observations}"
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
-                  Estado de Auditoría Técnica *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAuditForm((prev) => ({ ...prev, audit_status: 'CONFORME' }))}
-                    className={`py-2 rounded-xl font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      auditForm.audit_status === 'CONFORME'
-                        ? 'bg-emerald-950 border-emerald-400 text-emerald-300 ring-1 ring-emerald-400'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>CONFORME</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAuditForm((prev) => ({ ...prev, audit_status: 'OBSERVADO' }))}
-                    className={`py-2 rounded-xl font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      auditForm.audit_status === 'OBSERVADO'
-                        ? 'bg-rose-950 border-rose-400 text-rose-300 ring-1 ring-rose-400'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <AlertTriangle className="w-4 h-4 text-rose-400" />
-                    <span>OBSERVADO</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-300 text-[11px]">
-                  Notas u Observaciones del Jefe de Obra
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Detalle de inspección dimensional, prueba hidráulica, ensayo o inconformidad..."
-                  value={auditForm.audit_notes}
-                  onChange={(e) => setAuditForm((prev) => ({ ...prev, audit_notes: e.target.value }))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setAuditingService(null)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer"
-                >
-                  Cerrar
+          }
+          onSubmit={handleSaveAuditSubmit}
+          footerLeft={
+            <button type="button" onClick={() => setAuditingService(null)} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer">
+              Cerrar
+            </button>
+          }
+          footerRight={
+            <button type="submit" disabled={savingAudit} className="px-5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl cursor-pointer shadow-md disabled:opacity-50">
+              {savingAudit ? 'Guardando...' : 'Asentar Conformidad'}
+            </button>
+          }
+        >
+          <CanonicalStepperStep step={1} helpEntry={TERCEROS_AUDIT_STEP_HELP[1]} title="DICTAMEN Y OBSERVACIONES DEL JEFE DE OBRA" isLast={true}>
+            {auditingService.direct_observations && (
+              <p className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 text-[11px] italic">
+                Detalle del comprobante: &ldquo;{auditingService.direct_observations}&rdquo;
+              </p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
+              <div className="md:col-span-5 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setAuditForm((prev) => ({ ...prev, audit_status: 'CONFORME' }))} className={`py-2 rounded-xl font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${auditForm.audit_status === 'CONFORME' ? 'bg-emerald-950 border-emerald-400 text-emerald-300 ring-1 ring-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /><span>CONFORME</span>
                 </button>
-                <button
-                  type="submit"
-                  disabled={savingAudit}
-                  className="px-5 py-2 bg-cyan-400 text-slate-950 font-extrabold rounded-xl hover:brightness-110 disabled:opacity-50 cursor-pointer"
-                >
-                  {savingAudit ? 'Guardando...' : 'Asentar Conformidad'}
+                <button type="button" onClick={() => setAuditForm((prev) => ({ ...prev, audit_status: 'OBSERVADO' }))} className={`py-2 rounded-xl font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${auditForm.audit_status === 'OBSERVADO' ? 'bg-rose-950 border-rose-400 text-rose-300 ring-1 ring-rose-400' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
+                  <AlertTriangle className="w-4 h-4 text-rose-400" /><span>OBSERVADO</span>
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
+              <div className="md:col-span-7">
+                <label className="block font-semibold text-slate-400 text-[11px] mb-1">Notas u Observaciones del Jefe de Obra</label>
+                <input type="text" autoFocus placeholder="Detalle de inspección dimensional, prueba hidráulica, ensayo o inconformidad..." value={auditForm.audit_notes} onChange={(e) => setAuditForm((prev) => ({ ...prev, audit_notes: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-cyan-400" />
+              </div>
+            </div>
+          </CanonicalStepperStep>
+        </CanonicalStepperModal>
       )}
 
       {/* ==================================================================== */}

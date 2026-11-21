@@ -9,6 +9,8 @@ import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
 import FormulaNumericInput from '../canonical/FormulaNumericInput'
 import { evaluateFormulaInput, buildCellFormulasPatch, getEditableCellInitialValue } from '../../lib/formulaEngine'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover'
+import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import { COMPRAS_ORDER_STEP_HELP } from '../../lib/businessHelpRegistry.js'
 
 export default function OrderFormModal({
   order,
@@ -202,336 +204,218 @@ export default function OrderFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="alon-modal-card max-w-5xl">
-        <div className="alon-modal-header">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 font-bold shrink-0">
-              <ShoppingCart className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-sm font-black text-white truncate">
-                {order?.id ? 'Editar Pedido de Compra' : 'Cargar Materiales (Multi-Renglón por OT / Obra)'}
-              </h3>
-              <p className="text-[11px] text-slate-400 truncate">
-                Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Destino/OT ➔ 2° Parámetros ➔ 3° Matriz de Materiales.
-              </p>
-            </div>
-          </div>
-          <button type="button" tabIndex={-1} onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0">
-            ✕
-          </button>
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={onClose}
+      maxWidthClass="max-w-6xl"
+      icon={
+        <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30 font-bold">
+          <ShoppingCart className="w-4 h-4" />
         </div>
+      }
+      title={order?.id ? 'Editar Pedido de Compra' : 'CARGAR MATERIALES A COMPRAR (MULTI-RENGLÓN)'}
+      onSubmit={handleSubmit}
+      footerLeft={
+        <button type="button" onClick={onClose} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" disabled={saving} className="px-5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+          {saving ? 'Guardando...' : order?.id ? 'Actualizar Pedido' : `Registrar ${items.length} Materiales`}
+        </button>
+      }
+    >
+      <CanonicalStepperStep
+        step={1}
+        helpEntry={COMPRAS_ORDER_STEP_HELP[1]}
+        title="DESTINO E IMPUTACIÓN DEL PEDIDO"
+        subtitle={chargeType === 'DIRECT' ? 'Destino ➔ Solicitante ➔ Buque ➔ OT' : 'Destino ➔ Solicitante'}
+      >
+        <div className={`grid grid-cols-1 gap-2.5 ${chargeType === 'DIRECT' ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
+          <div>
+            <label className="block text-slate-400 mb-1 font-semibold text-[11px]">Destino del Pedido</label>
+            <select autoFocus value={chargeType} onChange={(e) => setChargeType(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-cyan-400 text-xs">
+              <option value="DIRECT">Carga Directa para Obra (Buque)</option>
+              <option value="VIA_PANOL">Reposición de Stock (Pañol)</option>
+              <option value="STANDBY">Stand-By en Depósito</option>
+            </select>
+          </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
-          <div className="alon-modal-body">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
-              {/* COLUMNA IZQUIERDA: BLOQUES 1 Y 2 */}
-              <div className="space-y-3">
-                {/* BLOQUE 1: DESTINO E IMPUTACIÓN DE OBRA */}
-                <div className="alon-chunk-sky space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
-                    <span className="font-black text-sky-400 uppercase tracking-wider text-[11px]">
-                      1. Destino e Imputación de Obra
-                    </span>
-                    <span className="text-[10px] text-slate-400">Origen de imputación</span>
+          <div>
+            <label className="block text-slate-400 mb-1 font-semibold text-[11px]">Solicitante</label>
+            <select value={requestedByName} onChange={(e) => setRequestedByName(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-medium focus:outline-none focus:border-cyan-400 cursor-pointer text-xs">
+              <option value="PAÑOL">PAÑOL (Por Defecto)</option>
+              <optgroup label="Personal Habilitado (Pañol)">
+                {authorizedWorkers.map((w) => <option key={w.id} value={w.name}>{w.name} {w.trade ? `(${w.trade})` : ''}</option>)}
+              </optgroup>
+              {otherWorkers.length > 0 && (
+                <optgroup label="Demás Personal de Nómina">
+                  {otherWorkers.map((w) => <option key={w.id} value={w.name}>{w.name} {w.trade ? `(${w.trade})` : ''}</option>)}
+                </optgroup>
+              )}
+              {contractorGroups.length > 0 && (
+                <optgroup label="🏗️ Contratistas Externos">
+                  {contractorGroups.map((grp) => <option key={`m_cnt_${grp}`} value={grp}>{grp}</option>)}
+                </optgroup>
+              )}
+              <optgroup label="Sectores / Áreas Comunes">
+                <option value="ADMINISTRACION">ADMINISTRACION</option>
+                <option value="OFICINA TECNICA">OFICINA TECNICA</option>
+                <option value="MANTENIMIENTO">MANTENIMIENTO</option>
+                <option value="CALIDAD / SEGURIDAD">CALIDAD / SEGURIDAD</option>
+              </optgroup>
+              {requestedByName &&
+                requestedByName !== 'PAÑOL' &&
+                !authorizedWorkers.some((w) => w.name === requestedByName) &&
+                !otherWorkers.some((w) => w.name === requestedByName) &&
+                !['ADMINISTRACION', 'OFICINA TECNICA', 'MANTENIMIENTO', 'CALIDAD / SEGURIDAD'].includes(requestedByName) && (
+                  <option value={requestedByName}>{requestedByName} (Actual)</option>
+                )}
+            </select>
+          </div>
+
+          {chargeType === 'DIRECT' && (
+            <>
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold text-[11px]">Buque / Obra <span className="text-rose-400">*</span></label>
+                <select value={shipId} onChange={(e) => { setShipId(e.target.value); setWorkOrderId('') }} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-cyan-400 text-xs" required>
+                  <option value="">-- Seleccionar Buque --</option>
+                  {ships.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold text-[11px]">Orden de Trabajo (OT)</label>
+                <WorkOrderSelectorWithHover
+                  value={workOrderId}
+                  onChange={(nextWoId) => setWorkOrderId(nextWoId)}
+                  availableWos={availableWorkOrders}
+                  ship={selectedShipObj}
+                  workItems={workItems}
+                  allWorkOrders={workOrders}
+                  disabled={!shipId}
+                  placeholder={!shipId ? '-- 1° elija buque --' : '-- ⚠️ Sin OT (Pendiente) --'}
+                  showPreviewCard={false}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep
+        step={2}
+        helpEntry={COMPRAS_ORDER_STEP_HELP[2]}
+        title={`INSUMOS Y MATERIALES A COMPRAR (${items.length})`}
+        headerRight={
+          <button type="button" tabIndex={-1} onClick={handleAddItem} className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-black text-[11px] flex items-center gap-1 transition-all cursor-pointer shadow-sm">
+            <Plus className="w-3.5 h-3.5 stroke-[3]" /><span>Agregar Material</span>
+          </button>
+        }
+      >
+        <div className="space-y-2 max-h-[38vh] overflow-y-auto pr-1">
+          {items.map((it, idx) => (
+            <div key={idx} className="p-2 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                <div className={viewMode === 'completa' ? 'md:col-span-5 flex items-center gap-1.5' : 'md:col-span-8 flex items-center gap-1.5'}>
+                  <span className="text-slate-500 font-mono text-xs w-5 text-center shrink-0">#{idx + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <CanonicalMaterialPicker
+                      materials={materials}
+                      value={it.material_id || ''}
+                      initialText={it.material_name_raw || ''}
+                      allowFreeText
+                      placeholder="Ej: CHAPA NAVAL 1/4', ELECTRODO CONARCO 7018..."
+                      onChange={(matId, mat) => {
+                        if (mat?.id) handleSelectCatalogMaterial(idx, mat)
+                        else handleItemChange(idx, 'material_name_raw', mat?.name || '')
+                      }}
+                    />
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Destino del Pedido</label>
-                      <select
-                        autoFocus
-                        value={chargeType}
-                        onChange={(e) => setChargeType(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-cyan-500 text-xs"
-                      >
-                        <option value="DIRECT">Carga Directa para Obra (Buque)</option>
-                        <option value="VIA_PANOL">Reposición de Stock (Pañol)</option>
-                        <option value="STANDBY">Stand-By en Depósito</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Solicitante</label>
-                      <select
-                        value={requestedByName}
-                        onChange={(e) => setRequestedByName(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer text-xs"
-                      >
-                        <option value="PAÑOL">PAÑOL (Por Defecto)</option>
-                        <optgroup label="Personal Habilitado (Pañol)">
-                          {authorizedWorkers.map((w) => (
-                            <option key={w.id} value={w.name}>
-                              {w.name} {w.trade ? `(${w.trade})` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                        {otherWorkers.length > 0 && (
-                          <optgroup label="Demás Personal de Nómina">
-                            {otherWorkers.map((w) => (
-                              <option key={w.id} value={w.name}>
-                                {w.name} {w.trade ? `(${w.trade})` : ''}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                        {contractorGroups.length > 0 && (
-                          <optgroup label="🏗️ Contratistas Externos">
-                            {contractorGroups.map((grp) => (
-                              <option key={`m_cnt_${grp}`} value={grp}>
-                                {grp}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                        <optgroup label="Sectores / Áreas Comunes">
-                          <option value="ADMINISTRACION">ADMINISTRACION</option>
-                          <option value="OFICINA TECNICA">OFICINA TECNICA</option>
-                          <option value="MANTENIMIENTO">MANTENIMIENTO</option>
-                          <option value="CALIDAD / SEGURIDAD">CALIDAD / SEGURIDAD</option>
-                        </optgroup>
-                        {requestedByName &&
-                          requestedByName !== 'PAÑOL' &&
-                          !authorizedWorkers.some((w) => w.name === requestedByName) &&
-                          !otherWorkers.some((w) => w.name === requestedByName) &&
-                          !['ADMINISTRACION', 'OFICINA TECNICA', 'MANTENIMIENTO', 'CALIDAD / SEGURIDAD'].includes(requestedByName) && (
-                            <option value={requestedByName}>{requestedByName} (Actual)</option>
-                          )}
-                      </select>
-                    </div>
-                  </div>
-
-                  {chargeType === 'DIRECT' && (
-                    <div className="space-y-2 pt-1 border-t border-slate-800/80">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <div>
-                          <label className="block text-slate-300 mb-1 font-bold text-[11px]">
-                            Buque / Obra <span className="text-rose-400">*</span>
-                          </label>
-                          <select
-                            value={shipId}
-                            onChange={(e) => {
-                              setShipId(e.target.value)
-                              setWorkOrderId('')
-                            }}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold focus:outline-none focus:border-cyan-500 text-xs"
-                            required
-                          >
-                            <option value="">-- Seleccionar Buque --</option>
-                            {ships.map((s) => (
-                              <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 mb-1 font-bold text-[11px]">
-                            Orden de Trabajo (OT)
-                          </label>
-                          <WorkOrderSelectorWithHover
-                            value={workOrderId}
-                            onChange={(nextWoId) => setWorkOrderId(nextWoId)}
-                            availableWos={availableWorkOrders}
-                            ship={selectedShipObj}
-                            workItems={workItems}
-                            allWorkOrders={workOrders}
-                            disabled={!shipId}
-                            placeholder={!shipId ? '-- 1° elija buque --' : '-- ⚠️ Sin OT (Pendiente de apertura) --'}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* BLOQUE 2: PARÁMETROS DEL PEDIDO */}
-                <div className="alon-chunk-amber space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-amber-500/20 pb-1">
-                    <span className="font-black text-amber-400 uppercase tracking-wider text-[11px]">
-                      2. Parámetros y Cronograma de Compra
-                    </span>
+                <div className="md:col-span-2 flex items-center gap-1">
+                  <div className="flex-1 min-w-0">
+                    <FormulaNumericInput
+                      variant="field"
+                      maxDecimals={4}
+                      unitSuffix={formatUnitMeasureShort(it.unit_measure)}
+                      value={it.quantity}
+                      onChange={(val) => handleItemChange(idx, 'quantity', val)}
+                      placeholder="1 o =2+3"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-400 text-xs"
+                      required
+                    />
                   </div>
+                  <span className="text-[10px] text-cyan-300 font-bold shrink-0 px-1" title="Unidad oficial del Catálogo de Pañol">
+                    {formatUnitMeasureShort(it.unit_measure)}
+                  </span>
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Fecha del Pedido</label>
-                      <input
-                        type="date"
-                        value={orderDate}
-                        onChange={(e) => setOrderDate(e.target.value)}
-                        onDoubleClick={(e) => e.target.showPicker && e.target.showPicker()}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-amber-400 cursor-pointer text-xs"
-                        title="Doble clic para abrir calendario"
+                {viewMode === 'completa' && (
+                  <>
+                    <div className="md:col-span-2">
+                      <select value={it.supplier_id} onChange={(e) => handleItemChange(idx, 'supplier_id', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-cyan-400">
+                        <option value="">-- Proveedor --</option>
+                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <FormulaNumericInput
+                        variant="field"
+                        currencyPrefix="$"
+                        maxDecimals={2}
+                        placeholder="$/U AR$ o =..."
+                        value={it.supplier_quoted_price}
+                        onChange={(val) => handleItemChange(idx, 'supplier_quoted_price', val)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-white font-mono text-right text-xs focus:outline-none focus:border-cyan-400"
                       />
                     </div>
+                  </>
+                )}
 
-                    <div>
-                      <label className="block text-slate-300 mb-1 font-bold text-[11px]">Nivel de Urgencia</label>
-                      <select
-                        value={urgency}
-                        onChange={(e) => setUrgency(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-400 font-bold text-xs"
-                      >
-                        <option value="SIN_APURO">🟢 Sin Apuro (Normal)</option>
-                        <option value="URGENTE">🔴 Urgente (Prioridad Alta)</option>
-                        <option value="PROXIMA_SALIDA">🟡 Próxima Salida de Buque</option>
-                      </select>
-                    </div>
-                  </div>
+                <div className={viewMode === 'completa' ? 'md:col-span-1 flex justify-end' : 'md:col-span-2 flex justify-end'}>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    disabled={items.length <= 1}
+                    onClick={() => handleRemoveItem(idx)}
+                    className={`p-1.5 rounded-lg hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition-colors ${items.length <= 1 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}`}
+                    title="Quitar renglón"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
 
-              {/* COLUMNA DERECHA: BLOQUE 3 */}
-              <div className="space-y-3">
-                <div className="alon-chunk-emerald space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
-                    <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px]">
-                      3. Matriz de Insumos y Materiales ({items.length} renglones)
-                    </span>
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={handleAddItem}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-slate-950 rounded-lg font-black text-[11px] flex items-center gap-1 transition-all cursor-pointer shadow"
-                    >
-                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                      <span>+ Agregar Renglón</span>
-                    </button>
-                  </div>
-
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    {items.map((it, idx) => (
-                      <div key={idx} className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 space-y-2 relative group">
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-1">
-                          <span className="font-mono text-cyan-400 font-bold text-[11px]">Renglón #{idx + 1}</span>
-                          {items.length > 1 && (
-                            <button
-                              type="button"
-                              tabIndex={-1}
-                              onClick={() => handleRemoveItem(idx)}
-                              className="text-slate-500 hover:text-rose-400 transition-colors cursor-pointer p-0.5"
-                              title="Eliminar este renglón"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-300 mb-1 font-semibold text-[11px] flex items-center justify-between">
-                            <span>Material / Insumo Solicitado <span className="text-rose-400">*</span></span>
-                            <span className="text-[10px] text-slate-400">
-                              Unidad: <strong className="text-cyan-400">{it.unit_measure}</strong>
-                            </span>
-                          </label>
-                          <CanonicalMaterialPicker
-                            materials={materials}
-                            value={it.material_id || ''}
-                            initialText={it.material_name_raw || ''}
-                            allowFreeText
-                            placeholder="Ej: CHAPA NAVAL 1/4', ELECTRODO CONARCO 7018..."
-                            onChange={(matId, mat) => {
-                              if (mat?.id) handleSelectCatalogMaterial(idx, mat)
-                              else handleItemChange(idx, 'material_name_raw', mat?.name || '')
-                            }}
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          <div>
-                            <label className="block text-slate-400 mb-1 font-bold text-[10px]">Cantidad</label>
-                            <FormulaNumericInput
-                              variant="field"
-                              maxDecimals={4}
-                              unitSuffix={formatUnitMeasureShort(it.unit_measure)}
-                              value={it.quantity}
-                              onChange={(val) => handleItemChange(idx, 'quantity', val)}
-                              placeholder="1 o =2+3"
-                              className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white font-mono text-center font-bold focus:outline-none focus:border-cyan-500 text-xs"
-                              required
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-400 mb-1 font-bold text-[10px]">Unidad</label>
-                            <input
-                              type="text"
-                              tabIndex={-1}
-                              value={formatUnitMeasureShort(it.unit_measure)}
-                              disabled
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-cyan-300 font-bold text-center cursor-not-allowed text-xs"
-                              title="Unidad oficial del material (se edita desde Pañol ➔ Catálogo & Stock ➔ ✏️ Editar Material)"
-                            />
-                          </div>
-
-                          {viewMode === 'completa' && (
-                            <>
-                              <div>
-                                <label className="block text-slate-400 mb-1 font-bold text-[10px]">Proveedor</label>
-                                <select
-                                  value={it.supplier_id}
-                                  onChange={(e) => handleItemChange(idx, 'supplier_id', e.target.value)}
-                                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-cyan-500"
-                                >
-                                  <option value="">-- Sin Proveedor --</option>
-                                  {suppliers.map((s) => (
-                                    <option key={s.id} value={s.id}>{s.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div>
-                                <label className="block text-slate-400 mb-1 font-bold text-[10px]">$/U Cotiz. AR$</label>
-                                <FormulaNumericInput
-                                  variant="field"
-                                  currencyPrefix="$"
-                                  maxDecimals={2}
-                                  placeholder="$0 o =100+25"
-                                  value={it.supplier_quoted_price}
-                                  onChange={(val) => handleItemChange(idx, 'supplier_quoted_price', val)}
-                                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white font-mono text-right text-xs focus:outline-none focus:border-cyan-500"
-                                />
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        <div>
-                          <input
-                            type="text"
-                            placeholder="Observaciones de este material (medida específica, espesor, urgencia)..."
-                            value={it.observations}
-                            onChange={(e) => handleItemChange(idx, 'observations', e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-500"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <input
+                type="text"
+                placeholder="Observaciones de este material (medida específica, espesor, aclaración para proveedor)..."
+                value={it.observations}
+                onChange={(e) => handleItemChange(idx, 'observations', e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-400"
+              />
             </div>
-          </div>
+          ))}
+        </div>
+      </CanonicalStepperStep>
 
-          <div className="alon-modal-footer">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
-            >
-              {saving ? 'Guardando...' : order?.id ? 'Actualizar Pedido' : `Registrar ${items.length} Materiales`}
-            </button>
+      <CanonicalStepperStep step={3} helpEntry={COMPRAS_ORDER_STEP_HELP[3]} title="FECHA Y NIVEL DE URGENCIA" isLast={true}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <div>
+            <label className="block text-slate-400 mb-1 font-semibold text-[11px]">Fecha del Pedido</label>
+            <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} onDoubleClick={(e) => e.target.showPicker && e.target.showPicker()} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-400 cursor-pointer text-xs" title="Doble clic para abrir calendario" />
           </div>
-        </form>
-      </div>
-    </div>
+          <div>
+            <label className="block text-slate-400 mb-1 font-semibold text-[11px]">Nivel de Urgencia</label>
+            <select value={urgency} onChange={(e) => setUrgency(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 font-bold text-xs">
+              <option value="SIN_APURO">🟢 Sin Apuro (Normal)</option>
+              <option value="URGENTE">🔴 Urgente (Prioridad Alta)</option>
+              <option value="PROXIMA_SALIDA">🟡 Próxima Salida de Buque</option>
+            </select>
+          </div>
+        </div>
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }

@@ -1,20 +1,21 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Ship, ClipboardList, Search, AlertTriangle, Check, X, Anchor, Building2, Star, Eye, EyeOff, ChevronDown } from 'lucide-react'
-import { deduplicateWorkOrdersWithScope, formatWorkOrderTooltipCanonical } from '../lib/workOrdersConstants.js'
+import { Anchor, Check, AlertTriangle, Building2 } from 'lucide-react'
+import { deduplicateWorkOrdersWithScope } from '../lib/workOrdersConstants.js'
+import { PICKER_SHIP_WO_STEP_HELP } from '../lib/businessHelpRegistry.js'
+import { CanonicalStepperModal, CanonicalStepperStep } from './canonical/CanonicalStepperModal.jsx'
+import { WorkOrderSelectorWithHover } from './workOrders/WorkOrderSelectorWithHover.jsx'
+
+const ASTILLERO_STOCK_TOKEN = '__ASTILLERO_STOCK__'
 
 /**
  * ShipWorkOrderPickerModal
- * 
- * Ventana emergente compacta y enfocada para la edición con doble clic (o Enter)
- * de la celda única `Barco / OT` en Terceros, Horas y Compras.
- * 
- * Reglas de Negocio:
- * - El buque cargado se muestra en una casilla compacta cerrada por defecto; se despliega solo a pedido.
- * - Si se cambia el barco, la OT se limpia automáticamente a menos que el usuario elija una OT de ese nuevo barco.
- * - Destaca las OTs vinculadas al contratista/operario de la fila (`workItems`), priorizándolas arriba y ordenadas alfabéticamente.
- * - Permite explícitamente guardar con OT en blanco (`work_order_id = null`), sumando al KPI "⚠️ Falta Cargar OT".
- * - OTs finalizadas quedan ocultas por defecto para carga de datos (regla naval de imputación).
- * - El alcance de cada OT se muestra únicamente en el tooltip nativo canónico (`title`), evitando saltos de layout.
+ * Selector canónico Zero-Scroll (Stepper Vertical 1 ➔ 2) para edición por doble clic o Enter
+ * de la celda `Barco / OT` en Pañol, Horas, Terceros y Compras.
+ *
+ * Estandarizado al mismo patrón visual que Pañol (`MultiWithdrawalDestinationStep`):
+ * - Paso 1: desplegable limpio de Barco / Buque (`<select>` escalable a 35+ buques sin cajas ni scroll).
+ * - Paso 2: selector canónico `WorkOrderSelectorWithHover` (usa `CanonicalOtBadge` y
+ *   `formatWorkOrderTooltipCanonical` con vista flotante completa + casilla `(⚠️ Sin OT)`).
  */
 export default function ShipWorkOrderPickerModal({
   isOpen,
@@ -31,50 +32,23 @@ export default function ShipWorkOrderPickerModal({
   onSave,
   title = 'Asignar Buque y Orden de Trabajo'
 }) {
-  const ASTILLERO_STOCK_TOKEN = '__ASTILLERO_STOCK__'
-
   const [selectedShipId, setSelectedShipId] = useState(currentShipId || '')
   const [selectedWoId, setSelectedWoId] = useState(currentWorkOrderId || '')
-  const [leaveOtBlank, setLeaveOtBlank] = useState(!currentWorkOrderId)
-  const [shipQuery, setShipQuery] = useState('')
-  const [isShipDropdownOpen, setIsShipDropdownOpen] = useState(false)
+  const [leaveOtBlank, setLeaveOtBlank] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [showFinalized, setShowFinalized] = useState(false)
 
-  useEffect(() => {
-    if (isOpen) {
-      const initialShipId =
-        allowAstilleroStock && !currentShipId && currentChargeType && currentChargeType !== 'DIRECT'
-          ? ASTILLERO_STOCK_TOKEN
-          : (currentShipId || '')
-      setSelectedShipId(initialShipId)
-      setSelectedWoId(currentWorkOrderId || '')
-      setLeaveOtBlank(!currentWorkOrderId)
-      setShipQuery('')
-      setIsShipDropdownOpen(!initialShipId)
-      setSaving(false)
-      setShowFinalized(false)
-    }
-  }, [isOpen, currentShipId, currentWorkOrderId, currentChargeType, allowAstilleroStock])
-
-  // Cerrar con Escape
   useEffect(() => {
     if (!isOpen) return
-    function onKey(e) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isOpen, onClose])
+    const initialShipId =
+      allowAstilleroStock && !currentShipId && currentChargeType && currentChargeType !== 'DIRECT'
+        ? ASTILLERO_STOCK_TOKEN
+        : (currentShipId || '')
+    setSelectedShipId(initialShipId)
+    setSelectedWoId(currentWorkOrderId || '')
+    setLeaveOtBlank(false)
+    setSaving(false)
+  }, [isOpen, currentShipId, currentWorkOrderId, currentChargeType, allowAstilleroStock])
 
-  // Filtrado de Buques por búsqueda
-  const filteredShips = useMemo(() => {
-    if (!shipQuery.trim()) return ships
-    const q = shipQuery.toLowerCase().trim()
-    return ships.filter((s) => (s.name || '').toLowerCase().includes(q))
-  }, [ships, shipQuery])
-
-  // Identificar qué OTs tienen asignado al contratista / operario actual en work_items
   const contractorWoSet = useMemo(() => {
     const refName = (contractorName || workerName || '').toUpperCase().trim()
     if (!refName || !Array.isArray(workItems) || workItems.length === 0) return new Set()
@@ -89,64 +63,45 @@ export default function ShipWorkOrderPickerModal({
     return matched
   }, [workItems, contractorName, workerName])
 
-  // Todas las OTs consolidadas del barco
-  const allDeduplicatedWos = useMemo(() => {
+  const availableWorkOrders = useMemo(() => {
     if (!selectedShipId || selectedShipId === ASTILLERO_STOCK_TOKEN) return []
     const shipWos = workOrders.filter((wo) => String(wo.ship_id) === String(selectedShipId))
-    return deduplicateWorkOrdersWithScope(shipWos, workItems)
-  }, [workOrders, workItems, selectedShipId])
-
-  // Recuento de OTs finalizadas
-  const finalizedCount = useMemo(() => {
-    return allDeduplicatedWos.filter((w) => w.isActiveForImputation === false).length
-  }, [allDeduplicatedWos])
-
-  // OTs disponibles para carga de datos (excluyendo finalizadas a menos que se pidan o sea la actual)
-  const availableWorkOrders = useMemo(() => {
-    const pool = allDeduplicatedWos.filter((wo) => {
-      if (showFinalized) return true
-      if (currentWorkOrderId && (wo.id === currentWorkOrderId || (wo._allWoIds || []).includes(currentWorkOrderId))) {
-        return true
-      }
-      return wo.isActiveForImputation !== false
-    })
-
-    return pool.sort((a, b) => {
+    const deduped = deduplicateWorkOrdersWithScope(shipWos, workItems)
+    return deduped.sort((a, b) => {
       const aMatch = (a._allWoIds || [a.id]).some((id) => contractorWoSet.has(id)) ? 1 : 0
       const bMatch = (b._allWoIds || [b.id]).some((id) => contractorWoSet.has(id)) ? 1 : 0
       if (aMatch !== bMatch) return bMatch - aMatch
-      const aTitle = String(a.title || a.description || '').trim()
-      const bTitle = String(b.title || b.description || '').trim()
-      const byTitle = aTitle.localeCompare(bTitle, 'es', { sensitivity: 'base', numeric: true })
-      if (byTitle !== 0) return byTitle
-      return String(a.ot_number || '').localeCompare(String(b.ot_number || ''), undefined, { numeric: true })
+      const byTitle = String(a.title || a.description || '').trim().localeCompare(
+        String(b.title || b.description || '').trim(), 'es', { sensitivity: 'base', numeric: true }
+      )
+      return byTitle !== 0
+        ? byTitle
+        : String(a.ot_number || '').localeCompare(String(b.ot_number || ''), undefined, { numeric: true })
     })
-  }, [allDeduplicatedWos, contractorWoSet, showFinalized, currentWorkOrderId])
+  }, [workOrders, workItems, selectedShipId, contractorWoSet])
 
   const handleShipChange = (newShipId) => {
     setSelectedShipId(newShipId)
-    setIsShipDropdownOpen(false)
-    setShipQuery('')
     if (newShipId === ASTILLERO_STOCK_TOKEN || String(newShipId) !== String(currentShipId)) {
       setSelectedWoId('')
-      setLeaveOtBlank(true)
+      setLeaveOtBlank(false)
     }
   }
 
-  const handleSave = async () => {
-    if (!selectedShipId) {
-      alert('Debes seleccionar al menos un Buque o Destino.')
-      return
-    }
+  const handleWoChange = (nextWoId) => {
+    setSelectedWoId(nextWoId)
+    setLeaveOtBlank(!nextWoId)
+  }
 
+  const handleSave = async (e) => {
+    if (e?.preventDefault) e.preventDefault()
+    if (!selectedShipId) return alert('Debes seleccionar al menos un Buque o Destino.')
     try {
       setSaving(true)
       const isAstilleroStock = selectedShipId === ASTILLERO_STOCK_TOKEN
-      const finalShipId = isAstilleroStock ? null : selectedShipId
-      const finalWoId = isAstilleroStock || leaveOtBlank ? null : (selectedWoId || null)
       await onSave({
-        shipId: finalShipId,
-        workOrderId: finalWoId,
+        shipId: isAstilleroStock ? null : selectedShipId,
+        workOrderId: isAstilleroStock || leaveOtBlank ? null : (selectedWoId || null),
         isAstilleroStock
       })
       onClose()
@@ -162,355 +117,164 @@ export default function ShipWorkOrderPickerModal({
 
   const isAstilleroStock = selectedShipId === ASTILLERO_STOCK_TOKEN
   const selectedShip = !isAstilleroStock ? ships.find((s) => String(s.id) === String(selectedShipId)) : null
-  const contractorMatchedCount = availableWorkOrders.filter((w) =>
-    (w._allWoIds || [w.id]).some((id) => contractorWoSet.has(id))
-  ).length
+  const activeOtCount = availableWorkOrders.filter((w) => w.isActiveForImputation !== false).length
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col font-sans"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Cabecera */}
-        <div className="px-5 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-700 flex items-center justify-center text-cyan-400">
-              <Anchor className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white tracking-wide">{title}</h3>
-              <p className="text-[11px] text-slate-400">
-                {contractorName || workerName ? (
-                  <span>
-                    Fila de: <strong className="text-amber-300">{contractorName || workerName}</strong>
-                  </span>
-                ) : (
-                  'Selecciona buque y OT o déjala en blanco para imputación posterior'
-                )}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <CanonicalStepperModal
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidthClass="max-w-4xl"
+      icon={
+        <div className="w-7 h-7 rounded-lg bg-cyan-950 border border-cyan-600/70 flex items-center justify-center text-cyan-300">
+          <Anchor className="w-4 h-4" />
         </div>
-
-        {/* Cuerpo */}
-        <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-          {/* PASO 1: BUQUE / DESTINO */}
+      }
+      title={title}
+      subtitle={
+        contractorName || workerName
+          ? `Fila de: ${contractorName || workerName}`
+          : 'Elegí Buque y Orden de Trabajo o dejá la OT en blanco para imputación posterior'
+      }
+      onSubmit={handleSave}
+      footerLeft={
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={saving}
+          className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer"
+        >
+          Cancelar (Esc)
+        </button>
+      }
+      footerRight={
+        <button
+          type="submit"
+          disabled={saving || !selectedShipId}
+          className="px-5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Check className="w-4 h-4 stroke-[3]" />
+          <span>{saving ? 'Guardando...' : 'Aplicar Asignación'}</span>
+        </button>
+      }
+    >
+      <CanonicalStepperStep
+        step={1}
+        helpEntry={PICKER_SHIP_WO_STEP_HELP[1]}
+        title="DESTINO E IMPUTACIÓN DE OBRA"
+        subtitle="Barco / Buque ➔ Orden de Trabajo (OT)"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11px] uppercase font-bold text-slate-200 mb-1.5 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Ship className="w-3.5 h-3.5 text-cyan-400" />
-                <span>1. Buque / Destino</span>
-              </div>
-              <span className="text-[10px] text-slate-400 font-normal">
-                Si cambia el barco, la OT se resetea
-              </span>
+            <label className="block text-slate-400 font-semibold text-[11px] mb-1">
+              Barco / Buque <span className="text-rose-400">*</span>
             </label>
-
-            {/* Casilla compacta con buque cargado + disparador de desplegable */}
-            <button
-              type="button"
-              onClick={() => setIsShipDropdownOpen((prev) => !prev)}
-              aria-expanded={isShipDropdownOpen}
-              className={`w-full px-3 py-2 rounded-lg border text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
-                isAstilleroStock
-                  ? 'bg-emerald-950/60 border-emerald-500/70 text-emerald-200 font-bold hover:border-emerald-400'
-                  : selectedShip
-                  ? 'bg-cyan-700/80 border-cyan-400/70 text-white font-bold hover:bg-cyan-700'
-                  : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-cyan-400'
-              }`}
+            <select
+              autoFocus
+              value={selectedShipId}
+              onChange={(e) => handleShipChange(e.target.value)}
+              required
+              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-cyan-400"
             >
-              <span className="flex items-center gap-2 min-w-0 truncate">
-                {isAstilleroStock ? (
-                  <>
-                    <Building2 className="w-3.5 h-3.5 shrink-0 text-emerald-300" />
-                    <span className="truncate">ASTILLERO — PAÑOL / STOCK GENERAL</span>
-                  </>
-                ) : selectedShip ? (
-                  <>
-                    <Ship className="w-3.5 h-3.5 shrink-0 text-cyan-200" />
-                    <span className="truncate">{selectedShip.name}</span>
-                    {selectedShip.client_name && (
-                      <span className="text-[10px] text-cyan-100/80 font-normal truncate">
-                        ({selectedShip.client_name})
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Ship className="w-3.5 h-3.5 shrink-0 text-slate-500" />
-                    <span>Seleccionar Buque / Destino...</span>
-                  </>
-                )}
-              </span>
-
-              <span className="flex items-center gap-1.5 shrink-0">
-                {selectedShipId && <Check className="w-3.5 h-3.5 text-cyan-200" />}
-                <ChevronDown
-                  className={`w-4 h-4 transition-transform duration-150 ${
-                    isShipDropdownOpen ? 'rotate-180' : ''
-                  }`}
-                />
-              </span>
-            </button>
-
-            {/* Desplegable de búsqueda y selección (solo visible si el usuario lo abre) */}
-            {isShipDropdownOpen && (
-              <div className="mt-2 p-2 rounded-xl border border-slate-700/80 bg-slate-950/90 space-y-2">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                  <input
-                    type="text"
-                    autoFocus
-                    value={shipQuery}
-                    onChange={(e) => setShipQuery(e.target.value)}
-                    placeholder="Buscar barco por nombre o iniciales..."
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                  />
-                </div>
-
-                <div className="max-h-36 overflow-y-auto border border-slate-800 rounded-lg bg-slate-950 p-1 space-y-0.5">
-                  {allowAstilleroStock && (
-                    <button
-                      type="button"
-                      onClick={() => handleShipChange(ASTILLERO_STOCK_TOKEN)}
-                      className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                        selectedShipId === ASTILLERO_STOCK_TOKEN
-                          ? 'bg-emerald-600 text-white font-bold'
-                          : 'text-emerald-300 hover:bg-emerald-950/40'
-                      }`}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5" />
-                        <span>ASTILLERO — PAÑOL / STOCK GENERAL</span>
-                      </span>
-                      {selectedShipId === ASTILLERO_STOCK_TOKEN && <Check className="w-3.5 h-3.5 shrink-0" />}
-                    </button>
-                  )}
-
-                  {filteredShips.map((s) => {
-                    const isSelected = String(selectedShipId) === String(s.id)
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => handleShipChange(s.id)}
-                        className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-cyan-600 text-white font-bold'
-                            : 'text-slate-200 hover:bg-slate-800'
-                        }`}
-                      >
-                        <span className="flex items-center gap-1.5 truncate">
-                          <Ship className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-                          <span className="truncate">{s.name}</span>
-                          {s.client_name && (
-                            <span className="text-[10px] text-slate-400 font-normal">({s.client_name})</span>
-                          )}
-                        </span>
-                        {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
-                      </button>
-                    )
-                  })}
-
-                  {filteredShips.length === 0 && (
-                    <div className="px-3 py-2 text-center text-xs text-slate-500 italic">
-                      No se encontraron buques con ese nombre
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+              <option value="">Seleccionar Barco...</option>
+              {allowAstilleroStock && (
+                <option value={ASTILLERO_STOCK_TOKEN}>ASTILLERO — PAÑOL / STOCK GENERAL</option>
+              )}
+              {ships.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.client_name ? ` (${s.client_name})` : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* PASO 2: ORDEN DE TRABAJO */}
-          {selectedShipId && (
-            isAstilleroStock ? (
-              <div className="p-3 bg-emerald-950/30 border border-emerald-500/40 rounded-xl text-emerald-200 text-xs flex items-start gap-2">
-                <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <div className="font-bold text-xs">Destino Astillero / Stock de Pañol</div>
-                  <p className="text-[10px] text-slate-300 mt-0.5">
-                    Quedará registrado como reposición de stock o insumo general del astillero sin OT de buque.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="pt-2 border-t border-slate-800/80 space-y-2">
-                <label className="block text-[11px] uppercase font-bold text-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <ClipboardList className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>2. Orden de Trabajo (OT)</span>
-                  </div>
-                  {selectedShip && (
-                    <span className="text-[10px] text-slate-400 font-normal">
-                      {availableWorkOrders.length} OT{availableWorkOrders.length !== 1 ? 's' : ''} activa{availableWorkOrders.length !== 1 ? 's' : ''} en {selectedShip.name}
-                      {contractorMatchedCount > 0 ? ` (${contractorMatchedCount} ★)` : ''}
-                    </span>
-                  )}
-                </label>
-
-                {/* CASILLA REGLA DURA: DEJAR OT EN BLANCO */}
-                <div
-                  onClick={() => {
-                    const next = !leaveOtBlank
-                    setLeaveOtBlank(next)
-                    if (next) setSelectedWoId('')
-                  }}
-                  className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-start gap-2.5 ${
-                    leaveOtBlank
-                      ? 'bg-amber-950/45 border-amber-400 text-amber-200 shadow-md shadow-amber-950/30'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-slate-400 font-semibold text-[11px]">
+                Orden de Trabajo (OT){selectedShip ? ` · ${activeOtCount} activas` : ''}
+              </label>
+              {selectedShip && !isAstilleroStock && (
+                <label
+                  className="flex items-center gap-1 cursor-pointer text-[10px] text-amber-400 select-none"
+                  title="Guarda el buque sin OT y suma +1 al KPI Falta Cargar OT"
                 >
                   <input
                     type="checkbox"
+                    tabIndex={-1}
                     checked={leaveOtBlank}
-                    onChange={() => {}}
-                    className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 cursor-pointer accent-amber-500"
+                    onChange={(e) => {
+                      setLeaveOtBlank(e.target.checked)
+                      if (e.target.checked) setSelectedWoId('')
+                    }}
+                    className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0 cursor-pointer accent-amber-500"
                   />
-                  <div className="flex-1">
-                    <div className="font-bold text-xs flex items-center gap-1 text-amber-300">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>Dejar OT en blanco (OT aún no abierta o pendiente)</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
-                      Guarda el barco hoy y suma <strong>+1 al KPI &quot;⚠️ Falta Cargar OT&quot;</strong> (alerta activa para el usuario y el Administrador).
-                    </p>
-                  </div>
-                </div>
+                  <span>(⚠️ Sin OT)</span>
+                </label>
+              )}
+            </div>
 
-                {/* SELECTOR INTERACTIVO Y LIMPIO DE OTs CON HOVER CANÓNICO */}
-                {!leaveOtBlank && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span>Selecciona una OT de la lista (pasa el cursor para ver el alcance):</span>
-                      {finalizedCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setShowFinalized(!showFinalized)}
-                          className="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-semibold flex items-center gap-1 cursor-pointer"
-                        >
-                          {showFinalized ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                          <span>{showFinalized ? 'Ocultar finalizadas' : `Ver finalizadas (${finalizedCount})`}</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {availableWorkOrders.length === 0 ? (
-                      <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-amber-300/90 text-center text-xs space-y-1">
-                        <AlertTriangle className="w-4 h-4 text-amber-400 mx-auto" />
-                        <div>No hay OTs activas en este buque.</div>
-                        <div className="text-[10px] text-slate-400">
-                          {finalizedCount > 0
-                            ? `Existen ${finalizedCount} OTs pero ya están finalizadas. Haz clic arriba en "Ver finalizadas" si requieres imputar excepcionalmente.`
-                            : 'Se guardará como "⚠️ Sin OT" para que Admin o Jefe abran la obra.'}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="max-h-60 overflow-y-auto border border-slate-700/80 rounded-xl bg-slate-950 p-1 space-y-1">
-                        {availableWorkOrders.map((wo) => {
-                          const isSelected = String(selectedWoId) === String(wo.id)
-                          const isForContractor = (wo._allWoIds || [wo.id]).some((id) => contractorWoSet.has(id))
-                          const otNum = wo.ot_number || (wo.id ? String(wo.id).slice(0, 4) : 'OT')
-                          const otTitle = wo.title || wo.description || 'Sin título'
-                          const isClosed = wo.isActiveForImputation === false
-
-                          return (
-                            <button
-                              key={wo.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedWoId(wo.id)
-                                setLeaveOtBlank(false)
-                              }}
-                              title={formatWorkOrderTooltipCanonical(wo, selectedShip, workItems, workOrders)}
-                              className={`w-full text-left p-2 rounded-lg border text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
-                                isSelected
-                                  ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-md shadow-emerald-950/40'
-                                  : isClosed
-                                  ? 'bg-slate-900/40 border-slate-800 text-slate-500 opacity-60 hover:bg-slate-800/60 hover:border-cyan-400/60'
-                                  : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:bg-slate-800/80 hover:border-cyan-400 hover:text-cyan-200'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
-                                  isSelected
-                                    ? 'bg-emerald-950 text-emerald-300 border-emerald-600'
-                                    : 'bg-slate-950 text-slate-400 border-slate-700'
-                                }`}>
-                                  OT #{otNum}
-                                </span>
-                                <span className="font-bold text-xs truncate">
-                                  {otTitle}
-                                </span>
-                                {isForContractor && (
-                                  <span className="text-[9px] text-amber-300 font-bold flex items-center gap-0.5 shrink-0 bg-amber-950/70 px-1 py-0.2 rounded border border-amber-600/60">
-                                    <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                                    <span>Asignada</span>
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                {isClosed ? (
-                                  <span className="text-[9px] px-1 py-0.2 rounded bg-slate-950 text-slate-400 border border-slate-800 font-bold">
-                                    Finalizada
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
-                                    {wo.consolidatedTasks?.length || 0} tareas
-                                  </span>
-                                )}
-                                {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
+            {isAstilleroStock ? (
+              <div className="px-2.5 py-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Stock General de Pañol (Sin OT de buque)</span>
               </div>
-            )
+            ) : (
+              <WorkOrderSelectorWithHover
+                value={selectedWoId}
+                onChange={handleWoChange}
+                availableWos={availableWorkOrders}
+                ship={selectedShip}
+                workItems={workItems}
+                allWorkOrders={workOrders}
+                contractorName={contractorName || workerName}
+                disabled={!selectedShipId || leaveOtBlank}
+                isSinOt={leaveOtBlank}
+                placeholder={!selectedShipId ? '-- 1° elegí un barco --' : '-- Seleccionar OT --'}
+                showPreviewCard={false}
+              />
+            )}
+          </div>
+        </div>
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep
+        step={2}
+        helpEntry={PICKER_SHIP_WO_STEP_HELP[2]}
+        title="RESUMEN DE IMPUTACIÓN"
+        subtitle="Verificá el destino antes de aplicar"
+        isLast={true}
+      >
+        <div className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-slate-300">
+            {isAstilleroStock ? (
+              <>
+                <Building2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Se imputará a <strong className="text-emerald-300">ASTILLERO — PAÑOL / STOCK GENERAL</strong>.</span>
+              </>
+            ) : !selectedShip ? (
+              <span className="text-slate-500">Elegí un barco arriba para habilitar las Órdenes de Trabajo.</span>
+            ) : leaveOtBlank || !selectedWoId ? (
+              <>
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  Buque <strong className="text-white">{selectedShip.name}</strong> · <strong className="text-amber-300">⚠️ Sin OT</strong> (suma al KPI &ldquo;Falta Cargar OT&rdquo;).
+                </span>
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  Buque <strong className="text-white">{selectedShip.name}</strong> · OT seleccionada lista para aplicar.
+                </span>
+              </>
+            )}
+          </div>
+          {selectedShip && !isAstilleroStock && (
+            <span className="text-[10px] text-slate-500">
+              Pasá el mouse sobre cualquier OT del desplegable para ver su alcance completo.
+            </span>
           )}
         </div>
-
-        {/* Pie */}
-        <div className="px-5 py-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-800 cursor-pointer"
-          >
-            Cancelar (Esc)
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !selectedShipId}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-lg ${
-              saving || !selectedShipId
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-950/50'
-            }`}
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>{saving ? 'Guardando...' : 'Aplicar Asignación'}</span>
-          </button>
-        </div>
-      </div>
-    </div>
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }

@@ -38,6 +38,12 @@ import {
   cleanLocation,
   calculateStayDays
 } from '../../lib/shipsConstants'
+import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import {
+  SHIPS_FORM_STEP_HELP,
+  SHIPS_STAY_STEP_HELP,
+  SHIPS_OWNER_STEP_HELP
+} from '../../lib/businessHelpRegistry.js'
 
 // ==============================================================================
 // MODAL 1: FICHA TÉCNICA DINÁMICA 360° (PLANOS, ESPECIFICACIONES, ARMADOR, OTS)
@@ -598,293 +604,132 @@ export function ShipFormModal({
   if (!modalShip.isOpen || !modalShip.ship) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-      <div className="alon-modal-card max-w-5xl">
-        <div className="alon-modal-header">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Ship className="w-5 h-5 text-primary shrink-0" />
-            <div className="min-w-0">
-              <h3 className="font-black text-white text-sm truncate">
-                {modalShip.ship.id ? 'Editar Ficha Técnica de Buque' : 'Alta de Nuevo Buque (Administrador)'}
-              </h3>
-              <p className="text-[11px] text-slate-400 truncate">
-                Recorrido guiado por color y tecla <strong className="text-slate-200">Tab</strong>: 1° Identificación Naval ➔ 2° Medidas Principales ➔ 3° Inventario Técnico a Bordo.
-              </p>
-            </div>
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={() => setModalShip({ isOpen: false, ship: null, isCustomVesselType: false, customVesselTypeVal: '' })}
+      maxWidthClass="max-w-6xl"
+      icon={<Ship className="w-5 h-5 text-primary" />}
+      title={modalShip.ship.id ? `EDITAR BUQUE — ${cleanShipName(modalShip.ship.name)}` : 'ALTA DE NUEVO BUQUE'}
+      onSubmit={handleSaveShip}
+      footerLeft={
+        <button type="button" onClick={() => setModalShip({ isOpen: false, ship: null, isCustomVesselType: false, customVesselTypeVal: '' })} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" disabled={submitting} className="px-5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-lg shadow-emerald-500/20">
+          <Save className="w-4 h-4" /><span>Guardar Buque</span>
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={SHIPS_FORM_STEP_HELP[1]} title="IDENTIFICACIÓN NAVAL Y ARMADOR" subtitle="Nombre ➔ Armador ➔ Tipo ➔ Matrícula ➔ Locación">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nombre del Buque <span className="text-rose-400">*</span></label>
+            <input type="text" autoFocus required placeholder="Ej: TRITON I" value={modalShip.ship.name || ''} onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, name: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 uppercase font-bold" />
           </div>
-          <button
-            type="button"
-            tabIndex={-1}
-            onClick={() => setModalShip({ isOpen: false, ship: null, isCustomVesselType: false, customVesselTypeVal: '' })}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Empresa Propietaria / Armador</label>
+            <select value={modalShip.ship.owner_id || ''} onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, owner_id: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-medium">
+              <option value="">-- Seleccionar Armador --</option>
+              {owners.map((o) => <option key={o.id} value={o.id}>{o.name} {o.armador_name ? `(${o.armador_name})` : ''}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Tipo de Embarcación</label>
+            <select
+              value={modalShip.isCustomVesselType ? '__otro__' : (modalShip.ship.vessel_type || 'Pesquero')}
+              onChange={(e) => {
+                if (e.target.value === '__otro__') setModalShip({ ...modalShip, isCustomVesselType: true, customVesselTypeVal: modalShip.ship.vessel_type || '' })
+                else setModalShip({ ...modalShip, isCustomVesselType: false, ship: { ...modalShip.ship, vessel_type: e.target.value } })
+              }}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-medium"
+            >
+              {PREDEFINED_VESSEL_TYPES.map((vt) => <option key={vt} value={vt}>{vt}</option>)}
+              <option value="__otro__">✏️ + Otro (Personalizado)...</option>
+            </select>
+            {modalShip.isCustomVesselType && (
+              <input type="text" required placeholder="Escribí tipo..." value={modalShip.customVesselTypeVal} onChange={(e) => setModalShip({ ...modalShip, customVesselTypeVal: e.target.value })} className="w-full mt-1 bg-slate-950 border border-cyan-400/60 rounded-lg px-2 py-1 text-xs text-white focus:outline-none" />
+            )}
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Matrícula Naval</label>
+            <input type="text" placeholder="Ej: 0124-M" value={modalShip.ship.matricula || ''} onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, matricula: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono" />
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Locación Actual</label>
+            <select value={cleanLocation(modalShip.ship.current_location)} onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, current_location: cleanLocation(e.target.value) } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-bold">
+              {STANDARD_LOCATIONS.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
+            </select>
+          </div>
         </div>
+      </CanonicalStepperStep>
 
-        <form onSubmit={handleSaveShip} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
-          <div className="alon-modal-body">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
-              {/* COLUMNA IZQUIERDA: BLOQUES 1 Y 2 */}
-              <div className="space-y-3">
-                {/* BLOQUE 1: IDENTIFICACIÓN NAVAL Y ARMADOR */}
-                <div className="alon-chunk-sky space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-sky-500/20 pb-1">
-                    <span className="font-black text-sky-400 uppercase tracking-wider text-[11px]">
-                      1. Identificación Naval y Empresa Propietaria
-                    </span>
-                    <span className="text-[10px] text-slate-400">Datos Maestros</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Nombre del buque */}
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                        Nombre del Buque <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        autoFocus
-                        required
-                        placeholder="Ej: TRITON I"
-                        value={modalShip.ship.name || ''}
-                        onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, name: e.target.value } })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary uppercase font-bold"
-                      />
-                    </div>
-
-                    {/* Empresa Propietaria / Armador */}
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                        Empresa Propietaria / Armador
-                      </label>
-                      <select
-                        value={modalShip.ship.owner_id || ''}
-                        onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, owner_id: e.target.value } })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
-                      >
-                        <option value="">-- Seleccionar Armador --</option>
-                        {owners.map(o => (
-                          <option key={o.id} value={o.id}>{o.name} {o.armador_name ? `(${o.armador_name})` : ''}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Tipo de Embarcación */}
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                        Tipo de Embarcación
-                      </label>
-                      <select
-                        value={modalShip.isCustomVesselType ? '__otro__' : (modalShip.ship.vessel_type || 'Pesquero')}
-                        onChange={(e) => {
-                          if (e.target.value === '__otro__') {
-                            setModalShip({
-                              ...modalShip,
-                              isCustomVesselType: true,
-                              customVesselTypeVal: modalShip.ship.vessel_type || ''
-                            })
-                          } else {
-                            setModalShip({
-                              ...modalShip,
-                              isCustomVesselType: false,
-                              ship: { ...modalShip.ship, vessel_type: e.target.value }
-                            })
-                          }
-                        }}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium"
-                      >
-                        {PREDEFINED_VESSEL_TYPES.map(vt => (
-                          <option key={vt} value={vt}>{vt}</option>
-                        ))}
-                        <option value="__otro__">✏️ + Otro (Personalizado)...</option>
-                      </select>
-
-                      {modalShip.isCustomVesselType && (
-                        <input
-                          type="text"
-                          required
-                          placeholder="Escribí tipo de embarcación..."
-                          value={modalShip.customVesselTypeVal}
-                          onChange={(e) => setModalShip({ ...modalShip, customVesselTypeVal: e.target.value })}
-                          className="w-full mt-1.5 bg-slate-950 border border-primary/60 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
-                        />
-                      )}
-                    </div>
-
-                    {/* Matrícula */}
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">Matrícula Naval</label>
-                      <input
-                        type="text"
-                        placeholder="Ej: 0124-M"
-                        value={modalShip.ship.matricula || ''}
-                        onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, matricula: e.target.value } })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-mono"
-                      />
-                    </div>
-
-                    {/* Locación Inicial Limpia */}
-                    <div className="sm:col-span-2">
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">Locación Actual en Astillero</label>
-                      <select
-                        value={cleanLocation(modalShip.ship.current_location)}
-                        onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, current_location: cleanLocation(e.target.value) } })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-bold"
-                      >
-                        {STANDARD_LOCATIONS.map(loc => (
-                          <option key={loc} value={loc}>{loc}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* BLOQUE 2: MEDIDAS NAVALES PRINCIPALES */}
-                <div className="alon-chunk-indigo space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-indigo-500/20 pb-1">
-                    <span className="font-black text-indigo-400 uppercase tracking-wider text-[11px]">
-                      2. Medidas Principales (Jefe de Obra)
-                    </span>
-                    <span className="text-[10px] text-slate-400">Dimensiones de casco</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <div>
-                      <label className="text-[10px] text-slate-300 font-bold block mb-1 font-mono">Eslora (m)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Ej: 28.5"
-                        value={modalShip.ship.eslora_mts || ''}
-                        onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, eslora_mts: e.target.value } })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-300 font-bold block mb-1 font-mono">Manga (m)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Ej: 7.2"
-                        value={modalShip.ship.manga_mts || ''}
-                        onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, manga_mts: e.target.value } })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-300 font-bold block mb-1 font-mono">Puntal (m)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Ej: 3.4"
-                        value={modalShip.ship.puntal_mts || ''}
-                        onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, puntal_mts: e.target.value } })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-300 font-bold block mb-1 font-mono">Sup. Casco (m²)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Ej: 320"
-                        value={modalShip.ship.superficie_casco_m2 || ''}
-                        onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, superficie_casco_m2: e.target.value } })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-400"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* COLUMNA DERECHA: BLOQUE 3 */}
-              <div className="alon-chunk-emerald space-y-2.5">
-                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1">
-                  <span className="font-black text-emerald-400 uppercase tracking-wider text-[11px]">
-                    3. Inventario Técnico a Bordo (Válvulas, Tanques, Pocetes)
-                  </span>
-                  <span className="text-[10px] text-slate-400">Relevamiento técnico</span>
-                </div>
-
-                <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
-                  {DEFAULT_TECH_COMPONENTS.map(comp => {
-                    const currentComp = (modalShip.ship.technical_specs || {})[comp.key] || { quantity: 0, notes: '' }
-                    return (
-                      <div key={comp.key} className="p-2 rounded-lg bg-slate-900 border border-slate-800 space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <strong className="text-xs text-white block truncate">{comp.label}</strong>
-                            <span className="text-[10px] text-slate-400 block truncate">{comp.hint}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[10px] text-slate-400 font-bold">Cant:</span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={currentComp.quantity || 0}
-                              onChange={(e) => {
-                                const q = parseInt(e.target.value, 10) || 0
-                                const updatedSpecs = {
-                                  ...(modalShip.ship.technical_specs || {}),
-                                  [comp.key]: { ...currentComp, quantity: q }
-                                }
-                                setModalShip({
-                                  ...modalShip,
-                                  ship: { ...modalShip.ship, technical_specs: updatedSpecs }
-                                })
-                              }}
-                              className="w-16 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white text-center font-mono font-bold focus:outline-none focus:border-emerald-400"
-                            />
-                          </div>
-                        </div>
-
-                        {currentComp.quantity > 0 && (
-                          <input
-                            type="text"
-                            placeholder={`Observaciones de ${comp.label}...`}
-                            value={currentComp.notes || ''}
-                            onChange={(e) => {
-                              const updatedSpecs = {
-                                ...(modalShip.ship.technical_specs || {}),
-                                [comp.key]: { ...currentComp, notes: e.target.value }
-                              }
-                              setModalShip({
-                                ...modalShip,
-                                ship: { ...modalShip.ship, technical_specs: updatedSpecs }
-                              })
-                            }}
-                            className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-400"
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
+      <CanonicalStepperStep step={2} helpEntry={SHIPS_FORM_STEP_HELP[2]} title="MEDIDAS NAVALES PRINCIPALES">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div>
+            <label className="text-[11px] text-slate-400 font-semibold block mb-1 font-mono">Eslora (m)</label>
+            <input type="number" step="0.01" placeholder="Ej: 28.5" value={modalShip.ship.eslora_mts || ''} onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, eslora_mts: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
           </div>
-
-          <div className="alon-modal-footer">
-            <button
-              type="button"
-              onClick={() => setModalShip({ isOpen: false, ship: null, isCustomVesselType: false, customVesselTypeVal: '' })}
-              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-5 py-1.5 bg-gradient-to-r from-primary to-blue-500 hover:brightness-110 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              <span>Guardar Buque</span>
-            </button>
+          <div>
+            <label className="text-[11px] text-slate-400 font-semibold block mb-1 font-mono">Manga (m)</label>
+            <input type="number" step="0.01" placeholder="Ej: 7.2" value={modalShip.ship.manga_mts || ''} onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, manga_mts: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
           </div>
-        </form>
-      </div>
-    </div>
+          <div>
+            <label className="text-[11px] text-slate-400 font-semibold block mb-1 font-mono">Puntal (m)</label>
+            <input type="number" step="0.01" placeholder="Ej: 3.4" value={modalShip.ship.puntal_mts || ''} onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, puntal_mts: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-400 font-semibold block mb-1 font-mono">Sup. Casco (m²)</label>
+            <input type="number" step="0.01" placeholder="Ej: 320" value={modalShip.ship.superficie_casco_m2 || ''} onChange={(e) => setModalShip({ ...modalShip, ship: { ...modalShip.ship, superficie_casco_m2: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
+          </div>
+        </div>
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep step={3} helpEntry={SHIPS_FORM_STEP_HELP[3]} title="INVENTARIO TÉCNICO A BORDO (VÁLVULAS, TANQUES, POCETES)" isLast={true}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[30vh] overflow-y-auto pr-1">
+          {DEFAULT_TECH_COMPONENTS.map((comp) => {
+            const currentComp = (modalShip.ship.technical_specs || {})[comp.key] || { quantity: 0, notes: '' }
+            return (
+              <div key={comp.key} className="p-2 rounded-xl bg-slate-950/90 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <strong className="text-xs text-white block truncate">{comp.label}</strong>
+                    <span className="text-[10px] text-slate-500 block truncate">{comp.hint}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] text-slate-400 font-bold">Cant:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={currentComp.quantity || 0}
+                      onChange={(e) => {
+                        const q = parseInt(e.target.value, 10) || 0
+                        const updatedSpecs = { ...(modalShip.ship.technical_specs || {}), [comp.key]: { ...currentComp, quantity: q } }
+                        setModalShip({ ...modalShip, ship: { ...modalShip.ship, technical_specs: updatedSpecs } })
+                      }}
+                      className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white text-center font-mono font-bold focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                </div>
+                {currentComp.quantity > 0 && (
+                  <input
+                    type="text"
+                    placeholder={`Observaciones de ${comp.label}...`}
+                    value={currentComp.notes || ''}
+                    onChange={(e) => {
+                      const updatedSpecs = { ...(modalShip.ship.technical_specs || {}), [comp.key]: { ...currentComp, notes: e.target.value } }
+                      setModalShip({ ...modalShip, ship: { ...modalShip.ship, technical_specs: updatedSpecs } })
+                    }}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 
@@ -901,107 +746,54 @@ export function StayFormModal({
   if (!modalStay.isOpen || !modalStay.stay) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md p-5 md:p-6 shadow-2xl space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 className="font-extrabold text-white text-base flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-cyan-400" />
-            <span>{modalStay.stay.id ? 'Editar Movimiento' : 'Registrar Nuevo Movimiento'}</span>
-          </h3>
-          <button
-            type="button"
-            onClick={() => setModalStay({ isOpen: false, stay: null, defaultShipId: '' })}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSaveStay} className="space-y-3">
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={() => setModalStay({ isOpen: false, stay: null, defaultShipId: '' })}
+      maxWidthClass="max-w-4xl"
+      icon={<Calendar className="w-5 h-5 text-cyan-400" />}
+      title={modalStay.stay.id ? 'EDITAR MOVIMIENTO / ESTADÍA' : 'REGISTRAR NUEVO MOVIMIENTO DE BUQUE'}
+      onSubmit={handleSaveStay}
+      footerLeft={
+        <button type="button" onClick={() => setModalStay({ isOpen: false, stay: null, defaultShipId: '' })} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" disabled={submitting} className="px-5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-lg shadow-emerald-500/20">
+          <Save className="w-4 h-4" /><span>Guardar Movimiento</span>
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={SHIPS_STAY_STEP_HELP[1]} title="BUQUE, LOCACIÓN Y FECHAS DE ESTADÍA">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Buque *</label>
-            <select
-              required
-              value={modalStay.stay.ship_id}
-              onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, ship_id: e.target.value } })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold"
-            >
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Buque <span className="text-rose-400">*</span></label>
+            <select autoFocus required value={modalStay.stay.ship_id} onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, ship_id: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400">
               <option value="">-- Seleccionar Buque --</option>
-              {ships.map(s => (
-                <option key={s.id} value={s.id}>{cleanShipName(s.name)}</option>
-              ))}
+              {ships.map((s) => <option key={s.id} value={s.id}>{cleanShipName(s.name)}</option>)}
             </select>
           </div>
-
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Locación *</label>
-            <select
-              required
-              value={cleanLocation(modalStay.stay.location)}
-              onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, location: cleanLocation(e.target.value) } })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold"
-            >
-              {STANDARD_LOCATIONS.map(loc => (
-                <option key={loc} value={loc}>{loc}</option>
-              ))}
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Locación <span className="text-rose-400">*</span></label>
+            <select required value={cleanLocation(modalStay.stay.location)} onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, location: cleanLocation(e.target.value) } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400">
+              {STANDARD_LOCATIONS.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
             </select>
           </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Fecha Comienzo *</label>
-              <input
-                type="date"
-                required
-                value={modalStay.stay.start_date || ''}
-                onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, start_date: e.target.value } })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">
-                Fecha Fin <span className="text-[10px] text-slate-500 font-normal">(Vacío = HOY)</span>
-              </label>
-              <input
-                type="date"
-                value={modalStay.stay.end_date || ''}
-                onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, end_date: e.target.value } })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-              />
-            </div>
-          </div>
-
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Observaciones</label>
-            <textarea
-              rows={2}
-              placeholder="Detalles del movimiento o cambio de amarre..."
-              value={modalStay.stay.notes || ''}
-              onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, notes: e.target.value } })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-            />
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Fecha Comienzo <span className="text-rose-400">*</span></label>
+            <input type="date" required value={modalStay.stay.start_date || ''} onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, start_date: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
           </div>
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Fecha Fin (Vacío = HOY)</label>
+            <input type="date" value={modalStay.stay.end_date || ''} onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, end_date: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
+          </div>
+        </div>
+      </CanonicalStepperStep>
 
-          <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setModalStay({ isOpen: false, stay: null, defaultShipId: '' })}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-5 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              <span>Guardar Movimiento</span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <CanonicalStepperStep step={2} helpEntry={SHIPS_STAY_STEP_HELP[2]} title="OBSERVACIONES DEL MOVIMIENTO" isLast={true}>
+        <input type="text" placeholder="Detalles del movimiento, subida a grada o cambio de amarre..." value={modalStay.stay.notes || ''} onChange={(e) => setModalStay({ ...modalStay, stay: { ...modalStay.stay, notes: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400" />
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 
@@ -1017,111 +809,58 @@ export function OwnerFormModal({
   if (!modalOwner.isOpen || !modalOwner.owner) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md p-5 md:p-6 shadow-2xl space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 className="font-extrabold text-white text-base flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-amber-400" />
-            <span>{modalOwner.owner.id ? 'Editar Armador' : 'Nueva Empresa Armadora'}</span>
-          </h3>
-          <button
-            type="button"
-            onClick={() => setModalOwner({ isOpen: false, owner: null })}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={() => setModalOwner({ isOpen: false, owner: null })}
+      maxWidthClass="max-w-4xl"
+      icon={<Building2 className="w-5 h-5 text-amber-400" />}
+      title={modalOwner.owner.id ? `EDITAR ARMADOR — ${modalOwner.owner.name}` : 'NUEVA EMPRESA ARMADORA'}
+      onSubmit={handleSaveOwner}
+      footerLeft={
+        <button type="button" onClick={() => setModalOwner({ isOpen: false, owner: null })} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" disabled={submitting} className="px-5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+          <Save className="w-4 h-4" /><span>Guardar Armador</span>
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={SHIPS_OWNER_STEP_HELP[1]} title="RAZÓN SOCIAL, ARMADOR Y CUIT">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Razón Social o Empresa <span className="text-rose-400">*</span></label>
+            <input type="text" autoFocus required placeholder="Ej: Pesquera Aldana S.A." value={modalOwner.owner.name || ''} onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, name: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-400" />
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nombre del Armador</label>
+            <input type="text" placeholder="Ej: Carlos Aldana" value={modalOwner.owner.armador_name || ''} onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, armador_name: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400" />
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">CUIT</label>
+            <input type="text" placeholder="30-12345678-9" value={modalOwner.owner.cuit || ''} onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, cuit: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
+          </div>
         </div>
+      </CanonicalStepperStep>
 
-        <form onSubmit={handleSaveOwner} className="space-y-3">
+      <CanonicalStepperStep step={2} helpEntry={SHIPS_OWNER_STEP_HELP[2]} title="CONTACTO OPERATIVO Y FACTURACIÓN" isLast={true}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Razón Social o Empresa *</label>
-            <input
-              type="text"
-              required
-              placeholder="Ej: Pesquera Aldana S.A."
-              value={modalOwner.owner.name || ''}
-              onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, name: e.target.value } })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-            />
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Teléfono Armador</label>
+            <input type="text" placeholder="+54 9 223 555-0192" value={modalOwner.owner.armador_phone || ''} onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, armador_phone: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
           </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Nombre del Armador</label>
-              <input
-                type="text"
-                placeholder="Ej: Carlos Aldana"
-                value={modalOwner.owner.armador_name || ''}
-                onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, armador_name: e.target.value } })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Teléfono Armador</label>
-              <input
-                type="text"
-                placeholder="Ej: +54 9 223 555-0192"
-                value={modalOwner.owner.armador_phone || ''}
-                onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, armador_phone: e.target.value } })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-              />
-            </div>
-          </div>
-
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Email Principal (Operativo)</label>
-            <input
-              type="email"
-              placeholder="operaciones@armador.com"
-              value={modalOwner.owner.email_principal || ''}
-              onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, email_principal: e.target.value } })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-            />
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Email Principal (Operativo)</label>
+            <input type="email" placeholder="operaciones@armador.com" value={modalOwner.owner.email_principal || ''} onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, email_principal: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
           </div>
-
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Email Secundario (Facturación/Admin)</label>
-            <input
-              type="email"
-              placeholder="facturacion@armador.com"
-              value={modalOwner.owner.email_secundario || ''}
-              onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, email_secundario: e.target.value } })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-            />
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">Email Secundario (Admin / Fact.)</label>
+            <input type="email" placeholder="facturacion@armador.com" value={modalOwner.owner.email_secundario || ''} onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, email_secundario: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400" />
           </div>
-
-          <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">CUIT</label>
-            <input
-              type="text"
-              placeholder="30-12345678-9"
-              value={modalOwner.owner.cuit || ''}
-              onChange={(e) => setModalOwner({ ...modalOwner, owner: { ...modalOwner.owner, cuit: e.target.value } })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-            />
-          </div>
-
-          <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setModalOwner({ isOpen: false, owner: null })}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              <span>Guardar Armador</span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 

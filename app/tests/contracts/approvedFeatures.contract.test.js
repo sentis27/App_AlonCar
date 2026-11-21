@@ -30,6 +30,8 @@ import { buildContractorCostBaskets } from '../../src/lib/panolBasketsEngine.js'
 import { purchaseOrdersRepository } from '../../src/repositories/purchaseOrdersRepository.js'
 import { auditService } from '../../src/lib/auditService.js'
 import { dispatchMandadosService } from '../../src/services/comprasAuxService.js'
+import { computeStepHelpPosition } from '../../src/lib/stepHelpPosition.js'
+import { BUSINESS_HELP_REGISTRY, exportBusinessHelpForAI } from '../../src/lib/businessHelpRegistry.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '../..')
@@ -82,6 +84,7 @@ const COVERED_CONTRACT_IDS = new Set([
   'FL-017',
   'FL-018',
   'FL-019',
+  'FL-020',
 ])
 
 describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', () => {
@@ -482,5 +485,91 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
 
     // Capa 3: Pañol Planilla también usa CanonicalOtBadge
     expect(readRepoFile('app/src/components/panol/PanolMovimientosPanel.jsx')).toContain('<CanonicalOtBadge')
+  })
+
+  it('FL-020: Pieza Replicable Menús de Carga Zero-Scroll (Portal + Apertura Hacia Arriba + 7 Módulos)', () => {
+    expect(STATUS_BY_ID.get('FL-020')).toBe('blindado')
+
+    // Capa 1: Registro centralizado cubre todos los módulos operativos y exporta para IA
+    const requiredHelpModules = [
+      'panol_retiros',
+      'panol_catalogo',
+      'panol_gases',
+      'labor_texto',
+      'labor_cuadrilla',
+      'labor_reloj',
+      'labor_reloj_asignacion',
+      'labor_edicion',
+      'work_orders',
+      'ot_catalog',
+      'compras_pedidos',
+      'compras_proveedores',
+      'terceros_gastos',
+      'personal_nomina',
+      'ships_buques',
+      'ships_estadias',
+      'ships_armadores',
+      'picker_ship_wo',
+      'picker_contractor',
+    ]
+    for (const key of requiredHelpModules) {
+      expect(BUSINESS_HELP_REGISTRY[key]).toBeDefined()
+    }
+    const aiEntries = exportBusinessHelpForAI()
+    expect(aiEntries.length).toBeGreaterThanOrEqual(40)
+
+    // Capa 2: Motor de posicionamiento abre hacia arriba en el último paso (sin empujar scroll)
+    const lastStepPos = computeStepHelpPosition({
+      rect: { top: 620, bottom: 648, left: 180, right: 208 },
+      viewportWidth: 1366,
+      viewportHeight: 768,
+      isLastStep: true,
+    })
+    expect(lastStepPos.direction).toBe('up')
+    expect(lastStepPos.bottom).toBeGreaterThanOrEqual(12)
+
+    const topStepPos = computeStepHelpPosition({
+      rect: { top: 140, bottom: 168, left: 180, right: 208 },
+      viewportWidth: 1366,
+      viewportHeight: 768,
+      isLastStep: false,
+    })
+    expect(topStepPos.direction).toBe('down')
+
+    // Capa 3: StepHelpBadge usa portal en document.body sin tooltip nativo blanco
+    const badgeSrc = readRepoFile('app/src/components/canonical/StepHelpBadge.jsx')
+    expect(badgeSrc).toContain('createPortal')
+    expect(badgeSrc).toContain('computeStepHelpPosition')
+    expect(badgeSrc).not.toContain('title={`Ayuda del Paso')
+
+    // Todos los módulos con carga de datos y selectores rápidos por doble clic usan CanonicalStepperStep
+    const stepperSurfaces = [
+      'app/src/components/ShipWorkOrderPickerModal.jsx',
+      'app/src/components/ContractorPickerModal.jsx',
+      'app/src/components/panol/MultiWithdrawalModal.jsx',
+      'app/src/components/panol/MaterialCatalogFormModal.jsx',
+      'app/src/components/panol/GasSupplierMovementModal.jsx',
+      'app/src/components/labor/LaborTextMessageModal.jsx',
+      'app/src/components/labor/LaborCrewBatchModal.jsx',
+      'app/src/components/labor/LaborClockAssignSheet.jsx',
+      'app/src/components/labor/LaborFacialClockModal.jsx',
+      'app/src/components/labor/LaborModals.jsx',
+      'app/src/components/workOrders/WorkOrdersModals.jsx',
+      'app/src/components/workOrders/OtCatalogEditor.jsx',
+      'app/src/components/compras/OrderFormModal.jsx',
+      'app/src/components/compras/ComprasProveedoresPanel.jsx',
+      'app/src/components/terceros/TercerosModals.jsx',
+      'app/src/components/personal/PersonalWorkerFormModal.jsx',
+      'app/src/components/ships/ShipsModals.jsx',
+    ]
+    for (const rel of stepperSurfaces) {
+      expect(readRepoFile(rel)).toContain('CanonicalStepperStep')
+    }
+
+    // Sin scroll horizontal forzado en Carga por Mensaje de Texto / Cuadrilla y portal en Proveedor Compras
+    const crewGridSrc = readRepoFile('app/src/components/labor/LaborCrewGridSection.jsx')
+    expect(crewGridSrc).not.toContain('min-w-[1220px]')
+    expect(crewGridSrc).not.toContain('min-w-[980px]')
+    expect(readRepoFile('app/src/components/compras/InlineSupplierPicker.jsx')).toContain('createPortal')
   })
 })

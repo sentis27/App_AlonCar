@@ -7,6 +7,11 @@ import { isMergedWorkOrder } from '../../lib/workOrderUnificationEngine.js'
 import LaborSearchableSelect from './LaborSearchableSelect.jsx'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 
+/**
+ * Tarjeta de operario en 2 renglones fluidos (0 px de scroll horizontal).
+ * Renglón 1: # + Tipo · Operario / Prestador · Rubro + 🔓 · (Multi-Barco: Barco + OT).
+ * Renglón 2: Hs Normales · Ext. 50% · Ext. 100% · Total · Tarea / Observaciones · 🗑️.
+ */
 export default function LaborCrewRow({
   row,
   index,
@@ -62,39 +67,24 @@ export default function LaborCrewRow({
 
   const rubroOptions = useMemo(() => buildCrewRubroOptions(row, isRowEmergencyOpen), [row, isRowEmergencyOpen])
 
+  const typeBadgeClass =
+    row.worker_type === 'Astillero'
+      ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+      : row.worker_type === 'Taller'
+      ? 'bg-purple-950 text-purple-300 border-purple-800'
+      : 'bg-amber-950 text-amber-300 border-amber-800'
+
   return (
     <div
-      className={`p-3 rounded-xl border transition-colors ${
+      className={`p-2.5 rounded-xl border transition-colors space-y-2 w-full min-w-0 ${
         row.needs_review
           ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-400/60'
-          : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+          : 'bg-slate-950/75 border-slate-800 hover:border-slate-700'
       }`}
     >
-      <div
-        className={`grid ${
-          isMultiOtMode
-            ? 'grid-cols-[105px_minmax(190px,1.4fr)_minmax(180px,1.3fr)_minmax(210px,1.6fr)_68px_68px_68px_60px_minmax(150px,1.2fr)_36px]'
-            : 'grid-cols-[115px_minmax(200px,1.5fr)_minmax(190px,1.4fr)_72px_72px_72px_65px_minmax(150px,1.1fr)_38px]'
-        } gap-2.5 items-center`}
-      >
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="w-5 h-5 shrink-0 rounded bg-slate-800 text-slate-300 font-mono text-[11px] font-bold flex items-center justify-center">
-            {index + 1}
-          </span>
-          <span
-            className={`w-[78px] text-[10px] font-bold px-1.5 py-1.5 rounded border text-center truncate ${
-              row.worker_type === 'Astillero'
-                ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
-                : row.worker_type === 'Taller'
-                ? 'bg-purple-950 text-purple-300 border-purple-800'
-                : 'bg-amber-950 text-amber-300 border-amber-800'
-            }`}
-          >
-            {row.worker_type}
-          </span>
-        </div>
-
-        <div className="space-y-1">
+      {/* Renglón 1: Identificación, Rubro y Destino Barco/OT */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
+        <div className={`${isMultiOtMode ? 'md:col-span-4' : 'md:col-span-7'} min-w-0 space-y-1`}>
           {row.homonym_candidates && row.homonym_candidates.length > 1 && (
             <div className="p-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-[10px] text-amber-200 space-y-1">
               <div className="font-bold flex items-center gap-1">
@@ -116,44 +106,59 @@ export default function LaborCrewRow({
             </div>
           )}
 
-          <LaborSearchableSelect
-            required
-            value={row.worker_name}
-            options={workerPicker.options}
-            placeholder="Escribir o elegir operario..."
-            headerTitle={isWorkersExpanded ? `🔓 Padrón Completo [H] (${workerPicker.options.length})` : `-- Habilitados en Barco (${workerPicker.options.length}) --`}
-            emptyMessage={workerPicker.isEmptyStrict ? '⚠️ Sin operarios con OT activa en este barco.' : 'Sin coincidencias para el filtro.'}
-            inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary font-medium"
-            onChangeText={(val) => onUpdateRow(row.id, 'worker_name', val)}
-            onSelectOption={(val) => (onSelectWorker ? onSelectWorker(row.id, val) : onUpdateRow(row.id, 'worker_name', val))}
-            expandConfig={{
-              isExpanded: isWorkersExpanded,
-              onToggleExpand: (next) => onToggleWorkersExpanded?.(typeof next === 'boolean' ? next : !isWorkersExpanded),
-              enabledCount: workerPicker.enabledCount,
-              expandedCount: workerPicker.expandedCount
-            }}
-            fallbackExpandCountFn={(q) => {
-              const cleanQ = normalizeText(q)
-              if (!cleanQ) return workerPicker.expandedCount
-              const full = getRowWorkerPickerState({ catalog: eligibleCatalog, shipId: effectiveRowShipId, workOrderId: effectiveRowWoId, selectedContractorGroup, isMultiOtMode, isExpanded: true, workOrders, workItems })
-              return full.options.filter((o) => normalizeText(o.searchKeywords || o.label).includes(cleanQ)).length
-            }}
-          />
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="w-5 h-5 shrink-0 rounded bg-slate-800 text-slate-300 font-mono text-[10px] font-bold flex items-center justify-center">
+              {index + 1}
+            </span>
+            <span
+              className={`px-1.5 py-1 rounded border text-[9px] font-bold shrink-0 uppercase ${typeBadgeClass}`}
+              title={`Tipo: ${row.worker_type}`}
+            >
+              {row.worker_type === 'Contratista' ? 'Contr.' : row.worker_type}
+            </span>
+            <div className="flex-1 min-w-0">
+              <LaborSearchableSelect
+                required
+                value={row.worker_name}
+                options={workerPicker.options}
+                placeholder="Operario / prestador..."
+                headerTitle={isWorkersExpanded ? `🔓 Padrón Completo [H] (${workerPicker.options.length})` : `-- Habilitados en Barco (${workerPicker.options.length}) --`}
+                emptyMessage={workerPicker.isEmptyStrict ? '⚠️ Sin operarios con OT activa en este barco.' : 'Sin coincidencias para el filtro.'}
+                inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary font-medium"
+                onChangeText={(val) => onUpdateRow(row.id, 'worker_name', val)}
+                onSelectOption={(val) => (onSelectWorker ? onSelectWorker(row.id, val) : onUpdateRow(row.id, 'worker_name', val))}
+                expandConfig={{
+                  isExpanded: isWorkersExpanded,
+                  onToggleExpand: (next) => onToggleWorkersExpanded?.(typeof next === 'boolean' ? next : !isWorkersExpanded),
+                  enabledCount: workerPicker.enabledCount,
+                  expandedCount: workerPicker.expandedCount
+                }}
+                fallbackExpandCountFn={(q) => {
+                  const cleanQ = normalizeText(q)
+                  if (!cleanQ) return workerPicker.expandedCount
+                  const full = getRowWorkerPickerState({ catalog: eligibleCatalog, shipId: effectiveRowShipId, workOrderId: effectiveRowWoId, selectedContractorGroup, isMultiOtMode, isExpanded: true, workOrders, workItems })
+                  return full.options.filter((o) => normalizeText(o.searchKeywords || o.label).includes(cleanQ)).length
+                }}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-1">
-          <div className="flex items-center gap-1">
-            <LaborSearchableSelect
-              required
-              value={row.rubro}
-              options={rubroOptions}
-              placeholder="Elegir o filtrar rubro..."
-              headerTitle={isRowEmergencyOpen ? `🔓 Catálogo Completo de Rubros (${rubroOptions.length})` : `⭐ Rubros del Operario (${rubroOptions.length})`}
-              emptyMessage="Sin rubros coincidentes (probá con 🔓)."
-              inputClassName={`bg-slate-900 border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium ${hasLoanedRubro ? 'border-purple-500 text-purple-200' : 'border-slate-700'}`}
-              onChangeText={(val) => onUpdateRow(row.id, 'rubro', val)}
-              onSelectOption={(val) => onUpdateRow(row.id, 'rubro', val)}
-            />
+        <div className={`${isMultiOtMode ? 'md:col-span-3' : 'md:col-span-5'} min-w-0`}>
+          <div className="flex items-center gap-1 min-w-0">
+            <div className="flex-1 min-w-0">
+              <LaborSearchableSelect
+                required
+                value={row.rubro}
+                options={rubroOptions}
+                placeholder="Elegir rubro..."
+                headerTitle={isRowEmergencyOpen ? `🔓 Catálogo Completo de Rubros (${rubroOptions.length})` : `⭐ Rubros del Operario (${rubroOptions.length})`}
+                emptyMessage="Sin rubros coincidentes (probá con 🔓)."
+                inputClassName={`bg-slate-900 border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-primary font-medium ${hasLoanedRubro ? 'border-purple-500 text-purple-200' : 'border-slate-700'}`}
+                onChangeText={(val) => onUpdateRow(row.id, 'rubro', val)}
+                onSelectOption={(val) => onUpdateRow(row.id, 'rubro', val)}
+              />
+            </div>
             <button
               type="button"
               onClick={() => onToggleRubroEmergency(row.id)}
@@ -170,92 +175,99 @@ export default function LaborCrewRow({
         </div>
 
         {isMultiOtMode && (
-          <div className="space-y-1">
-            <select
-              value={row.ship_id || selectedShipId}
-              onChange={(e) => onUpdateRow(row.id, 'ship_id', e.target.value)}
-              className="w-full bg-slate-900 border border-purple-500/40 rounded-lg px-2 py-1 text-[11px] text-purple-200 focus:outline-none"
-            >
-              {ships.map(s => (
-                <option key={s.id} value={s.id} className="bg-slate-900 text-white">
-                  {cleanShipName(s.name)}
-                </option>
-              ))}
-            </select>
-            <WorkOrderSelectorWithHover
-              value={row.work_order_id || selectedWorkOrderId || ''}
-              onChange={(nextWoId) => onUpdateRow(row.id, 'work_order_id', nextWoId)}
-              availableWos={rowEnabledWorkOrders}
-              ship={ships.find((s) => String(s.id) === String(effectiveRowShipId)) || null}
-              workItems={workItems}
-              allWorkOrders={workOrders}
-              contractorName={selectedContractorGroup}
-              placeholder="-- ⚠️ OT en blanco --"
-            />
-          </div>
+          <>
+            <div className="md:col-span-2 min-w-0">
+              <select
+                value={row.ship_id || selectedShipId}
+                onChange={(e) => onUpdateRow(row.id, 'ship_id', e.target.value)}
+                title="Barco asignado a esta fila"
+                className="w-full bg-slate-900 border border-purple-500/40 rounded-lg px-2 py-1.5 text-xs text-purple-200 font-semibold focus:outline-none focus:border-cyan-400"
+              >
+                {ships.map(s => (
+                  <option key={s.id} value={s.id} className="bg-slate-900 text-white">
+                    {cleanShipName(s.name)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-3 min-w-0">
+              <WorkOrderSelectorWithHover
+                value={row.work_order_id || selectedWorkOrderId || ''}
+                onChange={(nextWoId) => onUpdateRow(row.id, 'work_order_id', nextWoId)}
+                availableWos={rowEnabledWorkOrders}
+                ship={ships.find((s) => String(s.id) === String(effectiveRowShipId)) || null}
+                workItems={workItems}
+                allWorkOrders={workOrders}
+                contractorName={selectedContractorGroup}
+                placeholder="-- ⚠️ OT en blanco --"
+                showPreviewCard={false}
+              />
+            </div>
+          </>
         )}
+      </div>
 
-        <div>
-          <input
-            type="number"
-            step="0.5"
-            min="0"
-            max="24"
-            value={row.hours_normal}
-            onChange={(e) => onUpdateRow(row.id, 'hours_normal', e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-primary font-mono"
-          />
+      {/* Renglón 2: Horas, Total, Observación amplia y Eliminar */}
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 pt-1.5 border-t border-slate-800/70">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <label className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
+            <span>Norm</span>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="24"
+              value={row.hours_normal}
+              onChange={(e) => onUpdateRow(row.id, 'hours_normal', e.target.value)}
+              className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-1 text-xs text-white text-center font-bold focus:outline-none focus:border-primary font-mono"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-[10px] font-bold text-cyan-400">
+            <span>50%</span>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="24"
+              value={row.hours_extra_50}
+              onChange={(e) => onUpdateRow(row.id, 'hours_extra_50', e.target.value)}
+              className="w-14 bg-slate-900 border border-cyan-800/60 rounded-lg px-1.5 py-1 text-xs text-cyan-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-[10px] font-bold text-amber-400">
+            <span>100%</span>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="24"
+              value={row.hours_extra_100}
+              onChange={(e) => onUpdateRow(row.id, 'hours_extra_100', e.target.value)}
+              className="w-14 bg-slate-900 border border-amber-800/60 rounded-lg px-1.5 py-1 text-xs text-amber-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
+            />
+          </label>
+          <span className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 font-mono font-extrabold text-primary text-[11px] whitespace-nowrap">
+            {totalRow} hs
+          </span>
         </div>
 
-        <div>
-          <input
-            type="number"
-            step="0.5"
-            min="0"
-            max="24"
-            value={row.hours_extra_50}
-            onChange={(e) => onUpdateRow(row.id, 'hours_extra_50', e.target.value)}
-            className="w-full bg-slate-900 border border-cyan-800/60 rounded-lg px-1.5 py-1.5 text-xs text-cyan-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
-          />
-        </div>
+        <input
+          type="text"
+          placeholder="Tarea / Observaciones del trabajo..."
+          value={row.notes}
+          onChange={(e) => onUpdateRow(row.id, 'notes', e.target.value)}
+          className="flex-1 min-w-[180px] bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary"
+        />
 
-        <div>
-          <input
-            type="number"
-            step="0.5"
-            min="0"
-            max="24"
-            value={row.hours_extra_100}
-            onChange={(e) => onUpdateRow(row.id, 'hours_extra_100', e.target.value)}
-            className="w-full bg-slate-900 border border-amber-800/60 rounded-lg px-1.5 py-1.5 text-xs text-amber-300 text-center font-bold focus:outline-none focus:border-primary font-mono"
-          />
-        </div>
-
-        <div className="text-center font-mono font-extrabold text-primary text-xs bg-slate-900/80 py-1.5 rounded-lg border border-slate-800">
-          {totalRow} hs
-        </div>
-
-        <div>
-          <input
-            type="text"
-            placeholder="Tarea / Nota..."
-            value={row.notes}
-            onChange={(e) => onUpdateRow(row.id, 'notes', e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-primary"
-          />
-        </div>
-
-        <div className="flex justify-center">
-          <button
-            type="button"
-            disabled={!canRemove}
-            onClick={() => onRemoveRow(row.id)}
-            className="p-1.5 text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded hover:bg-rose-500/10 cursor-pointer"
-            title="Eliminar fila"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={!canRemove}
+          onClick={() => onRemoveRow(row.id)}
+          className="p-1.5 text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-rose-500/10 cursor-pointer shrink-0"
+          title="Eliminar fila"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
     </div>
   )

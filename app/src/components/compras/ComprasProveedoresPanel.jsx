@@ -36,6 +36,8 @@ import GridContextMenu from '../GridContextMenu'
 import HighlightText from '../HighlightText'
 import { duplicateRecord, buildPasteRowHandler } from '../../lib/gridRowActions'
 import { auditService } from '../../lib/auditService'
+import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import { COMPRAS_SUPPLIER_STEP_HELP } from '../../lib/businessHelpRegistry.js'
 
 const STANDARD_TRADES = [
   'FERRETERIA',
@@ -149,227 +151,97 @@ export function SupplierModal({ supplier, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="alon-modal-card max-w-5xl">
-        <div className="alon-modal-header">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Building2 className="w-5 h-5 text-cyan-400 shrink-0" />
-            <div className="min-w-0">
-              <h3 className="text-sm font-black text-white truncate">
-                {supplier ? `Editar Proveedor: ${supplier.name}` : 'Registrar Nuevo Proveedor'}
-              </h3>
-              <p className="text-[11px] text-slate-400 truncate">
-                Datos maestros, rubros navales de suministro, datos de contacto y facturación.
-              </p>
-            </div>
+    <CanonicalStepperModal
+      isOpen={true}
+      onClose={onClose}
+      maxWidthClass="max-w-5xl"
+      icon={<Building2 className="w-5 h-5 text-cyan-400" />}
+      title={supplier ? `EDITAR PROVEEDOR — ${supplier.name}` : 'REGISTRAR NUEVO PROVEEDOR'}
+      onSubmit={handleSubmit}
+      footerLeft={
+        <button type="button" onClick={onClose} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl cursor-pointer">
+          Cancelar
+        </button>
+      }
+      footerRight={
+        <button type="submit" disabled={saving} className="px-5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl cursor-pointer transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50">
+          {saving ? 'Guardando...' : supplier ? 'Guardar Cambios' : 'Registrar Proveedor'}
+        </button>
+      }
+    >
+      <CanonicalStepperStep step={1} helpEntry={COMPRAS_SUPPLIER_STEP_HELP[1]} title="RAZÓN SOCIAL, RUBROS Y LOCALIDAD">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
+          <div className="md:col-span-6">
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">Nombre o Razón Social <span className="text-rose-400">*</span></label>
+            <input type="text" autoFocus required value={name} onChange={(e) => setName(e.target.value.toUpperCase())} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold text-xs uppercase focus:outline-none focus:border-cyan-400" placeholder="Ej: DISTRIBUIDORA NAVAL S.A." />
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="md:col-span-4 flex gap-1.5">
+            <input type="text" placeholder="Agregar otro rubro..." value={newTradeInput} onChange={(e) => setNewTradeInput(e.target.value.toUpperCase())} className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white uppercase focus:outline-none focus:border-cyan-400" />
+            <button type="button" tabIndex={-1} onClick={handleAddNewTrade} className="px-2.5 py-1.5 bg-slate-800 text-cyan-300 text-xs font-bold rounded-lg hover:bg-slate-700 cursor-pointer shrink-0">+ Rubro</button>
+          </div>
+          <div className="md:col-span-2">
+            <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-200 font-semibold cursor-pointer">
+              <input type="checkbox" checked={isLocalSupplier} onChange={(e) => setIsLocalSupplier(e.target.checked)} className="w-3.5 h-3.5 rounded text-cyan-500 accent-cyan-500" />
+              <span className="truncate">📍 Local MDP</span>
+            </label>
+          </div>
         </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="alon-modal-body grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
-            <div className="space-y-3">
-              <div className="alon-chunk-cyan space-y-2.5">
-                <label className="text-[11px] font-black text-cyan-300 uppercase tracking-wider block">
-                  1. Razón Social y Rubros
-                </label>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1 font-semibold">Nombre o Razón Social *</label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value.toUpperCase())}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-bold text-xs uppercase focus:outline-none focus:border-cyan-400"
-                    placeholder="Ej: DISTRIBUIDORA NAVAL S.A."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1 font-semibold">Rubros de Suministro *</label>
-                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 bg-slate-950 rounded-lg border border-slate-800">
-                    {STANDARD_TRADES.map((t) => (
-                      <button
-                        type="button"
-                        key={t}
-                        onClick={() => handleToggleTrade(t)}
-                        className={`text-[10px] px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
-                          selectedTrades.includes(t)
-                            ? 'bg-cyan-500 text-slate-950 shadow-sm'
-                            : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
-                        }`}
-                      >
-                        {selectedTrades.includes(t) ? '✓ ' : '+ '}{t}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2 mt-2">
-                    <input
-                      type="text"
-                      placeholder="Agregar otro rubro..."
-                      value={newTradeInput}
-                      onChange={(e) => setNewTradeInput(e.target.value.toUpperCase())}
-                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white uppercase"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddNewTrade}
-                      className="px-2.5 py-1 bg-slate-800 text-cyan-300 text-xs font-bold rounded-lg hover:bg-slate-700"
-                    >
-                      + Añadir
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="is_local"
-                    checked={isLocalSupplier}
-                    onChange={(e) => setIsLocalSupplier(e.target.checked)}
-                    className="w-4 h-4 rounded text-cyan-500 accent-cyan-500 cursor-pointer"
-                  />
-                  <label htmlFor="is_local" className="text-xs text-slate-300 font-semibold cursor-pointer">
-                    📍 Proveedor Local de Mar del Plata (para mandados rápidos)
-                  </label>
-                </div>
-              </div>
-
-              <div className="alon-chunk-amber space-y-2.5">
-                <label className="text-[11px] font-black text-amber-300 uppercase tracking-wider block">
-                  2. Datos Fiscales y Dirección
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-slate-400 text-xs mb-1 font-semibold">CUIT / CUIL</label>
-                    <input
-                      type="text"
-                      value={cuitCuil}
-                      onChange={(e) => setCuitCuil(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-xs font-mono"
-                      placeholder="30-12345678-9"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-400 text-xs mb-1 font-semibold">Dirección / Local</label>
-                    <input
-                      type="text"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-xs"
-                      placeholder="Calle y Nro, Puerto MDP"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="alon-chunk-emerald space-y-2.5">
-                <label className="text-[11px] font-black text-emerald-300 uppercase tracking-wider block">
-                  3. Contacto y Comunicación
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-slate-400 text-xs mb-1 font-semibold">Teléfono / WhatsApp</label>
-                    <input
-                      type="text"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-xs font-mono"
-                      placeholder="223 555-1234"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-400 text-xs mb-1 font-semibold">Email de Pedidos</label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-xs font-mono"
-                      placeholder="ventas@proveedor.com"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1 font-semibold">Persona de Contacto / Vendedor</label>
-                  <input
-                    type="text"
-                    value={contactName}
-                    onChange={(e) => setContactName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-xs"
-                    placeholder="Ej: Marcelo (Mostrador)"
-                  />
-                </div>
-              </div>
-
-              <div className="alon-chunk-purple space-y-2.5">
-                <label className="text-[11px] font-black text-purple-300 uppercase tracking-wider block">
-                  4. Facturación, Cuenta Corriente y Notas
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-slate-400 text-xs mb-1 font-semibold">Condición de Pago</label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-xs font-semibold"
-                    >
-                      <option value="CUENTA_CORRIENTE">Cuenta Corriente (Quincenal)</option>
-                      <option value="CONTADO">Contado / Transferencia Inmediata</option>
-                      <option value="CHEQUE_30">Cheque a 30 días</option>
-                      <option value="CHEQUE_60">Cheque a 60 días</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-400 text-xs mb-1 font-semibold">Nro. de Cliente en Proveedor</label>
-                    <input
-                      type="text"
-                      value={clientNumber}
-                      onChange={(e) => setClientNumber(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-xs font-mono"
-                      placeholder="Ej: CTA-4029"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1 font-semibold">Observaciones / Horarios de Atención</label>
-                  <textarea
-                    rows={2}
-                    value={observations}
-                    onChange={(e) => setObservations(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-xs focus:outline-none"
-                    placeholder="Horarios, comisionista habitual, descuentos pactados..."
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="alon-modal-footer">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl cursor-pointer"
-            >
-              Cancelar
+        <div className="flex flex-wrap gap-1.5 p-2 bg-slate-950 rounded-xl border border-slate-800">
+          {STANDARD_TRADES.map((t) => (
+            <button type="button" tabIndex={-1} key={t} onClick={() => handleToggleTrade(t)} className={`text-[10px] px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${selectedTrades.includes(t) ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'}`}>
+              {selectedTrades.includes(t) ? '✓ ' : '+ '}{t}
             </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 text-xs font-black rounded-xl cursor-pointer transition-all shadow-md shadow-cyan-600/30"
-            >
-              {saving ? 'Guardando...' : supplier ? 'Guardar Cambios' : 'Registrar Proveedor'}
-            </button>
+          ))}
+        </div>
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep step={2} helpEntry={COMPRAS_SUPPLIER_STEP_HELP[2]} title="DATOS FISCALES Y CONTACTO">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5">
+          <div>
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">CUIT / CUIL</label>
+            <input type="text" value={cuitCuil} onChange={(e) => setCuitCuil(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-cyan-400" placeholder="30-12345678-9" />
           </div>
-        </form>
-      </div>
-    </div>
+          <div>
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">Dirección / Local</label>
+            <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-cyan-400" placeholder="Calle y Nro, Puerto" />
+          </div>
+          <div>
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">Teléfono / WhatsApp</label>
+            <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-cyan-400" placeholder="223 555-1234" />
+          </div>
+          <div>
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">Email de Pedidos</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-cyan-400" placeholder="ventas@proveedor.com" />
+          </div>
+          <div>
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">Contacto / Vendedor</label>
+            <input type="text" value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-cyan-400" placeholder="Ej: Marcelo" />
+          </div>
+        </div>
+      </CanonicalStepperStep>
+
+      <CanonicalStepperStep step={3} helpEntry={COMPRAS_SUPPLIER_STEP_HELP[3]} title="FACTURACIÓN, CUENTA CORRIENTE Y OBSERVACIONES" isLast={true}>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+          <div>
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">Condición de Pago</label>
+            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-semibold focus:outline-none focus:border-cyan-400">
+              <option value="CUENTA_CORRIENTE">Cuenta Corriente (Quincenal)</option>
+              <option value="CONTADO">Contado / Transferencia</option>
+              <option value="CHEQUE_30">Cheque a 30 días</option>
+              <option value="CHEQUE_60">Cheque a 60 días</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">Nro. Cliente en Proveedor</label>
+            <input type="text" value={clientNumber} onChange={(e) => setClientNumber(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-cyan-400" placeholder="Ej: CTA-4029" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-slate-400 text-[11px] mb-1 font-semibold">Observaciones / Horarios de Atención</label>
+            <input type="text" value={observations} onChange={(e) => setObservations(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-cyan-400" placeholder="Horarios, comisionista habitual, descuentos pactados..." />
+          </div>
+        </div>
+      </CanonicalStepperStep>
+    </CanonicalStepperModal>
   )
 }
 
