@@ -11,6 +11,7 @@
 
 import { isCaldereriaChapter } from './billingMirrorEngine.js'
 import { resolveBlockBillingQty } from './billingSheetMath.js'
+import { extractBlockHeadingText, normalizeBillingLineItems } from './billingLineItemsHelper.js'
 import { ALONCAR_AV_LOGO_SVG, formatLongSpanishDate } from './aloncarLogoSvg.js'
 
 function fmtMoney(val) {
@@ -61,6 +62,20 @@ export function buildCleanBillingPrintHtml({
       const otRow = block.workOrderId ? otRowMap.get(block.workOrderId) : null
       const isCald = isCaldereriaChapter(activeRubro || block.billing_rubro_group)
       const mode = block.billing_pricing_mode || 'MO_MAT'
+      const fontSize = Math.max(10, Math.min(14, Number(block.fontSizePx) || 12))
+      if (mode === 'ITEMS') {
+        const subItems = normalizeBillingLineItems(block.billing_line_items)
+        const heading = extractBlockHeadingText(block.billing_description || '', 'TRABAJO')
+        const headRow = `<tr class="item-row item-sub-head"><td class="c-item">${itemCounter}</td><td class="c-cant"></td><td class="c-concept"><div class="prose" style="font-size:${fontSize}px"><strong>${escapeHtml(heading)}</strong></div></td><td class="c-price"></td><td class="c-price"></td></tr>`
+        const subRows = subItems.map((it, idx) => {
+          const isLastSub = idx === subItems.length - 1
+          const hasPrice = !it.is_note && Number(it.unit_price_usd) !== 0
+          const lineTot = hasPrice ? Number(((Number(it.qty) || 0) * (Number(it.unit_price_usd) || 0)).toFixed(2)) : 0
+          return `<tr class="item-row ${isLastSub ? 'item-sub-last' : 'item-sub-mid'}"><td class="c-item"></td><td class="c-cant">${hasPrice && it.qty != null ? Number(it.qty).toLocaleString('es-AR', { maximumFractionDigits: 1 }) : ''}</td><td class="c-concept"><div class="prose${it.is_note ? ' is-note' : ''}" style="font-size:${fontSize}px">${escapeHtml(it.text)}</div></td><td class="c-price">${hasPrice ? fmtMoney(it.unit_price_usd) : ''}</td><td class="c-price">${hasPrice ? fmtMoney(lineTot) : ''}</td></tr>`
+        }).join('')
+        return headRow + subRows
+      }
+
       const resolvedQty = resolveBlockBillingQty(block, { isCaldereria: isCald, weightKg: otRow?.weightKg || 0 })
       const qtyVal = resolvedQty == null ? '' : resolvedQty
       const unitTot = mode === 'UNITARIO' ? Number(((Number(qtyVal) || 0) * (Number(block.billing_unit_price_usd) || 0)).toFixed(2)) : 0
@@ -79,7 +94,6 @@ export function buildCleanBillingPrintHtml({
       }
 
       const proseHtml = trimTrailingEmptyHtml(block.billing_description || '')
-      const fontSize = Math.max(10, Math.min(14, Number(block.fontSizePx) || 12))
 
       return `
         <tr class="item-row">
@@ -193,6 +207,9 @@ export function buildCleanBillingPrintHtml({
     .items-table th.h-left{text-align:left}
     .rubro-row td{background:#f3f4f6;padding:var(--rubro-py) 6px;text-transform:uppercase;font-size:10.5px}
     .item-row{break-inside:avoid;page-break-inside:avoid}
+    .item-sub-head td,.item-sub-mid td{border-bottom:none!important;padding-top:2px;padding-bottom:2px}
+    .item-sub-last td{padding-top:2px}
+    .prose.is-note{font-style:italic;font-weight:700}
     .c-item,.c-cant{text-align:center;font-size:10.5px}
     .prose{white-space:pre-wrap;word-break:break-word;line-height:var(--prose-lh)}
     .prose p,.prose div{margin:0;padding:0}

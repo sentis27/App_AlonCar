@@ -8,7 +8,8 @@
 import { shipsRepository } from '../repositories/shipsRepository.js'
 import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { logCellChange, logRowAction } from './auditService.js'
-import { EXCLUDED_OT_STATUSES } from './billingMirrorEngine.js'
+import { EXCLUDED_OT_STATUSES, inferOtChapterDeterministic } from './billingMirrorEngine.js'
+import { planReorderExistingBillingBlocks } from './billingImportOrderEngine.js'
 import { normalizeText } from './tradesCatalog.js'
 import { isMergedWorkOrder, isEliminatedWorkOrder } from './workOrderUnificationEngine.js'
 import { syncShipRemitoBudgetAlertForMariaService } from './billingRemitoBudgetAlertsService.js'
@@ -82,8 +83,11 @@ export async function removeShipFromBillingWorkspaceService({ ship, user = 'Gere
   return data
 }
 
-export async function syncShipBillingCostsAndOtsService({ ship, shipWos = [], workItems = [], user = 'Gerencia' }) {
-  if (!ship?.id) return { cleanedCount: 0 }
+export async function syncShipBillingCostsAndOtsService({
+  ship, shipWos = [], workItems = [], laborRows = [], materialRows = [], thirdPartyRows = [],
+  workers = [], otTemplates = [], user = 'Gerencia'
+}) {
+  if (!ship?.id) return { cleanedCount: 0, reorderedCount: 0 }
   const staleIds = (shipWos || [])
     .filter((w) => w.is_in_billing && isWorkOrderExcludedFromBilling(w, workItems))
     .map((w) => w.id)
@@ -107,7 +111,57 @@ export async function syncShipBillingCostsAndOtsService({ ship, shipWos = [], wo
       user,
     })
   }
-  return { cleanedCount: staleIds.length }
+
+  const activeBillingWos = (shipWos || []).filter(
+    (w) => w.is_in_billing && !staleIds.includes(w.id) && !isWorkOrderExcludedFromBilling(w, workItems)
+  )
+  let reorderedCount = 0
+  if (activeBillingWos.length > 0 && Array.isArray(otTemplates) && otTemplates.length > 0) {
+    const wiByWo = new Map()
+    for (const wi of workItems || []) {
+      if (!wiByWo.has(wi.work_order_id)) wiByWo.set(wi.work_order_id, [])
+      wiByWo.get(wi.work_order_id).push(wi)
+    }
+    const existingCustomBlocks = Array.isArray(ship.billing_layout_meta?.customBlocks)
+      ? ship.billing_layout_meta.customBlocks
+      : []
+    const { woUpdates, nextCustomBlocks } = planReorderExistingBillingBlocks({
+      activeBillingWos,
+      existingCustomBlocks,
+      classifyWo: (wo) => inferOtChapterDeterministic({
+        wo, woItems: wiByWo.get(wo.id) || [], laborRows, materialRows, thirdPartyRows, workers, otTemplates
+      })
+    })
+    for (const upd of woUpdates) {
+      const { error } = await workOrdersRepository.updateById(upd.id, upd.patch, { select: null })
+      if (error) throw new Error(error)
+    }
+    reorderedCount = woUpdates.length
+    const prevJson = JSON.stringify(existingCustomBlocks)
+    const nextJson = JSON.stringify(nextCustomBlocks)
+    if (prevJson !== nextJson) {
+      const prevMeta = ship.billing_layout_meta || {}
+      const { error } = await shipsRepository.updateById(
+        ship.id,
+        { billing_layout_meta: { ...prevMeta, customBlocks: nextCustomBlocks } },
+        { select: null }
+      )
+      if (error) throw new Error(error)
+    }
+    if (reorderedCount > 0 || prevJson !== nextJson) {
+      await logRowAction({
+        action: 'BILLING_SYNC_REORDER_PDF',
+        entityType: 'work_orders',
+        entityId: ship.id,
+        entityName: `${ship.name} · Reordenamiento PDF al Actualizar`,
+        changes: { reorderedCount, customBlocksCount: nextCustomBlocks.length },
+        sheetName: 'Resumen Gerencial · Mesa de Facturación',
+        moduleRoute: '/resumen-gerencial?tab=remito',
+        user,
+      })
+    }
+  }
+  return { cleanedCount: staleIds.length, reorderedCount }
 }
 
 export function buildOrderedBillingBlocks({ activeShip, activeShipWos = [], workItems = [], newBlockAutoFocusId = null }) {
@@ -131,12 +185,14 @@ export function buildOrderedBillingBlocks({ activeShip, activeShipWos = [], work
       billing_qty_override: w.billing_qty_override ?? null,
       billing_mo_tax: w.billing_mo_tax || 'EXENTO',
       billing_mat_tax: w.billing_mat_tax || 'EXENTO',
+      billing_line_items: Array.isArray(w.billing_line_items) ? w.billing_line_items : [],
       fontSizePx: fontSizes[w.id] || 12,
     }))
   return [
     ...woBlocks,
     ...customBlocks.map((cb) => ({
       ...cb,
+      billing_line_items: Array.isArray(cb.billing_line_items) ? cb.billing_line_items : [],
       sortOrder: Number(cb.sortOrder) || 1000,
       autoFocus: cb.id === newBlockAutoFocusId,
     })),

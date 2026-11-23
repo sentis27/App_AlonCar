@@ -136,13 +136,11 @@ export default function ResumenGerencial() {
                 const ship = state.shipSummary?.ship
                 if (!wo || !ship) return
                 const woItems = (state.data?.workItems || []).filter((i) => i.work_order_id === wo.id)
-                const shipMaxSort = (state.data?.workOrders || [])
-                  .filter((w) => w.ship_id === ship.id && w.is_in_billing)
-                  .reduce((m, w) => Math.max(m, Number(w.billing_sort_order) || 0), 0)
+                const existingShipWos = (state.data?.workOrders || []).filter((w) => w.ship_id === ship.id && !w.merged_into_wo_id)
                 await sendSingleOtToBillingService({
-                  ship, wo, woItems, laborRows: state.laborRows, materialRows: state.materialRows,
+                  ship, wo, woItems, existingShipWos, laborRows: state.laborRows, materialRows: state.materialRows,
                   thirdPartyRows: state.thirdPartyRows, workers: state.data?.workers || [],
-                  otTemplates: state.data?.otTemplates || [], nextSortOrder: shipMaxSort + 10, user: actorName
+                  otTemplates: state.data?.otTemplates || [], user: actorName
                 })
                 await state.loadAll({ silent: true })
                 setBillingJumpTarget({ shipId: ship.id, ts: Date.now() })

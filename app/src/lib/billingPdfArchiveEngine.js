@@ -6,6 +6,7 @@
 import { shipDocumentsRepository } from '../repositories/shipsRepository.js'
 import { isCaldereriaChapter } from './billingMirrorEngine.js'
 import { resolveBlockBillingQty } from './billingSheetMath.js'
+import { extractBlockHeadingText, normalizeBillingLineItems } from './billingLineItemsHelper.js'
 import { formatLongSpanishDate, getTodayIsoDate } from './aloncarLogoSvg.js'
 import { pdfEscape, stripHtmlToLines, wrapText, assembleA4PdfBytes } from './pdf14Writer.js'
 
@@ -91,6 +92,36 @@ function buildPageStream({ ship, owner, budgetNumber, issueDate, pageBlocks, sum
     itemIdx += 1
     const isCald = isCaldereriaChapter(activeRubro || block.billing_rubro_group)
     const mode = block.billing_pricing_mode || 'MO_MAT'
+
+    if (mode === 'ITEMS') {
+      const heading = extractBlockHeadingText(block.billing_description || '', 'TRABAJO')
+      const subItems = normalizeBillingLineItems(block.billing_line_items)
+      text(cols[0] + 8, y, String(itemIdx), 8, false)
+      text(cols[2] + 5, y, heading.slice(0, 64), 8, true)
+      y -= 11
+      for (const it of subItems) {
+        if (y < footerTop + 14) break
+        const lines = wrapText(it.text || '', 64).slice(0, 4)
+        const hasPrice = !it.is_note && Number(it.unit_price_usd) !== 0
+        const lineTot = hasPrice ? Number(((Number(it.qty) || 0) * (Number(it.unit_price_usd) || 0)).toFixed(2)) : 0
+        if (hasPrice && it.qty != null) text(cols[1] + 6, y, Number(it.qty).toLocaleString('es-AR', { maximumFractionDigits: 1 }), 7.8, false)
+        if (hasPrice) {
+          text(cols[3] + 4, y, fmtMoneyPdf(it.unit_price_usd), 7.6, true)
+          text(cols[4] + 5, y, fmtMoneyPdf(lineTot), 7.6, true)
+        }
+        for (const ln of lines) {
+          if (y < footerTop + 10) break
+          text(cols[2] + 5, y, ln, 7.8, false)
+          y -= 9.5
+        }
+        y -= 1.5
+      }
+      const subBottom = Math.max(footerTop + 2, y + 6)
+      line(tx, subBottom, tx + tw, subBottom, 0.5)
+      y = subBottom - 11
+      continue
+    }
+
     const qty = resolveBlockBillingQty(block, { isCaldereria: isCald, weightKg: block._weightKg || 0 })
     const wrapped = stripHtmlToLines(block.billing_description || '').flatMap((l) => wrapText(l, 64)).slice(0, 12)
     const rowLines = Math.max(wrapped.length + (mode === 'MO_MAT' ? 2 : 0), 2)

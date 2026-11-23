@@ -4,6 +4,7 @@ import {
   inferOtChapterDeterministic,
   isCaldereriaChapter
 } from '../../src/lib/billingMirrorEngine.js'
+import { planReorderExistingBillingBlocks } from '../../src/lib/billingImportOrderEngine.js'
 import {
   computeOtUnvaluedBreakdown,
   computeBlockBillingBreakdown,
@@ -157,6 +158,112 @@ describe('billingSheetMath (4 píldoras sin valorizar + acumulación por hoja)',
     const opSel = buildOperationalSelectionFromTemplate(otTemplates[1])
     expect(opSel.description).toBe('Lavado de casco, pintura de casco, pintar cartelería de flotación.')
     expect(opSel.subworks).toHaveLength(0)
+  })
+
+  it('respeta la secuencia exacta del PDF (1..20), crea delimitadores automáticos y deja no-tabuladas debajo', () => {
+    const otTemplates = [
+      { id: 't2', name: 'VARADERO', sort_order: 2, default_tax_type: 'GRAVADO_21', line_items: [{ row_type: 'ITEM', concept: 'Halaje', unit_price_usd: 6400, tax_type: 'GRAVADO_21' }, { row_type: 'ITEM', concept: 'Estadía varadero', unit_price_usd: 240, tax_type: 'GRAVADO_21' }] },
+      { id: 't3', name: 'SERVICIO DE GRUA', sort_order: 3, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Grúa 8t', unit_price_usd: 130 }, { row_type: 'ITEM', concept: 'Grúa 60t', unit_price_usd: 240 }] },
+      { id: 't11', name: 'DESMONTE LINEA EJE Y TIMON', sort_order: 11, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Guardacabos', unit_price_usd: 250 }, { row_type: 'ITEM', concept: 'Pala timón', unit_price_usd: 1900 }] },
+      { id: 't12', name: 'LINEA DE EJE', sort_order: 12, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Torno eje', unit_price_usd: 980 }] },
+      { id: 't14', name: 'CARENADO DE CASCO', sort_order: 14, default_tax_type: 'EXENTO', line_items: [{ row_type: 'SUBWORK', subwork_title: '1) LAVADO', concept: 'Lavado', unit_price_usd: 1750 }, { row_type: 'SUBWORK', subwork_title: '2) ARENADO', concept: 'Arenado SA1', unit_price_usd: 18600 }] },
+      { id: 't15', name: 'SUPER ESTRUCTURA Y CUBIERTA', sort_order: 15, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Superestructura', unit_price_usd: 18700 }] },
+      { id: 't16', name: 'SUMINISTROS', sort_order: 16, default_tax_type: 'GRAVADO_21', line_items: [{ row_type: 'ITEM', concept: 'Energía 3x380', unit_price_usd: 130, tax_type: 'GRAVADO_21' }, { row_type: 'ITEM', concept: 'Agua potable', unit_price_usd: 0, tax_type: 'GRAVADO_21' }] },
+      { id: 't17', name: 'Anclas y Cadenas', sort_order: 17, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Extender cadenas', unit_price_usd: 400 }, { row_type: 'ITEM', concept: 'Calibrado', unit_price_usd: 200 }] },
+      { id: 't18', name: 'TANQUES', sort_order: 18, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Tapa registro', unit_price_usd: 210 }, { row_type: 'ITEM', concept: 'Gas oil m3', unit_price_usd: 48 }] },
+      { id: 't19', name: 'SENTINA', sort_order: 19, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Limpieza sentina', unit_price_usd: 1500 }, { row_type: 'ITEM', concept: 'Pintado m2', unit_price_usd: 6 }] },
+      { id: 't20', name: 'INFORMES TÉCNICOS', sort_order: 20, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Informe PNA', unit_price_usd: 850 }] }
+    ]
+    const workers = [{ name: 'JUAN CHAPA', trade: 'CALDERERIA' }]
+    const shipWos = [
+      { id: 'w_cald', ot_number: 'OT-1', title: 'CAMBIO CHAPA', description: 'Chapa 8mm', status: 'En ejecución', contractor_name: 'JUAN CHAPA' },
+      { id: 'w_inf', ot_number: 'OT-2', ot_template_id: 't20', title: 'INFORMES TÉCNICOS', description: 'PNA', status: 'En ejecución' },
+      { id: 'w_sent', ot_number: 'OT-3', ot_template_id: 't19', title: 'SENTINA', description: 'Sentina', status: 'En ejecución' },
+      { id: 'w_tanq', ot_number: 'OT-4', ot_template_id: 't18', title: 'TANQUES', description: 'Tanques', status: 'En ejecución' },
+      { id: 'w_anc', ot_number: 'OT-5', ot_template_id: 't17', title: 'ANCLAS Y CADENAS', description: 'Cadenas', status: 'En ejecución' },
+      { id: 'w_sum', ot_number: 'OT-6', ot_template_id: 't16', title: 'SUMINISTROS', description: 'Luz', status: 'En ejecución' },
+      { id: 'w_sup', ot_number: 'OT-7', ot_template_id: 't15', title: 'SUPER ESTRUCTURA Y CUBIERTA', description: 'Cubierta', status: 'En ejecución' },
+      { id: 'w_car', ot_number: 'OT-8', ot_template_id: 't14', title: 'CARENADO DE CASCO', description: 'Casco', status: 'En ejecución' },
+      { id: 'w_eje', ot_number: 'OT-9', ot_template_id: 't12', title: 'LINEA DE EJE', description: 'Eje', status: 'En ejecución' },
+      { id: 'w_desm', ot_number: 'OT-10', ot_template_id: 't11', title: 'DESMONTE LINEA EJE Y TIMON', description: 'Desmonte', status: 'En ejecución' },
+      { id: 'w_grua', ot_number: 'OT-11', ot_template_id: 't3', title: 'SERVICIO DE GRUA', description: 'Grúa', status: 'En ejecución' },
+      { id: 'w_var', ot_number: 'OT-12', ot_template_id: 't2', title: 'VARADERO', description: 'Varadero', status: 'En ejecución' }
+    ]
+
+    const res = evaluateShipWorkOrdersForGhostImport({ shipWos, workers, otTemplates })
+    expect(res.readyToImport.map((r) => r.workOrderId)).toEqual([
+      'w_var', 'w_grua', 'w_desm', 'w_eje', 'w_car', 'w_sup', 'w_sum', 'w_anc', 'w_tanq', 'w_sent', 'w_inf', 'w_cald'
+    ])
+
+    const delimLabels = res.nextCustomBlocks.filter((b) => b.blockType === 'RUBRO_DELIMITER').map((b) => b.label)
+    expect(delimLabels).toEqual(['SERVICIOS', 'MECANICA NAVAL', 'TORNERIA', 'RASCHINAJE', 'CALDERERÍA'])
+
+    const carCand = res.readyToImport.find((r) => r.workOrderId === 'w_car')
+    expect(carCand.patch.billing_pricing_mode).toBe('ITEMS')
+    expect(carCand.patch.billing_line_items).toHaveLength(2)
+    expect(carCand.patch.billing_line_items[0].unit_price_usd).toBe(1750)
+    expect(carCand.patch.billing_line_items[1].unit_price_usd).toBe(18600)
+
+    const infCand = res.readyToImport.find((r) => r.workOrderId === 'w_inf')
+    expect(infCand.patch.billing_pricing_mode).toBe('UNITARIO')
+    expect(infCand.patch.billing_unit_price_usd).toBe(850)
+  })
+
+  it('inserta una OT tabulada nueva en su posición PDF (antes de tabuladas posteriores y no-tabuladas) y calcula totales en modo ITEMS mixto', () => {
+    const otTemplates = [
+      { id: 't7', name: 'TOMAS DE MAR', sort_order: 7, default_tax_type: 'EXENTO', line_items: [{ row_type: 'ITEM', concept: 'Rejillas', unit_price_usd: 380 }] },
+      { id: 't14', name: 'CARENADO DE CASCO', sort_order: 14, default_tax_type: 'EXENTO', line_items: [{ row_type: 'SUBWORK', subwork_title: '1) LAVADO', concept: 'Lavado', unit_price_usd: 1750 }] }
+    ]
+    const shipWos = [
+      { id: 'w_car', ot_number: 'OT-8', ot_template_id: 't14', title: 'CARENADO DE CASCO', is_in_billing: true, billing_description: '<b>CARENADO</b>', billing_sort_order: 20, status: 'En ejecución' },
+      { id: 'w_cald', ot_number: 'OT-3', title: 'CAMBIO CHAPA', is_in_billing: true, billing_description: '<b>CHAPA</b>', billing_sort_order: 40, status: 'En ejecución' },
+      { id: 'w_tmar', ot_number: 'OT-9', ot_template_id: 't7', title: 'TOMAS DE MAR', description: 'Rejillas', is_in_billing: false, status: 'En ejecución' }
+    ]
+
+    const res = evaluateShipWorkOrdersForGhostImport({ shipWos, otTemplates })
+    expect(res.readyToImport).toHaveLength(1)
+    const tmarSort = res.readyToImport[0].patch.billing_sort_order
+    const carNewSort = res.existingWoOrderUpdates.find((u) => u.id === 'w_car')?.patch.billing_sort_order
+    expect(tmarSort).toBeLessThan(carNewSort)
+
+    const breakdown = computeBlockBillingBreakdown({
+      billing_pricing_mode: 'ITEMS',
+      billing_line_items: [
+        { id: '1', text: '1) LAVADO', qty: 1, unit_price_usd: 1750, tax_type: 'EXENTO', is_note: false },
+        { id: '2', text: '2) ENERGIA', qty: 2, unit_price_usd: 130, tax_type: 'GRAVADO_21', is_note: false },
+        { id: '3', text: 'Nota armador', qty: null, unit_price_usd: 999, tax_type: 'EXENTO', is_note: true }
+      ]
+    })
+    expect(breakdown).toEqual({ exentoUsd: 1750, gravadoUsd: 260, ivaUsd: 54.6, totalUsd: 2064.6 })
+  })
+
+  it('Actualizar Costos reordena un remito ya abierto (caso NONO PASCUAL: TOMAS DE MAR sube arriba de CARENADO y CALDERERIA)', () => {
+    const otTemplates = [
+      { id: 't7', name: 'TOMAS DE MAR', sort_order: 7 },
+      { id: 't14', name: 'CARENADO DE CASCO', sort_order: 14 }
+    ]
+    const activeBillingWos = [
+      { id: 'w_car', ot_number: 'OT-8', ot_template_id: 't14', title: 'CARENADO DE CASCO', is_in_billing: true, billing_sort_order: 20, billing_rubro_group: 'CALDERERIA' },
+      { id: 'w_chapa', ot_number: 'OT-3', title: 'CAMBIO CHAPA', is_in_billing: true, billing_sort_order: 40, billing_rubro_group: 'CALDERERIA' },
+      { id: 'w_prueba', ot_number: 'OT-5', title: 'PRUEBA', is_in_billing: true, billing_sort_order: 50, billing_rubro_group: 'CALDERERIA' },
+      { id: 'w_tmar', ot_number: 'OT-9', ot_template_id: 't7', title: 'TOMAS DE MAR', is_in_billing: true, billing_sort_order: 70, billing_rubro_group: 'OT_ABC' }
+    ]
+    const existingCustomBlocks = [{ id: 'delim_1', blockType: 'RUBRO_DELIMITER', code: 'CALDERERIA', label: 'CALDERERÍA', sortOrder: 30 }]
+
+    const { woUpdates, nextCustomBlocks } = planReorderExistingBillingBlocks({
+      activeBillingWos,
+      existingCustomBlocks,
+      classifyWo: (wo) => inferOtChapterDeterministic({ wo, otTemplates })
+    })
+
+    const sortById = Object.fromEntries(activeBillingWos.map((w) => [w.id, w.billing_sort_order]))
+    for (const u of woUpdates) sortById[u.id] = u.patch.billing_sort_order
+
+    expect(sortById.w_tmar).toBeLessThan(sortById.w_car)
+    expect(sortById.w_car).toBeLessThan(sortById.w_chapa)
+    expect(sortById.w_chapa).toBeLessThan(sortById.w_prueba)
+    expect(woUpdates.find((u) => u.id === 'w_car')?.patch.billing_rubro_group).toBe('OT_ABC')
+    expect(nextCustomBlocks.map((b) => b.label)).toEqual(['SERVICIOS', 'CALDERERÍA'])
   })
 
   it('UNITARIO con billing_qty_override null asume 1 en totales y respeta 0 explícito; layout A4 mantiene 210x297mm', () => {

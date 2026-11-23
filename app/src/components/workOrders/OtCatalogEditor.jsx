@@ -25,6 +25,7 @@ export default function OtCatalogEditor({
   const [draft, setDraft] = useState(() => ({
     id: initialDraft?.id || null,
     name: String(initialDraft?.name || '').toUpperCase(),
+    sort_order: initialDraft?.sort_order ?? '',
     category: initialDraft?.category === 'Intermediaria' ? 'Intermedia' : (initialDraft?.category || ''),
     description: initialDraft?.description || '',
     description_billing: initialDraft?.description_billing || '',
@@ -82,9 +83,13 @@ export default function OtCatalogEditor({
           }
         >
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
-            <div className="sm:col-span-5">
+            <div className="sm:col-span-4">
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">Nombre OT.ABC <span className="text-rose-400">*</span></label>
               <input type="text" required autoFocus value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value.toUpperCase() }))} onBlur={() => setDraft((p) => ({ ...p, name: p.name.trim().toUpperCase() }))} placeholder="Ej: DESMONTE LINEA EJE Y TIMON" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-black uppercase focus:border-cyan-400 focus:outline-none" />
+            </div>
+            <div className="sm:col-span-1">
+              <label className="block text-[11px] font-semibold text-slate-400 mb-1" title="Posición al importar al Remito Comercial">Orden</label>
+              <input type="number" min={1} value={draft.sort_order} onChange={(e) => setDraft((p) => ({ ...p, sort_order: e.target.value }))} onBlur={() => setDraft((p) => ({ ...p, sort_order: p.sort_order === '' ? '' : Math.max(1, parseInt(p.sort_order, 10) || 1) }))} placeholder="#" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-cyan-300 font-mono font-bold text-center focus:border-cyan-400 focus:outline-none" />
             </div>
             <div className="sm:col-span-3">
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">Clasificación</label>

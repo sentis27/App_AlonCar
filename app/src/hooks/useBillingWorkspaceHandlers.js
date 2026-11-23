@@ -1,6 +1,10 @@
 import { useState } from 'react'
-import { isCaldereriaChapter, buildCatalogBillingProse } from '../lib/billingMirrorEngine'
+import { isCaldereriaChapter, buildCatalogBillingProse, evaluateShipWorkOrdersForGhostImport } from '../lib/billingMirrorEngine'
 import { buildAutoFitLayoutMetaPatch } from '../lib/billingSheetMath'
+import {
+  buildBillingLineItemsFromTemplate, buildPricingModeChangePatch,
+  normalizeBillingLineItems, replaceBlockHeadingInHtml, shouldTemplateDefaultToItemsMode
+} from '../lib/billingLineItemsHelper'
 import {
   openShipInBillingWorkspaceService, sendShipToFinalBillingService, saveShipBillingLayoutMetaService,
   importShipWorkOrdersGhostService, saveWorkOrderBillingPatchService, saveWorkOrderBillingOrderBatchService,
@@ -11,7 +15,8 @@ import { archiveShipRemitoPdfService } from '../lib/billingPdfArchiveEngine'
 
 /** Hook de acciones y persistencia de la Mesa Independiente Multi-Barco de Facturación. */
 export function useBillingWorkspaceHandlers({
-  allShips, activeShip, activeOwner, activeShipWos, workOrders, workItems, inPrepShips, effectiveShipId,
+  allShips, activeShip, activeOwner, activeShipWos, workOrders, workItems, laborRows, materialRows,
+  thirdPartyRows, workers, otTemplates, matchedTemplateByWoId, inPrepShips, effectiveShipId,
   orderedBlocks, pages, pageSummaries, grandTotal, otRowMap, ghostEval, printDensity, autoFitPreview,
   activeIssueDate, actorName, activeFlushRef, setBillingShipId, setNewBlockAutoFocusId, onReloadData, showFeedback
 }) {
@@ -32,28 +37,39 @@ export function useBillingWorkspaceHandlers({
     finally { setBusy?.(false) }
   }
 
-  const handleSwitchShip = (nextShipId) => {
-    activeFlushRef.current?.()
-    setNewBlockAutoFocusId(null)
-    setBillingShipId(nextShipId)
+  const patchBlock = async (block, patch, field, oldValue, newValue) => {
+    if (!activeShip) return
+    if (block.workOrderId) {
+      await saveWorkOrderBillingPatchService({ woId: block.workOrderId, shipName: activeShip.name, otLabel: block.id, patch, field, oldValue, newValue, user: actorName })
+      await onReloadData?.()
+    } else {
+      const meta = activeShip.billing_layout_meta || {}
+      await saveLayoutMeta({ ...meta, customBlocks: (meta.customBlocks || []).map((b) => (b.id === block.id ? { ...b, ...patch } : b)) })
+    }
   }
 
-  const handleAddShipToWorkspace = (ship) => runGuarded(null, async () => {
+  const handleAddShipToWorkspace = (ship) => runGuarded(setImporting, async () => {
     activeFlushRef.current?.()
-    await openShipInBillingWorkspaceService({ ship, user: actorName })
+    const openedShip = (await openShipInBillingWorkspaceService({ ship, user: actorName })) || ship
+    const shipWos = (workOrders || []).filter((w) => w.ship_id === ship.id && !w.merged_into_wo_id)
+    let autoMsg = `Barco ${ship.name} abierto en tu Mesa de Facturación.`
+    if (!shipWos.some((w) => w.is_in_billing) && ship.billing_workspace_status !== 'ENVIADO_A_FACTURACION') {
+      const plan = evaluateShipWorkOrdersForGhostImport({
+        shipWos, workItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates,
+        existingCustomBlocks: openedShip.billing_layout_meta?.customBlocks || []
+      })
+      if (plan.readyToImport.length > 0) {
+        const { importedCount } = await importShipWorkOrdersGhostService({ ship: openedShip, ...plan, user: actorName })
+        autoMsg = `Barco ${ship.name} abierto · ${importedCount} OT(s) importadas automáticamente en orden PDF.`
+      }
+    }
     setBillingShipId(ship.id)
     await onReloadData?.()
-    showFeedback?.('success', `Barco ${ship.name} abierto en tu Mesa de Facturación.`)
-  })
-
-  const handleSetShipColor = (ship, color) => runGuarded(null, async () => {
-    await setShipBillingColorService({ ship, color, user: actorName })
-    await onReloadData?.()
+    showFeedback?.('success', autoMsg)
   })
 
   const handleRemoveShipFromWorkspace = async (ship) => {
-    if (!ship?.id) return
-    if (!window.confirm(`¿Quitar "${ship.name}" del panel izquierdo de facturación? (No borra el buque ni sus OTs).`)) return
+    if (!ship?.id || !window.confirm(`¿Quitar "${ship.name}" del panel izquierdo de facturación? (No borra el buque ni sus OTs).`)) return
     await runGuarded(null, async () => {
       activeFlushRef.current?.()
       await removeShipFromBillingWorkspaceService({ ship, user: actorName })
@@ -70,33 +86,29 @@ export function useBillingWorkspaceHandlers({
       return
     }
     await runGuarded(setImporting, async () => {
-      const { importedCount } = await importShipWorkOrdersGhostService({ ship: activeShip, readyToImport: ghostEval.readyToImport, user: actorName })
+      const { importedCount } = await importShipWorkOrdersGhostService({ ship: activeShip, ...ghostEval, user: actorName })
       await onReloadData?.()
-      showFeedback?.('success', `${importedCount} OT(s) importadas en modo fantasma y ordenadas automáticamente.`)
+      showFeedback?.('success', `${importedCount} OT(s) importadas en modo fantasma y ordenadas según PDF.`)
     })
   }
 
-  const handleRefreshCosts = async () => {
-    if (!activeShip) return
-    await runGuarded(setRefreshingCosts, async () => {
-      activeFlushRef.current?.()
-      await syncShipBillingCostsAndOtsService({ ship: activeShip, shipWos: activeShipWos, workItems, user: actorName })
-      await onReloadData?.()
-      showFeedback?.('success', 'Costos actualizados.')
+  const handleRefreshCosts = () => activeShip && runGuarded(setRefreshingCosts, async () => {
+    activeFlushRef.current?.()
+    const { reorderedCount } = await syncShipBillingCostsAndOtsService({
+      ship: activeShip, shipWos: activeShipWos, workItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates, user: actorName
     })
-  }
+    await onReloadData?.()
+    showFeedback?.('success', reorderedCount > 0 ? 'Costos actualizados y OTs ordenadas según PDF.' : 'Costos actualizados.')
+  })
 
-  const handleNotifyEmptyOts = async () => {
-    if (!activeShip) return
-    await runGuarded(null, async () => {
-      for (const al of ghostEval.emptyDescriptionAlerts) {
-        const wo = activeShipWos.find((w) => w.id === al.workOrderId)
-        if (wo) await requestBillingExpansionService({ wo, ship: activeShip, note: 'OT detectada con descripción vacía al intentar importar a Facturación.', user: actorName })
-      }
-      await onReloadData?.()
-      showFeedback?.('success', `Se notificó al Jefe de Obra y Administrador por ${ghostEval.emptyDescriptionAlerts.length} OT(s) sin descripción.`)
-    })
-  }
+  const handleNotifyEmptyOts = () => activeShip && runGuarded(null, async () => {
+    for (const al of ghostEval.emptyDescriptionAlerts) {
+      const wo = activeShipWos.find((w) => w.id === al.workOrderId)
+      if (wo) await requestBillingExpansionService({ wo, ship: activeShip, note: 'OT detectada con descripción vacía al intentar importar a Facturación.', user: actorName })
+    }
+    await onReloadData?.()
+    showFeedback?.('success', `Se notificó al Jefe de Obra y Administrador por ${ghostEval.emptyDescriptionAlerts.length} OT(s) sin descripción.`)
+  })
 
   const handleAddRubroDelimiter = async (code, label) => {
     if (!activeShip) return
@@ -111,7 +123,7 @@ export function useBillingWorkspaceHandlers({
     const maxSort = orderedBlocks.reduce((m, b) => Math.max(m, b.sortOrder || 0), 0)
     const id = `free_${Date.now()}`
     setNewBlockAutoFocusId(id)
-    await saveLayoutMeta({ ...meta, customBlocks: [...(meta.customBlocks || []), { id, blockType: 'FREE_BLOCK', sortOrder: maxSort + 10, billing_description: '', billing_pricing_mode: 'MO_MAT', billing_mo_usd: 0, billing_mat_usd: 0, billing_unit_price_usd: 0, billing_qty_override: null, billing_mo_tax: 'EXENTO', billing_mat_tax: 'EXENTO', fontSizePx: 12 }] })
+    await saveLayoutMeta({ ...meta, customBlocks: [...(meta.customBlocks || []), { id, blockType: 'FREE_BLOCK', sortOrder: maxSort + 10, billing_description: '', billing_pricing_mode: 'MO_MAT', billing_mo_usd: 0, billing_mat_usd: 0, billing_unit_price_usd: 0, billing_qty_override: null, billing_mo_tax: 'EXENTO', billing_mat_tax: 'EXENTO', billing_line_items: [], fontSizePx: 12 }] })
   }
 
   const handleCommitProse = async ({ shipId, blockId, nextHtml, fontSizePx }) => {
@@ -128,20 +140,8 @@ export function useBillingWorkspaceHandlers({
       await onReloadData?.()
     } else {
       const meta = targetShip.billing_layout_meta || {}
-      const custom = (meta.customBlocks || []).map((b) => (b.id === blockId ? { ...b, billing_description: nextHtml, fontSizePx } : b))
-      await saveShipBillingLayoutMetaService({ shipId: targetShip.id, shipName: targetShip.name, layoutMeta: { ...meta, customBlocks: custom }, user: actorName })
+      await saveShipBillingLayoutMetaService({ shipId: targetShip.id, shipName: targetShip.name, layoutMeta: { ...meta, customBlocks: (meta.customBlocks || []).map((b) => (b.id === blockId ? { ...b, billing_description: nextHtml, fontSizePx } : b)) }, user: actorName })
       await onReloadData?.()
-    }
-  }
-
-  const handleCommitPriceField = async (block, field, val) => {
-    if (!activeShip) return
-    if (block.workOrderId) {
-      await saveWorkOrderBillingPatchService({ woId: block.workOrderId, shipName: activeShip.name, otLabel: block.id, patch: { [field]: val }, field, oldValue: block[field], newValue: val, user: actorName })
-      await onReloadData?.()
-    } else {
-      const meta = activeShip.billing_layout_meta || {}
-      await saveLayoutMeta({ ...meta, customBlocks: (meta.customBlocks || []).map((b) => (b.id === block.id ? { ...b, [field]: val } : b)) })
     }
   }
 
@@ -150,7 +150,13 @@ export function useBillingWorkspaceHandlers({
     const wo = activeShipWos.find((w) => w.id === block.workOrderId)
     const nextProse = buildCatalogBillingProse(matchedTpl, wo?.title)
     if (!nextProse || !window.confirm(`¿Reemplazar el texto actual de "${wo?.title || matchedTpl.name}" por la descripción de facturación oficial del Catálogo OT.ABC?`)) return
-    await saveWorkOrderBillingPatchService({ woId: block.workOrderId, shipName: activeShip.name, otLabel: `${wo?.ot_number || 'OT'} ${wo?.title || matchedTpl.name}`, patch: { billing_description: nextProse }, field: 'billing_description', oldValue: block.billing_description || '', newValue: nextProse, user: actorName })
+    const patch = {
+      billing_description: nextProse,
+      ...((block.billing_pricing_mode === 'ITEMS' || shouldTemplateDefaultToItemsMode(matchedTpl))
+        ? { billing_line_items: buildBillingLineItemsFromTemplate(matchedTpl) }
+        : {})
+    }
+    await saveWorkOrderBillingPatchService({ woId: block.workOrderId, shipName: activeShip.name, otLabel: `${wo?.ot_number || 'OT'} ${wo?.title || matchedTpl.name}`, patch, field: 'billing_description', oldValue: block.billing_description || '', newValue: nextProse, user: actorName })
     await onReloadData?.()
     showFeedback?.('success', `Descripción de facturación actualizada desde Catálogo OT.ABC (${matchedTpl.name}).`)
   }
@@ -196,8 +202,7 @@ export function useBillingWorkspaceHandlers({
   })
 
   const handleSendShipToFinalBilling = async () => {
-    if (!activeShip) return
-    if (!window.confirm(`¿Enviar "${activeShip.name}" a Listos para Facturar con saldo ${grandTotal.totalUsd.toFixed(2)} USD? Se archivará el PDF adjunto del remito.`)) return
+    if (!activeShip || !window.confirm(`¿Enviar "${activeShip.name}" a Listos para Facturar con saldo ${grandTotal.totalUsd.toFixed(2)} USD? Se archivará el PDF adjunto del remito.`)) return
     await runGuarded(setSendingShip, async () => {
       activeFlushRef.current?.()
       let archivedPdfEntry = null
@@ -213,13 +218,17 @@ export function useBillingWorkspaceHandlers({
 
   return {
     importing, refreshingCosts, sendingShip, autoFitting, saveLayoutMeta,
-    handleSwitchShip, handleAddShipToWorkspace, handleSetShipColor, handleRemoveShipFromWorkspace,
+    handleSwitchShip: (nextId) => { activeFlushRef.current?.(); setNewBlockAutoFocusId(null); setBillingShipId(nextId) },
+    handleAddShipToWorkspace, handleRemoveShipFromWorkspace,
+    handleSetShipColor: (ship, color) => runGuarded(null, async () => { await setShipBillingColorService({ ship, color, user: actorName }); await onReloadData?.() }),
     handleImportAll, handleRefreshCosts, handleNotifyEmptyOts, handleAddRubroDelimiter, handleAddFreeBlock,
-    handleCommitProse, handleCommitPriceField, handleRefreshFromCatalog, handleRemoveBlock,
-    handleReorderBlocks, handleAutoFitA4, handleSendShipToFinalBilling,
+    handleCommitProse, handleRefreshFromCatalog, handleRemoveBlock, handleReorderBlocks, handleAutoFitA4, handleSendShipToFinalBilling,
+    handleCommitPriceField: (block, field, val) => patchBlock(block, { [field]: val }, field, block[field], val),
+    handleCommitLineItems: (block, nextItems) => { const n = normalizeBillingLineItems(nextItems); return patchBlock(block, { billing_line_items: n }, 'billing_line_items', block.billing_line_items, n) },
+    handleCommitHeading: (block, nextHeading) => activeShip && handleCommitProse({ shipId: activeShip.id, blockId: block.id, nextHtml: replaceBlockHeadingInHtml(block.billing_description || '', nextHeading), fontSizePx: block.fontSizePx || 12 }),
+    handleChangePricingMode: (block, mode) => { const p = buildPricingModeChangePatch(block, mode, block.workOrderId ? matchedTemplateByWoId?.get(block.workOrderId) : null); return patchBlock(block, p, 'billing_pricing_mode', block.billing_pricing_mode, mode) },
     handleChangeIssueDate: (nextIso) => activeShip && nextIso && saveLayoutMeta({ ...(activeShip.billing_layout_meta || {}), issueDate: nextIso }),
-    handleToggleTax: (block, taxField) => handleCommitPriceField(block, taxField, block[taxField] === 'GRAVADO_21' ? 'EXENTO' : 'GRAVADO_21'),
-    handleChangePricingMode: (block, mode) => handleCommitPriceField(block, 'billing_pricing_mode', mode),
+    handleToggleTax: (block, taxField) => patchBlock(block, { [taxField]: block[taxField] === 'GRAVADO_21' ? 'EXENTO' : 'GRAVADO_21' }, taxField, block[taxField], block[taxField] === 'GRAVADO_21' ? 'EXENTO' : 'GRAVADO_21'),
     handleRequestExpansion: async (otRow, note) => {
       const wo = activeShipWos.find((w) => w.id === otRow.id)
       if (!wo || !activeShip) return

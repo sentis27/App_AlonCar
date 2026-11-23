@@ -66,4 +66,37 @@ describe('Remito Comercial — Mejoras de ordenamiento, exclusión silenciosa y 
     expect(html).toContain('CARACTERÍSTICAS:')
     expect(html).toContain('HOJA 1/1')
   })
+
+  it('imprime y archiva PDF en modo ITEMS con renglones individuales alineados (Imagen 1)', () => {
+    const itemsBlock = {
+      id: 'wo_car',
+      workOrderId: 'car',
+      blockType: 'WORK_ORDER',
+      billing_description: '<b>CARENADO DE CASCO</b>',
+      billing_pricing_mode: 'ITEMS',
+      billing_line_items: [
+        { id: 'car_1', text: '1) LAVADO DE CASCO: Agua dulce alta presión.', qty: 1, unit_price_usd: 1750, tax_type: 'EXENTO', is_note: false },
+        { id: 'car_2', text: '2) CARENADO DE CASCO: Hidro arenado SA1.', qty: 1, unit_price_usd: 18600, tax_type: 'EXENTO', is_note: false }
+      ]
+    }
+    const pageSummaries = [{ pageNumber: 1, totalPages: 1, exentoUsd: 20350, gravadoUsd: 0, ivaUsd: 0, totalUsd: 20350 }]
+    const html = buildCleanBillingPrintHtml({
+      ship, owner: { name: 'ARMADOR SA' }, budgetNumber: '800/26', issueDate: '2026-11-23',
+      pages: [[itemsBlock]], pageSummaries
+    })
+    expect(html).toContain('CARENADO DE CASCO')
+    expect(html).toContain('1) LAVADO DE CASCO')
+    expect(html).toContain('1.750,00')
+    expect(html).toContain('18.600,00')
+
+    const pdfBytes = buildBillingRemitoPdfBytes({
+      ship, owner: { name: 'ARMADOR SA' }, budgetNumber: '800/26', issueDate: '2026-11-23',
+      pages: [[itemsBlock]], pageSummaries
+    })
+    const raw = Buffer.from(pdfBytes).toString('latin1')
+    expect(raw.startsWith('%PDF-1.4')).toBe(true)
+    expect(raw.endsWith('%%EOF')).toBe(true)
+    expect(raw).toContain('CARENADO DE CASCO')
+    expect(raw).toContain('18.600,00')
+  })
 })

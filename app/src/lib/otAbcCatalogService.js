@@ -49,6 +49,9 @@ export async function saveOtTemplateCompleteService(templateEdit, totalTemplates
     default_tax_type: templateEdit?.default_tax_type,
   })
 
+  const parsedSortOrder = Number(templateEdit?.sort_order)
+  const explicitSortOrder = Number.isInteger(parsedSortOrder) && parsedSortOrder >= 1 ? parsedSortOrder : null
+
   const payload = {
     name: cleanName,
     category: normalizeOtAbcCategory(templateEdit?.category),
@@ -58,12 +61,13 @@ export async function saveOtTemplateCompleteService(templateEdit, totalTemplates
     default_tax_type: summary.taxMode,
     default_data_source: normalizeOtAbcDataSource(templateEdit?.default_data_source),
     line_items: normalizedLines,
+    ...(explicitSortOrder !== null ? { sort_order: explicitSortOrder } : {}),
     updated_at: new Date().toISOString(),
   }
 
   const res = templateEdit?.id
     ? await otTemplatesRepository.updateById(templateEdit.id, payload, { select: '*' })
-    : await otTemplatesRepository.insertOne({ ...payload, sort_order: (Number(totalTemplates) || 0) + 1 })
+    : await otTemplatesRepository.insertOne({ ...payload, sort_order: explicitSortOrder ?? (Number(totalTemplates) || 0) + 1 })
 
   if (res.error) throw new Error(res.error)
   const savedRow = res.data
@@ -142,4 +146,46 @@ export async function deleteOtTemplateService(tplId, tplName, user = null) {
     moduleRoute: '/ots',
     user,
   })
+}
+
+/**
+ * Reordena una plantilla OT.ABC arriba/abajo (`sort_order`) persistiendo la secuencia del Remito PDF.
+ */
+export async function reorderOtTemplateService(templates = [], templateId, direction = 'up', user = null) {
+  const ordered = [...(templates || [])].sort(
+    (a, b) => (Number(a.sort_order) || 999) - (Number(b.sort_order) || 999) || String(a.name || '').localeCompare(String(b.name || ''))
+  )
+  const idx = ordered.findIndex((t) => t.id === templateId)
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+  if (idx < 0 || targetIdx < 0 || targetIdx >= ordered.length) return false
+
+  const [moved] = ordered.splice(idx, 1)
+  ordered.splice(targetIdx, 0, moved)
+
+  const nowIso = new Date().toISOString()
+  for (let i = 0; i < ordered.length; i += 1) {
+    const nextOrder = i + 1
+    if (Number(ordered[i].sort_order) !== nextOrder) {
+      const { error } = await otTemplatesRepository.updateById(
+        ordered[i].id,
+        { sort_order: nextOrder, updated_at: nowIso },
+        { select: null }
+      )
+      if (error) throw new Error(error)
+    }
+  }
+
+  await auditService.logCellChange({
+    entityType: 'ot_templates',
+    entityId: moved.id,
+    entityName: `OT.ABC · ${moved.name}`,
+    field: 'sort_order',
+    fieldLabel: 'Orden PDF Remito',
+    oldValue: idx + 1,
+    newValue: targetIdx + 1,
+    sheetName: CATALOG_SHEET_NAME,
+    moduleRoute: '/ots',
+    user,
+  })
+  return true
 }

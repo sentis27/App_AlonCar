@@ -85,8 +85,9 @@ export default function RemitoComercialAlfaPanel({
   }, [activeShipWos, otTemplates])
 
   const ghostEval = useMemo(() => evaluateShipWorkOrdersForGhostImport({
-    shipWos: activeShipWos, workItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates
-  }), [activeShipWos, workItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates])
+    shipWos: activeShipWos, workItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates,
+    existingCustomBlocks: activeShip?.billing_layout_meta?.customBlocks || []
+  }), [activeShip, activeShipWos, workItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates])
 
   const orderedBlocks = useMemo(
     () => buildOrderedBillingBlocks({ activeShip, activeShipWos, workItems, newBlockAutoFocusId }),
@@ -132,7 +133,8 @@ export default function RemitoComercialAlfaPanel({
   }, [allShips, workOrders, workItems])
 
   const h = useBillingWorkspaceHandlers({
-    allShips, activeShip, activeOwner, activeShipWos, workOrders, workItems, inPrepShips, effectiveShipId,
+    allShips, activeShip, activeOwner, activeShipWos, workOrders, workItems, laborRows, materialRows,
+    thirdPartyRows, workers, otTemplates, matchedTemplateByWoId, inPrepShips, effectiveShipId,
     orderedBlocks, pages, pageSummaries, grandTotal, otRowMap, ghostEval, printDensity, autoFitPreview,
     activeIssueDate, actorName, activeFlushRef, setBillingShipId, setNewBlockAutoFocusId, onReloadData, showFeedback
   })
@@ -201,6 +203,8 @@ export default function RemitoComercialAlfaPanel({
               rubroSubtotalsMap={rubroSubtotalsMap}
               onCommitProse={h.handleCommitProse}
               onCommitPriceField={h.handleCommitPriceField}
+              onCommitLineItems={h.handleCommitLineItems}
+              onCommitHeading={h.handleCommitHeading}
               onToggleTax={h.handleToggleTax}
               onChangePricingMode={h.handleChangePricingMode}
               onRequestExpansion={h.handleRequestExpansion}

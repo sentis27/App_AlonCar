@@ -11,6 +11,7 @@ import {
   computeA4AutoFitPlan,
   buildAutoFitLayoutMetaPatch
 } from './billingA4Layout.js'
+import { computeLineItemsBillingBreakdown } from './billingLineItemsHelper.js'
 
 export { A4_SHEET_METRICS, PAIRED_GRID_CLASS, SHEET_COLS_CLASS, estimateBillingBlockHeightPx, paginateBillingBlocks, computeA4RemainingSpacerPx, computeA4AutoFitPlan, buildAutoFitLayoutMetaPatch }
 
@@ -52,6 +53,7 @@ export function extractWoBillingMeta(wo = {}, woItems = []) {
     billingQtyOverride: wo.billing_qty_override ?? null,
     billingMoTax: wo.billing_mo_tax || 'EXENTO',
     billingMatTax: wo.billing_mat_tax || 'EXENTO',
+    billingLineItems: Array.isArray(wo.billing_line_items) ? wo.billing_line_items : [],
     foremanReviewStatus: wo.foreman_review_status || 'NONE',
     foremanReviewNote: wo.foreman_review_note || ''
   }
@@ -149,9 +151,8 @@ export function computeOtUnvaluedBreakdown({
  */
 export function computeBlockBillingBreakdown(block = {}) {
   const mode = block.billing_pricing_mode || 'MO_MAT'
-  if (mode === 'SIN_CARGO') {
-    return { exentoUsd: 0, gravadoUsd: 0, ivaUsd: 0, totalUsd: 0 }
-  }
+  if (mode === 'SIN_CARGO') return { exentoUsd: 0, gravadoUsd: 0, ivaUsd: 0, totalUsd: 0 }
+  if (mode === 'ITEMS') return computeLineItemsBillingBreakdown(block.billing_line_items)
 
   let exentoUsd = 0
   let gravadoUsd = 0

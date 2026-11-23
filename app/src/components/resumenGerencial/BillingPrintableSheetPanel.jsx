@@ -10,6 +10,7 @@ import {
   computeA4RemainingSpacerPx
 } from '../../lib/billingSheetMath'
 import BillingInlineProseCell from './BillingInlineProseCell'
+import BillingLineItemsBlock from './BillingLineItemsBlock'
 import BillingRightCostCard from './BillingRightCostCard'
 import {
   InlineNumberCell,
@@ -36,6 +37,8 @@ export default function BillingPrintableSheetPanel({
   rubroSubtotalsMap = {},
   onCommitProse,
   onCommitPriceField,
+  onCommitLineItems,
+  onCommitHeading,
   onToggleTax,
   onChangePricingMode,
   onRequestExpansion,
@@ -108,6 +111,14 @@ export default function BillingPrintableSheetPanel({
                       </div>
                       <div className="bg-rose-50/70 h-full" />
                     </div>
+                  ) : pricingMode === 'ITEMS' ? (
+                    <BillingLineItemsBlock
+                      block={block}
+                      itemIndex={itemIndex}
+                      isCompact={isCompact}
+                      onCommitLineItems={onCommitLineItems}
+                      onCommitHeading={onCommitHeading}
+                    />
                   ) : (
                     <div className={`${SHEET_COLS} bg-white text-slate-950 border-x border-slate-400 border-b border-b-slate-300 items-stretch ${isCompact ? 'min-h-[36px]' : 'min-h-[44px]'}`}>
                       <div className={`flex items-start justify-center ${isCompact ? 'pt-1' : 'pt-1.5'} text-slate-400 hover:text-slate-800 border-r border-slate-200 cursor-grab active:cursor-grabbing`} title="Arrastrar para reordenar bloque + venta + costos">

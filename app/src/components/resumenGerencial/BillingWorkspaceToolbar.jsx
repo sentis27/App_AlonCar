@@ -14,7 +14,7 @@ const IMPORT_ALL_HINT = (
 
 const REFRESH_COSTS_HINT = (
   <div className="space-y-1">
-    <div>Recarga costos operativos en vivo y sincroniza las OTs activas del barco.</div>
+    <div>Recarga costos en vivo, sincroniza OTs activas y ordena automáticamente las tabuladas según el orden PDF (sin pisar textos ni precios).</div>
     <div><strong>No trae OTs nuevas.</strong> Para incorporarlas, usá <strong>Importar Todo del Barco</strong>.</div>
   </div>
 )

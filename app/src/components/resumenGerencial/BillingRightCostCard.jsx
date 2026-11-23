@@ -58,6 +58,7 @@ export default function BillingRightCostCard({
             {[
               { id: 'MO_MAT', label: 'M.O+MAT' },
               { id: 'UNITARIO', label: 'Unit.' },
+              { id: 'ITEMS', label: 'Ítems' },
               { id: 'SIN_CARGO', label: 'S/Cargo' }
             ].map((m) => (
               <button
@@ -185,6 +186,7 @@ export default function BillingRightCostCard({
             {[
               { id: 'MO_MAT', label: 'MO' },
               { id: 'UNITARIO', label: 'Unit' },
+              { id: 'ITEMS', label: 'Ítems' },
               { id: 'SIN_CARGO', label: 'S/C' }
             ].map((m) => (
               <button

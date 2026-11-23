@@ -3,6 +3,7 @@
  * Métricas reales de hoja ISO A4 vertical (210mm × 297mm a 96 DPI ≈ 794px × 1123px)
  * para alinear 1:1 la Sábana Blanca editable en pantalla con la impresión PDF A4.
  */
+import { normalizeBillingLineItems } from './billingLineItemsHelper.js'
 
 export const A4_SHEET_METRICS = {
   widthMm: 210,
@@ -67,30 +68,28 @@ export function estimateBillingBlockHeightPx(block = {}, options = {}) {
   const lineHeightPx = fontSizePx * profile.lineHeightRatio
   const charsPerLine = Math.max(42, Math.floor(A4_SHEET_METRICS.conceptColWidthPx / (fontSizePx * profile.charWidthFactor)))
 
+  const mode = block.billing_pricing_mode || 'MO_MAT'
+  if (mode === 'ITEMS' && Array.isArray(block.billing_line_items) && block.billing_line_items.length > 0) {
+    const items = normalizeBillingLineItems(block.billing_line_items)
+    const itemLines = items.reduce((sum, it) => sum + Math.max(1, Math.ceil((it.text || '').length / charsPerLine)), 0)
+    const totalLines = 1 + itemLines
+    const estimatedItems = Math.ceil(totalLines * lineHeightPx + items.length * 4 + profile.verticalPaddingPx)
+    return Math.max(profile.minBlockHeightPx, estimatedItems)
+  }
+
   const plain = String(block.billing_description || block.label || '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(?:p|div|li)>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/gi, ' ')
 
-  const paragraphs = plain
-    .split(/\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
+  const paragraphs = plain.split(/\n/).map((line) => line.trim()).filter(Boolean)
+  const wrappedLines = paragraphs.length === 0
+    ? 2
+    : paragraphs.reduce((sum, p) => sum + Math.max(1, Math.ceil(p.length / charsPerLine)), 0)
 
-  let wrappedLines = 0
-  if (paragraphs.length === 0) {
-    wrappedLines = 2
-  } else {
-    for (const p of paragraphs) {
-      wrappedLines += Math.max(1, Math.ceil(p.length / charsPerLine))
-    }
-  }
-
-  const mode = block.billing_pricing_mode || 'MO_MAT'
   const suffixPx = mode === 'MO_MAT' ? profile.moMatSuffixPx : profile.otherSuffixPx
   const estimated = Math.ceil(wrappedLines * lineHeightPx + suffixPx + profile.verticalPaddingPx)
-
   return Math.max(profile.minBlockHeightPx, estimated)
 }
 

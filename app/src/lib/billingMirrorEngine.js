@@ -3,9 +3,14 @@
  */
 import { normalizeText, parseWorkerTrades } from './tradesCatalog.js'
 import { resolveTemplateBillingDescription } from './otAbcCatalogConstants.js'
+import {
+  buildBillingLineItemsFromTemplate,
+  shouldTemplateDefaultToItemsMode
+} from './billingLineItemsHelper.js'
+import { buildOrderedImportWithDelimiters } from './billingImportOrderEngine.js'
 
 export const BILLABLE_OT_STATUSES = new Set([
-  'EN EJECUCION', 'EN PROGRESO', 'FINALIZADO', 'PENDIENTE REMITO',
+  'EN EJECUCION', 'EN PROGRESO', 'FINALIZADO', 'COMPLETADA', 'PENDIENTE REMITO',
   'REMITO REALIZADO/PDTE FIRMA', 'FINALIZADO COSTO FINAL DE OBRA'
 ])
 
@@ -80,10 +85,8 @@ export function matchOtToAbcTemplate(wo, otTemplates = []) {
   }
   const titleNorm = normalizeText(wo.title || '')
   if (!titleNorm) return null
-
   const exact = otTemplates.find((tpl) => normalizeText(tpl.name) === titleNorm)
   if (exact) return exact
-
   return (
     otTemplates.find((tpl) => {
       const tplNorm = normalizeText(tpl.name)
@@ -92,42 +95,32 @@ export function matchOtToAbcTemplate(wo, otTemplates = []) {
   )
 }
 
-/**
- * Clasificador Determinístico SIN IA (Catálogo OT.ABC + Rubros reales de costos/contratistas + Palabras clave).
- */
+/** Clasificador Determinístico SIN IA (Catálogo OT.ABC en orden PDF + Rubros reales + Keywords). */
 export function inferOtChapterDeterministic({
-  wo,
-  woItems = [],
-  laborRows = [],
-  materialRows = [],
-  thirdPartyRows = [],
-  workers = [],
-  otTemplates = []
+  wo, woItems = [], laborRows = [], materialRows = [], thirdPartyRows = [], workers = [], otTemplates = []
 }) {
   const matchedTpl = matchOtToAbcTemplate(wo, otTemplates)
   if (matchedTpl) {
-    const tplNorm = normalizeText(matchedTpl.name)
-    const chapterKey = tplNorm.includes('TANQUE') || tplNorm.includes('SENTINA')
-      ? 'TANQUES_SENTINA'
-      : tplNorm.includes('CARENAD') || tplNorm.includes('SUPER ESTRUCTURA') || tplNorm.includes('ANCLAS')
-        ? 'CARENADO'
-        : 'OT_ABC'
-    const chapter = CHAPTER_BY_KEY.get(chapterKey) || CHAPTER_BY_KEY.get('OT_ABC')
-    const hasPriced = Array.isArray(matchedTpl.line_items) && matchedTpl.line_items.some((l) => Number(l?.unit_price_usd) > 0)
+    const chapter = CHAPTER_BY_KEY.get('OT_ABC')
+    const defaultLineItems = buildBillingLineItemsFromTemplate(matchedTpl)
+    const useItemsMode = shouldTemplateDefaultToItemsMode(matchedTpl)
+    const rawLines = Array.isArray(matchedTpl.line_items) ? matchedTpl.line_items : []
+    const firstPriced = rawLines.find((l) => l?.row_type !== 'NOTE' && Number(l?.unit_price_usd) > 0) || null
     const taxType = matchedTpl.default_tax_type === 'GRAVADO_21' ? 'GRAVADO_21' : 'EXENTO'
-    const firstPriced = hasPriced ? matchedTpl.line_items.find((l) => Number(l?.unit_price_usd) > 0) : null
+    const defaultPricingMode = useItemsMode ? 'ITEMS' : (firstPriced ? 'UNITARIO' : 'MO_MAT')
 
     return {
       chapterKey: chapter.key,
       chapterLabel: chapter.label,
       chapterOrder: chapter.order,
-      subOrder: Number(matchedTpl.sort_order) || 99,
+      subOrder: Number(matchedTpl.sort_order) || 999,
       isTabulatedAbc: true,
       matchedTemplate: matchedTpl,
       defaultTaxType: taxType,
-      defaultPricingMode: hasPriced ? 'UNITARIO' : 'MO_MAT',
-      defaultUnitPriceUsd: Number(firstPriced?.unit_price_usd) || 0,
-      showsKgInCant: chapter.showsKgInCant
+      defaultPricingMode,
+      defaultUnitPriceUsd: defaultPricingMode === 'UNITARIO' ? (Number(firstPriced?.unit_price_usd) || 0) : 0,
+      defaultLineItems: useItemsMode ? defaultLineItems : [],
+      showsKgInCant: false
     }
   }
 
@@ -142,7 +135,6 @@ export function inferOtChapterDeterministic({
   for (const tp of thirdPartyRows) {
     if (tp.workOrderId === wo.id) addScore(mapRawRubroToChapterKey(tp.rubro), 4)
   }
-
   const contractors = new Set([wo.contractor_name].filter(Boolean))
   for (const item of woItems) {
     if (item.contractor_name) contractors.add(item.contractor_name)
@@ -155,18 +147,14 @@ export function inferOtChapterDeterministic({
   for (const mat of materialRows) {
     if (mat.workOrderId === wo.id) addScore(mapRawRubroToChapterKey(mat.rubro), 2)
   }
-
   const textNorm = normalizeText(`${wo.title || ''} ${wo.description || ''} ${woItems.map((i) => i.description || '').join(' ')}`)
-  for (const rule of RUBRO_KEYWORDS) {
-    if (rule.regex.test(textNorm)) addScore(rule.key, 2.5)
-  }
+  for (const rule of RUBRO_KEYWORDS) if (rule.regex.test(textNorm)) addScore(rule.key, 2.5)
 
   let winningKey = 'SERVICIOS'
   let maxScore = 0
   for (const [key, score] of scores.entries()) {
     if (score > maxScore) { maxScore = score; winningKey = key }
   }
-
   const chapter = CHAPTER_BY_KEY.get(winningKey) || CHAPTER_BY_KEY.get('SERVICIOS')
   const otNumDigits = Number(String(wo.ot_number || '').replace(/\D+/g, '')) || 9999
   return {
@@ -179,6 +167,7 @@ export function inferOtChapterDeterministic({
     defaultTaxType: 'EXENTO',
     defaultPricingMode: 'MO_MAT',
     defaultUnitPriceUsd: 0,
+    defaultLineItems: [],
     showsKgInCant: chapter.showsKgInCant
   }
 }
@@ -212,7 +201,10 @@ export function buildInitialGhostProse(wo, woItems = [], matchedTemplate = null)
   return { hasEmpty: false, emptyCount: 0, prose, fromCatalog: false }
 }
 
-export function evaluateShipWorkOrdersForGhostImport({ shipWos = [], workItems = [], laborRows = [], materialRows = [], thirdPartyRows = [], workers = [], otTemplates = [] }) {
+export function evaluateShipWorkOrdersForGhostImport({
+  shipWos = [], workItems = [], laborRows = [], materialRows = [], thirdPartyRows = [],
+  workers = [], otTemplates = [], existingCustomBlocks = []
+}) {
   const wiByWo = new Map()
   for (const wi of workItems || []) {
     if (!wiByWo.has(wi.work_order_id)) wiByWo.set(wi.work_order_id, [])
@@ -222,26 +214,28 @@ export function evaluateShipWorkOrdersForGhostImport({ shipWos = [], workItems =
   const alreadyInBilling = []
   const emptyDescriptionAlerts = []
   const readyCandidates = []
+  const matchedTemplateByWoId = new Map()
 
   for (const wo of shipWos || []) {
     const woItems = wiByWo.get(wo.id) || []
     const alreadyUploaded = Boolean(wo.is_in_billing) || (wo.billing_description != null && String(wo.billing_description).length > 0)
-    if (alreadyUploaded) { alreadyInBilling.push(wo); continue }
+    if (alreadyUploaded) {
+      alreadyInBilling.push(wo)
+      const tpl = matchOtToAbcTemplate(wo, otTemplates)
+      if (tpl) matchedTemplateByWoId.set(wo.id, tpl)
+      continue
+    }
     if (!isWorkOrderBillableStatus(wo, woItems)) continue
 
     const classification = inferOtChapterDeterministic({
       wo, woItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates
     })
-
     const ghost = buildInitialGhostProse(wo, woItems, classification.matchedTemplate)
     if (ghost.hasEmpty) {
       emptyDescriptionAlerts.push({
-        workOrderId: wo.id,
-        otNumber: wo.ot_number || 'OT',
-        title: wo.title || 'Sin título',
+        workOrderId: wo.id, otNumber: wo.ot_number || 'OT', title: wo.title || 'Sin título',
         foremanName: wo.foreman_name || woItems[0]?.foreman_name || 'Jefe de Obra',
-        foremanReviewStatus: wo.foreman_review_status || 'NONE',
-        emptyCount: ghost.emptyCount
+        foremanReviewStatus: wo.foreman_review_status || 'NONE', emptyCount: ghost.emptyCount
       })
       continue
     }
@@ -257,6 +251,7 @@ export function evaluateShipWorkOrdersForGhostImport({ shipWos = [], workItems =
         billing_pricing_mode: classification.defaultPricingMode,
         billing_unit_price_usd: classification.defaultUnitPriceUsd,
         ...(classification.defaultPricingMode === 'UNITARIO' ? { billing_qty_override: 1 } : {}),
+        ...(classification.defaultPricingMode === 'ITEMS' ? { billing_line_items: classification.defaultLineItems } : {}),
         billing_mo_tax: classification.defaultTaxType,
         billing_mat_tax: classification.defaultTaxType
       }
@@ -269,11 +264,8 @@ export function evaluateShipWorkOrdersForGhostImport({ shipWos = [], workItems =
       : a.classification.subOrder - b.classification.subOrder
   )
 
-  const maxSort = alreadyInBilling.reduce((m, w) => Math.max(m, Number(w.billing_sort_order) || 0), 0)
-  const readyToImport = readyCandidates.map((cand, idx) => ({
-    ...cand,
-    patch: { ...cand.patch, billing_sort_order: maxSort + (idx + 1) * 10 }
-  }))
-
-  return { alreadyInBilling, emptyDescriptionAlerts, readyToImport }
+  const plan = buildOrderedImportWithDelimiters({
+    readyCandidates, alreadyInBilling, existingCustomBlocks, matchedTemplateByWoId
+  })
+  return { alreadyInBilling, emptyDescriptionAlerts, ...plan }
 }
