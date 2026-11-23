@@ -10,8 +10,8 @@ export const A4_SHEET_METRICS = {
   widthPx: 794,
   heightPx: 1123,
   conceptColWidthPx: 455,
-  page1BodyBudgetPx: 795,
-  nextPageBodyBudgetPx: 830,
+  page1BodyBudgetPx: 725,
+  nextPageBodyBudgetPx: 810,
   delimiterHeightPx: 26,
   minBlockHeightPx: 46
 }

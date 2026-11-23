@@ -56,6 +56,7 @@ export async function syncWorkOrderHeaderStatusService({
 
   const activeItems = (allItems || []).filter((it) => it.status !== 'Desestimado')
   if (activeItems.length === 0) {
+    await workOrdersRepository.updateByIds(targetWoIds, { is_in_billing: false }, { select: null })
     return { synced: false, reason: 'no_active_items' }
   }
 

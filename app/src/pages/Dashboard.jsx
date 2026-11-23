@@ -14,7 +14,7 @@ import { saveMacroVariables } from '../lib/macroVariablesService'
 import { fetchPendingBudgetAlertsForMariaService } from '../lib/workOrdersService'
 import { fetchPendingContractAlertsForMariaService } from '../lib/contractorDeductionsService'
 import { fetchDashboardZeroCostAlerts } from '../lib/zeroCostAlertsService'
-import { fetchBillingExpansionAlertsService } from '../lib/billingWorkflowService'
+import { fetchBillingExpansionAlertsService, fetchPendingShipRemitoBudgetAlertsForMariaService } from '../lib/billingWorkflowService'
 import {
   DASHBOARD_REALTIME_TABLES,
   fetchDashboardStatsService,
@@ -48,6 +48,7 @@ export default function Dashboard() {
   const [savingMacro, setSavingMacro] = useState(false)
   const [macroMessage, setMacroMessage] = useState(null)
   const [pendingBudgetAlerts, setPendingBudgetAlerts] = useState([])
+  const [pendingRemitoBudgetAlerts, setPendingRemitoBudgetAlerts] = useState([])
   const [pendingContractAlerts, setPendingContractAlerts] = useState([])
   const [zeroCostAlerts, setZeroCostAlerts] = useState(null)
   const [billingExpansionAlerts, setBillingExpansionAlerts] = useState({ requested: [], resolved: [] })
@@ -55,10 +56,11 @@ export default function Dashboard() {
   const loadAllDashboard = useCallback(async ({ silent = false } = {}) => {
     try {
       if (!silent) setLoading(true)
-      const [statsData, macroData, budgetData, contractData, zeroCostData, expansionData] = await Promise.all([
+      const [statsData, macroData, budgetData, remitoBudgetData, contractData, zeroCostData, expansionData] = await Promise.all([
         fetchDashboardStatsService(),
         fetchMacroVariablesService(),
         fetchPendingBudgetAlertsForMariaService(),
+        fetchPendingShipRemitoBudgetAlertsForMariaService(),
         fetchPendingContractAlertsForMariaService({ syncFirst: !silent }),
         fetchDashboardZeroCostAlerts(),
         fetchBillingExpansionAlertsService()
@@ -76,6 +78,7 @@ export default function Dashboard() {
         })
       }
       setPendingBudgetAlerts(budgetData)
+      setPendingRemitoBudgetAlerts(remitoBudgetData)
       setPendingContractAlerts(contractData)
       setZeroCostAlerts(zeroCostData)
       setBillingExpansionAlerts(expansionData)
@@ -210,7 +213,7 @@ export default function Dashboard() {
 
       <ZeroCostDashboardAlertCard alerts={zeroCostAlerts} />
 
-      <MariaJoseBudgetAlertsCard alerts={pendingBudgetAlerts} user={user} userName={profile?.full_name || user?.email || 'María José'} onResolved={() => loadAllDashboard({ silent: true })} />
+      <MariaJoseBudgetAlertsCard alerts={pendingBudgetAlerts} remitoAlerts={pendingRemitoBudgetAlerts} user={user} userName={profile?.full_name || user?.email || 'María José'} onResolved={() => loadAllDashboard({ silent: true })} />
 
       <MariaJoseContractAlertsCard alerts={pendingContractAlerts} user={user} userName={profile?.full_name || user?.email || 'María José'} onResolved={() => loadAllDashboard({ silent: true })} />
 

@@ -659,7 +659,7 @@ export async function deleteWoService(wo, items = [], foremenList = [], user) {
 
   const { error: woError } = await workOrdersRepository.updateById(
     wo.id,
-    { status: 'Cancelada', notes: updatedNotes },
+    { status: 'Cancelada', is_in_billing: false, notes: updatedNotes },
     { select: null }
   )
   if (woError) throw new Error(woError)

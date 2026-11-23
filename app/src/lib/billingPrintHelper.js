@@ -11,6 +11,7 @@
 
 import { isCaldereriaChapter } from './billingMirrorEngine.js'
 import { resolveBlockBillingQty } from './billingSheetMath.js'
+import { ALONCAR_AV_LOGO_SVG, formatLongSpanishDate } from './aloncarLogoSvg.js'
 
 function fmtMoney(val) {
   const n = Number(val) || 0
@@ -38,13 +39,14 @@ export function buildCleanBillingPrintHtml({
   ship,
   owner,
   budgetNumber = '',
+  issueDate = '',
   pages = [],
   pageSummaries = [],
   otRowMap = new Map(),
   printDensity = 'normal'
 }) {
   const isCompact = printDensity === 'compact'
-  const today = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
+  const formattedDate = formatLongSpanishDate(issueDate)
   let itemCounter = 0
   let activeRubro = ''
 
@@ -91,19 +93,44 @@ export function buildCleanBillingPrintHtml({
 
     return `
       <section class="sheet-page${isCompact ? ' is-compact' : ''}">
-        <div class="doc-header">
-          <div>
-            <div class="brand">ASTILLERO VANOLI · ALON CAR S.A.</div>
-            <div>Señores: <strong>${escapeHtml(owner?.name || ship?.client_name || '')}</strong></div>
-            <div>mail: ${escapeHtml(owner?.email_principal || '')}</div>
+        <div class="doc-top">
+          <div class="brand-col">
+            <div class="brand-logo">${ALONCAR_AV_LOGO_SVG}</div>
+            <div class="brand-name">ASTILLERO VANOLI<br/>ALON CAR S.A.</div>
           </div>
-          <div class="doc-meta">
-            <div>Necochea, ${escapeHtml(today)}</div>
-            <div class="presup">Presupuesto Nº: ${escapeHtml(budgetNumber || 'S/N')}</div>
-            <div class="page-badge">HOJA ${sum.pageNumber}/${sum.totalPages}</div>
+          <div class="header-frame">
+            <div class="hf-row-top">
+              <div class="hf-client">
+                <div class="hf-senores"><span class="hf-lbl">Señores:</span><span class="hf-val-box">${escapeHtml(String(owner?.name || ship?.client_name || '').toUpperCase())}</span></div>
+                <div class="hf-mail"><span class="hf-lbl">mail:</span><span class="hf-mail-box">${escapeHtml(owner?.email_principal || '')}</span></div>
+              </div>
+              <div class="hf-date">Necochea, &nbsp;&nbsp;${escapeHtml(formattedDate)}</div>
+            </div>
+            <div class="hf-divider-band">
+              <div class="hf-double-line"></div>
+              <div class="hf-presup">Presupuesto Nº: &nbsp;${escapeHtml(budgetNumber || 'PENDIENTE')}</div>
+            </div>
+            <div class="hf-hoja-row">
+              <div class="hf-salutation">
+                ${pIdx === 0 ? '<div>De nuestra consideración:</div><div class="hf-indent">Por la presente tenemos el agrado de dirigirnos a uds. A efectos de entregarles el sig. presupuesto</div>' : ''}
+              </div>
+              <div class="page-badge">HOJA ${sum.pageNumber}/${sum.totalPages}</div>
+            </div>
+            ${pIdx === 0 ? `
+            <div class="chars">
+              <div class="chars-title">CARACTERÍSTICAS:</div>
+              <div class="chars-grid-1">
+                <span>Nombre del buque: <strong>${escapeHtml(String(ship?.name || '').toUpperCase())}</strong></span>
+                <span>Matr.: <strong>${escapeHtml(ship?.matricula || '')}</strong></span>
+              </div>
+              <div class="chars-grid-2">
+                <span>Eslora: <strong>${ship?.eslora_mts ? `${ship.eslora_mts} m` : ''}</strong></span>
+                <span>Manga: <strong>${ship?.manga_mts ? `${ship.manga_mts} m` : ''}</strong></span>
+                <span>Puntal: <strong>${ship?.puntal_mts ? `${ship.puntal_mts} m` : ''}</strong></span>
+              </div>
+            </div>` : ''}
           </div>
         </div>
-        ${pIdx === 0 ? `<div class="chars"><strong>CARACTERÍSTICAS:</strong> Nombre del buque: <strong>${escapeHtml(ship?.name)}</strong> · Matr.: ${escapeHtml(ship?.matricula || '')} · Eslora: ${ship?.eslora_mts || ''} · Manga: ${ship?.manga_mts || ''} · Puntal: ${ship?.puntal_mts || ''}</div>` : ''}
         <div class="sheet-body">
           <table class="items-table">
             <thead>
@@ -140,9 +167,24 @@ export function buildCleanBillingPrintHtml({
     .sheet-page{--row-py:4px;--rubro-py:4px;--prose-lh:1.38;--mom-mt:4px;background:#fff;width:210mm;min-height:296.5mm;margin:0 auto 18px;padding:10mm;display:flex;flex-direction:column;border:1px solid #111;page-break-after:always}
     .sheet-page.is-compact{--row-py:2.5px;--rubro-py:3px;--prose-lh:1.24;--mom-mt:2px}
     .sheet-page:last-child{page-break-after:auto}
-    .doc-header{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:6px;font-size:11px}
-    .brand{font-weight:900;font-size:13px;margin-bottom:4px}.doc-meta{text-align:right}.presup{font-weight:700;border-bottom:1px solid #111;display:inline-block;margin:2px 0}.page-badge{background:#d1d5db;font-weight:900;padding:2px 8px;display:inline-block;margin-top:2px}
-    .chars{font-size:10px;padding:4px 0;border-bottom:1px solid #111}
+    .doc-top{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;align-items:start;margin-bottom:4px}
+    .brand-col{text-align:center;padding-top:2px}.brand-logo{width:54px;height:54px;margin:0 auto 4px}.brand-logo svg{width:100%;height:100%}
+    .brand-name{font-weight:900;font-size:8.5px;line-height:1.25;letter-spacing:.2px}
+    .header-frame{border:1.6px solid #111;font-size:10px;padding:0}
+    .hf-row-top{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 8px 5px;gap:8px}
+    .hf-client{flex:1;min-width:0}.hf-senores{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+    .hf-lbl{font-size:10px;white-space:nowrap}.hf-val-box{background:#f3f4f6;padding:1px 6px;font-weight:800;font-size:11px;min-width:160px;display:inline-block}
+    .hf-mail{display:flex;align-items:center;gap:6px;padding-left:28px}.hf-mail-box{background:#f3f4f6;padding:1px 6px;font-size:9.5px;min-width:120px;display:inline-block}
+    .hf-date{font-size:10px;white-space:nowrap;text-align:right}
+    .hf-divider-band{display:grid;grid-template-columns:1fr auto;align-items:center;border-top:1.5px solid #111;padding:0 8px 0 0;gap:12px}
+    .hf-double-line{border-bottom:1.5px solid #111;height:14px}
+    .hf-presup{font-weight:700;font-size:10px;border-bottom:1px solid #111;padding:1px 2px;white-space:nowrap}
+    .hf-hoja-row{display:flex;justify-content:space-between;align-items:flex-start;padding:3px 0 3px 8px;gap:6px}
+    .hf-salutation{font-size:9.5px;line-height:1.35}.hf-indent{padding-left:18px}
+    .page-badge{background:#d1d5db;font-weight:900;padding:2px 8px;font-size:9.5px;white-space:nowrap}
+    .chars{font-size:9.5px;padding:4px 8px 5px;line-height:1.45}.chars-title{font-weight:700;margin-bottom:1px}
+    .chars-grid-1{display:grid;grid-template-columns:1.35fr 1fr;gap:8px}
+    .chars-grid-2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding-left:14px}
     .sheet-body{flex:1 1 auto;display:flex;flex-direction:column;border:1px solid #111;margin-top:4px}
     .items-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;flex:0 0 auto;font-size:11px}
     .items-table th,.items-table td{border-right:1px solid #111;border-bottom:1px solid #111;padding:var(--row-py) 6px;vertical-align:top}

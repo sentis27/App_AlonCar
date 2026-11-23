@@ -10,6 +10,7 @@ import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { shipsRepository } from '../repositories/shipsRepository.js'
 import { isInvalidEventOrObjectScalar, logCellChange, logRowAction } from './auditService.js'
 import { buildInitialGhostProse, inferOtChapterDeterministic } from './billingMirrorEngine.js'
+import { syncShipRemitoBudgetAlertForMariaService } from './billingRemitoBudgetAlertsService.js'
 
 export {
   requestBillingExpansionService,
@@ -17,16 +18,32 @@ export {
   acknowledgeResolvedExpansionService,
   fetchBillingExpansionAlertsService
 } from './billingExpansionService.js'
+export {
+  syncShipRemitoBudgetAlertForMariaService,
+  fetchPendingShipRemitoBudgetAlertsForMariaService,
+  resolveShipRemitoBudgetAlertService
+} from './billingRemitoBudgetAlertsService.js'
+export {
+  isWorkOrderExcludedFromBilling,
+  setShipBillingColorService,
+  removeShipFromBillingWorkspaceService,
+  syncShipBillingCostsAndOtsService,
+  buildOrderedBillingBlocks
+} from './billingWorkspaceShipActions.js'
 
 export async function openShipInBillingWorkspaceService({ ship, user = 'Gerencia' }) {
   if (!ship?.id) throw new Error('Buque requerido para abrir proyecto de facturación.')
   const nowIso = new Date().toISOString()
+  const existingMeta = ship.billing_layout_meta || {}
   const patch = {
     billing_workspace_status: 'EN_PREPARACION',
-    billing_opened_at: ship.billing_opened_at || nowIso
+    billing_opened_at: ship.billing_opened_at || nowIso,
+    billing_layout_meta: { ...existingMeta, workspaceColor: existingMeta.workspaceColor || 'AMARILLO' }
   }
   const { data, error } = await shipsRepository.updateById(ship.id, patch, { select: '*' })
   if (error) throw new Error(error)
+
+  await syncShipRemitoBudgetAlertForMariaService({ ship: data || { ...ship, ...patch }, user })
 
   await logRowAction({
     action: 'BILLING_OPEN_SHIP',
@@ -41,25 +58,35 @@ export async function openShipInBillingWorkspaceService({ ship, user = 'Gerencia
   return data
 }
 
-export async function sendShipToFinalBillingService({ ship, totalSnapshotUsd = 0, budgetNumber = '', user = 'Gerencia' }) {
+export async function sendShipToFinalBillingService({ ship, totalSnapshotUsd = 0, budgetNumber = '', archivedPdfEntry = null, user = 'Gerencia' }) {
   if (!ship?.id) throw new Error('Buque requerido para enviar a facturación.')
   const nowIso = new Date().toISOString()
+  const prevMeta = ship.billing_layout_meta || {}
+  const prevArchived = Array.isArray(prevMeta.archivedPdfs) ? prevMeta.archivedPdfs : []
+  const nextMeta = {
+    ...prevMeta,
+    workspaceColor: 'VERDE',
+    ...(archivedPdfEntry ? { archivedPdfs: [archivedPdfEntry, ...prevArchived].slice(0, 30) } : {})
+  }
   const patch = {
     billing_workspace_status: 'ENVIADO_A_FACTURACION',
     billing_sent_at: nowIso,
     billing_sent_by: String(user || 'Gerencia'),
     billing_total_snapshot_usd: Number(totalSnapshotUsd) || 0,
+    billing_layout_meta: nextMeta,
     ...(budgetNumber ? { billing_budget_number: String(budgetNumber).trim() } : {})
   }
   const { data, error } = await shipsRepository.updateById(ship.id, patch, { select: '*' })
   if (error) throw new Error(error)
+
+  await syncShipRemitoBudgetAlertForMariaService({ ship: data || { ...ship, ...patch }, user })
 
   await logRowAction({
     action: 'BILLING_SEND_SHIP_READY',
     entityType: 'ships',
     entityId: ship.id,
     entityName: `Enviado a Facturación · ${ship.name}`,
-    changes: patch,
+    changes: { totalSnapshotUsd: patch.billing_total_snapshot_usd, budgetNumber: patch.billing_budget_number || null, archivedPdf: archivedPdfEntry?.fileName || null },
     sheetName: 'Resumen Gerencial · Mesa de Facturación',
     moduleRoute: '/resumen-gerencial?tab=remito',
     user
@@ -75,6 +102,10 @@ export async function saveShipBillingLayoutMetaService({ shipId, shipName, layou
   }
   const { data, error } = await shipsRepository.updateById(shipId, patch, { select: '*' })
   if (error) throw new Error(error)
+
+  if (budgetNumber !== undefined && data) {
+    await syncShipRemitoBudgetAlertForMariaService({ ship: data, user })
+  }
 
   await logRowAction({
     action: 'BILLING_LAYOUT_UPDATE',
@@ -211,33 +242,4 @@ export async function saveWorkOrderBillingOrderBatchService({ updates = [], ship
       user
     })
   }
-}
-
-export function buildOrderedBillingBlocks({ activeShip, activeShipWos = [], newBlockAutoFocusId = null }) {
-  if (!activeShip) return []
-  const layoutMeta = activeShip.billing_layout_meta || {}
-  const customBlocks = Array.isArray(layoutMeta.customBlocks) ? layoutMeta.customBlocks : []
-  const fontSizes = layoutMeta.fontSizes || {}
-  const woBlocks = activeShipWos
-    .filter((w) => w.is_in_billing)
-    .map((w) => ({
-      id: `wo_${w.id}`,
-      workOrderId: w.id,
-      blockType: 'WORK_ORDER',
-      sortOrder: Number(w.billing_sort_order) || 1000,
-      billing_description: w.billing_description || '',
-      billing_rubro_group: w.billing_rubro_group || '',
-      billing_pricing_mode: w.billing_pricing_mode || 'MO_MAT',
-      billing_mo_usd: Number(w.billing_mo_usd) || 0,
-      billing_mat_usd: Number(w.billing_mat_usd) || 0,
-      billing_unit_price_usd: Number(w.billing_unit_price_usd) || 0,
-      billing_qty_override: w.billing_qty_override ?? null,
-      billing_mo_tax: w.billing_mo_tax || 'EXENTO',
-      billing_mat_tax: w.billing_mat_tax || 'EXENTO',
-      fontSizePx: fontSizes[w.id] || 12
-    }))
-  return [
-    ...woBlocks,
-    ...customBlocks.map((cb) => ({ ...cb, sortOrder: Number(cb.sortOrder) || 1000, autoFocus: cb.id === newBlockAutoFocusId }))
-  ].sort((a, b) => a.sortOrder - b.sortOrder)
 }

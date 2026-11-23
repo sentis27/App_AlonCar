@@ -26,10 +26,11 @@ export default function BillingPrintableSheetPanel({
   ship,
   owner,
   budgetNumber = '',
+  issueDate = '',
   onChangeBudgetNumber,
+  onChangeIssueDate,
   pages = [[]],
   pageSummaries = [],
-  grandTotal,
   otRowMap = new Map(),
   matchedTemplateByWoId = new Map(),
   rubroSubtotalsMap = {},
@@ -72,10 +73,11 @@ export default function BillingPrintableSheetPanel({
               ship={ship}
               owner={owner}
               budgetNumber={budgetNumber}
+              issueDate={issueDate}
               onChangeBudgetNumber={onChangeBudgetNumber}
+              onChangeIssueDate={onChangeIssueDate}
               summary={summary}
               pageIdx={pageIdx}
-              grandTotal={grandTotal}
             />
 
             {pageEntries.map(({ block, isDelimiter, itemIndex, activeRubroLabel }) => {
