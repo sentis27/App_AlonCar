@@ -20,9 +20,11 @@ import { workersRepository } from '../repositories/workersRepository.js'
 import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
 import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { workItemsRepository } from '../repositories/workItemsRepository.js'
+import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
+import { materialsRepository } from '../repositories/materialsRepository.js'
 
 export async function fetchTercerosData() {
-  const [srvRes, shpRes, woRes, wiRes, wkrRes, mvRes, vhRes] = await Promise.all([
+  const [srvRes, shpRes, woRes, wiRes, wkrRes, mvRes, vhRes, panolRemitoRes, matRes] = await Promise.all([
     thirdPartyServicesRepository.listServices(),
     shipsRepository.listShips({ select: 'id, name, vessel_type, current_location' }),
     workOrdersRepository.listCanonicalWorkOrders(),
@@ -30,6 +32,8 @@ export async function fetchTercerosData() {
     workersRepository.listThirdPartyEnabled(),
     macroVariablesRepository.listMacroVariables(),
     thirdPartyVoucherHistoryRepository.listHistory(),
+    inventoryTransactionsRepository.listWithVoucherNumber(),
+    materialsRepository.listMaterials({ select: 'id, name, unit_measure, weight_kg' }),
   ])
 
   if (srvRes.error) console.warn('Aviso third_party_services:', srvRes.error)
@@ -38,6 +42,8 @@ export async function fetchTercerosData() {
   if (wkrRes.error) console.warn('Aviso workers:', wkrRes.error)
   if (mvRes.error) console.warn('Aviso macro_variables:', mvRes.error)
   if (vhRes.error) console.warn('Aviso third_party_voucher_history:', vhRes.error)
+  if (panolRemitoRes.error) console.warn('Aviso inventory_transactions remitos:', panolRemitoRes.error)
+  if (matRes.error) console.warn('Aviso materials:', matRes.error)
 
   if (wkrRes.data) setAllocationWorkersCache(wkrRes.data)
 
@@ -49,6 +55,8 @@ export async function fetchTercerosData() {
     contractors: wkrRes.data || [],
     macroVariables: mvRes.data || [],
     voucherHistory: vhRes.data || [],
+    panolRemitoTx: panolRemitoRes.data || [],
+    materials: matRes.data || [],
   }
 }
 

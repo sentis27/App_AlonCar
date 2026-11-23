@@ -49,6 +49,7 @@ export default function MultiWithdrawalModal({
       ? String(editingRow.transaction_date).split('T')[0]
       : new Date().toISOString().split('T')[0]
   )
+  const [voucherNumber, setVoucherNumber] = useState(editingRow?.voucher_number || '')
   const [notes, setNotes] = useState(() => (editingRow ? stripGasTagFromNotes(editingRow.notes || '') : ''))
   const [items, setItems] = useState(() => {
     if (editingRow) {
@@ -160,7 +161,7 @@ export default function MultiWithdrawalModal({
       setIsSubmitting(true)
       await onSave({
         shipId, workOrderId: isOtEmpty ? null : workOrderId, contractorGroup,
-        notes, date, items: validItems, editId: editingRow?.id || null, linkedGasMovement
+        voucherNumber, notes, date, items: validItems, editId: editingRow?.id || null, linkedGasMovement
       })
     } finally {
       setIsSubmitting(false)
@@ -222,18 +223,29 @@ export default function MultiWithdrawalModal({
       <CanonicalStepperStep
         step={3}
         helpEntry={PANOL_WITHDRAWAL_STEP_HELP[3]}
-        title="FECHA Y OBSERVACIONES"
+        title="FECHA, Nº REMITO Y OBSERVACIONES"
         isLast={true}
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+          <div className="md:col-span-3">
             <label className="block text-slate-400 font-semibold text-[11px] mb-1">Fecha del Retiro</label>
             <input
               type="date" value={date} onChange={(e) => setDate(e.target.value)}
               className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
             />
           </div>
-          <div className="md:col-span-2">
+          <div className="md:col-span-3">
+            <label className="flex items-center justify-between text-slate-400 font-semibold text-[11px] mb-1">
+              <span>Nº Remito AlonCar</span>
+              <span className="text-[9px] text-cyan-400 font-mono">PAÑOL</span>
+            </label>
+            <input
+              type="text" value={voucherNumber} onChange={(e) => setVoucherNumber(e.target.value)}
+              placeholder="Ej: 2530"
+              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-cyan-500/40 text-cyan-200 font-mono text-xs focus:outline-none focus:border-cyan-400"
+            />
+          </div>
+          <div className="md:col-span-6">
             <label className="block text-slate-400 font-semibold text-[11px] mb-1">Observaciones Generales</label>
             <input
               type="text" value={notes} onChange={(e) => setNotes(e.target.value)}

@@ -13,6 +13,7 @@ import {
   Trash2
 } from 'lucide-react'
 import { VOUCHER_TYPES, formatDate } from '../../lib/tercerosConstants.js'
+import RemitoAloncarHoverBadge from './RemitoAloncarHoverBadge.jsx'
 
 export default function TercerosFichasPanel({
   filteredServices = [],
@@ -21,6 +22,7 @@ export default function TercerosFichasPanel({
   contractorMap = new Map(),
   workOrders = [],
   workItems = [],
+  panolRemitoIndex = new Map(),
   selectedIds = new Set(),
   handleRowClick,
   handleCheckboxToggle,
@@ -111,10 +113,21 @@ export default function TercerosFichasPanel({
 
                   {/* Remito Aloncar */}
                   {srv.internal_remito_number && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-cyan-400 font-bold">REMITO ALONCAR:</span>
-                      <span className="text-cyan-300 font-bold">#{srv.internal_remito_number}</span>
-                    </div>
+                    <RemitoAloncarHoverBadge
+                      remitoNumber={srv.internal_remito_number}
+                      tercerosWorkOrderId={srv.work_order_id}
+                      remitoIndex={panolRemitoIndex}
+                      otMap={otMap}
+                      showInlineMismatch={true}
+                      compactMismatch={true}
+                    >
+                      <div className="flex items-center justify-between cursor-help">
+                        <span className="text-[10px] text-cyan-400 font-bold">REMITO ALONCAR:</span>
+                        <span className="text-cyan-300 font-bold underline decoration-cyan-500/40 decoration-dotted underline-offset-2">
+                          #{srv.internal_remito_number}
+                        </span>
+                      </div>
+                    </RemitoAloncarHoverBadge>
                   )}
 
                   {/* Remito Proveedor */}
@@ -151,10 +164,13 @@ export default function TercerosFichasPanel({
 
               {/* Observaciones Directas y Específicas */}
               {(srv.direct_observations || srv.specific_observations) && (
-                <div className="space-y-1 text-xs text-slate-400">
+                <div className="space-y-1.5 text-xs text-slate-400">
                   {srv.direct_observations && (
-                    <div className="line-clamp-2" title={srv.direct_observations}>
-                      <span className="font-semibold text-slate-300">Tarea:</span> {srv.direct_observations}
+                    <div
+                      className="px-2 py-1 rounded-lg bg-sky-950/35 border border-sky-500/45 text-sky-200 line-clamp-2"
+                      title={`Observación Técnica: ${srv.direct_observations}`}
+                    >
+                      <span className="font-bold text-sky-300">Técnica:</span> {srv.direct_observations}
                     </div>
                   )}
                   {srv.specific_observations && (

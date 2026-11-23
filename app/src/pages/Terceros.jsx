@@ -15,6 +15,7 @@ import { TercerosModalsContainer } from '../components/terceros/TercerosModals'
 import { fetchTercerosData, insertBlankRowService, deleteServiceService, saveInlineEditService, saveSpreadsheetBatchService } from '../lib/tercerosService.js'
 import { getEditableCellInitialValue } from '../lib/formulaEngine.js'
 import { calculateTercerosKpis, calculateTercerosStats, filterTercerosServices, getSpreadsheetColumnsTerceros, buildTercerosMaps, TERCEROS_CLONE_FIELDS, TERCEROS_PASTE_BASE_FIELDS } from '../lib/tercerosConstants.js'
+import { buildPanolRemitoIndex } from '../lib/tercerosRemitoMatcher.js'
 import { AlertTriangle, CheckCircle2, Clock, Wrench } from 'lucide-react'
 
 export default function Terceros() {
@@ -34,6 +35,8 @@ export default function Terceros() {
   const [contractors, setContractors] = useState([])
   const [macroVariables, setMacroVariables] = useState([])
   const [voucherHistory, setVoucherHistory] = useState([])
+  const [panolRemitoTx, setPanolRemitoTx] = useState([])
+  const [materials, setMaterials] = useState([])
   const [loading, setLoading] = useState(true)
   const [feedbackMessage, setFeedbackMessage] = useState(null)
 
@@ -88,13 +91,14 @@ export default function Terceros() {
       setServices(d.services); setShips(d.ships); setWorkOrders(d.workOrders)
       setWorkItems(d.workItems); setContractors(d.contractors)
       setMacroVariables(d.macroVariables); setVoucherHistory(d.voucherHistory)
+      setPanolRemitoTx(d.panolRemitoTx || []); setMaterials(d.materials || [])
     } catch (err) { showFeedback('error', 'Error al sincronizar datos: ' + err.message) }
     finally { if (!silent) setLoading(false) }
   }, [showFeedback])
 
   useSupabaseRealtimeRefresh({
     channelName: 'terceros_live',
-    tables: ['third_party_services', 'third_party_voucher_history', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables'],
+    tables: ['third_party_services', 'third_party_voucher_history', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables', 'inventory_transactions', 'materials'],
     onSync: () => loadData({ silent: true }),
     pauseWhen: Boolean(inlineEdit.id || isModalOpen || evolvingService || auditingService || pickerModal.isOpen || contractorPickerModal.isOpen)
   })
@@ -103,6 +107,7 @@ export default function Terceros() {
 
   // Mapas y derivados
   const { shipMap, otMap, contractorMap } = useMemo(() => buildTercerosMaps(ships, workOrders, contractors), [ships, workOrders, contractors])
+  const panolRemitoIndex = useMemo(() => buildPanolRemitoIndex(panolRemitoTx, materials, workOrders, ships), [panolRemitoTx, materials, workOrders, ships])
   const kpiCounts = useMemo(() => calculateTercerosKpis(services), [services])
   const filteredServices = useMemo(() => filterTercerosServices(services, {
     kpiFilter, selectedShipFilter, selectedOtFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm
@@ -250,7 +255,7 @@ export default function Terceros() {
           </div>
         ) : viewMode === 'filas' ? (
           <TercerosFilasPanel
-            filteredServices={filteredServices} services={services} contractors={contractors} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems}
+            filteredServices={filteredServices} services={services} contractors={contractors} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} panolRemitoIndex={panolRemitoIndex}
             searchTerm={searchTerm} canEditAmounts={canEditAmounts} canMutateRows={canMutateRows} activeRolePerspective={activeRolePerspective}
             grid={grid} spreadsheetColumns={spreadsheetColumns} menuTarget={menuTarget} openMenu={openMenu} closeMenu={closeMenu}
             selectedIds={selectedIds} handleSelectAll={() => setSelectedIds(selectedIds.size === filteredServices.length ? new Set() : new Set(filteredServices.map((s) => s.id)))}
@@ -263,7 +268,7 @@ export default function Terceros() {
           />
         ) : (
           <TercerosFichasPanel
-            filteredServices={filteredServices} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} selectedIds={selectedIds}
+            filteredServices={filteredServices} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} panolRemitoIndex={panolRemitoIndex} selectedIds={selectedIds}
             handleRowClick={(id, idx, e) => { if (!e.target.closest('button, a, input')) toggleRowSelection(id, idx, e.shiftKey) }}
             handleCheckboxToggle={(id, idx, e) => { e.stopPropagation(); toggleRowSelection(id, idx, e.shiftKey) }}
             handleClearSelection={() => { setSelectedIds(new Set()); setLastSelectedIndex(null) }}
@@ -281,7 +286,7 @@ export default function Terceros() {
         historyService={historyService} setHistoryService={setHistoryService} pickerModal={pickerModal} setPickerModal={setPickerModal}
         contractorPickerModal={contractorPickerModal} setContractorPickerModal={setContractorPickerModal}
         ships={ships} workOrders={workOrders} workItems={workItems} contractors={contractors} macroVariables={macroVariables} voucherHistory={voucherHistory} services={services}
-        shipMap={shipMap} otMap={otMap} canEditAmounts={canEditAmounts} activeRolePerspective={activeRolePerspective} user={user} loadData={loadData} showFeedback={showFeedback}
+        shipMap={shipMap} otMap={otMap} panolRemitoIndex={panolRemitoIndex} canEditAmounts={canEditAmounts} activeRolePerspective={activeRolePerspective} user={user} loadData={loadData} showFeedback={showFeedback}
       />
     </div>
   )

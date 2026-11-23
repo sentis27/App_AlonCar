@@ -255,9 +255,11 @@ export async function saveShipAndWorkOrderService({
 export async function saveInlineTxService({ txId, field, value, tx, materials, user }) {
   let normalizedVal = field === 'transaction_date' && value
     ? buildTransactionTimestampIso(value, formatLocalTimeHHMM(tx?.transaction_date) || null)
+    : field === 'voucher_number'
+    ? (String(value ?? '').trim() || null)
     : value
   const updates = { [field]: normalizedVal }
-  let auditNewValue = value
+  let auditNewValue = field === 'voucher_number' ? normalizedVal : value
 
   if (field === 'quantity_withdrawn') {
     const parsed = evaluateFormulaInput(value, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
@@ -332,7 +334,7 @@ export async function saveInlineMaterialService({ matId, field, value, materials
 }
 
 export async function saveMultiWithdrawalService({
-  shipId, workOrderId, workItemId = null, workItems = [], contractorGroup, notes, date, time = null, items, editId,
+  shipId, workOrderId, workItemId = null, workItems = [], contractorGroup, voucherNumber = '', notes, date, time = null, items, editId,
   originalTx = null, linkedGasMovement = null, gasMovements = [], materials, suppliers = [], ships = [], astilleroWorkers, user,
   changeOrigin = 'MODAL_WITHDRAWAL'
 }) {
@@ -340,6 +342,7 @@ export async function saveMultiWithdrawalService({
   const workerName = matchedAst ? matchedAst.name : contractorGroup || 'Sin asignar'
   const workerId = matchedAst && matchedAst.id !== matchedAst.name ? matchedAst.id : null
   const resolvedWiId = workOrderId ? (workItemId ?? resolveSingleWorkItemId(workOrderId, workItems)) : null
+  const cleanVoucherNumber = voucherNumber ? String(voucherNumber).trim() || null : null
   const includeTxLink = await supportsGasTxLink()
 
   if (editId) {
@@ -414,6 +417,7 @@ export async function saveMultiWithdrawalService({
       cost_center: item.customCostCenter || 'CLIENTE',
       weight_total: (Number(mat?.weight_kg) || 0) * qty,
       movement_type: mat?.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
+      voucher_number: cleanVoucherNumber,
       notes: finalNotes,
       transaction_date: buildTransactionTimestampIso(date, time)
     }
@@ -561,6 +565,7 @@ export async function saveMultiWithdrawalService({
       cost_center: item.customCostCenter || 'CLIENTE',
       weight_total: (Number(mat.weight_kg) || 0) * qty,
       movement_type: mat.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
+      voucher_number: cleanVoucherNumber,
       notes: itemNotes,
       transaction_date: buildTransactionTimestampIso(date, time)
     })

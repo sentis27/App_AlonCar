@@ -392,6 +392,7 @@ export default function PanolMovimientosPanel({
               <th className="py-2 px-1.5 text-right">Peso (kg) ✎</th>
               <th className="py-2 px-1.5">Contratista / Grupo ✎</th>
               <th className="py-2 px-1.5">Centro de Costo ✎</th>
+              <th className="py-2 px-1.5 whitespace-nowrap">Nº Remito ✎</th>
               <th className="py-2 px-1.5">Observaciones ✎</th>
               <th className="py-2 px-1.5 text-center">Acciones</th>
             </tr>
@@ -400,14 +401,14 @@ export default function PanolMovimientosPanel({
           <tbody className="divide-y divide-slate-800/60 font-sans">
             {loading ? (
               <tr>
-                <td colSpan={12} className="py-12 text-center text-slate-500 text-xs">
+                <td colSpan={13} className="py-12 text-center text-slate-500 text-xs">
                   <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin mx-auto mb-2" />
                   <span>Cargando planilla de retiros de Pañol...</span>
                 </td>
               </tr>
             ) : filteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan={12} className="py-12 text-center text-slate-500 text-xs">
+                <td colSpan={13} className="py-12 text-center text-slate-500 text-xs">
                   No se encontraron retiros con los filtros seleccionados.
                 </td>
               </tr>
@@ -849,6 +850,54 @@ export default function PanolMovimientosPanel({
                             </span>
                           ) : (
                             <span className="text-slate-500 italic text-[10px]">—</span>
+                          )}
+                          {cp.renderHandle && (
+                            <div
+                              onMouseDown={grid.handleFillHandleMouseDown}
+                              onDoubleClick={grid.handleFillHandleDoubleClick}
+                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+                            />
+                          )}
+                        </td>
+                      )
+                    })()}
+
+                    {/* 9b. Nº Remito AlonCar (previo a Observaciones) */}
+                    {(() => {
+                      const cp = getSpreadsheetCellProps(rowIndex, 'voucher_number')
+                      return (
+                        <td
+                          {...cp.domProps}
+                          onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'voucher_number', value: tx.voucher_number || '' })}
+                          className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-mono ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                          title="Doble clic para cargar o editar Nº de Remito AlonCar"
+                        >
+                          {inlineEdit.id === tx.id && inlineEdit.field === 'voucher_number' ? (
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Ej: 2530"
+                              value={inlineEdit.value}
+                              onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                              onBlur={() => {
+                                handleSaveInlineTx(tx.id, 'voucher_number', inlineEdit.value)
+                                setInlineEdit({ id: null, field: null, value: '' })
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveInlineTx(tx.id, 'voucher_number', inlineEdit.value)
+                                  setInlineEdit({ id: null, field: null, value: '' })
+                                }
+                                if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
+                              }}
+                              className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] font-mono text-white focus:outline-none w-20"
+                            />
+                          ) : tx.voucher_number ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-[10px] font-bold">
+                              #<HighlightText text={tx.voucher_number} query={searchQuery} />
+                            </span>
+                          ) : (
+                            <span className="text-slate-600 text-[10px]">—</span>
                           )}
                           {cp.renderHandle && (
                             <div

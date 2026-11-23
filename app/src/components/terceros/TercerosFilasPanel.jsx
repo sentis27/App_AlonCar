@@ -24,6 +24,7 @@ import {
   RotateCw
 } from 'lucide-react'
 import { VOUCHER_TYPES, OFFICIAL_TRADES, formatDate } from '../../lib/tercerosConstants.js'
+import RemitoAloncarHoverBadge from './RemitoAloncarHoverBadge.jsx'
 
 export default function TercerosFilasPanel({
   filteredServices = [],
@@ -34,6 +35,7 @@ export default function TercerosFilasPanel({
   contractorMap = new Map(),
   workOrders = [],
   workItems = [],
+  panolRemitoIndex = new Map(),
   searchTerm = '',
   canEditAmounts = false,
   canMutateRows = true,
@@ -549,14 +551,23 @@ export default function TercerosFilasPanel({
                               </div>
                             )}
                             {remitoAloncar && (
-                              <div className="flex items-center gap-1 text-[10px] text-cyan-300 truncate" title={`Remito: #${remitoAloncar}`}>
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 shrink-0 font-sans">
-                                  RMT
-                                </span>
-                                <span className="truncate">
-                                  #<HighlightText text={remitoAloncar} query={searchTerm} />
-                                </span>
-                              </div>
+                              <RemitoAloncarHoverBadge
+                                remitoNumber={remitoAloncar}
+                                tercerosWorkOrderId={srv.work_order_id}
+                                remitoIndex={panolRemitoIndex}
+                                otMap={otMap}
+                                showInlineMismatch={true}
+                                compactMismatch={true}
+                              >
+                                <div className="flex items-center gap-1 text-[10px] text-cyan-300 truncate cursor-help">
+                                  <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 shrink-0 font-sans">
+                                    RMT
+                                  </span>
+                                  <span className="truncate underline decoration-cyan-500/40 decoration-dotted underline-offset-2">
+                                    #<HighlightText text={remitoAloncar} query={searchTerm} />
+                                  </span>
+                                </div>
+                              </RemitoAloncarHoverBadge>
                             )}
                             {supplierRemito && (
                               <div className="flex items-center gap-1 text-[10px] text-purple-300 truncate" title={`Remito Taller: ${supplierRemito}`}>
@@ -608,9 +619,12 @@ export default function TercerosFilasPanel({
                             className="w-full bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white outline-none font-sans"
                           />
                         ) : (
-                          <div className="space-y-0.5 truncate max-w-full">
+                          <div className="space-y-1 truncate max-w-full">
                             {srv.direct_observations ? (
-                              <p className="text-[11px] text-slate-300 line-clamp-2" title={srv.direct_observations}>
+                              <p
+                                className="text-[11px] text-sky-200 bg-sky-950/40 border border-sky-500/45 rounded-md px-1.5 py-0.5 line-clamp-2"
+                                title={`Observación Técnica: ${srv.direct_observations}`}
+                              >
                                 <HighlightText text={srv.direct_observations} query={searchTerm} />
                               </p>
                             ) : (

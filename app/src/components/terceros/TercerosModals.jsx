@@ -50,6 +50,8 @@ import {
 } from '../../lib/businessHelpRegistry.js'
 import FormulaNumericInput from '../canonical/FormulaNumericInput.jsx'
 import { evaluateFormulaInput, getEditableCellInitialValue } from '../../lib/formulaEngine.js'
+import RemitoAloncarHoverBadge, { RemitoOtMismatchAlert } from './RemitoAloncarHoverBadge.jsx'
+import { evaluateRemitoMatch } from '../../lib/tercerosRemitoMatcher.js'
 
 // ----------------------------------------------------------------------------
 // COMPONENTE AUXILIAR: DESPLEGABLE DE CONTRATISTAS CON BÚSQUEDA REACTIVA
@@ -215,6 +217,7 @@ export function TercerosModalsContainer({
   services = [],
   shipMap = new Map(),
   otMap = new Map(),
+  panolRemitoIndex = new Map(),
   canEditAmounts = false,
   activeRolePerspective = 'maria_jose',
   user,
@@ -331,6 +334,16 @@ export function TercerosModalsContainer({
       (wo) => wo.isActiveForImputation !== false || String(wo.id) === String(formData.work_order_id)
     )
   }, [workOrders, workItems, formData.ship_id, formData.work_order_id])
+
+  const modalRemitoMatch = useMemo(
+    () => evaluateRemitoMatch({
+      remitoNumber: formData.internal_remito_number,
+      tercerosWorkOrderId: formData.work_order_id,
+      remitoIndex: panolRemitoIndex,
+      otMap,
+    }),
+    [formData.internal_remito_number, formData.work_order_id, panolRemitoIndex, otMap]
+  )
 
   const handleContractorSelect = (contractorName) => {
     const found = contractors.find((c) => c.name.toUpperCase().trim() === contractorName.toUpperCase().trim())
@@ -553,11 +566,36 @@ export function TercerosModalsContainer({
               <input type="text" placeholder="FAC-B-0004-..." value={formData.invoice_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, invoice_number: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400" />
             </div>
             <div>
-              <label className="flex items-center justify-between font-semibold text-slate-400 text-[11px] mb-1">
-                <span>Nº Remito AlonCar</span>
-                <span className="text-[9px] text-cyan-500 font-mono">PAÑOL</span>
-              </label>
-              <input type="text" placeholder="Ej: 1042" value={formData.internal_remito_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, internal_remito_number: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400" />
+              <RemitoAloncarHoverBadge
+                remitoNumber={formData.internal_remito_number}
+                tercerosWorkOrderId={formData.work_order_id}
+                remitoIndex={panolRemitoIndex}
+                otMap={otMap}
+              >
+                <label className="flex items-center justify-between font-semibold text-slate-400 text-[11px] mb-1">
+                  <span>Nº Remito AlonCar</span>
+                  <span className={`text-[9px] font-mono px-1 rounded ${
+                    modalRemitoMatch.hasOtMismatch
+                      ? 'bg-amber-950/90 text-amber-300 border border-amber-500/60'
+                      : modalRemitoMatch.hasMatches
+                      ? 'bg-cyan-950/90 text-cyan-300 border border-cyan-500/40'
+                      : 'text-cyan-500'
+                  }`}>
+                    {modalRemitoMatch.hasMatches ? `PAÑOL (${modalRemitoMatch.items.length})` : 'PAÑOL'}
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: 1042"
+                  value={formData.internal_remito_number || ''}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, internal_remito_number: e.target.value }))}
+                  className={`w-full bg-slate-950 border rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none ${
+                    modalRemitoMatch.hasOtMismatch
+                      ? 'border-amber-500/80 focus:border-amber-400'
+                      : 'border-slate-700 focus:border-cyan-400'
+                  }`}
+                />
+              </RemitoAloncarHoverBadge>
             </div>
             <div>
               <label className="flex items-center justify-between font-semibold text-slate-400 text-[11px] mb-1">
@@ -567,6 +605,7 @@ export function TercerosModalsContainer({
               <input type="text" placeholder="Ej: RMO-789" value={formData.supplier_remito_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, supplier_remito_number: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-400" />
             </div>
           </div>
+          <RemitoOtMismatchAlert match={modalRemitoMatch} />
         </CanonicalStepperStep>
 
         <CanonicalStepperStep step={3} helpEntry={TERCEROS_SERVICE_STEP_HELP[3]} title="FECHA DE CARGA, IMPORTE AR$ Y CONVERSIÓN US$">
@@ -628,13 +667,24 @@ export function TercerosModalsContainer({
         </CanonicalStepperStep>
 
         <CanonicalStepperStep step={4} helpEntry={TERCEROS_SERVICE_STEP_HELP[4]} title="OBSERVACIONES TÉCNICAS Y ADMINISTRATIVAS" isLast={true}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            <div>
-              <label className="block font-semibold text-slate-400 text-[11px] mb-1">Observaciones Directas (Detalle técnico de la tarea)</label>
-              <input type="text" placeholder="Describa el trabajo realizado por el contratista en la obra..." value={formData.direct_observations} onChange={(e) => setFormData((prev) => ({ ...prev, direct_observations: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+            <div className="p-2.5 rounded-xl bg-sky-950/35 border border-sky-500/60 shadow-sm shadow-sky-950/40">
+              <label className="flex items-center justify-between font-bold text-sky-300 text-[11px] mb-1.5">
+                <span>Observaciones Directas (Detalle técnico de la tarea)</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-400/50 font-mono uppercase">
+                  Técnica
+                </span>
+              </label>
+              <input
+                type="text"
+                placeholder="Describa el trabajo realizado por el contratista en la obra..."
+                value={formData.direct_observations}
+                onChange={(e) => setFormData((prev) => ({ ...prev, direct_observations: e.target.value }))}
+                className="w-full bg-slate-950/90 border border-sky-500/50 rounded-lg px-2.5 py-1.5 text-sky-100 placeholder-sky-300/40 focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400/40 text-xs"
+              />
             </div>
-            <div>
-              <label className="block font-semibold text-slate-400 text-[11px] mb-1">Observaciones Específicas (Admin / Reclamo Facturas)</label>
+            <div className="p-2.5 flex flex-col justify-center">
+              <label className="block font-semibold text-slate-400 text-[11px] mb-1.5">Observaciones Específicas (Admin / Reclamo Facturas)</label>
               <input type="text" placeholder="Notas contables, reclamos pendientes, condiciones de pago..." value={formData.specific_observations} onChange={(e) => setFormData((prev) => ({ ...prev, specific_observations: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs" />
             </div>
           </div>
@@ -879,7 +929,7 @@ export function TercerosModalsContainer({
         }}
       />
 
-      {/* MODAL CANÓNICO: ASIGNACIÓN DE CONTRATISTA */}
+      {/* MODAL CANÓNICO: ASIGNACIÓN DE CONTRATISTA / TALLER HABILITADO (SIN ASTILLERO) */}
       <ContractorPickerModal
         isOpen={contractorPickerModal.isOpen}
         onClose={() =>
@@ -894,11 +944,13 @@ export function TercerosModalsContainer({
             isOtBlank: true
           })
         }
+        title="Seleccionar Contratista o Taller Habilitado"
+        hideAstillero={true}
         currentValue={contractorPickerModal.currentValue}
         shipName={contractorPickerModal.shipName}
         workOrderTitle={contractorPickerModal.workOrderTitle}
         isOtBlank={contractorPickerModal.isOtBlank}
-        astilleroWorkers={getEnabledWorkersAndContractors(contractorPickerModal.shipId, contractorPickerModal.workOrderId, workItems).astilleroWorkers}
+        astilleroWorkers={[]}
         contractorGroups={getEnabledWorkersAndContractors(contractorPickerModal.shipId, contractorPickerModal.workOrderId, workItems).contractorGroups}
         onSelect={async (selectedName) => {
           if (contractorPickerModal.serviceId) {
@@ -907,8 +959,8 @@ export function TercerosModalsContainer({
                 serviceId: contractorPickerModal.serviceId,
                 field: 'contractor_name',
                 newValue: selectedName,
-                services, workItems,
-                macroVariables, workItems,
+                services,
+                macroVariables,
                 contractors,
                 actor
               })

@@ -244,11 +244,12 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(pageSrc).toContain('{ replace: true }')
   })
 
-  it('FL-011: PanolMovimientosPanel muestra Columna A de Stock del material con semáforo y colSpan=12', () => {
+  it('FL-011: PanolMovimientosPanel muestra Columna A de Stock del material con semáforo y colSpan=13 (incluye Nº Remito)', () => {
     expect(STATUS_BY_ID.get('FL-011')).toBe('blindado')
     const movSrc = readRepoFile('app/src/components/panol/PanolMovimientosPanel.jsx')
     expect(movSrc).toMatch(/<th[^>]*>[^<]*Stock/i)
-    expect(movSrc).toContain('colSpan={12}')
+    expect(movSrc).toContain('Nº Remito ✎')
+    expect(movSrc).toContain('colSpan={13}')
     expect(movSrc).toContain('requires_stock_control')
     expect(movSrc).toContain('formatUnitMeasureShort')
     expect(movSrc).toContain("'S/C'")

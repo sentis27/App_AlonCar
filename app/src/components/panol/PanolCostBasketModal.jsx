@@ -73,13 +73,13 @@ export default function PanolCostBasketModal({
     setSelectedBasketKey(key)
   }
 
-  const handleSubmitDelivery = async ({ basket, items, notes, date, time }) => {
+  const handleSubmitDelivery = async ({ basket, items, voucherNumber = '', notes, date, time }) => {
     setSubmitting(true)
     setModalNotice(null)
     try {
       await saveMultiWithdrawalService({
         shipId: basket.shipId, workOrderId: basket.isSinOt ? null : basket.workOrderId,
-        workItems, contractorGroup: basket.contractorName, notes, date, time, items,
+        workItems, contractorGroup: basket.contractorName, voucherNumber, notes, date, time, items,
         gasMovements, materials, suppliers, ships, astilleroWorkers, user,
         changeOrigin: 'COST_BASKET_COUNTER'
       })

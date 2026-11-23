@@ -252,6 +252,7 @@ export const SPREADSHEET_COLUMNS_PANOL = [
   { key: 'weight_total', label: 'Peso (kg)', isNumeric: true, readOnly: false },
   { key: 'contractor_name', label: 'Operario / Contratista', readOnly: false },
   { key: 'cost_center', label: 'Centro de Costo', readOnly: false },
+  { key: 'voucher_number', label: 'Nº Remito', readOnly: false },
   { key: 'notes', label: 'Observaciones', readOnly: false }
 ]
 
@@ -281,6 +282,7 @@ export const PANOL_PASTE_FIELDS = [
   'worker_name',
   'worker_id',
   'cost_center',
+  'voucher_number',
   'notes'
 ]
 

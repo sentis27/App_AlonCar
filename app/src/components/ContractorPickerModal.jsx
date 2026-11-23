@@ -34,6 +34,7 @@ export default function ContractorPickerModal({
   astilleroWorkers = [],
   contractorGroups = [],
   extraOptions = [],
+  hideAstillero = false,
   onRequestOt,
   onRequestWorkerPermission,
   title = 'Seleccionar Operario o Contratista'
@@ -47,21 +48,22 @@ export default function ContractorPickerModal({
     if (!isOpen) return
     setSelectedName(currentValue || '')
     setQuery('')
-    setFilterTab('ALL')
+    setFilterTab(hideAstillero ? 'CONTRATISTAS' : 'ALL')
     const timer = setTimeout(() => {
       if (inputRef.current) inputRef.current.focus()
     }, 50)
     return () => clearTimeout(timer)
-  }, [isOpen, currentValue])
+  }, [isOpen, currentValue, hideAstillero])
 
   const q = query.trim().toLowerCase()
 
   const filteredAstillero = useMemo(() => {
+    if (hideAstillero) return []
     if (!q) return astilleroWorkers
     return astilleroWorkers.filter((w) =>
       (w.name || '').toLowerCase().includes(q) || (w.trade || '').toLowerCase().includes(q)
     )
-  }, [astilleroWorkers, q])
+  }, [astilleroWorkers, q, hideAstillero])
 
   const filteredContractors = useMemo(() => {
     if (!q) return contractorGroups
@@ -83,14 +85,14 @@ export default function ContractorPickerModal({
     filteredExtraOptions.forEach((opt) => {
       list.push({ type: 'extra', name: typeof opt === 'string' ? opt : opt.name })
     })
-    if (filterTab === 'ALL' || filterTab === 'ASTILLERO') {
+    if (!hideAstillero && (filterTab === 'ALL' || filterTab === 'ASTILLERO')) {
       filteredAstillero.forEach((w) => list.push({ type: 'astillero', name: w.name }))
     }
-    if (filterTab === 'ALL' || filterTab === 'CONTRATISTAS') {
+    if (hideAstillero || filterTab === 'ALL' || filterTab === 'CONTRATISTAS') {
       filteredContractors.forEach((c) => list.push({ type: 'contratista', name: c }))
     }
     return list
-  }, [filterTab, filteredExtraOptions, filteredAstillero, filteredContractors])
+  }, [hideAstillero, filterTab, filteredExtraOptions, filteredAstillero, filteredContractors])
 
   if (!isOpen) return null
 
@@ -178,45 +180,53 @@ export default function ContractorPickerModal({
                   }
                 }
               }}
-              placeholder="Buscar por nombre, gremio o contratista..."
+              placeholder={hideAstillero ? 'Buscar contratista o taller habilitado...' : 'Buscar por nombre, gremio o contratista...'}
               className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700/80 text-white text-xs placeholder-slate-500 font-medium focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40"
             />
           </div>
 
           <div className="flex items-center gap-1.5 text-[11px] shrink-0">
-            <button
-              type="button"
-              onClick={() => setFilterTab('ALL')}
-              className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                filterTab === 'ALL'
-                  ? 'bg-cyan-950 border border-cyan-500 text-cyan-300'
-                  : 'bg-slate-800/70 text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              Todos ({filteredAstillero.length + filteredContractors.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterTab('ASTILLERO')}
-              className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                filterTab === 'ASTILLERO'
-                  ? 'bg-emerald-950 border border-emerald-500 text-emerald-300'
-                  : 'bg-slate-800/70 text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              ⭐ Astillero ({filteredAstillero.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterTab('CONTRATISTAS')}
-              className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                filterTab === 'CONTRATISTAS'
-                  ? 'bg-indigo-950 border border-indigo-500 text-indigo-300'
-                  : 'bg-slate-800/70 text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              🏗️ Contratistas ({filteredContractors.length})
-            </button>
+            {hideAstillero ? (
+              <span className="px-2.5 py-1.5 rounded-lg font-bold bg-indigo-950 border border-indigo-500 text-indigo-300">
+                🏗️ Contratistas ({filteredContractors.length})
+              </span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab('ALL')}
+                  className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    filterTab === 'ALL'
+                      ? 'bg-cyan-950 border border-cyan-500 text-cyan-300'
+                      : 'bg-slate-800/70 text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  Todos ({filteredAstillero.length + filteredContractors.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab('ASTILLERO')}
+                  className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    filterTab === 'ASTILLERO'
+                      ? 'bg-emerald-950 border border-emerald-500 text-emerald-300'
+                      : 'bg-slate-800/70 text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  ⭐ Astillero ({filteredAstillero.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab('CONTRATISTAS')}
+                  className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    filterTab === 'CONTRATISTAS'
+                      ? 'bg-indigo-950 border border-indigo-500 text-indigo-300'
+                      : 'bg-slate-800/70 text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  🏗️ Contratistas ({filteredContractors.length})
+                </button>
+              </>
+            )}
           </div>
         </div>
       </CanonicalStepperStep>
@@ -224,8 +234,8 @@ export default function ContractorPickerModal({
       <CanonicalStepperStep
         step={2}
         helpEntry={PICKER_CONTRACTOR_STEP_HELP[2]}
-        title="OPERARIOS Y CONTRATISTAS HABILITADOS"
-        subtitle="Clic directo sobre la persona o taller para aplicar"
+        title={hideAstillero ? 'CONTRATISTAS Y TALLERES HABILITADOS' : 'OPERARIOS Y CONTRATISTAS HABILITADOS'}
+        subtitle={hideAstillero ? 'Clic directo sobre el contratista o taller para aplicar' : 'Clic directo sobre la persona o taller para aplicar'}
         isLast={true}
       >
         <div className="max-h-[44vh] overflow-y-auto pr-1 space-y-3">
@@ -277,7 +287,7 @@ export default function ContractorPickerModal({
             </div>
           )}
 
-          {(filterTab === 'ALL' || filterTab === 'ASTILLERO') && (
+          {!hideAstillero && (filterTab === 'ALL' || filterTab === 'ASTILLERO') && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-[10px] font-black text-emerald-400 uppercase tracking-wider px-1">
                 <span className="flex items-center gap-1.5">

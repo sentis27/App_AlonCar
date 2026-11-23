@@ -28,6 +28,19 @@ export function createInventoryTransactionsRepository({ client = defaultClient }
       return base.findAll({ select, orderBy, filters, gteFilters, lteFilters, limit })
     },
 
+    async listWithVoucherNumber({
+      select = 'id, material_id, work_order_id, ship_id, quantity_withdrawn, weight_total, voucher_number, transaction_date, contractor_name, worker_name, notes',
+    } = {}) {
+      const { data, error } = await client
+        .from('inventory_transactions')
+        .select(select)
+        .not('voucher_number', 'is', null)
+        .neq('voucher_number', '')
+        .order('transaction_date', { ascending: false })
+      if (error) return { data: [], error: error.message || 'Error consultando remitos de Pañol' }
+      return { data: data || [], error: null }
+    },
+
     async insertBlankRow(payload) {
       return base.insertOne(payload, { validate: false, select: '*' })
     },

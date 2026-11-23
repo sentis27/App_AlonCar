@@ -86,7 +86,8 @@ export function filterPanolTransactions(inventoryTx = [], {
       const wo = woMap.get(t.work_order_id)
       return matchesUniversalSearch(t, searchQuery, {
         ship_name: ship?.name || '', work_order_title: wo?.title || '', work_order_description: wo?.description || '',
-        ot_number: wo?.ot_number || '', material_name: mat?.name || '', worker_name: t.worker_name || '', contractor_name: t.contractor_name || ''
+        ot_number: wo?.ot_number || '', material_name: mat?.name || '', worker_name: t.worker_name || '', contractor_name: t.contractor_name || '',
+        voucher_number: t.voucher_number || ''
       })
     }
     return true

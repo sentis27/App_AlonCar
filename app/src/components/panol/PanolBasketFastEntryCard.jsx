@@ -29,6 +29,7 @@ export default function PanolBasketFastEntryCard({
   onSubmitDelivery
 }) {
   const [items, setItems] = useState([createEmptyItem()])
+  const [voucherNumber, setVoucherNumber] = useState('')
   const [notes, setNotes] = useState('')
   const [entryTime, setEntryTime] = useState(() => formatLocalTimeHHMM(new Date()) || '08:00')
   const [showPreviousDays, setShowPreviousDays] = useState(false)
@@ -91,9 +92,10 @@ export default function PanolBasketFastEntryCard({
         }
       }
     }
-    const ok = await onSubmitDelivery({ basket, items: validItems, notes, date: targetDate, time: entryTime })
+    const ok = await onSubmitDelivery({ basket, items: validItems, voucherNumber, notes, date: targetDate, time: entryTime })
     if (ok) {
       setItems([createEmptyItem()])
+      setVoucherNumber('')
       setNotes('')
       setEntryTime(formatLocalTimeHHMM(new Date()) || '08:00')
     }
@@ -196,13 +198,23 @@ export default function PanolBasketFastEntryCard({
           </button>
         </div>
 
-        <div>
-          <label className="block text-[11px] font-bold text-slate-300 mb-1">2. Observaciones (opcional)</label>
-          <input
-            type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
-            placeholder="Detalle del retiro, ubicación en buque..."
-            className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-400 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <label className="block text-[11px] font-bold text-cyan-300 mb-1">2. Nº Remito</label>
+            <input
+              type="text" value={voucherNumber} onChange={(e) => setVoucherNumber(e.target.value)}
+              placeholder="Ej: 2530"
+              className="w-full bg-slate-950 border border-cyan-500/40 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs font-mono text-cyan-200 focus:outline-none"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] font-bold text-slate-300 mb-1">3. Observaciones (opcional)</label>
+            <input
+              type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Detalle del retiro, ubicación en buque..."
+              className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-400 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
+            />
+          </div>
         </div>
 
         <button
