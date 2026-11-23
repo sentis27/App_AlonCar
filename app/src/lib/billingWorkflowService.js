@@ -212,3 +212,32 @@ export async function saveWorkOrderBillingOrderBatchService({ updates = [], ship
     })
   }
 }
+
+export function buildOrderedBillingBlocks({ activeShip, activeShipWos = [], newBlockAutoFocusId = null }) {
+  if (!activeShip) return []
+  const layoutMeta = activeShip.billing_layout_meta || {}
+  const customBlocks = Array.isArray(layoutMeta.customBlocks) ? layoutMeta.customBlocks : []
+  const fontSizes = layoutMeta.fontSizes || {}
+  const woBlocks = activeShipWos
+    .filter((w) => w.is_in_billing)
+    .map((w) => ({
+      id: `wo_${w.id}`,
+      workOrderId: w.id,
+      blockType: 'WORK_ORDER',
+      sortOrder: Number(w.billing_sort_order) || 1000,
+      billing_description: w.billing_description || '',
+      billing_rubro_group: w.billing_rubro_group || '',
+      billing_pricing_mode: w.billing_pricing_mode || 'MO_MAT',
+      billing_mo_usd: Number(w.billing_mo_usd) || 0,
+      billing_mat_usd: Number(w.billing_mat_usd) || 0,
+      billing_unit_price_usd: Number(w.billing_unit_price_usd) || 0,
+      billing_qty_override: w.billing_qty_override ?? null,
+      billing_mo_tax: w.billing_mo_tax || 'EXENTO',
+      billing_mat_tax: w.billing_mat_tax || 'EXENTO',
+      fontSizePx: fontSizes[w.id] || 12
+    }))
+  return [
+    ...woBlocks,
+    ...customBlocks.map((cb) => ({ ...cb, sortOrder: Number(cb.sortOrder) || 1000, autoFocus: cb.id === newBlockAutoFocusId }))
+  ].sort((a, b) => a.sortOrder - b.sortOrder)
+}

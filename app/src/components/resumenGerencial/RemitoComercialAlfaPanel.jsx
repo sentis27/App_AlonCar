@@ -3,8 +3,8 @@ import { Ship } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { computeShipManagerialSummary } from '../../lib/managerialSummaryService'
 import { evaluateShipWorkOrdersForGhostImport, isCaldereriaChapter, matchOtToAbcTemplate, buildCatalogBillingProse } from '../../lib/billingMirrorEngine'
-import { computeBlockBillingBreakdown, paginateBillingBlocks, computePaginatedCumulativeBalances } from '../../lib/billingSheetMath'
-import { openShipInBillingWorkspaceService, sendShipToFinalBillingService, saveShipBillingLayoutMetaService, importShipWorkOrdersGhostService, saveWorkOrderBillingPatchService, saveWorkOrderBillingOrderBatchService, requestBillingExpansionService } from '../../lib/billingWorkflowService'
+import { computeBlockBillingBreakdown, paginateBillingBlocks, computePaginatedCumulativeBalances, computeA4AutoFitPlan, buildAutoFitLayoutMetaPatch } from '../../lib/billingSheetMath'
+import { openShipInBillingWorkspaceService, sendShipToFinalBillingService, saveShipBillingLayoutMetaService, importShipWorkOrdersGhostService, saveWorkOrderBillingPatchService, saveWorkOrderBillingOrderBatchService, requestBillingExpansionService, buildOrderedBillingBlocks } from '../../lib/billingWorkflowService'
 import { openCleanBillingPrintWindow } from '../../lib/billingPrintHelper'
 import BillingShipSidebarRail from './BillingShipSidebarRail'
 import BillingWorkspaceToolbar from './BillingWorkspaceToolbar'
@@ -31,6 +31,7 @@ export default function RemitoComercialAlfaPanel({
   const setBillingShipId = (nextId) => setBillingShipState({ shipId: nextId, handledJumpTs: jumpToShipTarget?.ts || Date.now() })
   const [importing, setImporting] = useState(false)
   const [sendingShip, setSendingShip] = useState(false)
+  const [autoFitting, setAutoFitting] = useState(false)
   const [newBlockAutoFocusId, setNewBlockAutoFocusId] = useState(null)
 
   const activeFlushRef = useRef(null)
@@ -109,41 +110,10 @@ export default function RemitoComercialAlfaPanel({
   }), [activeShipWos, workItems, laborRows, materialRows, thirdPartyRows, workers, otTemplates])
 
   // Construir lista ordenada unificada: OTs en billing + delimitadores/bloques libres en `ships.billing_layout_meta`
-  const orderedBlocks = useMemo(() => {
-    if (!activeShip) return []
-    const layoutMeta = activeShip.billing_layout_meta || {}
-    const customBlocks = Array.isArray(layoutMeta.customBlocks) ? layoutMeta.customBlocks : []
-    const fontSizes = layoutMeta.fontSizes || {}
-
-    const woBlocks = activeShipWos
-      .filter((w) => w.is_in_billing)
-      .map((w) => ({
-        id: `wo_${w.id}`,
-        workOrderId: w.id,
-        blockType: 'WORK_ORDER',
-        sortOrder: Number(w.billing_sort_order) || 1000,
-        billing_description: w.billing_description || '',
-        billing_rubro_group: w.billing_rubro_group || '',
-        billing_pricing_mode: w.billing_pricing_mode || 'MO_MAT',
-        billing_mo_usd: Number(w.billing_mo_usd) || 0,
-        billing_mat_usd: Number(w.billing_mat_usd) || 0,
-        billing_unit_price_usd: Number(w.billing_unit_price_usd) || 0,
-        billing_qty_override: w.billing_qty_override ?? null,
-        billing_mo_tax: w.billing_mo_tax || 'EXENTO',
-        billing_mat_tax: w.billing_mat_tax || 'EXENTO',
-        fontSizePx: fontSizes[w.id] || 12
-      }))
-
-    const merged = [
-      ...woBlocks,
-      ...customBlocks.map((cb) => ({
-        ...cb,
-        sortOrder: Number(cb.sortOrder) || 1000,
-        autoFocus: cb.id === newBlockAutoFocusId
-      }))
-    ]
-    return merged.sort((a, b) => a.sortOrder - b.sortOrder)
-  }, [activeShip, activeShipWos, newBlockAutoFocusId])
+  const orderedBlocks = useMemo(
+    () => buildOrderedBillingBlocks({ activeShip, activeShipWos, newBlockAutoFocusId }),
+    [activeShip, activeShipWos, newBlockAutoFocusId]
+  )
 
   // Subtotales por rubro para mostrar frente a cada Delimitador de Rubro
   const rubroSubtotalsMap = useMemo(() => {
@@ -164,11 +134,10 @@ export default function RemitoComercialAlfaPanel({
     return map
   }, [orderedBlocks, otRowMap])
 
-  const pages = useMemo(() => paginateBillingBlocks(orderedBlocks), [orderedBlocks])
-  const { pageSummaries, grandTotal } = useMemo(
-    () => computePaginatedCumulativeBalances(pages, billingShipSummary?.totals?.directTotalUsd || 0),
-    [pages, billingShipSummary]
-  )
+  const printDensity = activeShip?.billing_layout_meta?.printDensity === 'compact' ? 'compact' : 'normal'
+  const pages = useMemo(() => paginateBillingBlocks(orderedBlocks, null, { density: printDensity }), [orderedBlocks, printDensity])
+  const autoFitPreview = useMemo(() => computeA4AutoFitPlan(orderedBlocks, printDensity), [orderedBlocks, printDensity])
+  const { pageSummaries, grandTotal } = useMemo(() => computePaginatedCumulativeBalances(pages, billingShipSummary?.totals?.directTotalUsd || 0), [pages, billingShipSummary])
 
   // Metadata resumida para las tarjetas del Menú Lateral Izquierdo
   const shipCardMetaMap = useMemo(() => {
@@ -388,6 +357,21 @@ export default function RemitoComercialAlfaPanel({
     await saveLayoutMeta({ ...(activeShip.billing_layout_meta || {}), customBlocks: nextCustom })
   }
 
+  const handleAutoFitA4 = async () => {
+    if (!activeShip) return
+    try {
+      setAutoFitting(true)
+      activeFlushRef.current?.()
+      const { nextMeta, feedbackMessage } = buildAutoFitLayoutMetaPatch({ meta: activeShip.billing_layout_meta || {}, orderedBlocks, printDensity, autoFitPreview })
+      await saveLayoutMeta(nextMeta)
+      showFeedback?.('success', feedbackMessage)
+    } catch (err) {
+      showFeedback?.('error', err.message)
+    } finally {
+      setAutoFitting(false)
+    }
+  }
+
   const handleSendShipToFinalBilling = async () => {
     if (!activeShip) return
     if (!window.confirm(`¿Enviar "${activeShip.name}" a la bandeja de Listos para Facturar con saldo ${grandTotal.totalUsd.toFixed(2)} USD? Desaparecerá de tu lista activa.`)) return
@@ -442,14 +426,18 @@ export default function RemitoComercialAlfaPanel({
               orphanSummary={billingShipSummary?.orphanSummary}
               importing={importing}
               sendingToBilling={sendingShip}
+              autoFitting={autoFitting}
+              printDensity={printDensity}
+              autoFitPreview={autoFitPreview}
               isSentMode={activeShip.billing_workspace_status === 'ENVIADO_A_FACTURACION'}
               onImportAll={handleImportAll}
               onNotifyEmptyOts={handleNotifyEmptyOts}
               onAddRubroDelimiter={handleAddRubroDelimiter}
               onAddFreeBlock={handleAddFreeBlock}
+              onAutoFitA4={handleAutoFitA4}
               onPrintCleanPdf={() => openCleanBillingPrintWindow({
                 ship: activeShip, owner: activeOwner, budgetNumber: activeShip.billing_budget_number || '',
-                pages, pageSummaries, otRowMap
+                pages, pageSummaries, otRowMap, printDensity
               })}
               onSendShipToFinalBilling={handleSendShipToFinalBilling}
             />
@@ -480,6 +468,7 @@ export default function RemitoComercialAlfaPanel({
               onRemoveBlock={handleRemoveBlock}
               onAddFreeBlock={handleAddFreeBlock}
               onReorderBlocks={handleReorderBlocks}
+              printDensity={printDensity}
               registerFlush={registerFlush}
             />
           </>

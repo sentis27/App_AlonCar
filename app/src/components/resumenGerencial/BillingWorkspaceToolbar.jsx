@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Download, Plus, Printer, Rocket, AlertTriangle, Megaphone, FolderPlus } from 'lucide-react'
+import { Download, Plus, Printer, Rocket, AlertTriangle, Megaphone, FolderPlus, Minimize2 } from 'lucide-react'
 import { OFFICIAL_RUBROS_CATALOG } from '../../lib/tradesCatalog'
 import { formatUsd } from '../../lib/drydockCatalogConstants'
 
@@ -19,11 +19,15 @@ export default function BillingWorkspaceToolbar({
   orphanSummary = null,
   importing = false,
   sendingToBilling = false,
+  autoFitting = false,
+  printDensity = 'normal',
+  autoFitPreview = null,
   isSentMode = false,
   onImportAll,
   onNotifyEmptyOts,
   onAddRubroDelimiter,
   onAddFreeBlock,
+  onAutoFitA4,
   onPrintCleanPdf,
   onSendShipToFinalBilling
 }) {
@@ -98,6 +102,38 @@ export default function BillingWorkspaceToolbar({
           >
             <Plus className="w-3.5 h-3.5 text-emerald-300" />
             <span>+ Bloque Libre</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={autoFitting || isSentMode}
+            onClick={onAutoFitA4}
+            className={`px-2.5 py-1.5 rounded-lg disabled:opacity-50 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer border transition-colors ${
+              printDensity === 'compact'
+                ? 'bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-200 border-emerald-500/60'
+                : autoFitPreview?.canSavePages
+                  ? 'bg-amber-950/70 hover:bg-amber-900/70 text-amber-200 border-amber-500/60'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-600'
+            }`}
+            title={
+              printDensity === 'compact' && !autoFitPreview?.canSavePages
+                ? 'Auto-Ajuste A4 activo (espaciado compacto). Clic para volver a tamaño estándar (12px).'
+                : autoFitPreview?.canSavePages
+                  ? `Compactar tipografía (${autoFitPreview.fontSizePx}px) y espaciado para reducir de ${autoFitPreview.currentPages} a ${autoFitPreview.targetPages} hoja(s) A4`
+                  : 'Auto-ajustar tipografía y espaciado de subtrabajos al formato A4'
+            }
+          >
+            <Minimize2 className="w-3.5 h-3.5 text-emerald-300" />
+            <span>{autoFitting ? 'Ajustando...' : printDensity === 'compact' ? 'Auto-Ajuste A4 ✓' : 'Auto-Ajustar A4'}</span>
+            {autoFitPreview?.canSavePages ? (
+              <span className="px-1 py-0.2 rounded bg-amber-500/25 text-amber-200 font-mono text-[10px]">
+                {autoFitPreview.currentPages}→{autoFitPreview.targetPages}h
+              </span>
+            ) : printDensity === 'compact' ? (
+              <span className="px-1 py-0.2 rounded bg-emerald-500/25 text-emerald-200 font-mono text-[10px]">
+                Compacto
+              </span>
+            ) : null}
           </button>
 
           <button

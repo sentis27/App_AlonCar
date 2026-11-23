@@ -21,6 +21,7 @@ export default function BillingInlineProseCell({
   shipId,
   htmlValue = '',
   fontSizePx = 12,
+  compact = false,
   placeholder = 'Doble clic para redactar en prosa...',
   autoFocus = false,
   onCommit,
@@ -156,9 +157,9 @@ export default function BillingInlineProseCell({
   return (
     <div
       onDoubleClick={() => setEditing(true)}
-      style={{ fontSize: `${currentSize}px`, lineHeight: 1.4 }}
+      style={{ fontSize: `${currentSize}px`, lineHeight: compact ? 1.24 : 1.38 }}
       title="Doble clic para editar en prosa (Negrita, Subrayado y Tamaño)"
-      className="w-full min-h-[34px] py-1 px-1 rounded cursor-text hover:bg-sky-50/80 transition-colors text-slate-950 whitespace-pre-wrap break-words font-sans"
+      className={`w-full ${compact ? 'min-h-[24px] py-0.5' : 'min-h-[28px] py-1'} px-1 rounded cursor-text hover:bg-sky-50/80 transition-colors text-slate-950 whitespace-pre-wrap break-words font-sans`}
     >
       {hasContent ? (
         <div dangerouslySetInnerHTML={{ __html: sanitizeSimpleProseHtml(htmlValue) }} />

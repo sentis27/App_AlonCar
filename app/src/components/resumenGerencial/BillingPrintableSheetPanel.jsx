@@ -42,8 +42,10 @@ export default function BillingPrintableSheetPanel({
   onRemoveBlock,
   onAddFreeBlock,
   onReorderBlocks,
+  printDensity = 'normal',
   registerFlush
 }) {
+  const isCompact = printDensity === 'compact'
   const [dragBlockId, setDragBlockId] = useState(null)
   const [dragOverBlockId, setDragOverBlockId] = useState(null)
 
@@ -62,7 +64,7 @@ export default function BillingPrintableSheetPanel({
       {annotatedPages.map((pageEntries, pageIdx) => {
         const summary = pageSummaries[pageIdx] || { pageNumber: pageIdx + 1, totalPages: annotatedPages.length, exentoUsd: 0, gravadoUsd: 0, ivaUsd: 0, totalUsd: 0 }
         const isLastPage = pageIdx === annotatedPages.length - 1
-        const remainingA4Px = computeA4RemainingSpacerPx(pages[pageIdx], pageIdx)
+        const remainingA4Px = computeA4RemainingSpacerPx(pages[pageIdx], pageIdx, { density: printDensity })
 
         return (
           <div key={`page_${pageIdx}`} className="space-y-0">
@@ -105,18 +107,18 @@ export default function BillingPrintableSheetPanel({
                       <div className="bg-rose-50/70 h-full" />
                     </div>
                   ) : (
-                    <div className={`${SHEET_COLS} bg-white text-slate-950 border-x border-slate-400 border-b border-b-slate-300 items-stretch min-h-[118px]`}>
-                      <div className="flex items-start justify-center pt-2 text-slate-400 hover:text-slate-800 border-r border-slate-200 cursor-grab active:cursor-grabbing" title="Arrastrar para reordenar bloque + venta + costos">
+                    <div className={`${SHEET_COLS} bg-white text-slate-950 border-x border-slate-400 border-b border-b-slate-300 items-stretch ${isCompact ? 'min-h-[36px]' : 'min-h-[44px]'}`}>
+                      <div className={`flex items-start justify-center ${isCompact ? 'pt-1' : 'pt-1.5'} text-slate-400 hover:text-slate-800 border-r border-slate-200 cursor-grab active:cursor-grabbing`} title="Arrastrar para reordenar bloque + venta + costos">
                         <GripVertical className="w-3.5 h-3.5" />
                       </div>
-                      <div className="pt-2 text-center text-[11px] font-mono text-slate-600 border-r border-slate-300">{itemIndex}</div>
-                      <div className="pt-1.5 px-1 border-r border-slate-300">
+                      <div className={`${isCompact ? 'pt-1' : 'pt-1.5'} text-center text-[11px] font-mono text-slate-600 border-r border-slate-300`}>{itemIndex}</div>
+                      <div className={`${isCompact ? 'pt-0.5' : 'pt-1'} px-1 border-r border-slate-300`}>
                         <InlineQtyCell value={qtyDisplay} isKgMode={pricingMode !== 'UNITARIO' && isCaldereria} onCommit={(v) => onCommitPriceField?.(block, 'billing_qty_override', v)} />
                       </div>
-                      <div className="px-2 py-1 border-r border-slate-300 flex flex-col justify-between">
-                        <BillingInlineProseCell blockId={block.id} shipId={ship?.id} htmlValue={block.billing_description || ''} fontSizePx={block.fontSizePx || 12} autoFocus={Boolean(block.autoFocus)} onCommit={onCommitProse} registerFlush={registerFlush} />
+                      <div className={`px-2 ${isCompact ? 'py-0.5' : 'py-1'} border-r border-slate-300 flex flex-col justify-between`}>
+                        <BillingInlineProseCell blockId={block.id} shipId={ship?.id} htmlValue={block.billing_description || ''} fontSizePx={block.fontSizePx || 12} compact={isCompact} autoFocus={Boolean(block.autoFocus)} onCommit={onCommitProse} registerFlush={registerFlush} />
                         {pricingMode === 'MO_MAT' && (
-                          <div className="flex flex-col items-end text-[10px] font-black text-slate-700 leading-5 pt-1 select-none">
+                          <div className={`flex flex-col items-end text-[10px] font-black text-slate-700 ${isCompact ? 'leading-4 pt-0.5' : 'leading-5 pt-1'} select-none`}>
                             <span>MAT</span>
                             <span>M.O.</span>
                           </div>

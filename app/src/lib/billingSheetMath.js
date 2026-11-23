@@ -7,10 +7,12 @@ import {
   SHEET_COLS_CLASS,
   estimateBillingBlockHeightPx,
   paginateBillingBlocks,
-  computeA4RemainingSpacerPx
+  computeA4RemainingSpacerPx,
+  computeA4AutoFitPlan,
+  buildAutoFitLayoutMetaPatch
 } from './billingA4Layout.js'
 
-export { A4_SHEET_METRICS, PAIRED_GRID_CLASS, SHEET_COLS_CLASS, estimateBillingBlockHeightPx, paginateBillingBlocks, computeA4RemainingSpacerPx }
+export { A4_SHEET_METRICS, PAIRED_GRID_CLASS, SHEET_COLS_CLASS, estimateBillingBlockHeightPx, paginateBillingBlocks, computeA4RemainingSpacerPx, computeA4AutoFitPlan, buildAutoFitLayoutMetaPatch }
 
 function round2(n) { return Number((Number(n) || 0).toFixed(2)) }
 

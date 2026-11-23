@@ -9,11 +9,36 @@ export const A4_SHEET_METRICS = {
   heightMm: 297,
   widthPx: 794,
   heightPx: 1123,
-  conceptColWidthPx: 490,
-  page1BodyBudgetPx: 790,
-  nextPageBodyBudgetPx: 825,
-  delimiterHeightPx: 32,
-  minBlockHeightPx: 118
+  conceptColWidthPx: 455,
+  page1BodyBudgetPx: 795,
+  nextPageBodyBudgetPx: 830,
+  delimiterHeightPx: 26,
+  minBlockHeightPx: 46
+}
+
+export const A4_DENSITY_PROFILES = {
+  normal: {
+    lineHeightRatio: 1.38,
+    charWidthFactor: 0.55,
+    verticalPaddingPx: 12,
+    moMatSuffixPx: 32,
+    otherSuffixPx: 4,
+    delimiterHeightPx: 26,
+    minBlockHeightPx: 46
+  },
+  compact: {
+    lineHeightRatio: 1.24,
+    charWidthFactor: 0.53,
+    verticalPaddingPx: 8,
+    moMatSuffixPx: 26,
+    otherSuffixPx: 2,
+    delimiterHeightPx: 22,
+    minBlockHeightPx: 38
+  }
+}
+
+export function resolveA4DensityProfile(density = 'normal') {
+  return density === 'compact' ? A4_DENSITY_PROFILES.compact : A4_DENSITY_PROFILES.normal
 }
 
 // Hoja blanca bloqueada al ancho real A4 (210mm) con encogimiento seguro en pantallas angostas
@@ -26,20 +51,27 @@ export const SHEET_COLS_CLASS =
 /**
  * Estima el alto visual real (px) de un bloque comercial al ancho estándar A4 (210mm),
  * contemplando saltos explícitos, envoltura de renglones, tamaño de fuente y filas MAT/M.O.
+ * Sin inflación artificial: se ajusta orgánicamente al contenido real del texto.
  */
-export function estimateBillingBlockHeightPx(block = {}) {
+export function estimateBillingBlockHeightPx(block = {}, options = {}) {
+  const profile = resolveA4DensityProfile(options?.density)
   if (block?.blockType === 'RUBRO_DELIMITER') {
-    return A4_SHEET_METRICS.delimiterHeightPx
+    return profile.delimiterHeightPx
   }
 
-  const fontSizePx = Math.max(10, Math.min(14, Number(block.fontSizePx) || 12))
-  const lineHeightPx = fontSizePx * 1.45
-  const charsPerLine = Math.max(42, Math.floor(A4_SHEET_METRICS.conceptColWidthPx / (fontSizePx * 0.56)))
+  const fontSizeOverride = Number(options?.fontSizeOverride)
+  const rawFontSize = Number.isFinite(fontSizeOverride) && fontSizeOverride > 0
+    ? fontSizeOverride
+    : Number(block.fontSizePx) || 12
+  const fontSizePx = Math.max(10, Math.min(14, rawFontSize))
+  const lineHeightPx = fontSizePx * profile.lineHeightRatio
+  const charsPerLine = Math.max(42, Math.floor(A4_SHEET_METRICS.conceptColWidthPx / (fontSizePx * profile.charWidthFactor)))
 
   const plain = String(block.billing_description || block.label || '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(?:p|div|li)>/gi, '\n')
     .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
 
   const paragraphs = plain
     .split(/\n/)
@@ -56,18 +88,17 @@ export function estimateBillingBlockHeightPx(block = {}) {
   }
 
   const mode = block.billing_pricing_mode || 'MO_MAT'
-  const suffixPx = mode === 'MO_MAT' ? 44 : 14
-  const verticalPaddingPx = 22
-  const estimated = Math.ceil(wrappedLines * lineHeightPx + suffixPx + verticalPaddingPx)
+  const suffixPx = mode === 'MO_MAT' ? profile.moMatSuffixPx : profile.otherSuffixPx
+  const estimated = Math.ceil(wrappedLines * lineHeightPx + suffixPx + profile.verticalPaddingPx)
 
-  return Math.max(A4_SHEET_METRICS.minBlockHeightPx, estimated)
+  return Math.max(profile.minBlockHeightPx, estimated)
 }
 
 /**
  * Paginación calibrada a hoja ISO A4 vertical (HOJA 1/N ... HOJA N/N).
- * Acepta opcionalmente `maxBodyPxOverride` para pruebas o ajustes finos.
+ * Evita dejar delimitadores de rubro huérfanos al pie de una hoja.
  */
-export function paginateBillingBlocks(blocks = [], maxBodyPxOverride = null) {
+export function paginateBillingBlocks(blocks = [], maxBodyPxOverride = null, options = {}) {
   if (!Array.isArray(blocks) || blocks.length === 0) return [[]]
   const pages = []
   let current = []
@@ -78,11 +109,20 @@ export function paginateBillingBlocks(blocks = [], maxBodyPxOverride = null) {
     return pageIndex === 0 ? A4_SHEET_METRICS.page1BodyBudgetPx : A4_SHEET_METRICS.nextPageBodyBudgetPx
   }
 
-  for (const block of blocks) {
-    const blockPx = estimateBillingBlockHeightPx(block)
+  for (let i = 0; i < blocks.length; i += 1) {
+    const block = blocks[i]
+    const blockPx = estimateBillingBlockHeightPx(block, options)
     const budgetPx = getBudgetForPage(pages.length)
 
-    if (current.length > 0 && currentPx + blockPx > budgetPx) {
+    let neededPx = blockPx
+    if (block?.blockType === 'RUBRO_DELIMITER' && i + 1 < blocks.length) {
+      const nextBlock = blocks[i + 1]
+      if (nextBlock?.blockType !== 'RUBRO_DELIMITER') {
+        neededPx += estimateBillingBlockHeightPx(nextBlock, options)
+      }
+    }
+
+    if (current.length > 0 && currentPx + neededPx > budgetPx) {
       pages.push(current)
       current = [block]
       currentPx = blockPx
@@ -100,8 +140,105 @@ export function paginateBillingBlocks(blocks = [], maxBodyPxOverride = null) {
  * Calcula el relleno vertical restante (px) para que cada hoja en pantalla
  * conserve la altura visual estándar de una hoja A4 vertical completa.
  */
-export function computeA4RemainingSpacerPx(pageBlocks = [], pageIdx = 0) {
+export function computeA4RemainingSpacerPx(pageBlocks = [], pageIdx = 0, options = {}) {
   const budgetPx = pageIdx === 0 ? A4_SHEET_METRICS.page1BodyBudgetPx : A4_SHEET_METRICS.nextPageBodyBudgetPx
-  const usedPx = (pageBlocks || []).reduce((sum, b) => sum + estimateBillingBlockHeightPx(b), 0)
+  const usedPx = (pageBlocks || []).reduce((sum, b) => sum + estimateBillingBlockHeightPx(b, options), 0)
   return Math.max(0, Math.round(budgetPx - usedPx))
+}
+
+const AUTOFIT_CANDIDATES = [
+  { fontSizePx: 12, density: 'normal' },
+  { fontSizePx: 12, density: 'compact' },
+  { fontSizePx: 11, density: 'normal' },
+  { fontSizePx: 11, density: 'compact' },
+  { fontSizePx: 10, density: 'compact' }
+]
+
+/**
+ * Evalúa la combinación más legible (tamaño de letra + densidad) que logra
+ * compactar la obra en la menor cantidad posible de hojas ISO A4.
+ */
+export function computeA4AutoFitPlan(blocks = [], currentDensity = 'normal') {
+  const safeBlocks = Array.isArray(blocks) ? blocks : []
+  const currentPages = paginateBillingBlocks(safeBlocks, null, { density: currentDensity }).length
+  if (safeBlocks.length === 0) {
+    return {
+      currentPages: 1,
+      targetPages: 1,
+      savedPages: 0,
+      fontSizePx: 12,
+      density: 'normal',
+      canSavePages: false
+    }
+  }
+
+  let best = null
+  for (const cand of AUTOFIT_CANDIDATES) {
+    const pagesCount = paginateBillingBlocks(safeBlocks, null, {
+      density: cand.density,
+      fontSizeOverride: cand.fontSizePx
+    }).length
+
+    if (!best || pagesCount < best.targetPages) {
+      best = {
+        targetPages: pagesCount,
+        fontSizePx: cand.fontSizePx,
+        density: cand.density
+      }
+    }
+  }
+
+  const savedPages = Math.max(0, currentPages - best.targetPages)
+  if (savedPages === 0 && currentDensity !== 'compact') {
+    const compact11Pages = paginateBillingBlocks(safeBlocks, null, {
+      density: 'compact',
+      fontSizeOverride: 11
+    }).length
+    return {
+      currentPages,
+      targetPages: compact11Pages,
+      savedPages: Math.max(0, currentPages - compact11Pages),
+      fontSizePx: 11,
+      density: 'compact',
+      canSavePages: compact11Pages < currentPages
+    }
+  }
+
+  return {
+    currentPages,
+    targetPages: best.targetPages,
+    savedPages,
+    fontSizePx: best.fontSizePx,
+    density: best.density,
+    canSavePages: savedPages > 0
+  }
+}
+
+/**
+ * Construye el parche de `billing_layout_meta` y el mensaje de feedback
+ * para alternar entre Auto-Ajuste A4 óptimo y densidad estándar (12px).
+ */
+export function buildAutoFitLayoutMetaPatch({ meta = {}, orderedBlocks = [], printDensity = 'normal', autoFitPreview }) {
+  const shouldRestoreNormal = printDensity === 'compact' && !autoFitPreview?.canSavePages
+  const nextDensity = shouldRestoreNormal ? 'normal' : (autoFitPreview?.density || 'compact')
+  const nextFontSize = shouldRestoreNormal ? 12 : (autoFitPreview?.fontSizePx || 11)
+
+  const nextFontSizes = { ...(meta.fontSizes || {}) }
+  for (const b of orderedBlocks) {
+    if (b.workOrderId) nextFontSizes[b.workOrderId] = nextFontSize
+  }
+  const nextCustomBlocks = (Array.isArray(meta.customBlocks) ? meta.customBlocks : []).map((cb) =>
+    cb.blockType === 'FREE_BLOCK' ? { ...cb, fontSizePx: nextFontSize } : cb
+  )
+
+  const feedbackMessage = shouldRestoreNormal
+    ? 'Espaciado estándar restaurado (12px · densidad normal).'
+    : autoFitPreview?.savedPages > 0
+      ? `Auto-Ajuste A4 aplicado: compactado de ${autoFitPreview.currentPages} a ${autoFitPreview.targetPages} hoja(s) A4 (${nextFontSize}px).`
+      : `Auto-Ajuste A4 aplicado (${autoFitPreview?.targetPages || 1} hoja(s) A4 · ${nextFontSize}px compacto).`
+
+  return {
+    nextMeta: { ...meta, printDensity: nextDensity, fontSizes: nextFontSizes, customBlocks: nextCustomBlocks },
+    feedbackMessage
+  }
 }
