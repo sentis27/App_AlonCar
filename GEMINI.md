@@ -1,7 +1,7 @@
 ---
-version: 1.7
+version: 1.8
 last_updated_by: antigravity
-last_updated: 2026-11-20
+last_updated: 2026-11-23
 source_of_truth: GEMINI.md
 ---
 
@@ -17,11 +17,13 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 
 ## 2. Router (`SKL-016`) y Pipeline Mecánico (4 Fases)
 
+> **Principio ODD (Organic Driven Development):** El proceso crece con el problema. Ni ceremonias para lo pequeño, ni atajos para lo que duele cuando falla.
+
 | Pedido / Capa | Skill Obligatoria | Primer Tool Call | Condición de Cierre |
 | :--- | :--- | :--- | :--- |
-| UI cosmético/JSX (sin BD ni servicios) | **Nivel 0** (`SKL-016` Fast-Track) | `read_file` acotado (`≤ 100 L`) | Edición puntual + `npm.cmd run build` (sin índices ni Supabase). |
+| UI cosmético/JSX/texto (sin BD ni servicios) | **Nivel 0** (`SKL-016` Fast-Track) | `read_file` acotado (`≤ 100 L`) | Edición puntual + `npm.cmd run build` (Cero burocracia: propuesta corta ≤5L, cierre ágil sin tablas). |
 | Datos, tablas o columnas | `SKL-014` | `read_file` / `run_command` (F1) | Cero asunciones; esquema verificado citado. |
-| 2+ tareas o varias capas | `SKL-008` | `read_file` / `run_command` | Tabla de etapas (*Fast-Track* o *Freno por Riesgo*). |
+| 2+ tareas o varias capas | `SKL-008` | `read_file` / `run_command` | Tabla de etapas + Checklist vivo de continuidad. |
 | UI, formularios y flujos | `SKL-012` | `read_file` | Vector Único, Top-Down y compresión dimensional. |
 | Grillas editables (`CARGA_EDICION`) | `SKL-013` | `read_file` | Teclado 100%, in-situ, motor `useSpreadsheetGrid.js`. |
 | Código / lógica / repositories / schemas | `SKL-009` + `SKL-015` + `SKL-007` | `run_command` / `read_file` | Test runtime Node `data > 0` + `build` + Reporte. |
@@ -42,6 +44,12 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
    5. **onBlur Blindado:** todo input editable usa `onBlur={() => commitFn()}` (jamás pasar evento `e`).
 3. **F3 — Runtime real (`SKL-007`):** prohibido validar solo con `includes` o `build`; ejecutar prueba real en Node (`error === null` y `data.length > 0`) + `npm run build` + `npm run lint`.
 4. **F4 — Reporte:** cerrar con Trazabilidad y tabla Control de Calidad (`§5`).
+
+**Reglas Operativas ODD incorporadas al Pipeline:**
+- **Límite Negativo Obligatorio (Paso 5 ODD):** Antes de tocar código, toda propuesta debe asentar explícitamente:
+  `🎯 Objetivo (1 frase):` Qué debe ser verdad al terminar.
+  `🚫 Fuera de alcance:` Qué archivos, tablas, módulos o flujos quedan terminantemente fuera de la intervención.
+- **Checklist de Continuidad en Vuelo:** En tareas quirúrgicas o de 2+ etapas (`SKL-008`), mantener una lista `[ ]` en el chat actualizándola a `[x]` por paso completado, garantizando que si la sesión se corta cualquier nuevo agente retome sin rehacer trabajo.
 
 ## 3. Contratos Reales Supabase (Prohibido adivinar)
 > **Pre-Flight Anti-Memoria:** leer `docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` e `INDICE_PLANILLAS.md` antes de listar módulos/tablas. Para otras tablas, correr `select('*').limit(1)` en F1. Cada tabla consumida debe respaldarse con su esquema Zod en `app/src/schemas/` (`registerTrapKeys`) y su repositorio en `app/src/repositories/`.
@@ -72,7 +80,14 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 
 - **Traducción obligatoria para el usuario (Cero Jerga Cruda):** En propuestas, diagnósticos o explicaciones arquitectónicas, acompañar todo término técnico con su traducción breve (`🔧 Técnico:` qué archivo/pieza cambia · `💡 En simple:` analogía concreta de taller/astillero en 1–2 líneas).
 
-**Cierre con cambios (`SKL-007`):** incluir `### 🔍 Trazabilidad de Cumplimiento Mecánico` (1. Inspección F1/`SKL-014`, 2. Fuente compartida F2, 3. Runtime F3) y:
+**Propuesta de Cambio (antes de tocar disco):**
+- `🎯 Objetivo:` [Una sola frase clara de lo que se resuelve]
+- `🚫 Fuera de alcance:` [Límite negativo explícito]
+- `🔧 Propuesta / Checklist:` [Cambio acotado o lista de pasos numerados `[ ]`]
+
+**Cierre de turno proporcional al riesgo:**
+- **Nivel 0 (Cosmético / Fast-Track):** Cierre ágil (3 líneas: qué archivo cambió + confirmación `npm run build OK`, sin tabla formal).
+- **Nivel 1+ (Lógica, datos, refactor, 2+ capas):** Cierre formal obligatorio con `### 🔍 Trazabilidad de Cumplimiento Mecánico` y tabla `### Control de calidad — Entrega (SKL-007)`:
 ```markdown
 ### Control de calidad — Entrega (SKL-007)
 **Estado general:** CUMPLIDO | PARCIAL | BLOQUEADO
