@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useModuleTab } from '../hooks/useModuleTab'
 import { useTabbedFilterMemory } from '../hooks/useTabbedFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import PanolHeader from '../components/panol/PanolHeader'
@@ -24,14 +25,9 @@ const PANOL_REALTIME_TABLES = ['materials', 'inventory_transactions', 'gas_cylin
 
 export default function Panol() {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const { user, profile } = useAuth()
-  const isAdmin = isPanolAdminRole(profile)
-
-  const [activeTab, setActiveTab] = useState(() => {
-    const t = searchParams.get('tab')
-    return (t === 'movimientos' || t === 'kardex') ? 'planillas' : (t || 'planillas')
-  })
+  const { user, profile, capabilities } = useAuth()
+  const isAdmin = capabilities ? capabilities.isPanolAdmin : isPanolAdminRole(profile)
+  const { activeTab, setActiveTab, activeSubmodule, searchParams, setSearchParams } = useModuleTab('panol')
 
   const [loading, setLoading] = useState(true)
   const [feedback, setFeedback] = useState(null)
@@ -78,19 +74,10 @@ export default function Panol() {
   const [previewImage, setPreviewImage] = useState(null)
 
   useEffect(() => {
-    const t = searchParams.get('tab')
-    if (t && ['planillas', 'gases', 'catalogo', 'epp', 'movimientos', 'kardex'].includes(t)) {
-      setActiveTab((t === 'movimientos' || t === 'kardex') ? 'planillas' : t)
-    }
     const kpiParam = searchParams.get('kpi')
     if (kpiParam) setTabFilter('planillas', 'activeKpiFilter', kpiParam)
     if (searchParams.get('con_barco') === '1') setTabFilter('planillas', 'onlyWithShipFilter', true)
   }, [searchParams, setTabFilter])
-
-  const changeTab = (tab) => {
-    setActiveTab(tab)
-    setSearchParams({ tab })
-  }
 
   const showFeedback = (type, text) => {
     setFeedback({ type, text })
@@ -209,7 +196,7 @@ export default function Panol() {
 
       {/* ZONA 1: CONTEXTO OPERATIVO */}
       <PanolHeader
-        activeTab={activeTab} isAdmin={isAdmin} filteredTransactionsCount={filteredTransactions.length} criticalCount={kpiStats.criticalCount} onChangeTab={changeTab}
+        activeTab={activeTab} activeSubmodule={activeSubmodule} isAdmin={isAdmin} filteredTransactionsCount={filteredTransactions.length} criticalCount={kpiStats.criticalCount}
         onOpenWithdrawalModal={() => { setEditingWithdrawalRow(null); setShowWithdrawalModal(true) }}
         onOpenCostBasketModal={() => setShowCostBasketModal(true)}
         onOpenNewMaterialModal={() => setMaterialFormModal({ isOpen: true, material: null })}
@@ -233,7 +220,7 @@ export default function Panol() {
           const currVal = filtersByTab[dest]?.activeKpiFilter
           setTabFilter(dest, 'activeKpiFilter', currVal === k ? null : k)
           if (dest === 'planillas') setTabFilter('planillas', 'onlyWithShipFilter', false)
-          if (targetTab && activeTab !== targetTab) changeTab(targetTab)
+          if (targetTab && activeTab !== targetTab) setActiveTab(targetTab)
         }}
       />
 

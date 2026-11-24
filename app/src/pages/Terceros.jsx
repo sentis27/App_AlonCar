@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { resolveUserRolePerspective } from '../lib/navigationCatalog.js'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
@@ -19,13 +20,11 @@ import { buildPanolRemitoIndex } from '../lib/tercerosRemitoMatcher.js'
 import { AlertTriangle, CheckCircle2, Clock, Wrench } from 'lucide-react'
 
 export default function Terceros() {
-  const { user, profile } = useAuth()
-  const [activeRolePerspective, setActiveRolePerspective] = useState(() => localStorage.getItem('aloncar_terceros_terminal') || 'maria_jose')
-  useEffect(() => { localStorage.setItem('aloncar_terceros_terminal', activeRolePerspective) }, [activeRolePerspective])
-
-  const canEditAmounts = useMemo(() => activeRolePerspective === 'admin' || activeRolePerspective === 'maria_jose', [activeRolePerspective])
-  const canMutateRows = activeRolePerspective !== 'direccion'
-  const actor = activeRolePerspective === 'admin' ? 'JORGE SENTIS' : (activeRolePerspective === 'jefe_obra' ? 'JEFE DE OBRA' : 'MARIA JOSE')
+  const { user, profile, orgRole, capabilities } = useAuth()
+  const activeRolePerspective = capabilities?.rolePerspective || resolveUserRolePerspective(profile)
+  const canEditAmounts = capabilities ? capabilities.canEditTercerosAmounts : (activeRolePerspective === 'admin' || activeRolePerspective === 'maria_jose')
+  const canMutateRows = capabilities ? capabilities.canMutateTercerosRows : activeRolePerspective !== 'direccion'
+  const actor = orgRole?.holder_name || profile?.full_name || user?.email || (activeRolePerspective === 'jefe_obra' ? 'JEFE DE OBRA' : 'ADMINISTRACIÓN')
 
   // Datos principales
   const [services, setServices] = useState([])
@@ -221,8 +220,8 @@ export default function Terceros() {
         </div>
       )}
 
-      {/* ZONA 1: CONTEXTO Y TERMINAL */}
-      <TercerosHeader activeRolePerspective={activeRolePerspective} setActiveRolePerspective={setActiveRolePerspective} canEditAmounts={canEditAmounts} onOpenNewModal={handleOpenNewModal} />
+      {/* ZONA 1: CONTEXTO Y ACCIÓN PRINCIPAL */}
+      <TercerosHeader canEditAmounts={canEditAmounts} canMutateRows={canMutateRows} onOpenNewModal={handleOpenNewModal} />
 
       {/* ZONA 2: RADAR DE KPIS */}
       <TercerosKpiRadar kpiFilter={kpiFilter} setKpiFilter={setKpiFilter} kpiCounts={kpiCounts} />

@@ -65,11 +65,11 @@ Lista de trabajo activa priorizada por fase y criticidad.
 
 ## ✅ Últimos 5 Ítems Completados Recientemente
 
+- [x] **Menú Lateral Acordeón + Limpieza de Zona 1 (`FL-021`) y Motor Real de Permisos por Puesto (`FL-022`, `2026-11-24`):** Migrados los 30 submódulos al Sidebar Acordeón colapsable (`navigationCatalog.js` + `useModuleTab.js`), eliminados 37 botones redundantes de Zona 1 (incl. selectores manuales de Terminal/Rol), normalizados los 10 puestos de `organization_roles` en Supabase y conectado `AuthContext` + `ProtectedRoute` + Matriz de 11 módulos/30 submódulos en `/admin` + acceso por puesto en `Login.jsx`.
 - [x] **Migración SQL `0037` aplicada en vivo en Supabase (`2026-11-17`):** Agregadas columnas `workers.contract_type` y `workers.contract_start_date`, saneado `safety_items` y actualizado `REQ_PERSONAL_CONTRATO_POR_VENCER`. Eliminados los HTTP `400` en `/` Dashboard.
 - [x] **Validación QA Autenticada en Navegador (`2026-11-17`):** Verificados en vivo `/` Dashboard (`0` HTTP 400), `/panol` (4 pestañas), `/resumen-gerencial` (4 pestañas con cifras reales) y `/personal` (`w-full` confirmado; `Acciones` visible en `1920px` y accesible por scroll horizontal en `<=1440px`).
 - [x] **Fix `/barcos` (`ShipsBarcosPanel.jsx`) y `/ots` (`WorkOrdersHeader.jsx`) (`0d0debb`, `2026-11-16`):** Importado `X` faltante de `lucide-react` (corrige pantalla en blanco en `/barcos`) y ajustado wrap responsive en Zona 1 de `/ots`.
 - [x] **Unificación OTs, FKs relacionales, Horas Columna F y Estandarización Cromática Zona 3 (`cc7a908`..`1154d80`, `2026-11-16`):** Migraciones `0041`–`0047`, `workerIdentity.js`, reloj facial CSV y `filterThemeConstants.js`.
-- [x] **Personal y Tarifas (`/personal`) — Restauración de Ancho Completo (`w-full`) (`ERR-005`):** Eliminado `max-w-7xl mx-auto` en `Personal.jsx` y compactados paddings en `PersonalNominaPanel.jsx`.
 
 ---
 

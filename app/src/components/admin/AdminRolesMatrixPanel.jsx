@@ -15,16 +15,29 @@ import {
   ShieldAlert,
   Workflow,
   Save,
+  LayoutDashboard,
   Ship,
   ClipboardList,
   Clock,
   Package,
+  Wrench,
+  ShoppingCart,
   Users,
+  Wallet,
+  BarChart3,
   DollarSign,
-  TrendingUp,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Mail
 } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext.jsx'
+import { NAVIGATION_MODULES } from '../../lib/navigationCatalog.js'
+import {
+  ROLE_PERMISSION_PRESETS,
+  getModuleSelectionState,
+  normalizeAllowedSections,
+  toggleModulePermission
+} from '../../lib/permissionsEngine.js'
 import {
   loadAdminRolesMatrixService,
   patchOrganizationRoleService,
@@ -32,18 +45,33 @@ import {
   upsertOrganizationRoleService
 } from '../../services/adminGovernanceService.js'
 import HighlightText from '../HighlightText.jsx'
+import RolePermissionsEditorBlock from './RolePermissionsEditorBlock.jsx'
 
-// Módulos del sistema controlables en la matriz de seguridad
-export const SYSTEM_MODULES = [
-  { key: 'barcos', label: 'Barcos y Obras', icon: Ship, color: 'text-blue-400' },
-  { key: 'ots', label: 'Órdenes de Trabajo', icon: ClipboardList, color: 'text-indigo-400' },
-  { key: 'horas', label: 'Carga de Horas', icon: Clock, color: 'text-cyan-400' },
-  { key: 'panol', label: 'Pañol / Materiales', icon: Package, color: 'text-emerald-400' },
-  { key: 'personal', label: 'Personal (Nómina)', icon: Users, color: 'text-teal-400' },
-  { key: 'tarifario', label: 'Tarifario Quincenal', icon: DollarSign, color: 'text-amber-400' },
-  { key: 'analisis', label: 'Análisis FX', icon: TrendingUp, color: 'text-purple-400' },
-  { key: 'admin', label: 'Admin', icon: ShieldCheck, color: 'text-rose-400' }
-]
+const MODULE_META_UI = {
+  dashboard: { icon: LayoutDashboard, color: 'text-sky-400', short: 'Inicio' },
+  ots: { icon: ClipboardList, color: 'text-indigo-400', short: 'OTs' },
+  horas: { icon: Clock, color: 'text-cyan-400', short: 'Horas' },
+  panol: { icon: Package, color: 'text-emerald-400', short: 'Pañol' },
+  terceros: { icon: Wrench, color: 'text-purple-400', short: 'Terceros' },
+  compras: { icon: ShoppingCart, color: 'text-blue-400', short: 'Compras' },
+  personal: { icon: Users, color: 'text-teal-400', short: 'Personal' },
+  tesoreria: { icon: Wallet, color: 'text-amber-400', short: 'Tesorería' },
+  barcos: { icon: Ship, color: 'text-sky-300', short: 'Barcos' },
+  'resumen-gerencial': { icon: BarChart3, color: 'text-violet-400', short: 'Gerencial' },
+  admin: { icon: ShieldCheck, color: 'text-rose-400', short: 'Admin' },
+}
+
+// Los 11 módulos reales del ERP derivados automáticamente de navigationCatalog.js (SKL-019)
+export const SYSTEM_MODULES = NAVIGATION_MODULES.map((m) => ({
+  ...m,
+  key: m.permissionKey,
+  label: MODULE_META_UI[m.id]?.short || m.name,
+  fullName: m.name,
+  icon: MODULE_META_UI[m.id]?.icon || ClipboardList,
+  color: MODULE_META_UI[m.id]?.color || 'text-cyan-400',
+}))
+
+export const ROLE_PRESETS = ROLE_PERMISSION_PRESETS
 
 // Listas estandarizadas desplegables para Puestos y Departamentos
 export const STANDARD_DEPARTMENTS = [
@@ -154,41 +182,8 @@ function HardHatIcon(props) {
   )
 }
 
-// Plantillas rápidas de permisos por puesto (Presets)
-export const ROLE_PRESETS = [
-  {
-    name: '👑 Director / Admin',
-    desc: 'Acceso total y configuración maestra de todo el ERP',
-    security_level: 'ADMINISTRADOR',
-    sections: ['barcos', 'ots', 'horas', 'panol', 'personal', 'tarifario', 'analisis', 'admin']
-  },
-  {
-    name: '👔 Dirección Operativa',
-    desc: 'Control de barcos, horas, contratos y negociación de tarifas',
-    security_level: 'DIRECCION',
-    sections: ['barcos', 'ots', 'horas', 'personal', 'tarifario', 'analisis']
-  },
-  {
-    name: '📋 Liquidación & RRHH',
-    desc: 'Gestión de horas, personal y tarifario quincenal',
-    security_level: 'SUPERVISOR',
-    sections: ['horas', 'personal', 'tarifario', 'analisis']
-  },
-  {
-    name: '🛠️ Supervisión de Obra & Pañol',
-    desc: 'Control de barcos, OTs, horas de personal y retiros de pañol',
-    security_level: 'SUPERVISOR',
-    sections: ['barcos', 'ots', 'horas', 'panol']
-  },
-  {
-    name: '👁️ Auditoría / Tesorería',
-    desc: 'Control de consistencia de horas, tarifas y auditoría financiera',
-    security_level: 'AUDITOR',
-    sections: ['horas', 'tarifario', 'analisis']
-  }
-]
-
 export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
+  const { refreshPermissions } = useAuth()
   const [roles, setRoles] = useState([])
   const [roleSearch, setRoleSearch] = useState('')
   const [loadingRoles, setLoadingRoles] = useState(true)
@@ -208,10 +203,11 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
     role_key: '',
     role_title: STANDARD_JOB_TITLES[0],
     holder_name: '',
+    email: '',
     department: STANDARD_DEPARTMENTS[0],
     security_level: 'SUPERVISOR',
     status: 'ACTIVO',
-    allowed_sections: ['horas', 'personal'],
+    allowed_sections: ['dashboard', 'horas', 'personal'],
     notes: '',
     reports_to: 'Dirección General & Administración Central',
     job_mission: '',
@@ -247,13 +243,9 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
     }
   }
 
-  // Toggle interactivo de 1 clic para habilitar/deshabilitar una sección en la tabla
-  async function toggleSectionPermission(role, sectionKey) {
-    const currentSections = role.allowed_sections || []
-    const hasSection = currentSections.includes(sectionKey)
-    const newSections = hasSection
-      ? currentSections.filter(s => s !== sectionKey)
-      : [...currentSections, sectionKey]
+  // Toggle interactivo de 1 clic para habilitar/deshabilitar un módulo completo en la tabla
+  async function toggleSectionPermission(role, moduleDef) {
+    const newSections = toggleModulePermission(role.allowed_sections || [], moduleDef)
 
     // Actualización optimista
     setRoles(prev => prev.map(r => r.role_key === role.role_key ? { ...r, allowed_sections: newSections } : r))
@@ -263,6 +255,7 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
         allowed_sections: newSections,
         updated_at: new Date().toISOString()
       })
+      refreshPermissions?.()
     } catch (err) {
       console.error('Error actualizando permiso:', err)
       loadRoles()
@@ -279,6 +272,7 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
         status: newStatus,
         updated_at: new Date().toISOString()
       })
+      refreshPermissions?.()
     } catch (err) {
       console.error('Error alternando estado de rol:', err)
       loadRoles()
@@ -292,10 +286,11 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
       role_key: '',
       role_title: STANDARD_JOB_TITLES[0],
       holder_name: '',
+      email: '',
       department: STANDARD_DEPARTMENTS[0],
       security_level: 'SUPERVISOR',
       status: 'ACTIVO',
-      allowed_sections: ['horas', 'personal'],
+      allowed_sections: ['dashboard', 'horas', 'personal'],
       notes: '',
       reports_to: 'Dirección General & Administración Central',
       job_mission: '',
@@ -316,10 +311,11 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
       role_key: role.role_key,
       role_title: role.role_title,
       holder_name: role.holder_name,
+      email: role.email || '',
       department: role.department || STANDARD_DEPARTMENTS[1],
       security_level: role.security_level || 'SUPERVISOR',
       status: role.status || 'ACTIVO',
-      allowed_sections: role.allowed_sections || [],
+      allowed_sections: normalizeAllowedSections(role.allowed_sections || []),
       notes: role.notes || '',
       reports_to: role.reports_to || 'Dirección General & Administración Central',
       job_mission: role.job_mission || '',
@@ -362,10 +358,11 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
         role_key: key,
         role_title: roleForm.role_title.trim(),
         holder_name: roleForm.holder_name.trim(),
+        email: roleForm.email?.trim().toLowerCase() || null,
         department: roleForm.department.trim(),
         security_level: roleForm.security_level,
         status: roleForm.status,
-        allowed_sections: roleForm.allowed_sections,
+        allowed_sections: normalizeAllowedSections(roleForm.allowed_sections),
         notes: roleForm.notes.trim(),
         reports_to: roleForm.reports_to?.trim() || null,
         job_mission: roleForm.job_mission?.trim() || null,
@@ -375,6 +372,7 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
       }
 
       await upsertOrganizationRoleService(payload)
+      refreshPermissions?.()
 
       setRoleMessage({
         type: 'success',
@@ -581,13 +579,13 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {loadingRoles ? (
                 <tr>
-                  <td colSpan={13} className="py-10 text-center text-slate-500">
+                  <td colSpan={SYSTEM_MODULES.length + 5} className="py-10 text-center text-slate-500">
                     Cargando matriz de puestos y permisos...
                   </td>
                 </tr>
               ) : roles.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="py-10 text-center text-slate-500">
+                  <td colSpan={SYSTEM_MODULES.length + 5} className="py-10 text-center text-slate-500">
                     No hay puestos registrados en la organización.
                   </td>
                 </tr>
@@ -624,9 +622,15 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
                         </button>
                       </td>
 
-                      {/* Persona a Cargo */}
-                      <td className="py-2.5 px-3 font-mono font-bold text-cyan-300">
-                        <HighlightText text={r.holder_name} query={roleSearch} />
+                      {/* Persona a Cargo + Email */}
+                      <td className="py-2.5 px-3">
+                        <span className="font-mono font-bold text-cyan-300 block">
+                          <HighlightText text={r.holder_name} query={roleSearch} />
+                        </span>
+                        <span className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5 truncate max-w-[170px]" title={r.email || 'Sin email de acceso asignado'}>
+                          <Mail className="w-2.5 h-2.5 shrink-0" />
+                          <span className="truncate">{r.email || 'Sin email'}</span>
+                        </span>
                       </td>
 
                       {/* Nivel de Seguridad */}
@@ -644,22 +648,32 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
                         </span>
                       </td>
 
-                      {/* 8 Módulos de la App - Píldoras Interactivas */}
+                      {/* 11 Módulos Reales del ERP - Píldoras Interactivas (Completo / Parcial / Bloqueado) */}
                       {SYSTEM_MODULES.map(mod => {
-                        const isAllowed = allowed.includes(mod.key)
+                        const sel = getModuleSelectionState(allowed, mod)
+                        const isFull = sel.mode === 'full'
+                        const isPartial = sel.mode === 'partial'
                         return (
                           <td key={mod.key} className="py-2 px-1 text-center">
                             <button
                               type="button"
-                              onClick={() => toggleSectionPermission(r, mod.key)}
-                              className={`w-7 h-6 rounded flex items-center justify-center text-[10px] font-black mx-auto transition-all cursor-pointer ${
-                                isAllowed
+                              onClick={() => toggleSectionPermission(r, mod)}
+                              className={`min-w-[28px] px-1 h-6 rounded flex items-center justify-center text-[10px] font-black mx-auto transition-all cursor-pointer ${
+                                isFull
                                   ? 'bg-emerald-950 text-emerald-300 border border-emerald-600 hover:bg-emerald-900 shadow-sm'
+                                  : isPartial
+                                  ? 'bg-amber-950/80 text-amber-300 border border-amber-500/70 hover:bg-amber-900/70 shadow-sm'
                                   : 'bg-slate-950 text-slate-600 border border-slate-800 hover:border-slate-700 hover:text-slate-400'
                               }`}
-                              title={`${isAllowed ? 'Habilitado' : 'Bloqueado'} para ${mod.label}. Clic para alternar.`}
+                              title={
+                                isFull
+                                  ? `${mod.fullName}: Habilitado completo. Clic para bloquear.`
+                                  : isPartial
+                                  ? `${mod.fullName}: Parcial (${sel.enabledCount}/${sel.totalCount} submódulos). Clic para habilitar todo o editá el puesto para ajustar submódulos.`
+                                  : `${mod.fullName}: Bloqueado. Clic para habilitar completo.`
+                              }
                             >
-                              {isAllowed ? '✓' : '--'}
+                              {isFull ? '✓' : isPartial ? `◐${sel.enabledCount}/${sel.totalCount}` : '--'}
                             </button>
                           </td>
                         )
@@ -847,25 +861,28 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                   Módulos de la Aplicación Habilitados
                 </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {SYSTEM_MODULES.map(mod => {
-                    const isAllowed = (roleDetailModal.role.allowed_sections || []).includes(mod.key)
+                    const sel = getModuleSelectionState(roleDetailModal.role.allowed_sections || [], mod)
+                    const isAllowed = sel.mode !== 'none'
                     const Icon = mod.icon
                     return (
                       <div
                         key={mod.key}
                         className={`p-2 rounded-lg border text-xs flex items-center justify-between ${
-                          isAllowed
+                          sel.mode === 'full'
                             ? 'bg-slate-950 border-emerald-600/60 text-white font-bold'
+                            : sel.mode === 'partial'
+                            ? 'bg-amber-950/30 border-amber-500/50 text-amber-200 font-bold'
                             : 'bg-slate-950/40 border-slate-800 text-slate-600 opacity-60'
                         }`}
                       >
                         <div className="flex items-center gap-1.5 truncate">
                           <Icon className={`w-3.5 h-3.5 ${isAllowed ? mod.color : 'text-slate-600'}`} />
-                          <span className="truncate">{mod.label}</span>
+                          <span className="truncate">{mod.fullName}</span>
                         </div>
-                        <span className={`text-[10px] font-black ${isAllowed ? 'text-emerald-400' : 'text-slate-600'}`}>
-                          {isAllowed ? '✓' : '--'}
+                        <span className={`text-[10px] font-black ${sel.mode === 'full' ? 'text-emerald-400' : sel.mode === 'partial' ? 'text-amber-300' : 'text-slate-600'}`}>
+                          {sel.mode === 'full' ? '✓' : sel.mode === 'partial' ? `${sel.enabledCount}/${sel.totalCount}` : '--'}
                         </span>
                       </div>
                     )
@@ -1043,8 +1060,8 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
                           </select>
                         </div>
 
-                        {/* Nivel de Seguridad */}
-                        <div className="sm:col-span-2">
+                        {/* Nivel de Seguridad + Email de Acceso (Login) */}
+                        <div>
                           <label className="text-[11px] font-bold text-slate-300 block mb-1">
                             Nivel de Seguridad y Permisos
                           </label>
@@ -1059,6 +1076,19 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
                             <option value="OPERATIVO">📋 Operativo / Carga</option>
                             <option value="AUDITOR">👁️ Auditor (Solo Lectura)</option>
                           </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Email de Acceso (Login automático)
+                          </label>
+                          <input
+                            type="email"
+                            value={roleForm.email || ''}
+                            onChange={(e) => setRoleForm({ ...roleForm, email: e.target.value })}
+                            placeholder="ej. mariajose@aloncar.com"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-cyan-200 focus:outline-none focus:border-sky-400 font-mono"
+                          />
                         </div>
                       </div>
                     </div>
@@ -1100,77 +1130,8 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
                     </div>
                   </div>
 
-                  {/* COLUMNA DERECHA: BLOQUES 3 Y 4 */}
-                  <div className="space-y-3">
-                    {/* BLOQUE 3: PRESETS RÁPIDOS (.alon-chunk-amber) */}
-                    <div className="alon-chunk-amber space-y-2">
-                      <div className="flex items-center justify-between pb-1 border-b border-amber-500/20">
-                        <span className="font-black text-[11px] uppercase tracking-wider text-amber-400">
-                          3. Plantillas Rápidas de Permisos (1 Clic)
-                        </span>
-                        <span className="text-[10px] text-amber-300/70 font-mono">Autoconfiguración</span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {ROLE_PRESETS.map(preset => (
-                          <button
-                            key={preset.name}
-                            type="button"
-                            tabIndex={-1}
-                            onClick={() => setRoleForm({
-                              ...roleForm,
-                              security_level: preset.security_level,
-                              allowed_sections: preset.sections
-                            })}
-                            className="p-2 bg-slate-900/60 hover:bg-amber-950/30 border border-slate-700 hover:border-amber-500/50 rounded-xl text-left transition-all cursor-pointer"
-                          >
-                            <strong className="text-xs text-white block truncate">{preset.name}</strong>
-                            <span className="text-[10px] text-slate-400 block leading-tight mt-0.5 line-clamp-2">{preset.desc}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* BLOQUE 4: MATRIZ DE MÓDULOS HABILITADOS (.alon-chunk-purple) */}
-                    <div className="alon-chunk-purple space-y-2">
-                      <div className="flex items-center justify-between pb-1 border-b border-purple-500/20">
-                        <span className="font-black text-[11px] uppercase tracking-wider text-purple-400">
-                          4. Módulos de la App Habilitados
-                        </span>
-                        <span className="text-[10px] text-purple-300/70 font-mono">{roleForm.allowed_sections.length} seleccionados</span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
-                        {SYSTEM_MODULES.map(mod => {
-                          const isChecked = roleForm.allowed_sections.includes(mod.key)
-                          const Icon = mod.icon
-                          return (
-                            <label 
-                              key={mod.key} 
-                              className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
-                                isChecked 
-                                  ? 'bg-purple-950/40 border-purple-500 text-white font-bold shadow-sm' 
-                                  : 'bg-slate-900/80 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setRoleForm({ ...roleForm, allowed_sections: [...roleForm.allowed_sections, mod.key] })
-                                  } else {
-                                    setRoleForm({ ...roleForm, allowed_sections: roleForm.allowed_sections.filter(s => s !== mod.key) })
-                                  }
-                                }}
-                                className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary shrink-0"
-                              />
-                              <Icon className={`w-3.5 h-3.5 ${mod.color} shrink-0`} />
-                              <span className="truncate">{mod.label}</span>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </div>
+                  {/* COLUMNA DERECHA: BLOQUES 3 Y 4 (Componente modular RolePermissionsEditorBlock) */}
+                  <RolePermissionsEditorBlock roleForm={roleForm} setRoleForm={setRoleForm} />
                 </div>
               </div>
 

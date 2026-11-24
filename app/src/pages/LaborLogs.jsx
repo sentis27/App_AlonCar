@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useModuleTab } from '../hooks/useModuleTab'
 import { resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import {
@@ -22,7 +22,7 @@ const LABOR_REALTIME_TABLES = ['labor_logs', 'ships', 'ship_stays', 'work_orders
 
 export default function LaborLogs() {
   const { user, profile } = useAuth()
-  const [activeTab, setActiveTab] = useState('carga')
+  const { activeTab, setActiveTab, activeSubmodule, searchParams, setSearchParams } = useModuleTab('horas')
   const [activeLoadModal, setActiveLoadModal] = useState(null) // null | 'texto' | 'reloj' | 'cuadrilla'
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
@@ -33,7 +33,6 @@ export default function LaborLogs() {
   const [workItems, setWorkItems] = useState([])
   const [dbWorkers, setDbWorkers] = useState([])
 
-  const [searchParams, setSearchParams] = useSearchParams()
   const [activeKpiFilter, setActiveKpiFilter] = useState(() => {
     const kpiParam = searchParams.get('kpi')
     if (kpiParam) return kpiParam
@@ -43,17 +42,16 @@ export default function LaborLogs() {
 
   useEffect(() => {
     const kpiParam = searchParams.get('kpi')
-    if (kpiParam) {
-      setActiveTab('carga')
-      setActiveKpiFilter(kpiParam)
-    }
-  }, [searchParams])
+    if (!kpiParam) return
+    if (activeTab !== 'carga') setActiveTab('carga')
+    setActiveKpiFilter(kpiParam)
+  }, [searchParams, activeTab, setActiveTab])
 
   const handleSetActiveKpiFilter = useCallback((nextVal) => {
     setActiveKpiFilter((prev) => {
       const resolved = typeof nextVal === 'function' ? nextVal(prev) : nextVal
       if (resolved === 'todos' && searchParams.get('kpi')) {
-        setSearchParams({}, { replace: true })
+        const next = new URLSearchParams(searchParams); next.delete('kpi'); setSearchParams(next, { replace: true })
       }
       return resolved
     })
@@ -191,7 +189,7 @@ export default function LaborLogs() {
     <div className="space-y-4 pb-10">
       <LaborLogsHeader
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        activeSubmodule={activeSubmodule}
         dailyCount={recentLogs.filter(l => l.date_logged === auditDate).length}
         totalLogsCount={recentLogs.length}
         onOpenTextModal={() => handleOpenLoadModal('texto')}

@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Ship,
-  Calendar,
-  Users,
   Anchor,
   Plus,
   BellRing,
@@ -10,8 +8,11 @@ import {
   X
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useModuleTab } from '../hooks/useModuleTab'
+import { resolveUserRolePerspective } from '../lib/navigationCatalog'
 import { resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
+import CanonicalActiveSubmoduleBadge from '../components/canonical/CanonicalActiveSubmoduleBadge'
 import { cleanLocation, computeShipOtMetrics, PREDEFINED_VESSEL_TYPES, cleanShipName } from '../lib/shipsConstants'
 import {
   fetchShipsModuleData,
@@ -25,7 +26,7 @@ import ShipsArmadoresPanel from '../components/ships/ShipsArmadoresPanel'
 import ShipsModalsContainer from '../components/ships/ShipsModals'
 
 export default function Ships() {
-  const { user, profile } = useAuth()
+  const { user, profile, capabilities } = useAuth()
   const initialShipsShared = useMemo(
     () => resolveInitialModuleFilters(user, profile, 'ships_buques'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -43,9 +44,9 @@ export default function Ships() {
   const [orphanCompras, setOrphanCompras] = useState([])
   const [statusMessage, setStatusMessage] = useState(null)
 
-  // Pestaña, filtros y perspectiva activa
-  const [activeTab, setActiveTab] = useState('buques') // 'buques' | 'movimientos' | 'armadores'
-  const [activeRolePerspective, setActiveRolePerspective] = useState('admin') // 'admin' | 'jefe_obra' | 'maria_jose'
+  // Submódulo sincronizado vía Sidebar/URL y perspectiva automática del puesto autenticado
+  const { activeTab, setActiveTab, activeSubmodule } = useModuleTab('barcos')
+  const activeRolePerspective = capabilities?.rolePerspective || resolveUserRolePerspective(profile)
   const [locationFilter, setLocationFilter] = useState(initialShipsShared.locationFilter)
   const [requestFilter, setRequestFilter] = useState(initialShipsShared.requestFilter)
   const [roleQuickFilter, setRoleQuickFilter] = useState(initialShipsShared.roleQuickFilter)
@@ -155,10 +156,10 @@ export default function Ships() {
 
   return (
     <div className="space-y-4">
-      {/* ZONA 1 (CONTEXTO CORPORATIVO): IDENTIDAD, PERSPECTIVA Y ACCIONES */}
+      {/* ZONA 1 (CONTEXTO CORPORATIVO): IDENTIDAD Y ACCIÓN PRINCIPAL */}
       <div className="alon-zone-context p-4 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
               <Ship className="w-6 h-6 text-primary" />
               <span>Flota Naval & Estadías</span>
@@ -166,6 +167,11 @@ export default function Ships() {
             <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-800">
               v3.5 CANÓNICA
             </span>
+            <CanonicalActiveSubmoduleBadge
+              label={activeSubmodule?.label || '1. Buques'}
+              suffix={`(${activeTab === 'movimientos' ? stays.length : activeTab === 'armadores' ? owners.length : ships.length})`}
+              theme={activeSubmodule?.theme || 'cyan'}
+            />
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Relevamiento técnico 360°, inventario naval y control de muelle y varadero de AlonCar.
@@ -173,14 +179,6 @@ export default function Ships() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Perspectiva de rol */}
-          <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-1 text-xs">
-            <span className="text-[10px] text-slate-400 font-bold px-2">Rol:</span>
-            <button type="button" onClick={() => setActiveRolePerspective('admin')} className={`px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-all ${activeRolePerspective === 'admin' ? 'bg-primary text-slate-950' : 'text-slate-400 hover:text-white'}`}>Admin</button>
-            <button type="button" onClick={() => setActiveRolePerspective('jefe_obra')} className={`px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-all ${activeRolePerspective === 'jefe_obra' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Jefe Obra</button>
-            <button type="button" onClick={() => setActiveRolePerspective('maria_jose')} className={`px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-all ${activeRolePerspective === 'maria_jose' ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:text-white'}`}>María José</button>
-          </div>
-
           <button
             type="button"
             onClick={activeTab === 'buques' ? handleOpenNewShip : activeTab === 'movimientos' ? () => handleOpenNewStay() : handleOpenNewOwner}
@@ -190,13 +188,6 @@ export default function Ships() {
             <span>{activeTab === 'buques' ? 'Nuevo Buque' : activeTab === 'movimientos' ? 'Nuevo Movimiento' : 'Nuevo Armador'}</span>
           </button>
         </div>
-      </div>
-
-      {/* SELECTOR DE PESTAÑAS */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-        <button type="button" onClick={() => setActiveTab('buques')} className={`px-3 py-1.5 rounded-lg font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${activeTab === 'buques' ? 'bg-primary text-slate-950 shadow-md' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'}`}><Ship className="w-3.5 h-3.5" /><span>1. Buques ({ships.length})</span></button>
-        <button type="button" onClick={() => setActiveTab('movimientos')} className={`px-3 py-1.5 rounded-lg font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${activeTab === 'movimientos' ? 'bg-cyan-500 text-slate-950 shadow-md' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'}`}><Calendar className="w-3.5 h-3.5" /><span>2. Movimientos ({stays.length})</span></button>
-        <button type="button" onClick={() => setActiveTab('armadores')} className={`px-3 py-1.5 rounded-lg font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${activeTab === 'armadores' ? 'bg-amber-400 text-slate-950 shadow-md' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'}`}><Users className="w-3.5 h-3.5" /><span>3. Armadores ({owners.length})</span></button>
       </div>
 
       {statusMessage && (

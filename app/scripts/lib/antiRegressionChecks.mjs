@@ -82,6 +82,17 @@ const REQUIRED_CANONICAL_OT_SURFACES = [
   'app/src/components/resumenGerencial/ComparadorNivel2OtTable.jsx',
 ]
 
+const REQUIRED_ACCORDION_TAB_PAGES = [
+  'app/src/pages/WorkOrders.jsx',
+  'app/src/pages/LaborLogs.jsx',
+  'app/src/pages/Panol.jsx',
+  'app/src/pages/Compras.jsx',
+  'app/src/pages/Personal.jsx',
+  'app/src/pages/Ships.jsx',
+  'app/src/pages/ResumenGerencial.jsx',
+  'app/src/pages/AdminDashboard.jsx',
+]
+
 const WORK_ITEMS_CUSTOM_SELECT_RE = /workItemsRepository\.listWorkItems\(\s*\{[\s\S]*?select:\s*['"]([^'"]+)['"]/g
 
 export function checkCanonicalComponentsUsage(rootDir, appDir) {
@@ -129,6 +140,22 @@ export function checkCanonicalComponentsUsage(rootDir, appDir) {
     const content = fs.readFileSync(full, 'utf8')
     if (!content.includes('CanonicalOtBadge')) {
       errors.push(`Superficie obligatoria sin CanonicalOtBadge (tooltip de OT): ${rel}`)
+    }
+  }
+
+  const sidebarFull = path.join(rootDir, 'app/src/components/Sidebar.jsx')
+  if (fs.existsSync(sidebarFull)) {
+    const sidebarContent = fs.readFileSync(sidebarFull, 'utf8')
+    if (!sidebarContent.includes('navigationCatalog') || !sidebarContent.includes('CanonicalSidebarModuleGroup')) {
+      errors.push('Sidebar.jsx debe consumir navigationCatalog y CanonicalSidebarModuleGroup (FL-021)')
+    }
+  }
+  for (const rel of REQUIRED_ACCORDION_TAB_PAGES) {
+    const full = path.join(rootDir, rel)
+    if (!fs.existsSync(full)) continue
+    const content = fs.readFileSync(full, 'utf8')
+    if (!content.includes('useModuleTab')) {
+      errors.push(`Módulo con submódulos sin useModuleTab (FL-021): ${rel}`)
     }
   }
 

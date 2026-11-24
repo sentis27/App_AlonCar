@@ -32,6 +32,21 @@ import { auditService } from '../../src/lib/auditService.js'
 import { dispatchMandadosService } from '../../src/services/comprasAuxService.js'
 import { computeStepHelpPosition } from '../../src/lib/stepHelpPosition.js'
 import { BUSINESS_HELP_REGISTRY, exportBusinessHelpForAI } from '../../src/lib/businessHelpRegistry.js'
+import {
+  NAVIGATION_MODULES,
+  resolveModuleTab,
+  buildSubmoduleUrl,
+  getVisibleNavigationModules,
+  resolveUserRolePerspective,
+} from '../../src/lib/navigationCatalog.js'
+import {
+  normalizeAllowedSections,
+  getModuleSelectionState,
+  toggleModulePermission,
+  toggleSubmodulePermission,
+  isRouteAllowed,
+  resolveUserCapabilities,
+} from '../../src/lib/permissionsEngine.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '../..')
@@ -85,6 +100,8 @@ const COVERED_CONTRACT_IDS = new Set([
   'FL-018',
   'FL-019',
   'FL-020',
+  'FL-021',
+  'FL-022',
 ])
 
 describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', () => {
@@ -572,5 +589,151 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(crewGridSrc).not.toContain('min-w-[1220px]')
     expect(crewGridSrc).not.toContain('min-w-[980px]')
     expect(readRepoFile('app/src/components/compras/InlineSupplierPicker.jsx')).toContain('createPortal')
+  })
+
+  it('FL-021: blinda el Menú Lateral Acordeón 3 Capas y Zona 1 limpia (sin pestañas ni selectores manuales de Terminal/Rol)', () => {
+    // Capa 1: Catálogo maestro con 11 módulos y 30 submódulos con permissionKey único
+    expect(NAVIGATION_MODULES.length).toBe(11)
+    const allChildren = NAVIGATION_MODULES.flatMap((m) => m.children || [])
+    expect(allChildren.length).toBe(30)
+    const permKeys = [
+      ...NAVIGATION_MODULES.map((m) => m.permissionKey),
+      ...allChildren.map((c) => c.permissionKey),
+    ]
+    expect(new Set(permKeys).size).toBe(permKeys.length)
+
+    // Resolución de aliases y defaults seguros
+    expect(resolveModuleTab('panol', 'movimientos')).toBe('planillas')
+    expect(resolveModuleTab('panol', 'kardex')).toBe('planillas')
+    expect(resolveModuleTab('panol', 'inexistente')).toBe('planillas')
+    expect(resolveModuleTab('ots', '')).toBe('unificado')
+    expect(resolveModuleTab('resumen-gerencial', 'remito')).toBe('remito')
+    expect(resolveModuleTab('admin', null)).toBe('matriz')
+    expect(buildSubmoduleUrl('/panol', 'catalogo')).toBe('/panol?tab=catalogo')
+
+    // Filtrado por rol y soporte para allowedSections (Etapa 5)
+    const operarioNav = getVisibleNavigationModules({ profile: { role: 'Operario' } })
+    const comprasOperario = operarioNav.find((m) => m.id === 'compras')
+    expect(comprasOperario.children).toEqual([])
+    const restrictedNav = getVisibleNavigationModules({
+      profile: { role: 'Supervisor' },
+      allowedSections: ['panol.planillas', 'panol.catalogo', 'terceros'],
+    })
+    expect(restrictedNav.map((m) => m.id)).toEqual(['panol', 'terceros'])
+    expect(restrictedNav[0].children.map((c) => c.id)).toEqual(['planillas', 'catalogo'])
+
+    // Perspectiva automática derivada del usuario autenticado
+    expect(resolveUserRolePerspective({ role: 'Supervisor' })).toBe('admin')
+    expect(resolveUserRolePerspective({ role: 'Admin' })).toBe('admin')
+    expect(resolveUserRolePerspective({ role: 'Operario' })).toBe('jefe_obra')
+    expect(resolveUserRolePerspective({ role_key: 'DIRECCION_OPERACIONES' })).toBe('direccion')
+    expect(resolveUserRolePerspective({ role_key: 'LIQUIDACION_SUELDOS' })).toBe('maria_jose')
+
+    // Capa 2 + 3: Sidebar acordeón colapsable y 8 módulos sincronizados vía useModuleTab
+    const sidebarSrc = readRepoFile('app/src/components/Sidebar.jsx')
+    expect(sidebarSrc).toContain('CanonicalSidebarModuleGroup')
+    expect(sidebarSrc).toContain('getVisibleNavigationModules')
+    expect(sidebarSrc).toContain('aloncar_sidebar_collapsed')
+
+    const accordionPages = [
+      'app/src/pages/WorkOrders.jsx',
+      'app/src/pages/LaborLogs.jsx',
+      'app/src/pages/Panol.jsx',
+      'app/src/pages/Compras.jsx',
+      'app/src/pages/Personal.jsx',
+      'app/src/pages/Ships.jsx',
+      'app/src/pages/ResumenGerencial.jsx',
+      'app/src/pages/AdminDashboard.jsx',
+    ]
+    for (const rel of accordionPages) {
+      expect(readRepoFile(rel)).toContain('useModuleTab')
+    }
+
+    // Zona 1 limpia: indicador canónico presente y sin tiras de pestañas ni botones manuales de Terminal/Rol
+    const cleanHeaders = [
+      'app/src/components/workOrders/WorkOrdersHeader.jsx',
+      'app/src/components/labor/LaborLogsHeader.jsx',
+      'app/src/components/panol/PanolHeader.jsx',
+      'app/src/pages/Compras.jsx',
+      'app/src/pages/Personal.jsx',
+      'app/src/pages/Ships.jsx',
+      'app/src/components/resumenGerencial/ResumenGerencialHeader.jsx',
+      'app/src/pages/AdminDashboard.jsx',
+    ]
+    for (const rel of cleanHeaders) {
+      expect(readRepoFile(rel)).toContain('CanonicalActiveSubmoduleBadge')
+    }
+    expect(readRepoFile('app/src/components/terceros/TercerosHeader.jsx')).not.toContain('setActiveRolePerspective')
+    expect(readRepoFile('app/src/pages/Terceros.jsx')).not.toContain('aloncar_terceros_terminal')
+    expect(readRepoFile('app/src/pages/Ships.jsx')).not.toContain('setActiveRolePerspective')
+    expect(readRepoFile('app/src/components/resumenGerencial/ResumenGerencialHeader.jsx')).not.toContain('Obra Filtrada:')
+    expect(readRepoFile('app/src/pages/AdminDashboard.jsx')).not.toContain("setActiveTab('auditoria')")
+  })
+
+  it('FL-022: blinda el Motor Real de Permisos por Puesto (permissionsEngine ↔ AuthContext ↔ App ↔ Admin ↔ Login)', () => {
+    // 1. Normalización de claves legacy de la matriz anterior
+    expect(normalizeAllowedSections(['tarifario', 'analisis', 'tesoreria', 'invalida'])).toEqual([
+      'personal.tarifario',
+      'personal.analisis',
+      'tesoreria',
+    ])
+
+    // 2. Toggle módulo completo vs. submódulos parciales (expansión y colapso automático)
+    const personalMod = NAVIGATION_MODULES.find((m) => m.id === 'personal')
+    expect(getModuleSelectionState(['personal'], personalMod).mode).toBe('full')
+    const afterUncheckNomina = toggleSubmodulePermission(['personal'], personalMod, 'nomina')
+    expect(afterUncheckNomina).toEqual(['personal.tarifario', 'personal.analisis'])
+    expect(getModuleSelectionState(afterUncheckNomina, personalMod)).toMatchObject({
+      mode: 'partial',
+      enabledCount: 2,
+      totalCount: 3,
+    })
+    const afterRecheckNomina = toggleSubmodulePermission(afterUncheckNomina, personalMod, 'nomina')
+    expect(afterRecheckNomina).toEqual(['personal'])
+    expect(toggleModulePermission(['personal'], personalMod)).toEqual([])
+
+    // 3. Guardián de rutas y submódulos (?tab=): ejemplo Graciela (TESORERIA)
+    const gracielaRole = {
+      role_key: 'TESORERIA',
+      security_level: 'AUDITOR',
+      allowed_sections: ['dashboard', 'tesoreria', 'terceros', 'personal.tarifario', 'personal.analisis', 'horas.sabana_quincenal'],
+    }
+    expect(isRouteAllowed('/tesoreria', null, { orgRole: gracielaRole }).allowed).toBe(true)
+    expect(isRouteAllowed('/admin', 'matriz', { orgRole: gracielaRole })).toMatchObject({ allowed: false, redirectTo: '/' })
+    expect(isRouteAllowed('/horas', 'carga', { orgRole: gracielaRole })).toMatchObject({
+      allowed: false,
+      redirectTo: '/horas?tab=sabana_quincenal',
+    })
+    expect(isRouteAllowed('/horas', 'sabana_quincenal', { orgRole: gracielaRole }).allowed).toBe(true)
+
+    // 4. Capacidades operativas automáticas por puesto
+    const mariaCaps = resolveUserCapabilities(null, { role_key: 'LIQUIDACION_SUELDOS', security_level: 'SUPERVISOR', allowed_sections: ['terceros', 'compras'] })
+    expect(mariaCaps.rolePerspective).toBe('maria_jose')
+    expect(mariaCaps.canEditTercerosAmounts).toBe(true)
+    expect(mariaCaps.canMutateTercerosRows).toBe(true)
+
+    const jefeCaps = resolveUserCapabilities(null, { role_key: 'JEFE_OBRA_PABLO_N', security_level: 'SUPERVISOR', allowed_sections: ['terceros', 'compras.compras'] })
+    expect(jefeCaps.rolePerspective).toBe('jefe_obra')
+    expect(jefeCaps.canEditTercerosAmounts).toBe(false)
+    expect(jefeCaps.canMutateTercerosRows).toBe(true)
+    expect(jefeCaps.canUseComprasCompleteMode).toBe(false)
+
+    const gracielaCaps = resolveUserCapabilities(null, gracielaRole)
+    expect(gracielaCaps.rolePerspective).toBe('direccion')
+    expect(gracielaCaps.canEditTercerosAmounts).toBe(false)
+    expect(gracielaCaps.canMutateTercerosRows).toBe(false)
+
+    // 5. Cableado en AuthContext, App, Sidebar, AdminRolesMatrixPanel y Login
+    const authSrc = readRepoFile('app/src/context/AuthContext.jsx')
+    expect(authSrc).toContain('organizationRolesRepository')
+    expect(authSrc).toContain('signInAsRole')
+    expect(authSrc).toContain('refreshPermissions')
+    expect(readRepoFile('app/src/App.jsx')).toContain('isRouteAllowed')
+    expect(readRepoFile('app/src/components/Sidebar.jsx')).toContain('allowedSections')
+    const adminMatrixSrc = readRepoFile('app/src/components/admin/AdminRolesMatrixPanel.jsx')
+    expect(adminMatrixSrc).toContain('NAVIGATION_MODULES')
+    expect(adminMatrixSrc).toContain('RolePermissionsEditorBlock')
+    expect(adminMatrixSrc).toContain('roleForm.email')
+    expect(readRepoFile('app/src/pages/Login.jsx')).toContain('signInAsRole')
   })
 })

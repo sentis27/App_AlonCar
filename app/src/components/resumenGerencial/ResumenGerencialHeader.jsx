@@ -3,45 +3,22 @@ import {
   Download,
   RefreshCw,
   BarChart3,
-  Table2,
   ReceiptText,
-  Ship,
   Radio,
   DollarSign
 } from 'lucide-react'
 import { RESUMEN_GERENCIAL_TABS, formatUsd } from '../../lib/drydockCatalogConstants'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
-
-const TAB_ACTIVE_CLASSES = {
-  cyan: 'bg-cyan-500/20 text-cyan-200 border-cyan-400 shadow-sm shadow-cyan-500/20',
-  sky: 'bg-sky-500/20 text-sky-200 border-sky-400 shadow-sm shadow-sky-500/20',
-  violet: 'bg-violet-500/20 text-violet-200 border-violet-400 shadow-sm shadow-violet-500/20',
-  emerald: 'bg-emerald-500/20 text-emerald-200 border-emerald-400 shadow-sm shadow-emerald-500/20'
-}
-
-/** Ícono contextual por pestaña en Zona 1 (incluyendo barco VS barco para Comparador de Obras). */
-function TabIcon({ icon }) {
-  if (icon === 'BarChart3') return <BarChart3 className="w-3.5 h-3.5 shrink-0 text-cyan-300" />
-  if (icon === 'Table2') return <Table2 className="w-3.5 h-3.5 shrink-0 text-sky-300" />
-  if (icon === 'ReceiptText') return <ReceiptText className="w-3.5 h-3.5 shrink-0 text-emerald-300" />
-  if (icon !== 'ShipCompare') return null
-  return (
-    <span className="inline-flex items-center gap-0.5 shrink-0 text-violet-300" aria-hidden="true">
-      <Ship className="w-3.5 h-3.5" />
-      <span className="px-0.5 rounded bg-violet-500/25 border border-violet-400/40 text-[8px] font-black leading-tight text-violet-200">VS</span>
-      <Ship className="w-3.5 h-3.5" />
-    </span>
-  )
-}
+import CanonicalActiveSubmoduleBadge from '../canonical/CanonicalActiveSubmoduleBadge'
 
 /**
- * Zona 1 Canónica del Resumen Gerencial:
- * - Divide visualmente: (A) Hojas de Obra Activa [Resumen, Matriz OTs] vs (B) Herramientas Independientes [Remito Comercial, Comparador].
- * - Centraliza TODOS los parámetros iniciales arriba: Buque, Orden de Trabajo (OT), Alcance (por defecto Obras Activas) y Año.
+ * Zona 1 Canónica del Resumen Gerencial (Pestañas migradas al Menú Lateral Acordeón):
+ * - Fila 1: Identidad analítica + submódulo activo + Dólar Ref. + Exportar / En vivo / Actualizar.
+ * - Fila 2: Parámetros iniciales arriba (Buque, Orden de Trabajo, Alcance y Año).
  */
 export default function ResumenGerencialHeader({
   activeTab,
-  onSelectTab,
+  activeSubmodule,
   selectableShips = [],
   selectedShipId,
   onChangeShip,
@@ -63,8 +40,6 @@ export default function ResumenGerencialHeader({
   const currentTabMeta =
     RESUMEN_GERENCIAL_TABS.find((t) => t.id === activeTab) || RESUMEN_GERENCIAL_TABS[0]
 
-  const obraTabs = RESUMEN_GERENCIAL_TABS.filter((t) => t.menuGroup === 'OBRA')
-  const toolTabs = RESUMEN_GERENCIAL_TABS.filter((t) => t.menuGroup === 'HERRAMIENTA')
   const isObraScopedView = currentTabMeta.menuGroup === 'OBRA'
   const isRemitoView = activeTab === 'remito'
 
@@ -82,32 +57,13 @@ export default function ResumenGerencialHeader({
     })
   }
 
-  const renderTabButton = (tab) => {
-    const isAct = activeTab === tab.id
-    return (
-      <button
-        key={tab.id}
-        type="button"
-        onClick={() => onSelectTab(tab.id)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer whitespace-nowrap ${
-          isAct
-            ? TAB_ACTIVE_CLASSES[tab.colorTheme]
-            : 'border-transparent text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
-        }`}
-      >
-        <TabIcon icon={tab.icon} />
-        <span>{tab.label}</span>
-      </button>
-    )
-  }
-
   const formattedSyncTime = lastSyncAt
     ? lastSyncAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : null
 
   return (
     <div className="alon-zone-context p-3 bg-slate-900/80 space-y-2 shrink-0">
-      {/* Fila 1: Identidad analítica + Dólar Ref. + 2 Grupos de Menú */}
+      {/* Fila 1: Identidad analítica + Submódulo Activo + Dólar Ref. + Acciones de sincronización */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2.5">
           <h1 className="text-xl font-black text-white tracking-tight">Resumen Gerencial</h1>
@@ -115,8 +71,12 @@ export default function ResumenGerencialHeader({
             {isRemitoView ? <ReceiptText className="w-3.5 h-3.5 shrink-0" /> : <BarChart3 className="w-3.5 h-3.5 shrink-0" />}
             <span>GS-004 · {currentTabMeta.badge}</span>
           </span>
+          <CanonicalActiveSubmoduleBadge
+            label={activeSubmodule?.label || currentTabMeta.label}
+            theme={activeSubmodule?.theme || currentTabMeta.colorTheme || 'cyan'}
+          />
 
-          {/* Dólar Ref. trasladado a Zona 1 (solo lectura desde Macro Variables / Tarifarios) */}
+          {/* Dólar Ref. en Zona 1 (solo lectura desde Macro Variables / Tarifarios) */}
           <div
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950/95 border border-emerald-500/45 select-none shadow-sm"
             title="Tipo de cambio de referencia vigente (solo lectura desde Macro Variables / Tarifarios)"
@@ -129,17 +89,40 @@ export default function ResumenGerencialHeader({
           </div>
         </div>
 
-        {/* Dos tipos de menús separados visualmente */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 bg-cyan-950/25 border border-cyan-500/35 px-1.5 py-1 rounded-xl">
-            <span className="hidden sm:inline text-[9px] font-black uppercase tracking-wider text-cyan-300/90 px-1.5">Obra Filtrada:</span>
-            {obraTabs.map(renderTabButton)}
-          </div>
-          <div className="hidden sm:block h-5 w-px bg-slate-700/80" aria-hidden="true" />
-          <div className="flex items-center gap-1 bg-slate-950/90 border border-violet-500/30 px-1.5 py-1 rounded-xl">
-            <span className="hidden sm:inline text-[9px] font-black uppercase tracking-wider text-violet-300/85 px-1.5">Independientes:</span>
-            {toolTabs.map(renderTabButton)}
-          </div>
+        <div className="hidden md:flex items-center gap-2 shrink-0">
+          {shipSummary && isObraScopedView && (
+            <button
+              type="button"
+              onClick={handleExportSummary}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Exportar GS-004
+            </button>
+          )}
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border ${
+              realtimeStatus === 'SUBSCRIBED' ? 'bg-emerald-950/45 border-emerald-500/35 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'
+            }`}
+            title={
+              realtimeStatus === 'SUBSCRIBED'
+                ? `Sincronización en vivo (Supabase Realtime + foco)${formattedSyncTime ? ` · Última carga ${formattedSyncTime}` : ''}`
+                : `Sincronización automática por foco/intervalo${formattedSyncTime ? ` · Última carga ${formattedSyncTime}` : ''}`
+            }
+          >
+            <Radio className={`w-3 h-3 ${realtimeStatus === 'SUBSCRIBED' ? 'animate-pulse text-emerald-400' : ''}`} />
+            <span>{realtimeStatus === 'SUBSCRIBED' ? 'En vivo' : 'Auto-sync'}</span>
+          </span>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            title="Forzar recarga manual de todas las tablas desde Supabase (no modifica datos)"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </button>
         </div>
       </div>
 
@@ -225,42 +208,6 @@ export default function ResumenGerencialHeader({
             </select>
           </div>
         )}
-
-        <div className="hidden md:flex items-center gap-2 shrink-0">
-          {shipSummary && isObraScopedView && (
-            <button
-              type="button"
-              onClick={handleExportSummary}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Exportar GS-004
-            </button>
-          )}
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border ${
-              realtimeStatus === 'SUBSCRIBED' ? 'bg-emerald-950/45 border-emerald-500/35 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'
-            }`}
-            title={
-              realtimeStatus === 'SUBSCRIBED'
-                ? `Sincronización en vivo (Supabase Realtime + foco)${formattedSyncTime ? ` · Última carga ${formattedSyncTime}` : ''}`
-                : `Sincronización automática por foco/intervalo${formattedSyncTime ? ` · Última carga ${formattedSyncTime}` : ''}`
-            }
-          >
-            <Radio className={`w-3 h-3 ${realtimeStatus === 'SUBSCRIBED' ? 'animate-pulse text-emerald-400' : ''}`} />
-            <span>{realtimeStatus === 'SUBSCRIBED' ? 'En vivo' : 'Auto-sync'}</span>
-          </span>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            title="Forzar recarga manual de todas las tablas desde Supabase (no modifica datos)"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Actualizar
-          </button>
-        </div>
       </div>
     </div>
   )

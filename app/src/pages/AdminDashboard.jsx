@@ -1,16 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import {
-  ShieldCheck,
-  Lock,
-  Building2,
-  DollarSign,
-  ShieldAlert,
-  Brain,
-  ShoppingCart,
-  Wrench,
-  History
-} from 'lucide-react'
+import { ShieldCheck, Lock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
+import { useModuleTab } from '../hooks/useModuleTab.js'
+import CanonicalActiveSubmoduleBadge from '../components/canonical/CanonicalActiveSubmoduleBadge.jsx'
 import { fetchDashboardZeroCostAlerts } from '../lib/zeroCostAlertsService.js'
 import {
   ADMIN_DASHBOARD_REALTIME_TABLES,
@@ -31,7 +23,7 @@ import AdminAuditLedger from '../components/AdminAuditLedger.jsx'
 
 export default function AdminDashboard() {
   const { profile, user } = useAuth()
-  const [activeTab, setActiveTab] = useState('matriz')
+  const { activeTab, setActiveTab, activeSubmodule } = useModuleTab('admin')
   const [rolesCount, setRolesCount] = useState(0)
 
   // Radar Operativo y Contadores de Alertas en Vivo
@@ -99,6 +91,17 @@ export default function AdminDashboard() {
               <span className="text-[10px] font-mono tracking-widest text-purple-300 bg-purple-950/60 border border-purple-800/60 px-2 py-0.5 rounded-md uppercase font-bold">
                 M9 · Gobernanza & Control Central
               </span>
+              <CanonicalActiveSubmoduleBadge
+                label={activeSubmodule?.label || 'Matriz de Puestos & Permisos'}
+                suffix={
+                  activeTab === 'matriz' && rolesCount > 0
+                    ? `(${rolesCount})`
+                    : activeTab === 'alertas' && complianceAlertsCount > 0
+                    ? `(${complianceAlertsCount})`
+                    : null
+                }
+                theme={activeSubmodule?.theme || 'purple'}
+              />
             </div>
             <p className="text-xs text-slate-400">
               Administración de variables macroeconómicas, cotización oficial, matriz de puestos y radar de auditoría operativa.
@@ -129,111 +132,7 @@ export default function AdminDashboard() {
 
       <ZeroCostDashboardAlertCard alerts={zeroCostAlerts} compact />
 
-      {/* ============================================================================== */}
-      {/* NAVEGACIÓN PRINCIPAL DE PESTAÑAS (ESTANDARIZADA)                              */}
-      {/* ============================================================================== */}
-      <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl/80 border border-slate-800">
-        <button
-          type="button"
-          onClick={() => setActiveTab('matriz')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'matriz'
-              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <Building2 className="w-4 h-4 text-purple-400" />
-          <span>Matriz de Puestos & Permisos</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-900 border border-slate-700 text-slate-300 font-mono">
-            {rolesCount}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('macro')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'macro'
-              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <DollarSign className="w-4 h-4 text-emerald-400" />
-          <span>Variables Macro & Cierre Quincenal</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('alertas')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'alertas'
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <ShieldAlert className="w-4 h-4 text-amber-400" />
-          <span>Alertas & Cumplimiento</span>
-          {complianceAlertsCount > 0 && (
-            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-slate-950 font-bold font-mono">
-              {complianceAlertsCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('ia')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'ia'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <Brain className="w-4 h-4 text-cyan-400" />
-          <span>🧠 Gobernanza IA & Prompts</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('compras')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'compras'
-              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <ShoppingCart className="w-4 h-4 text-blue-400" />
-          <span>Config. Compras & WhatsApp</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('rubros')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'rubros'
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <Wrench className="w-4 h-4 text-amber-400" />
-          <span>Gestión de Rubros & Oficios</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('auditoria')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'auditoria'
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
-        >
-          <History className="w-4 h-4 text-cyan-400" />
-          <span>📜 Libro de Auditoría & Trazabilidad</span>
-        </button>
-      </div>
-
-      {/* RENDERIZADO MODULAR DE PESTAÑAS */}
+      {/* RENDERIZADO MODULAR DE SUBMÓDULOS (Navegación vía Menú Lateral Acordeón) */}
       {activeTab === 'matriz' && <AdminRolesMatrixPanel onRoleCountChange={setRolesCount} />}
       {activeTab === 'macro' && <AdminMacroPanel />}
       {activeTab === 'alertas' && <AdminAlertsCompliancePanel onSummaryChange={handleAlertsSummaryChange} />}

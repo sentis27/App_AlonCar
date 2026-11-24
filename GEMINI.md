@@ -1,7 +1,7 @@
 ---
-version: 1.8
+version: 1.9
 last_updated_by: antigravity
-last_updated: 2026-11-23
+last_updated: 2026-11-24
 source_of_truth: GEMINI.md
 ---
 
@@ -38,7 +38,7 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 1. **F1 — Inspección empírica:** Tool Call #1 obligatorio (`read_file`/`run_command`; prohibido `write_file`/`edit_file`). Verificar columnas (`select('*').limit(1)`) y fuente usada por otras planillas.
 2. **F2 — Intervención modular (`SKL-009`) + 5 Candados Anti-Rot:**
    1. **Caja Nueva:** `<=250L` en páginas; toda pestaña, subpanel, modal o motor (`>150L`) nace en `app/src/components/` o `app/src/lib/`.
-   2. **Cero Hardcode y Piezas Replicables (`SKL-019`):** prohibido arrays estáticos o duplicar catálogos/lógica; toda pieza replicable se diseña tras entrevista funcional y se suelda en **3 Capas (Consulta única en repositorio + Motor de reglas en `lib/` + UI única en `components/canonical/` + candado `check:hygiene`)** — ej. `CanonicalOtBadge` + `listCanonicalWorkOrders`/`listCanonicalWorkItems` y `CanonicalMaterialPicker`.
+   2. **Cero Hardcode y Piezas Replicables (`SKL-019`):** prohibido arrays estáticos o duplicar catálogos/lógica; toda pieza replicable se diseña tras entrevista funcional y se suelda en **3 Capas (Consulta/Catálogo único + Motor de reglas en `lib/`/`hooks/` + UI única en `components/canonical/` + candado `check:hygiene`)** — ej. `CanonicalOtBadge` + `listCanonicalWorkOrders`/`listCanonicalWorkItems`, `CanonicalMaterialPicker`, y el **Menú Lateral Acordeón** (`navigationCatalog.js` + `useModuleTab.js` + `CanonicalSidebarModuleGroup.jsx` + `CanonicalActiveSubmoduleBadge.jsx`).
    3. **Acceso Exclusivo vía Repositorios + Zod:** prohibido `supabase.from()`, `supabase.rpc()` o `.storage.from()` fuera de `app/src/repositories/` (verificado por `check:hygiene`); toda tabla opera mediante `createBaseRepository` (`_baseRepository.js`) y su contrato Zod en `app/src/schemas/`.
    4. **Trazabilidad:** toda mutación en grillas invoca `auditService.logCellChange/logRowAction`.
    5. **onBlur Blindado:** todo input editable usa `onBlur={() => commitFn()}` (jamás pasar evento `e`).
@@ -69,7 +69,7 @@ Fuente Única de Verdad para Antigravity, Claude Code y cualquier agente en este
 
 ## 4. Módulos ERP, Commits, Cierre y Registros
 - **Bloqueo de nuevo módulo/pantalla:** prohibido programar sin preguntar si es `CARGA_EDICION` (Gallo, vinculado a `audit_logs`) o `METRICAS_ANALISIS` (Gallina) e indexarlo en `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md`.
-- **Estándares y Catálogo:** `CARGA_EDICION` (`useSpreadsheetGrid.js`, 5 Zonas `index.css`, ref. `Compras.jsx`) y `METRICAS_ANALISIS` viven en `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` y `estandares/01..08` (`08_FEATURES_LOCK.md` blindado en `check:hygiene`); todo selector inicial (Buque/OT/Período) y pestaña de hoja vive en **Zona 1** (dividida visualmente entre hojas de obra e independientes), y toda vista ejecutiva Gallina debe entrar en pantalla **sin scroll vertical** (scroll solo en hojas de búsqueda); n8n en `SKL-001`; Docker/Backend en `SKL-010`/`SKL-011`; skills en `.agents/skills/SKILLS_REGISTRY.md`; agentes: `automation-governance-architect`, `database-optimizer`, `graphify`.
+- **Estándares y Catálogo:** `CARGA_EDICION` (`useSpreadsheetGrid.js`, 5 Zonas `index.css`, ref. `Compras.jsx`) y `METRICAS_ANALISIS` viven en `00_INDICE_DE_MODULOS_Y_CLASIFICACION.md` y `estandares/01..08` (`08_FEATURES_LOCK.md` blindado en `check:hygiene`); **toda navegación entre submódulos/pestañas vive exclusivamente en el Menú Lateral Acordeón (`navigationCatalog.js` + `useModuleTab.js`, `FL-021`)**, prohibiendo tiras de pestañas o botones manuales de Terminal/Rol en **Zona 1** (que conserva solo identidad, `CanonicalActiveSubmoduleBadge`, selectores iniciales como Buque/OT/Período y acciones operativas principales), y toda vista ejecutiva Gallina debe entrar en pantalla **sin scroll vertical** (scroll solo en hojas de búsqueda); n8n en `SKL-001`; Docker/Backend en `SKL-010`/`SKL-011`; skills en `.agents/skills/SKILLS_REGISTRY.md`; agentes: `automation-governance-architect`, `database-optimizer`, `graphify`.
 - **Commits y Push:** `tipo: descripción corta` (`feat`, `fix`, `docs`, `refactor`), un commit por tarea atómica; **push solo con confirmación explícita en el chat**.
 - **Cierre de sesión (`SKL-006`):** correr `npm.cmd run check:hygiene` (`app/`) y actualizar solo el delta en `INDICE_METADATOS.md`, `workflows/_meta/INDEX.md`, `TAREAS_PENDIENTES.md` o `docs/MATRIZ_RESPONSABILIDAD_DATOS.md`.
 

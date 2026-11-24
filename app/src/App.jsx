@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { isRouteAllowed } from './lib/permissionsEngine'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -15,9 +16,11 @@ import Tesoreria from './pages/Tesoreria'
 import ResumenGerencial from './pages/ResumenGerencial'
 import { Loader2 } from 'lucide-react'
 
-// Guardián de rutas protegidas
+// Guardián de rutas protegidas y control de permisos por puesto (Etapa 5 / FL-022)
 function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth()
+  const { user, profile, orgRole, allowedSections, loading, signOut } = useAuth()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
 
   if (loading) {
     return (
@@ -30,6 +33,34 @@ function ProtectedRoute({ children }) {
 
   if (!user) {
     return <Navigate to="/login" replace />
+  }
+
+  const { allowed, redirectTo } = isRouteAllowed(location.pathname, searchParams.get('tab'), {
+    profile,
+    orgRole,
+    allowedSections,
+  })
+
+  if (!allowed) {
+    const currentFull = `${location.pathname}${location.search}`
+    if (redirectTo && redirectTo !== currentFull) {
+      return <Navigate to={redirectTo} replace />
+    }
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-slate-300 p-6 text-center space-y-3">
+        <p className="text-base font-bold text-white">Sin módulos habilitados para este puesto</p>
+        <p className="text-xs text-slate-400 max-w-md">
+          El puesto <strong className="text-cyan-300">{orgRole?.role_title || profile?.full_name || user?.email}</strong> no tiene secciones activas en la Matriz de Puestos. Solicitá acceso al Administrador.
+        </p>
+        <button
+          type="button"
+          onClick={signOut}
+          className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 cursor-pointer"
+        >
+          Cambiar de usuario / Cerrar sesión
+        </button>
+      </div>
+    )
   }
 
   return children

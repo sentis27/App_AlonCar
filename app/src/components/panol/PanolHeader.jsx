@@ -1,11 +1,12 @@
-import { Package, Plus, ExternalLink, FileSpreadsheet, Flame, Layers, Shield, Truck, FolderTree, ShoppingBasket } from 'lucide-react'
+import { Package, Plus, ExternalLink, Flame, Truck, FolderTree, ShoppingBasket } from 'lucide-react'
+import CanonicalActiveSubmoduleBadge from '../canonical/CanonicalActiveSubmoduleBadge'
 
 export default function PanolHeader({
   activeTab,
+  activeSubmodule,
   isAdmin = false,
   filteredTransactionsCount,
   criticalCount,
-  onChangeTab,
   onOpenWithdrawalModal,
   onOpenCostBasketModal = null,
   onOpenNewMaterialModal,
@@ -14,6 +15,13 @@ export default function PanolHeader({
   onOpenGasSupplierModal = null,
   navigate
 }) {
+  const badgeSuffix =
+    activeTab === 'planillas'
+      ? `(${filteredTransactionsCount})`
+      : activeTab === 'catalogo' && criticalCount > 0
+      ? `(${criticalCount} crít.)`
+      : null
+
   return (
     <div className="alon-zone-context flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 font-sans">
       <div className="flex items-center gap-3">
@@ -26,6 +34,11 @@ export default function PanolHeader({
             <span className="text-[10px] font-mono tracking-widest text-emerald-400/90 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-md uppercase font-bold">
               M4 · Logística Naval
             </span>
+            <CanonicalActiveSubmoduleBadge
+              label={activeSubmodule?.label || 'Planilla de Retiros'}
+              suffix={badgeSuffix}
+              theme={activeSubmodule?.theme || 'emerald'}
+            />
           </div>
           <p className="text-xs text-slate-400">
             Planilla de retiros multi-material, control de tubos de gases (P-01/P-02) y catálogo físico de stock.
@@ -33,6 +46,7 @@ export default function PanolHeader({
         </div>
       </div>
 
+      {/* Atajos Compras + Acciones del submódulo activo (Pestañas migradas al Menú Lateral Acordeón) */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5 p-1 rounded-xl bg-cyan-950/30 border border-cyan-500/30 shadow-inner">
           <span className="px-2 py-0.5 text-[9px] font-mono font-black text-cyan-400 uppercase tracking-wider hidden sm:inline-block">
@@ -56,64 +70,7 @@ export default function PanolHeader({
           </button>
         </div>
 
-        <div className="h-7 w-px bg-slate-800 hidden lg:block" />
-
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center bg-slate-950/80 p-0.5 rounded-xl border border-slate-800 text-xs font-bold">
-            <button
-              onClick={() => onChangeTab('planillas')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'planillas'
-                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Planilla de Retiros</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-900/60 font-mono">
-                {filteredTransactionsCount}
-              </span>
-            </button>
-            <button
-              onClick={() => onChangeTab('gases')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'gases'
-                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Flame className="w-3.5 h-3.5" />
-              <span>Control de Gases</span>
-            </button>
-            <button
-              onClick={() => onChangeTab('catalogo')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'catalogo'
-                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Catálogo & Stock (B.D)</span>
-              {criticalCount > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-slate-950 font-black">
-                  {criticalCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => onChangeTab('epp')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'epp'
-                  ? 'bg-emerald-600 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5" />
-              <span>Control EPP</span>
-            </button>
-          </div>
-
           {activeTab === 'planillas' && (
             <div className="flex flex-wrap items-center gap-2">
               {onOpenCostBasketModal && (

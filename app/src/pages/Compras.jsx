@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { ShoppingCart, SlidersHorizontal, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useModuleTab } from '../hooks/useModuleTab'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
+import CanonicalActiveSubmoduleBadge from '../components/canonical/CanonicalActiveSubmoduleBadge'
 import { fetchComprasData } from '../services/comprasService'
 import ComprasPedidosPanel from '../components/compras/ComprasPedidosPanel'
 import ComprasProveedoresPanel from '../components/compras/ComprasProveedoresPanel'
@@ -15,11 +16,14 @@ const COMPRAS_REALTIME_TABLES = ['purchase_orders', 'suppliers', 'materials', 's
 export { isCostAuditError, STATUS_OPTIONS, STANDARD_TRADES, CATALOG_RUBROS, OFFICIAL_UNITS, SECURITY_FACTORS, deduceUnitMeasure, formatArgPhoneForWhatsApp, getSearchMatchMap } from '../lib/comprasConstants'
 
 export default function Compras() {
-  const { profile, user } = useAuth()
-  const isSupervisorOrAdmin = profile?.role === 'Supervisor' || profile?.role === 'Gerencia' || profile?.role === 'Admin'
+  const { profile, user, capabilities } = useAuth()
+  const isSupervisorOrAdmin = capabilities
+    ? capabilities.canUseComprasCompleteMode
+    : (profile?.role === 'Supervisor' || profile?.role === 'Gerencia' || profile?.role === 'Admin')
 
   const [viewMode, setViewMode] = useState(isSupervisorOrAdmin ? 'completa' : 'simple')
-  const [activeTab, setActiveTab] = useState('compras') // 'compras' | 'proveedores' | 'documentos'
+  const { activeTab: rawActiveTab, setActiveTab, activeSubmodule, searchParams, setSearchParams } = useModuleTab('compras')
+  const activeTab = !isSupervisorOrAdmin && rawActiveTab !== 'compras' ? 'compras' : rawActiveTab
   const [loading, setLoading] = useState(true)
   const [feedback, setFeedback] = useState(null)
 
@@ -38,7 +42,6 @@ export default function Compras() {
   // Modal de carga inicial y nuevo pedido
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [editingOrder, setEditingOrder] = useState(null)
-  const [searchParams, setSearchParams] = useSearchParams()
   const [initialKpiFilter, setInitialKpiFilter] = useState(() => searchParams.get('kpi') || null)
 
   // Sincronización con parámetros URL (?mode=simple, ?nuevo=true, ?materialId=..., ?kpi=sin_precio)
@@ -51,6 +54,11 @@ export default function Compras() {
       setShowOrderModal(true)
     }
   }, [searchParams, materials])
+
+  useEffect(() => {
+    if (!isSupervisorOrAdmin && viewMode !== 'simple') setViewMode('simple')
+    else if (isSupervisorOrAdmin && activeTab !== 'compras' && viewMode === 'simple') setViewMode('completa')
+  }, [isSupervisorOrAdmin, activeTab, viewMode])
 
   const handleCloseOrderModal = useCallback(() => {
     setShowOrderModal(false)
@@ -114,11 +122,16 @@ export default function Compras() {
             <ShoppingCart className="w-5 h-5 stroke-[2.5]" />
           </div>
           <div>
-            <h1 className="text-xl font-black text-white tracking-wide flex items-center gap-2">
+            <h1 className="text-xl font-black text-white tracking-wide flex flex-wrap items-center gap-2">
               MÓDULO DE COMPRAS
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-400 uppercase">
                 {viewMode === 'simple' ? 'Modo Solicitud Simple' : 'Gestión Completa M4b'}
               </span>
+              <CanonicalActiveSubmoduleBadge
+                label={activeSubmodule?.label || 'Registro de Pedidos'}
+                suffix={`(${activeTab === 'proveedores' ? suppliers.length : activeTab === 'documentos' ? documents.length : purchaseOrders.length})`}
+                theme={activeSubmodule?.theme || 'cyan'}
+              />
             </h1>
             <p className="text-xs text-slate-400">
               {viewMode === 'simple'
@@ -131,7 +144,12 @@ export default function Compras() {
         <div className="flex flex-wrap items-center gap-2">
           {isSupervisorOrAdmin && (
             <button
-              onClick={() => setViewMode(viewMode === 'simple' ? 'completa' : 'simple')}
+              type="button"
+              onClick={() => {
+                const nextMode = viewMode === 'simple' ? 'completa' : 'simple'
+                setViewMode(nextMode)
+                if (nextMode === 'simple' && activeTab !== 'compras') setActiveTab('compras')
+              }}
               className="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
               title="Alternar entre Solicitud Simple y Gestión Completa"
             >
@@ -140,36 +158,8 @@ export default function Compras() {
             </button>
           )}
 
-          {viewMode === 'completa' && (
-            <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex items-center text-xs">
-              <button
-                onClick={() => setActiveTab('compras')}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
-                  activeTab === 'compras' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                📋 Registro ({purchaseOrders.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('proveedores')}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
-                  activeTab === 'proveedores' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                🏢 Proveedores ({suppliers.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('documentos')}
-                className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
-                  activeTab === 'documentos' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                📎 Archivo Docs ({documents.length})
-              </button>
-            </div>
-          )}
-
           <button
+            type="button"
             onClick={() => {
               setEditingOrder(null)
               setShowOrderModal(true)
@@ -211,7 +201,12 @@ export default function Compras() {
           initialKpiFilter={initialKpiFilter}
           onClearUrlKpi={() => {
             setInitialKpiFilter(null)
-            if (searchParams.get('kpi')) setSearchParams({ mode: viewMode }, { replace: true })
+            if (searchParams.get('kpi')) {
+              const next = new URLSearchParams(searchParams)
+              next.delete('kpi')
+              next.set('mode', viewMode)
+              setSearchParams(next, { replace: true })
+            }
           }}
         />
       )}

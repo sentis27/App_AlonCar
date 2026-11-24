@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { RESUMEN_GERENCIAL_TABS } from '../lib/drydockCatalogConstants'
+import { useModuleTab } from '../hooks/useModuleTab'
 import { useResumenGerencialState } from '../hooks/useResumenGerencialState'
 import { requestBillingExpansionService, sendSingleOtToBillingService } from '../lib/billingWorkflowService'
 import ResumenGerencialHeader from '../components/resumenGerencial/ResumenGerencialHeader'
@@ -16,12 +15,7 @@ import RemitoComercialAlfaPanel from '../components/resumenGerencial/RemitoComer
 
 export default function ResumenGerencial() {
   const { user, profile } = useAuth()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = RESUMEN_GERENCIAL_TABS.some((t) => t.id === searchParams.get('tab'))
-    ? searchParams.get('tab')
-    : 'resumen'
-
-  const [activeTab, setActiveTab] = useState(initialTab)
+  const { activeTab, setActiveTab, activeSubmodule, resetSubViewSignal } = useModuleTab('resumen-gerencial')
   const [resumenSubView, setResumenSubView] = useState('RESUMEN')
   const [activeCostSheet, setActiveCostSheet] = useState('materiales')
   const [costSheetScope, setCostSheetScope] = useState('GENERAL')
@@ -32,17 +26,14 @@ export default function ResumenGerencial() {
   const state = useResumenGerencialState({ actorName })
 
   useEffect(() => {
-    const t = searchParams.get('tab')
-    if (t && RESUMEN_GERENCIAL_TABS.some((tab) => tab.id === t)) {
-      setActiveTab(t)
-    }
-  }, [searchParams])
-
-  const switchTab = (tabId) => {
-    setActiveTab(tabId)
     setResumenSubView('RESUMEN')
     setCostSheetInitialKpi('ALL')
-    setSearchParams({ tab: tabId }, { replace: true })
+  }, [activeTab, resetSubViewSignal])
+
+  const switchTab = (tabId) => {
+    setResumenSubView('RESUMEN')
+    setCostSheetInitialKpi('ALL')
+    setActiveTab(tabId, { preserveParams: false })
   }
 
   const isExecutiveFitView =
@@ -52,7 +43,7 @@ export default function ResumenGerencial() {
     <div className={isExecutiveFitView ? 'flex flex-col gap-2.5 md:min-h-[calc(100vh-5.5rem)]' : 'space-y-3 pb-8'}>
       <ResumenGerencialHeader
         activeTab={activeTab}
-        onSelectTab={switchTab}
+        activeSubmodule={activeSubmodule}
         selectableShips={state.selectableShips}
         selectedShipId={state.selectedShipId}
         onChangeShip={(shipId) => {

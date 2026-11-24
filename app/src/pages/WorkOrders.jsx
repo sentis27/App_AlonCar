@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useModuleTab } from '../hooks/useModuleTab'
 import { useTabbedFilterMemory } from '../hooks/useTabbedFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
@@ -37,8 +38,7 @@ export default function WorkOrders() {
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
 
-  // Navegación y Filtros independientes por submódulo (Unificado / Por Barco / Terceros PRC)
-  const [activeMainTab, setActiveMainTab] = useState('unificado')
+  const { activeTab: activeMainTab, setActiveTab: setActiveMainTab, activeSubmodule } = useModuleTab('ots')
   const searchInputRef = useRef(null)
   const {
     filtersByTab, activeFilters, hasActiveFilters, setTabFilter, setActiveFilter, clearActiveTabFilters: clearAllFilters, viewsController: woViewsController
@@ -218,7 +218,7 @@ export default function WorkOrders() {
 
       {/* ZONA 1: CONTEXTO Y ACCIONES */}
       <WorkOrdersHeader
-        activeMainTab={activeMainTab} setActiveMainTab={setActiveMainTab}
+        activeMainTab={activeMainTab} activeSubmodule={activeSubmodule}
         onOpenNewWorkModal={() => handleOpenNewWorkModal(null)}
         onOpenCatalog={() => { setTemplatePickerFromForm(false); setIsTemplateModalOpen(true) }}
         totalUnifiedCount={filteredRows.length} totalOtsCount={visibleWorkOrders.length} totalTercerosCount={thirdPartyServices.length}

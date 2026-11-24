@@ -1,15 +1,33 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Anchor, Lock, Mail, AlertCircle, ArrowRight, Loader2, Sparkles } from 'lucide-react'
+import { Anchor, Lock, Mail, AlertCircle, ArrowRight, Loader2, Sparkles, UserCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { organizationRolesRepository } from '../repositories/organizationRolesRepository'
+import { getFirstAllowedRoute } from '../lib/permissionsEngine'
 
 export default function Login() {
   const [email, setEmail] = useState('app.aloncar2712@gmail.com')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { signIn } = useAuth()
+  const [activeRoles, setActiveRoles] = useState([])
+  const [selectedRoleKey, setSelectedRoleKey] = useState('')
+  const { signIn, signInAsRole } = useAuth()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    let mounted = true
+    organizationRolesRepository
+      .listRoles({ orderBy: [{ column: 'holder_name', ascending: true }] })
+      .then(({ data }) => {
+        if (!mounted || !Array.isArray(data)) return
+        const activos = data.filter((r) => (r.status || 'ACTIVO') === 'ACTIVO')
+        setActiveRoles(activos)
+        if (activos.length > 0) setSelectedRoleKey(activos[0].role_key)
+      })
+      .catch(() => {})
+    return () => { mounted = false }
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -23,7 +41,7 @@ export default function Login() {
       } else {
         navigate('/')
       }
-    } catch (err) {
+    } catch {
       setError('Ocurrió un error inesperado al conectar con el servidor.')
     } finally {
       setLoading(false)
@@ -36,8 +54,24 @@ export default function Login() {
     try {
       await signIn('app.aloncar2712@gmail.com', 'admin')
       navigate('/')
-    } catch (err) {
+    } catch {
       setError('Error en acceso rápido.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRoleLogin = async () => {
+    const target = activeRoles.find((r) => r.role_key === selectedRoleKey)
+    if (!target) return
+    setError('')
+    setLoading(true)
+    try {
+      const res = await signInAsRole(target)
+      if (res?.error) setError(res.error.message)
+      else navigate(getFirstAllowedRoute({ orgRole: target }) || '/')
+    } catch {
+      setError('No se pudo ingresar con el puesto seleccionado.')
     } finally {
       setLoading(false)
     }
@@ -123,8 +157,8 @@ export default function Login() {
           </button>
         </form>
 
-        {/* Botón de Acceso Rápido / Modo Desarrollo */}
-        <div className="mt-4 pt-4 border-t border-slate-800/80">
+        {/* Botón de Acceso Rápido / Selector de Puesto Activo (Etapa 5) */}
+        <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-2.5">
           <button
             type="button"
             onClick={handleQuickLogin}
@@ -132,8 +166,42 @@ export default function Login() {
             className="w-full py-2.5 px-3 bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 text-xs font-semibold rounded-lg border border-cyan-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,254,0.1)] hover:shadow-[0_0_20px_rgba(0,242,254,0.25)]"
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Ingreso Directo como Andrés Vanoli (Supervisor)</span>
+            <span>Ingreso Directo como Andrés Vanoli (Admin)</span>
           </button>
+
+          {activeRoles.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+              <label
+                htmlFor="login-role-selector"
+                className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Ingresar como puesto (permisos reales)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  id="login-role-selector"
+                  value={selectedRoleKey}
+                  onChange={(e) => setSelectedRoleKey(e.target.value)}
+                  className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-semibold focus:outline-none focus:border-emerald-400"
+                >
+                  {activeRoles.map((r) => (
+                    <option key={r.role_key} value={r.role_key}>
+                      {r.holder_name || r.role_key} — {r.role_title}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleRoleLogin}
+                  disabled={loading || !selectedRoleKey}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/50 text-emerald-300 text-xs font-bold cursor-pointer transition-colors shrink-0 disabled:opacity-50"
+                >
+                  Entrar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Pie de autenticación */}
