@@ -1,11 +1,12 @@
-import { Undo2, Redo2, X } from 'lucide-react'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import { X } from 'lucide-react'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import { ASTILLERO_BASE_CATEGORIES } from '../../lib/personalNominaHelpers'
 
 export default function PersonalNominaToolbar({
   searchTerm,
   setSearchTerm,
   clearAllFilters,
+  hasActiveFilters: hasActiveFiltersProp,
   nominaSearchInputRef,
   filterCenter,
   setFilterCenter,
@@ -20,6 +21,8 @@ export default function PersonalNominaToolbar({
   onUndo,
   canRedo,
   onRedo,
+  undoCount = 0,
+  redoCount = 0,
   uniqueTrades,
   groupedSummary,
   viewsController
@@ -34,20 +37,29 @@ export default function PersonalNominaToolbar({
     inactiveCount
   } = centerCounts
 
+  const hasActiveFilters = Boolean(
+    hasActiveFiltersProp ||
+    searchTerm?.trim() ||
+    filterCenter !== 'todos' ||
+    filterGroup !== 'todos' ||
+    filterForemanOnly ||
+    filterStatus !== 'todos'
+  )
+
   return (
     <>
-      <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-3">
-        <CrawlerSearchBar
-          value={searchTerm}
-          onChange={setSearchTerm}
-          onClear={clearAllFilters}
-          inputRef={nominaSearchInputRef}
-          viewsController={viewsController}
-          placeholder="Buscar por operario, grupo, rubro, DNI, valor hora US$/AR$... (Ctrl+F | Esc limpia todo)"
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
-          <div className="flex flex-wrap items-center gap-2">
+      <CanonicalZone3Toolbar
+        className="rounded-2xl"
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchInputRef={nominaSearchInputRef}
+        searchPlaceholder="Buscar por operario, grupo, rubro, DNI, valor hora US$/AR$... (Ctrl+F | Esc limpia todo)"
+        viewsController={viewsController}
+        hasActiveFilters={hasActiveFilters}
+        onClearAllFilters={clearAllFilters}
+        history={{ canUndo, canRedo, undoCount, redoCount, onUndo, onRedo }}
+        filters={
+          <>
             <button
               type="button"
               onClick={() => { setFilterCenter('todos'); setFilterGroup('todos') }}
@@ -141,36 +153,15 @@ export default function PersonalNominaToolbar({
                 <button
                   type="button"
                   onClick={() => setFilterGroup('todos')}
-                  className="text-cyan-400 hover:text-white"
+                  className="text-cyan-400 hover:text-white cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
-          </div>
-
-          <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-lg p-1">
-            <button
-              type="button"
-              disabled={!canUndo}
-              onClick={onUndo}
-              className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-              title="Deshacer cambio en Padrón (Ctrl + Z)"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              disabled={!canRedo}
-              onClick={onRedo}
-              className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-              title="Rehacer cambio en Padrón (Ctrl + Y)"
-            >
-              <Redo2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <datalist id="nomina-categories-list">
         {ASTILLERO_BASE_CATEGORIES.map((cat) => (

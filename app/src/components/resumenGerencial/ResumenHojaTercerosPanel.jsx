@@ -1,12 +1,11 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import KpiRadar from '../KpiRadar'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import { formatUsd, formatArs } from '../../lib/drydockCatalogConstants'
-import { CLEAR_FILTER_BTN_CLASS, getFilterSelectClass } from '../../lib/filterThemeConstants'
+import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import {
   scopeResumenRows,
   extractUniqueSortedOptions,
@@ -125,72 +124,61 @@ export default function ResumenHojaTercerosPanel({
         />
       </div>
 
-      <div className="alon-zone-toolbar p-3 bg-slate-900/70 flex flex-wrap items-center gap-2">
-        <CrawlerSearchBar
-          compact
-          value={searchQuery}
-          onChange={setSearchQuery}
-          onClear={() => setSearchQuery('')}
-          viewsController={viewsController}
-          placeholder="Buscar contratista, rubro, OT, comprobante o detalle... (Ctrl+F)"
-        />
+      <CanonicalZone3Toolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Buscar contratista, rubro, OT, comprobante o detalle... (Ctrl+F | Esc limpia todo)"
+        viewsController={viewsController}
+        hasActiveFilters={hasFilters}
+        onClearAllFilters={handleClearFilters}
+        filters={
+          <>
+            {costScope === 'GENERAL' && (
+              <select
+                value={otFilter}
+                onChange={(e) => setOtFilter(e.target.value)}
+                className={getFilterSelectClass('ot', otFilter !== 'ALL', 'max-w-[180px]')}
+                title="Filtrar por Orden de Trabajo"
+              >
+                <option value="ALL" className="bg-slate-900">OT: Todas</option>
+                {otRows.map((o) => (
+                  <option key={o.id} value={o.id} className="bg-slate-900">
+                    {o.otLabel || `${o.otNumber} · ${o.title}`}
+                  </option>
+                ))}
+              </select>
+            )}
 
-        {costScope === 'GENERAL' && (
-          <select
-            value={otFilter}
-            onChange={(e) => setOtFilter(e.target.value)}
-            className={getFilterSelectClass('ot', otFilter !== 'ALL', 'max-w-[180px]')}
-            title="Filtrar por Orden de Trabajo"
-          >
-            <option value="ALL" className="bg-slate-900">OT: Todas</option>
-            {otRows.map((o) => (
-              <option key={o.id} value={o.id} className="bg-slate-900">
-                {o.otLabel || `${o.otNumber} · ${o.title}`}
-              </option>
-            ))}
-          </select>
-        )}
+            <select
+              value={contractorFilter}
+              onChange={(e) => setContractorFilter(e.target.value)}
+              className={getFilterSelectClass('contractor', contractorFilter !== 'ALL', 'max-w-[190px]')}
+              title="Filtrar por Contratista"
+            >
+              <option value="ALL" className="bg-slate-900">Contratista: Todos</option>
+              {contractorOptions.map((c) => (
+                <option key={c} value={c} className="bg-slate-900">
+                  {c}
+                </option>
+              ))}
+            </select>
 
-        <select
-          value={contractorFilter}
-          onChange={(e) => setContractorFilter(e.target.value)}
-          className={getFilterSelectClass('contractor', contractorFilter !== 'ALL', 'max-w-[190px]')}
-          title="Filtrar por Contratista"
-        >
-          <option value="ALL" className="bg-slate-900">Contratista: Todos</option>
-          {contractorOptions.map((c) => (
-            <option key={c} value={c} className="bg-slate-900">
-              {c}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={voucherFilter}
-          onChange={(e) => setVoucherFilter(e.target.value)}
-          className={getFilterSelectClass('voucher', voucherFilter !== 'ALL')}
-          title="Filtrar por Comprobante"
-        >
-          <option value="ALL" className="bg-slate-900">Comprobante: Todos</option>
-          {voucherTypes.map((vt) => (
-            <option key={vt} value={vt} className="bg-slate-900">
-              {vt}
-            </option>
-          ))}
-        </select>
-
-        {hasFilters && (
-          <button
-            type="button"
-            onClick={handleClearFilters}
-            className={CLEAR_FILTER_BTN_CLASS}
-            title="Limpiar todos los filtros"
-          >
-            <X className="w-3.5 h-3.5" />
-            <span>Limpiar filtro</span>
-          </button>
-        )}
-      </div>
+            <select
+              value={voucherFilter}
+              onChange={(e) => setVoucherFilter(e.target.value)}
+              className={getFilterSelectClass('voucher', voucherFilter !== 'ALL')}
+              title="Filtrar por Comprobante"
+            >
+              <option value="ALL" className="bg-slate-900">Comprobante: Todos</option>
+              {voucherTypes.map((vt) => (
+                <option key={vt} value={vt} className="bg-slate-900">
+                  {vt}
+                </option>
+              ))}
+            </select>
+          </>
+        }
+      />
 
       <div className="alon-zone-grid overflow-hidden bg-slate-900/75">
         <ReadOnlyGridRibbon

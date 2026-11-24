@@ -7,10 +7,8 @@ import {
   Paperclip,
   Plus,
   Trash2,
-  X,
   FileCheck,
-  Eye,
-  ExternalLink
+  Eye, ExternalLink
 } from 'lucide-react'
 import {
   createPurchaseDocumentWithUploadService,
@@ -20,7 +18,7 @@ import {
 } from '../../services/comprasOcrSettingsService'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import { extractTextFromPdf } from '../../lib/pdfTextExtractor'
 
 export function UploadDocModal({ order, supplier, onClose, onSuccess }) {
@@ -470,32 +468,33 @@ export default function ComprasOcrPanel({
       </div>
 
       {/* Barra de Filtro y Búsqueda OCR */}
-      <div className="alon-zone-toolbar p-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
-        <CrawlerSearchBar
-          compact
-          value={searchQuery}
-          onChange={setSearchQuery}
-          onClear={() => { setSearchQuery(''); setFilterDocType('TODOS') }}
-          viewsController={docsViewsController}
-          placeholder="Buscar por texto en PDF, remito, factura o descripción..."
-        />
-
-        <div className="flex items-center gap-1.5 flex-wrap text-xs">
-          {['TODOS', 'COTIZACION_MATERIAL', 'FICHA_TECNICA', 'REMITO', 'FACTURA'].map((type) => (
-            <button
-              key={type}
-              onClick={() => setFilterDocType(type)}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                filterDocType === type
-                  ? 'bg-cyan-500 text-slate-950 font-bold'
-                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              {type === 'TODOS' ? 'Todos' : type.replace('_', ' ')}
-            </button>
-          ))}
-        </div>
-      </div>
+      <CanonicalZone3Toolbar
+        className="rounded-xl"
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Buscar por texto en PDF, remito, factura o descripción... (Ctrl+F | Esc limpia todo)"
+        viewsController={docsViewsController}
+        hasActiveFilters={Boolean(searchQuery.trim() || filterDocType !== 'TODOS')}
+        onClearAllFilters={() => { setSearchQuery(''); setFilterDocType('TODOS') }}
+        filters={
+          <>
+            {['TODOS', 'COTIZACION_MATERIAL', 'FICHA_TECNICA', 'REMITO', 'FACTURA'].map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setFilterDocType(type)}
+                className={`px-2.5 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                  filterDocType === type
+                    ? 'bg-cyan-500 text-slate-950 font-bold'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                {type === 'TODOS' ? 'Todos' : type.replace('_', ' ')}
+              </button>
+            ))}
+          </>
+        }
+      />
 
       {/* Visualización Lista o Fichas */}
       {docsViewMode === 'lista' ? (

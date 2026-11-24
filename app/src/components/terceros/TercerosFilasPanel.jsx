@@ -19,9 +19,7 @@ import {
   History,
   CopyPlus,
   Edit3,
-  Trash2,
-  RotateCcw,
-  RotateCw
+  Trash2
 } from 'lucide-react'
 import { VOUCHER_TYPES, OFFICIAL_TRADES, formatDate } from '../../lib/tercerosConstants.js'
 import RemitoAloncarHoverBadge from './RemitoAloncarHoverBadge.jsx'
@@ -794,32 +792,6 @@ export default function TercerosFilasPanel({
           { label: 'Ø AR$', value: `$${stats.avgArs.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` },
           { label: 'Cotiz. Ø', value: `$${stats.avgRate.toLocaleString('es-AR', { maximumFractionDigits: 1 })}` }
         ]}
-        extraActions={(grid?.canUndo || grid?.canRedo) ? (
-          <div className="flex items-center gap-1.5">
-            {grid?.canUndo && (
-              <button
-                type="button"
-                onClick={grid.undo}
-                className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
-                title="Deshacer el último cambio (Ctrl + Z)"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Deshacer (Ctrl+Z)</span>
-              </button>
-            )}
-            {grid?.canRedo && (
-              <button
-                type="button"
-                onClick={grid.redo}
-                className="px-2 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
-                title="Rehacer el cambio deshecho (Ctrl + Y)"
-              >
-                <RotateCw className="w-3 h-3" />
-                <span>Rehacer (Ctrl+Y)</span>
-              </button>
-            )}
-          </div>
-        ) : null}
       />
     </div>
   )

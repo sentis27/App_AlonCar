@@ -1,30 +1,14 @@
-import { useState, useMemo } from 'react'
-import {
-  CheckSquare,
-  Square,
-  History,
-  Trash2,
-  Filter,
-  Building2,
-  Flame,
-  Link2,
-  Truck
-} from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { CheckSquare, Square, History, Trash2, Filter, Building2, Flame, Link2, Truck, X } from 'lucide-react'
+import { CLEAR_FILTER_BTN_CLASS, getFilterSelectClass } from '../../lib/filterThemeConstants'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
 import GridRibbon from '../GridRibbon'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import HighlightText from '../HighlightText'
-import {
-  GAS_TRACEABILITY_COLUMNS,
-  GAS_OPERATION_META,
-  buildGasTraceabilityRows
-} from '../../lib/panolConstants'
-import {
-  updateGasMovementInlineService,
-  deleteGasMovementService
-} from '../../lib/panolService'
+import { GAS_TRACEABILITY_COLUMNS, GAS_OPERATION_META, buildGasTraceabilityRows } from '../../lib/panolConstants'
+import { updateGasMovementInlineService, deleteGasMovementService } from '../../lib/panolService'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 
 /**
@@ -47,7 +31,8 @@ export default function GasTraceabilityGrid({
   isAdmin: _isAdmin = false,
   user = null,
   showFeedback,
-  onOpenSupplierModal = null
+  onOpenSupplierModal = null,
+  onHistoryChange = null
 }) {
   const [filterScope, setFilterScope] = useState('TODOS') // TODOS | PROVEEDOR | CONTRATISTA
   const [filterOpType, setFilterOpType] = useState('TODAS')
@@ -219,6 +204,13 @@ export default function GasTraceabilityGrid({
     }
   })
 
+  const gasUndoCount = grid.undoStack?.length || 0
+  const gasRedoCount = grid.redoStack?.length || 0
+  useEffect(() => {
+    onHistoryChange?.({ canUndo: grid.canUndo, canRedo: grid.canRedo, undoCount: gasUndoCount, redoCount: gasRedoCount, onUndo: grid.undo, onRedo: grid.redo })
+    return () => onHistoryChange?.(null)
+  }, [onHistoryChange, grid.canUndo, grid.canRedo, gasUndoCount, gasRedoCount, grid.undo, grid.redo])
+
   const getCellProps = (rowIndex, colKey) => {
     const colIdx = GAS_TRACEABILITY_COLUMNS.findIndex((c) => c.key === colKey)
     const isActive = grid.isCellActive(rowIndex, colIdx)
@@ -320,21 +312,23 @@ export default function GasTraceabilityGrid({
           <select
             value={filterScope}
             onChange={(e) => setFilterScope(e.target.value)}
-            className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 font-semibold focus:outline-none focus:border-cyan-400"
+            className={getFilterSelectClass('destination', filterScope !== 'TODOS')}
+            title="Filtrar por Circuito"
           >
-            <option value="TODOS">Todos los Circuitos</option>
-            <option value="PROVEEDOR">Solo Empresas Gaseras</option>
-            <option value="CONTRATISTA">Solo Contratistas</option>
+            <option value="TODOS" className="bg-slate-900">Todos los Circuitos</option>
+            <option value="PROVEEDOR" className="bg-slate-900">Solo Empresas Gaseras</option>
+            <option value="CONTRATISTA" className="bg-slate-900">Solo Contratistas</option>
           </select>
 
           <select
             value={activeSupplierFilter}
             onChange={(e) => updateSupplierFilter(e.target.value)}
-            className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 font-semibold focus:outline-none focus:border-cyan-400"
+            className={getFilterSelectClass('supplier', activeSupplierFilter !== 'TODOS')}
+            title="Filtrar por Empresa Gasera"
           >
-            <option value="TODOS">Todas las Gaseras</option>
+            <option value="TODOS" className="bg-slate-900">Todas las Gaseras</option>
             {gasSuppliers.map((s) => (
-              <option key={s.id} value={s.id}>
+              <option key={s.id} value={s.id} className="bg-slate-900">
                 {s.name}
               </option>
             ))}
@@ -343,11 +337,12 @@ export default function GasTraceabilityGrid({
           <select
             value={activeMaterialFilter}
             onChange={(e) => updateMaterialFilter(e.target.value)}
-            className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 font-semibold focus:outline-none focus:border-cyan-400"
+            className={getFilterSelectClass('category', activeMaterialFilter !== 'TODOS')}
+            title="Filtrar por Tipo de Gas"
           >
-            <option value="TODOS">Todos los Gases</option>
+            <option value="TODOS" className="bg-slate-900">Todos los Gases</option>
             {gasMaterials.map((m) => (
-              <option key={m.id} value={m.id}>
+              <option key={m.id} value={m.id} className="bg-slate-900">
                 {m.name}
               </option>
             ))}
@@ -356,11 +351,12 @@ export default function GasTraceabilityGrid({
           <select
             value={filterOpType}
             onChange={(e) => setFilterOpType(e.target.value)}
-            className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 font-semibold focus:outline-none focus:border-cyan-400"
+            className={getFilterSelectClass('status', filterOpType !== 'TODAS')}
+            title="Filtrar por Operación"
           >
-            <option value="TODAS">Todas las Operaciones</option>
+            <option value="TODAS" className="bg-slate-900">Todas las Operaciones</option>
             {Object.entries(GAS_OPERATION_META).map(([k, meta]) => (
-              <option key={k} value={k}>
+              <option key={k} value={k} className="bg-slate-900">
                 {meta.label}
               </option>
             ))}
@@ -370,9 +366,11 @@ export default function GasTraceabilityGrid({
             <button
               type="button"
               onClick={clearTraceFilters}
-              className="px-2 py-1 rounded-lg bg-rose-950/70 hover:bg-rose-900 border border-rose-500/50 text-rose-200 font-bold text-[10px] cursor-pointer"
+              className={CLEAR_FILTER_BTN_CLASS}
+              title="Limpiar filtros de trazabilidad"
             >
-              ✕ Limpiar
+              <X className="w-3.5 h-3.5" />
+              <span>Limpiar filtro</span>
             </button>
           )}
         </div>

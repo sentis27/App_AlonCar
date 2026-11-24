@@ -162,10 +162,9 @@ export default function PersonalNominaPanel({
           filterStatus={filterStatus}
           setFilterStatus={setFilterStatus}
           centerCounts={centerCounts}
-          canUndo={nominaGrid.canUndo}
-          onUndo={nominaGrid.undo}
-          canRedo={nominaGrid.canRedo}
-          onRedo={nominaGrid.redo}
+          hasActiveFilters={hasActiveFilters}
+          canUndo={nominaGrid.canUndo} onUndo={nominaGrid.undo} undoCount={nominaGrid.undoStack?.length || 0}
+          canRedo={nominaGrid.canRedo} onRedo={nominaGrid.redo} redoCount={nominaGrid.redoStack?.length || 0}
           uniqueTrades={uniqueTrades}
           groupedSummary={groupedSummary}
           viewsController={viewsController}

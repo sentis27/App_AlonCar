@@ -79,7 +79,46 @@ export const ENTITY_FILTER_THEMES = {
 }
 
 export const CLEAR_FILTER_BTN_CLASS =
-  'ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-200 text-xs font-bold transition-colors cursor-pointer border border-cyan-500/40 shrink-0'
+  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-950/90 hover:bg-rose-600 text-rose-200 hover:text-white text-xs font-bold transition-colors cursor-pointer border border-rose-500/80 shadow-sm shadow-rose-950/40 shrink-0 whitespace-nowrap'
+
+export const ZONE3_UNDO_GROUP_CLASS =
+  'inline-flex items-center gap-0.5 bg-slate-950/95 border border-slate-800 rounded-lg p-0.5 shrink-0'
+
+export const ZONE3_VIEW_TOGGLE_GROUP_CLASS =
+  'inline-flex items-center gap-0.5 bg-slate-950/95 border border-slate-800 rounded-lg p-0.5 shrink-0'
+
+export function getUndoButtonClass(canUndo = false) {
+  return canUndo
+    ? 'inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/70 text-amber-200 hover:text-white text-xs font-bold transition-all cursor-pointer'
+    : 'inline-flex items-center gap-1 px-2 py-1 rounded-md border border-transparent text-slate-500 text-xs font-bold opacity-35 cursor-not-allowed'
+}
+
+export function getRedoButtonClass(canRedo = false) {
+  return canRedo
+    ? 'inline-flex items-center gap-1 px-2 py-1 rounded-md bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/70 text-cyan-200 hover:text-white text-xs font-bold transition-all cursor-pointer'
+    : 'inline-flex items-center gap-1 px-2 py-1 rounded-md border border-transparent text-slate-500 text-xs font-bold opacity-35 cursor-not-allowed'
+}
+
+export function getViewToggleButtonClass(isActive = false) {
+  return isActive
+    ? 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-cyan-400 text-slate-950 font-black text-xs shadow-sm transition-all cursor-pointer'
+    : 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800/70 font-bold text-xs transition-all cursor-pointer'
+}
+
+/**
+ * Normaliza el contrato de historial (useSpreadsheetGrid o props explícitos) para Zona 3.
+ */
+export function resolveGridHistoryControl(history) {
+  if (!history) return null
+  return {
+    canUndo: Boolean(history.canUndo),
+    canRedo: Boolean(history.canRedo),
+    undoCount: Number(history.undoCount ?? history.undoStack?.length ?? 0),
+    redoCount: Number(history.redoCount ?? history.redoStack?.length ?? 0),
+    onUndo: history.onUndo || history.undo || null,
+    onRedo: history.onRedo || history.redo || null
+  }
+}
 
 /**
  * Devuelve clases Tailwind estandarizadas para `<select>` o `<input type="date">` de Zona 3.

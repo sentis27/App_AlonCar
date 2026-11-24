@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react'
 import { Download, Shield, Package, Users, Layers, CheckCircle2, Info } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import HighlightText from '../HighlightText'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
@@ -227,61 +228,52 @@ export default function TesoreriaDeduccionesPanel({
       </div>
 
       {/* ZONA 3: TOOLBAR & BUSCADOR OMNICANAL */}
-      <div className="alon-zone-toolbar space-y-3">
-        <CrawlerSearchBar
-          inputRef={searchRef}
-          value={searchTerm}
-          onChange={setSearchTerm}
-          onClear={clearFilters}
-          viewsController={tesoreriaViewsController}
-          placeholder="Buscar contratista, operario, material, barco o OT... [Ctrl+F | Esc limpia]"
-          hasActiveFilters={Boolean(searchTerm || categoryFilter !== 'ALL' || selectedContractor !== 'ALL')}
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
+      <CanonicalZone3Toolbar
+        searchInputRef={searchRef}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Buscar contratista, operario, material, barco o OT... [Ctrl+F | Esc limpia todo]"
+        viewsController={tesoreriaViewsController}
+        hasActiveFilters={Boolean(searchTerm.trim() || categoryFilter !== 'ALL' || selectedContractor !== 'ALL')}
+        onClearAllFilters={clearFilters}
+        filters={
+          <>
             <select
               value={selectedPeriod}
               onChange={(e) => onPeriodChange(e.target.value)}
-              className="bg-slate-950 border border-cyan-500/40 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-cyan-300 cursor-pointer"
+              className={getFilterSelectClass('period', true, 'font-mono font-bold')}
+              title="Seleccionar Quincena"
             >
               {periods.map((p) => (
-                <option key={p} value={p}>Quincena: {p}</option>
+                <option key={p} value={p} className="bg-slate-900">Quincena: {p}</option>
               ))}
             </select>
 
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-200 cursor-pointer"
+              className={getFilterSelectClass('category', categoryFilter !== 'ALL')}
+              title="Filtrar por Categoría"
             >
-              <option value="ALL">Todas las Categorías</option>
-              <option value="CONSUMIBLES">Solo CONSUMIBLES</option>
-              <option value="ELEM.SEGURIDAD">Solo ELEM. SEGURIDAD</option>
+              <option value="ALL" className="bg-slate-900">Todas las Categorías</option>
+              <option value="CONSUMIBLES" className="bg-slate-900">Solo CONSUMIBLES</option>
+              <option value="ELEM.SEGURIDAD" className="bg-slate-900">Solo ELEM. SEGURIDAD</option>
             </select>
 
             <select
               value={selectedContractor}
               onChange={(e) => setSelectedContractor(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-200 cursor-pointer"
+              className={getFilterSelectClass('contractor', selectedContractor !== 'ALL', 'max-w-[200px]')}
+              title="Filtrar por Contratista"
             >
-              <option value="ALL">Todos los Contratistas</option>
+              <option value="ALL" className="bg-slate-900">Todos los Contratistas</option>
               {contractorOptions.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c} className="bg-slate-900">{c}</option>
               ))}
             </select>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleExport}
-            className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs inline-flex items-center gap-1.5 cursor-pointer shadow"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Exportar CSV / Excel ({selectedPeriod})</span>
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* ZONA 4: GRILLA DE EXTRACCIÓN */}
       <div className="alon-zone-grid overflow-hidden">
@@ -294,7 +286,7 @@ export default function TesoreriaDeduccionesPanel({
               Excluye automáticamente retiros de operarios/contratistas marcados con excepción <strong className="text-cyan-300">ASTILLERO (Zona Gris)</strong>.
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {['consolidado', 'detalle', 'exentos'].map((tab) => (
               <button
                 key={tab}
@@ -309,6 +301,14 @@ export default function TesoreriaDeduccionesPanel({
                 {tab === 'consolidado' ? '1. Consolidado por Contratista' : tab === 'detalle' ? '2. Detalle Descontable' : '3. Exentos (Zona Gris)'}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={handleExport}
+              className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] inline-flex items-center gap-1.5 cursor-pointer shadow ml-1"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Exportar CSV / Excel ({selectedPeriod})</span>
+            </button>
           </div>
         </div>
 

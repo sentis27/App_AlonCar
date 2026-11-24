@@ -1,9 +1,7 @@
 import React from 'react'
-import { RotateCcw, RotateCw, X } from 'lucide-react'
-import CrawlerSearchBar from '../CrawlerSearchBar.jsx'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar.jsx'
 import { cleanShipName } from '../../lib/laborConstants.js'
 import {
-  CLEAR_FILTER_BTN_CLASS,
   getFilterSelectClass,
   resolveOtFilterOptions
 } from '../../lib/filterThemeConstants.js'
@@ -36,6 +34,8 @@ export default function LaborLogsToolbar({
   totalCount,
   canUndo,
   canRedo,
+  undoCount = 0,
+  redoCount = 0,
   onUndo,
   onRedo,
   viewsController
@@ -54,18 +54,19 @@ export default function LaborLogsToolbar({
   const otOptions = resolveOtFilterOptions(workOrders, workItems, filterShip)
 
   return (
-    <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg space-y-2.5">
-      <CrawlerSearchBar
-        value={filterWorker}
-        onChange={setFilterWorker}
-        onClear={onClearAllFilters}
-        inputRef={logSearchInputRef}
-        viewsController={viewsController}
-        placeholder="Buscar operario, buque, OT, rubro, tarea... (Ctrl+F | Esc limpia todo)"
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-        <div className="flex flex-wrap items-center gap-2">
+    <CanonicalZone3Toolbar
+      className="rounded-2xl"
+      searchValue={filterWorker}
+      onSearchChange={setFilterWorker}
+      searchInputRef={logSearchInputRef}
+      searchPlaceholder="Buscar operario, buque, OT, rubro, tarea... (Ctrl+F | Esc limpia todo)"
+      viewsController={viewsController}
+      counterText={`Mostrando ${filteredCount} de ${totalCount}`}
+      hasActiveFilters={hasFilters}
+      onClearAllFilters={onClearAllFilters}
+      history={{ canUndo, canRedo, undoCount, redoCount, onUndo, onRedo }}
+      filters={
+        <>
           {/* Fecha (Índigo) */}
           <input
             type="date"
@@ -161,46 +162,8 @@ export default function LaborLogsToolbar({
               <option value="CONTROL" className="bg-slate-900">CTRL · Control</option>
             </select>
           )}
-
-          <span className="text-[11px] text-slate-400 whitespace-nowrap hidden xl:inline">
-            Mostrando {filteredCount} de {totalCount}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 ml-auto">
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={onClearAllFilters}
-              className={CLEAR_FILTER_BTN_CLASS}
-              title="Limpiar todos los filtros (Esc)"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Limpiar filtro</span>
-            </button>
-          )}
-          {canUndo && (
-            <button
-              type="button"
-              onClick={onUndo}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold shadow flex items-center gap-1 cursor-pointer border border-slate-700"
-              title="Deshacer último cambio (Ctrl+Z)"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {canRedo && (
-            <button
-              type="button"
-              onClick={onRedo}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold shadow flex items-center gap-1 cursor-pointer border border-slate-700"
-              title="Rehacer cambio (Ctrl+Y)"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }

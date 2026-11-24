@@ -6,7 +6,7 @@ import {
   computeAvailableFortnights,
   computePedidosKpis,
   filterPurchaseOrders,
-  computePedidosStats
+  computePedidosStats, countLocalPendingOrders
 } from '../lib/comprasPedidosHelpers'
 import { buildPedidosSpreadsheetColumns, buildBatchOrderDbPayload } from '../lib/comprasPedidosGridHelpers'
 import { batchRevertPedidosService, batchUpdatePedidosService } from '../services/comprasPedidosService'
@@ -268,7 +268,7 @@ export function useComprasPedidosState(props) {
     }
   }, [spreadsheetColumns, grid])
 
-  const localPendingCount = useMemo(() => purchaseOrders.filter((po) => ['PEDIDO', 'PEDIDO INCOMPLETO'].includes(po.status) && Boolean(suppliers.find((s) => s.id === po.supplier_id)?.is_local_supplier)).length, [purchaseOrders, suppliers])
+  const localPendingCount = useMemo(() => countLocalPendingOrders(purchaseOrders, suppliers), [purchaseOrders, suppliers])
   const isAllFilteredSelected = filteredOrders.length > 0 && filteredOrders.every((o) => selectedOrderIds.has(o.id))
   const toggleSelectAll = useCallback(() => {
     if (isAllFilteredSelected) { setSelectedOrderIds(new Set()); return }

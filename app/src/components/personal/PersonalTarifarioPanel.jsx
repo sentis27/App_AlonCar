@@ -17,8 +17,6 @@ import {
   CheckCircle2,
   Save,
   Pencil,
-  Undo2,
-  Redo2,
   Square,
   CheckSquare,
   ArrowRight,
@@ -39,7 +37,8 @@ import {
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import { fetchMacroVariables } from '../../lib/macroVariablesService'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
@@ -93,11 +92,21 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
   const [rateTableSearch, setRateTableSearch] = useState(initialTarifarioFilters.rateTableSearch)
   const [rateTableScope, setRateTableScope] = useState(initialTarifarioFilters.rateTableScope) // 'current' | 'all'
 
+  const hasActiveRateFilters = Boolean(rateTableSearch.trim() || filterTableCenter !== 'todos' || rateTableScope !== 'current')
+  const clearRateFilters = () => {
+    setRateTableSearch('')
+    setFilterTableCenter('todos')
+    if (rateTableScope !== 'current') {
+      setRateTableScope('current')
+      loadRateCards(currentPeriodKey, 'current')
+    }
+  }
+
   const tarifarioViewsController = useModuleFilterMemory({
     moduleKey: 'personal_tarifario',
     currentFilters: { filterTableCenter, rateTableSearch, rateTableScope },
     setters: { filterTableCenter: setFilterTableCenter, rateTableSearch: setRateTableSearch, rateTableScope: setRateTableScope },
-    hasActiveFilters: Boolean(rateTableSearch || filterTableCenter !== 'todos' || rateTableScope !== 'current')
+    hasActiveFilters: hasActiveRateFilters
   })
   const [contextMenuTarget, setContextMenuTarget] = useState(null)
   const [statusMessage, setStatusMessage] = useState(null)
@@ -1413,17 +1422,18 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
 
       {/* BLOQUE OPERATIVO: ZONA 3 + ZONA 4 */}
       <div className="alon-workspace-block">
-        <div className="alon-zone-toolbar rounded-2xl p-3 shadow-lg space-y-2.5">
-          <CrawlerSearchBar
-            value={rateTableSearch}
-            onChange={setRateTableSearch}
-            onClear={() => setRateTableSearch('')}
-            inputRef={rateSearchInputRef}
-            viewsController={tarifarioViewsController}
-            placeholder="Buscar por categoría, contratista, quincena, valor hora... (Ctrl+F | Esc limpia)"
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-0.5">
-            <div className="flex flex-wrap items-center gap-2">
+        <CanonicalZone3Toolbar
+          className="rounded-2xl"
+          searchValue={rateTableSearch}
+          onSearchChange={setRateTableSearch}
+          searchInputRef={rateSearchInputRef}
+          searchPlaceholder="Buscar por categoría, contratista, quincena, valor hora... (Ctrl+F | Esc limpia todo)"
+          viewsController={tarifarioViewsController}
+          hasActiveFilters={hasActiveRateFilters}
+          onClearAllFilters={clearRateFilters}
+          history={ratesGrid}
+          filters={
+            <>
               <button
                 type="button"
                 onClick={() => setFilterTableCenter('todos')}
@@ -1459,34 +1469,15 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
                   setRateTableScope(newScope)
                   loadRateCards(currentPeriodKey, newScope)
                 }}
-                className="bg-slate-950 border border-slate-700 text-xs font-bold text-white rounded-lg px-2.5 py-1.5 focus:outline-none cursor-pointer"
+                className={getFilterSelectClass('period', rateTableScope !== 'current')}
+                title="Alcance de Quincenas"
               >
-                <option value="current">Solo Quincena Activa ({currentPeriodKey})</option>
-                <option value="all">Todas las Quincenas (Historial Completo)</option>
+                <option value="current" className="bg-slate-900">Solo Quincena Activa ({currentPeriodKey})</option>
+                <option value="all" className="bg-slate-900">Todas las Quincenas (Historial Completo)</option>
               </select>
-            </div>
-            <div className="flex items-center gap-1 bg-slate-950/90 border border-slate-800 rounded-lg p-1">
-              <button
-                type="button"
-                disabled={!ratesGrid.canUndo}
-                onClick={ratesGrid.undo}
-                className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                title="Deshacer cambio en Tarifario (Ctrl + Z)"
-              >
-                <Undo2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                disabled={!ratesGrid.canRedo}
-                onClick={ratesGrid.redo}
-                className="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                title="Rehacer cambio en Tarifario (Ctrl + Y)"
-              >
-                <Redo2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         <div
           ref={ratesGrid.gridContainerRef}
@@ -1778,8 +1769,8 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
         filteredCount={filteredRateCards.length}
         totalCount={rateCards.length}
         entityName="tarifas"
-        hasActiveFilter={Boolean(rateTableSearch || filterTableCenter !== 'todos')}
-        onClearFilters={() => { setRateTableSearch(''); setFilterTableCenter('todos'); }}
+        hasActiveFilter={hasActiveRateFilters}
+        onClearFilters={clearRateFilters}
         selectionStats={ratesGrid.selectionStats}
         onClearSelection={() => ratesGrid.setSelectionRange(null)}
         customSelection={

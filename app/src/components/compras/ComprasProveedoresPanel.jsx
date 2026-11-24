@@ -8,18 +8,12 @@ import {
   Tag,
   Plus,
   X,
-  List,
-  LayoutGrid,
   CheckSquare,
   Square,
   Edit3,
   Trash2,
-  ExternalLink,
   MessageSquare,
-  Copy,
-  Save,
-  Undo2,
-  Redo2
+  Copy
 } from 'lucide-react'
 import {
   saveSupplierFromModalService,
@@ -28,7 +22,7 @@ import {
 } from '../../services/comprasOcrSettingsService'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -626,53 +620,25 @@ export default function ComprasProveedoresPanel({
 
       {/* BLOQUE OPERATIVO UNIFICADO: ZONA 3 + ZONA 4 */}
       <div className="alon-workspace-block">
-        <div className="alon-zone-toolbar flex flex-wrap items-center justify-between gap-3 p-3">
-          <div className="flex items-center gap-2 flex-1 min-w-[280px] max-w-xl">
-            <CrawlerSearchBar
-              compact
-              value={supplierSearchQuery}
-              onChange={setSupplierSearchQuery}
-              onClear={() => { setSupplierSearchQuery(''); setSupplierKpiFilter('TODOS') }}
-              viewsController={proveedoresViewsController}
-              placeholder="Buscar proveedor, rubro, CUIT, teléfono, email, notas..."
-            />
-            <span className="text-[11px] text-slate-400 whitespace-nowrap hidden sm:inline">
-              {filteredSuppliers.length} de {suppliers.length}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSuppliersViewMode('lista')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                suppliersViewMode === 'lista' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-              <span>Vista Lista</span>
-            </button>
-            <button
-              onClick={() => setSuppliersViewMode('fichas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                suppliersViewMode === 'fichas' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Vista Fichas</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setEditingSupplier(null)
-                setShowSupplierModal(true)
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-lg text-xs cursor-pointer shadow-sm ml-1 transition-all"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Nuevo Proveedor</span>
-            </button>
-          </div>
-        </div>
+        <CanonicalZone3Toolbar
+          searchValue={supplierSearchQuery}
+          onSearchChange={setSupplierSearchQuery}
+          searchPlaceholder="Buscar proveedor, rubro, CUIT, teléfono, email, notas... (Ctrl+F | Esc limpia todo)"
+          viewsController={proveedoresViewsController}
+          counterText={`${filteredSuppliers.length} de ${suppliers.length} proveedores`}
+          hasActiveFilters={Boolean(supplierSearchQuery.trim() || supplierKpiFilter !== 'TODOS')}
+          onClearAllFilters={() => {
+            setSupplierSearchQuery('')
+            setSupplierKpiFilter('TODOS')
+          }}
+          history={suppliersGrid}
+          viewModeToggle={{
+            value: suppliersViewMode,
+            onChange: setSuppliersViewMode,
+            rowsValue: 'lista',
+            cardsValue: 'fichas'
+          }}
+        />
 
         {suppliersViewMode === 'lista' ? (
           <div
@@ -989,7 +955,24 @@ export default function ComprasProveedoresPanel({
           </div>
         ) : (
           /* Vista Fichas */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-3">
+          <div className="alon-zone-grid p-3 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+              <span className="text-xs font-bold text-slate-300">
+                {filteredSuppliers.length} de {suppliers.length} proveedores en vista fichas
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingSupplier(null)
+                  setShowSupplierModal(true)
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs cursor-pointer shadow-sm transition-all"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Nuevo Proveedor</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredSuppliers.map((sup) => (
               <div key={sup.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between hover:border-slate-700 transition-all">
                 <div>
@@ -1059,6 +1042,7 @@ export default function ComprasProveedoresPanel({
                 </div>
               </div>
             ))}
+            </div>
           </div>
         )}
 

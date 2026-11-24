@@ -106,6 +106,8 @@ export default function LaborCargaPanel({
           totalCount={recentLogs.length}
           canUndo={gridState.horasGrid.canUndo}
           canRedo={gridState.horasGrid.canRedo}
+          undoCount={gridState.horasGrid.undoStack?.length || 0}
+          redoCount={gridState.horasGrid.redoStack?.length || 0}
           onUndo={gridState.horasGrid.undo}
           onRedo={gridState.horasGrid.redo}
         />

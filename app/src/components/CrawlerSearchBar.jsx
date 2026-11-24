@@ -12,6 +12,7 @@ export default function CrawlerSearchBar({
   value = '',
   onChange,
   onClear,
+  hasActiveFilters = false,
   placeholder = 'Buscar por material, proveedor, buque, solicitante, factura, notas... (Ctrl+F | Esc limpia)',
   className = '',
   inputRef = null,
@@ -34,7 +35,7 @@ export default function CrawlerSearchBar({
         effectiveRef.current?.focus()
         effectiveRef.current?.select()
       } else if (e.key === 'Escape' && document.activeElement === effectiveRef.current) {
-        if (value) {
+        if (value || hasActiveFilters) {
           e.preventDefault()
           if (onClear) onClear()
           else if (onChange) onChange('')
@@ -44,11 +45,10 @@ export default function CrawlerSearchBar({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [value, onChange, onClear, effectiveRef])
+  }, [value, hasActiveFilters, onChange, onClear, effectiveRef])
 
   const handleClearClick = () => {
-    if (onClear) onClear()
-    else if (onChange) onChange('')
+    onChange?.('')
     effectiveRef.current?.focus()
   }
 
@@ -88,7 +88,7 @@ export default function CrawlerSearchBar({
             type="button"
             onClick={handleClearClick}
             className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Limpiar búsqueda (Esc)"
+            title="Limpiar texto buscado"
           >
             <X className="w-3.5 h-3.5" />
           </button>

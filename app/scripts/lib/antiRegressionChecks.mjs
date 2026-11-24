@@ -93,6 +93,29 @@ const REQUIRED_ACCORDION_TAB_PAGES = [
   'app/src/pages/AdminDashboard.jsx',
 ]
 
+const REQUIRED_CANONICAL_ZONE3_SURFACES = [
+  'app/src/components/labor/LaborLogsToolbar.jsx',
+  'app/src/components/labor/LaborControlDiarioPanel.jsx',
+  'app/src/components/compras/ComprasPedidosToolbar.jsx',
+  'app/src/components/compras/ComprasProveedoresPanel.jsx',
+  'app/src/components/compras/ComprasOcrPanel.jsx',
+  'app/src/components/terceros/TercerosToolbar.jsx',
+  'app/src/components/personal/PersonalNominaToolbar.jsx',
+  'app/src/components/personal/PersonalTarifarioPanel.jsx',
+  'app/src/components/panol/PanolToolbar.jsx',
+  'app/src/components/workOrders/WorkOrdersToolbar.jsx',
+  'app/src/components/ships/ShipsBarcosToolbar.jsx',
+  'app/src/components/ships/ShipsEstadiasPanel.jsx',
+  'app/src/components/ships/ShipsArmadoresPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaMaterialesToolbar.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
+  'app/src/components/tesoreria/TesoreriaDeduccionesPanel.jsx',
+  'app/src/components/admin/AdminRolesMatrixPanel.jsx',
+]
+
+const RAW_ZONE3_TOOLBAR_RE = /className\s*=\s*["'{`][^"'`}]*\balon-zone-toolbar\b/
+
 const WORK_ITEMS_CUSTOM_SELECT_RE = /workItemsRepository\.listWorkItems\(\s*\{[\s\S]*?select:\s*['"]([^'"]+)['"]/g
 
 export function checkCanonicalComponentsUsage(rootDir, appDir) {
@@ -113,6 +136,9 @@ export function checkCanonicalComponentsUsage(rootDir, appDir) {
       if (rel.startsWith('app/src/components/canonical/')) continue
 
       const content = fs.readFileSync(full, 'utf8')
+      if (RAW_ZONE3_TOOLBAR_RE.test(content)) {
+        errors.push(`Prohibido escribir alon-zone-toolbar artesanal fuera de CanonicalZone3Toolbar: ${rel} (FL-023)`)
+      }
       if (RAW_MATERIAL_DATALIST_RE.test(content)) {
         if (LEGACY_MATERIAL_DATALIST_ALLOWLIST.has(rel)) {
           alerts.push(`Datalist legacy de materiales pendiente de migrar a CanonicalMaterialPicker: ${rel}`)
@@ -156,6 +182,14 @@ export function checkCanonicalComponentsUsage(rootDir, appDir) {
     const content = fs.readFileSync(full, 'utf8')
     if (!content.includes('useModuleTab')) {
       errors.push(`Módulo con submódulos sin useModuleTab (FL-021): ${rel}`)
+    }
+  }
+  for (const rel of REQUIRED_CANONICAL_ZONE3_SURFACES) {
+    const full = path.join(rootDir, rel)
+    if (!fs.existsSync(full)) continue
+    const content = fs.readFileSync(full, 'utf8')
+    if (!content.includes('CanonicalZone3Toolbar')) {
+      errors.push(`Superficie Zona 3 obligatoria sin CanonicalZone3Toolbar (FL-023): ${rel}`)
     }
   }
 

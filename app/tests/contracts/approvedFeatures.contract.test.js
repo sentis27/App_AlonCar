@@ -47,6 +47,10 @@ import {
   isRouteAllowed,
   resolveUserCapabilities,
 } from '../../src/lib/permissionsEngine.js'
+import {
+  CLEAR_FILTER_BTN_CLASS,
+  resolveGridHistoryControl,
+} from '../../src/lib/filterThemeConstants.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '../..')
@@ -102,6 +106,7 @@ const COVERED_CONTRACT_IDS = new Set([
   'FL-020',
   'FL-021',
   'FL-022',
+  'FL-023',
 ])
 
 describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', () => {
@@ -735,5 +740,63 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(adminMatrixSrc).toContain('RolePermissionsEditorBlock')
     expect(adminMatrixSrc).toContain('roleForm.email')
     expect(readRepoFile('app/src/pages/Login.jsx')).toContain('signInAsRole')
+  })
+
+  it('FL-023: blinda la Zona 3 Canónica en 3 capas (CanonicalZone3Toolbar + rojo carmín + cápsula fija Undo/Redo + 18 superficies)', () => {
+    expect(STATUS_BY_ID.get('FL-023')).toBe('blindado')
+
+    // Capa 1: Tokens y normalizador de historial
+    expect(CLEAR_FILTER_BTN_CLASS).toContain('rose-')
+    expect(CLEAR_FILTER_BTN_CLASS).not.toContain('ml-auto')
+    expect(resolveGridHistoryControl({ canUndo: true, canRedo: false, undoStack: [1, 2], redoStack: [] })).toMatchObject({
+      canUndo: true,
+      canRedo: false,
+      undoCount: 2,
+      redoCount: 0,
+    })
+
+    // CrawlerSearchBar: la X interna limpia solo el texto (onChange('')), no onClear
+    const crawlerSrc = readRepoFile('app/src/components/CrawlerSearchBar.jsx')
+    expect(crawlerSrc).toMatch(/const handleClearClick = \(\) => \{\s*onChange\?\.\(''\)/)
+
+    // Capa 2: Pieza visual única CanonicalZone3Toolbar
+    const toolbarSrc = readRepoFile('app/src/components/canonical/CanonicalZone3Toolbar.jsx')
+    expect(toolbarSrc).toContain('CLEAR_FILTER_BTN_CLASS')
+    expect(toolbarSrc).toContain('ZONE3_UNDO_GROUP_CLASS')
+    expect(toolbarSrc).toContain('ZONE3_VIEW_TOGGLE_GROUP_CLASS')
+
+    // Capa 3: 18 superficies migradas sin alon-zone-toolbar artesanal
+    const zone3Surfaces = [
+      'app/src/components/labor/LaborLogsToolbar.jsx',
+      'app/src/components/labor/LaborControlDiarioPanel.jsx',
+      'app/src/components/compras/ComprasPedidosToolbar.jsx',
+      'app/src/components/compras/ComprasProveedoresPanel.jsx',
+      'app/src/components/compras/ComprasOcrPanel.jsx',
+      'app/src/components/terceros/TercerosToolbar.jsx',
+      'app/src/components/personal/PersonalNominaToolbar.jsx',
+      'app/src/components/personal/PersonalTarifarioPanel.jsx',
+      'app/src/components/panol/PanolToolbar.jsx',
+      'app/src/components/workOrders/WorkOrdersToolbar.jsx',
+      'app/src/components/ships/ShipsBarcosToolbar.jsx',
+      'app/src/components/ships/ShipsEstadiasPanel.jsx',
+      'app/src/components/ships/ShipsArmadoresPanel.jsx',
+      'app/src/components/resumenGerencial/ResumenHojaMaterialesToolbar.jsx',
+      'app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx',
+      'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
+      'app/src/components/tesoreria/TesoreriaDeduccionesPanel.jsx',
+      'app/src/components/admin/AdminRolesMatrixPanel.jsx',
+    ]
+    for (const rel of zone3Surfaces) {
+      const src = readRepoFile(rel)
+      expect(src).toContain('CanonicalZone3Toolbar')
+      expect(src).not.toMatch(/className\s*=\s*["'{`][^"'`}]*\balon-zone-toolbar\b/)
+    }
+
+    // Sin Deshacer duplicado en Zona 5 de Terceros y Mandados en Zona 1 de Compras
+    expect(readRepoFile('app/src/components/terceros/TercerosFilasPanel.jsx')).not.toContain('Deshacer (Ctrl+Z)')
+    const comprasPageSrc = readRepoFile('app/src/pages/Compras.jsx')
+    expect(comprasPageSrc).toContain('Mandados')
+    expect(comprasPageSrc.trimEnd().split(/\r?\n/).length).toBeLessThanOrEqual(250)
+    expect(readRepoFile('app/src/components/compras/ComprasPedidosToolbar.jsx')).not.toContain('onOpenMandados')
   })
 })

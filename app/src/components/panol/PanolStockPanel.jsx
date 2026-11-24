@@ -48,7 +48,8 @@ export default function PanolStockPanel({
   onPreviewImage,
   showFeedback,
   fetchData,
-  setMaterials
+  setMaterials,
+  onHistoryChange = null
 }) {
   const [localTraceSupplierFilter, setLocalTraceSupplierFilter] = useState('TODOS')
   const [localTraceMaterialFilter, setLocalTraceMaterialFilter] = useState('TODOS')
@@ -337,10 +338,8 @@ export default function PanolStockPanel({
           setFilterSupplierId={setTraceSupplierFilter}
           filterMaterialId={traceMaterialFilter}
           setFilterMaterialId={setTraceMaterialFilter}
-          isAdmin={isAdmin}
-          user={user}
-          showFeedback={showFeedback}
-          onOpenSupplierModal={onOpenGasSupplierModal}
+          isAdmin={isAdmin} user={user} showFeedback={showFeedback}
+          onOpenSupplierModal={onOpenGasSupplierModal} onHistoryChange={onHistoryChange}
         />
       </div>
     )
@@ -391,10 +390,8 @@ export default function PanolStockPanel({
       onOpenEditMaterialModal={onOpenEditMaterialModal}
       onOpenStockAdjustModal={onOpenStockAdjustModal}
       onOpenConsumption6MModal={onOpenConsumption6MModal}
-      onPreviewImage={onPreviewImage}
-      showFeedback={showFeedback}
-      fetchData={fetchData}
-      setMaterials={setMaterials}
+      onPreviewImage={onPreviewImage} showFeedback={showFeedback}
+      fetchData={fetchData} setMaterials={setMaterials} onHistoryChange={onHistoryChange}
     />
   )
 }

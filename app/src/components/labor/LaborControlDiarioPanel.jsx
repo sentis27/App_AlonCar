@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import {
   Calendar,
   UserCheck,
-  X,
   Ship,
   Pencil,
   Plus,
@@ -273,159 +273,152 @@ export default function LaborControlDiarioPanel({
 
   return (
     <div className="alon-workspace-block">
-      {/* ZONA 3: BARRA DE FECHA Y BÚSQUEDA DE CONTROL DIARIO */}
-      <div className="alon-zone-toolbar p-4 md:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-3">
-            <Calendar className="w-5 h-5 text-primary" />
-            <div>
-              <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">
-                Fecha de Auditoría
-              </span>
+      {/* ZONA 3: BARRA DE FECHA, BÚSQUEDA Y FILTROS DE CONTROL DIARIO */}
+      <CanonicalZone3Toolbar
+        searchValue={dailySearch}
+        onSearchChange={setDailySearch}
+        searchPlaceholder="Buscar operario, taller, rubro... (Ctrl+F | Esc limpia todo)"
+        viewsController={controlViewsController}
+        hasActiveFilters={Boolean(dailySearch.trim() || dailyFilterType !== 'todos')}
+        onClearAllFilters={() => {
+          setDailySearch('')
+          setDailyFilterType('todos')
+        }}
+        filters={
+          <>
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-primary shrink-0" />
               <input
                 type="date"
                 value={auditDate}
                 onChange={(e) => setAuditDate(e.target.value)}
-                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-primary mt-1"
+                className={getFilterSelectClass('period', true)}
+                title="Fecha de Auditoría"
               />
+              <button
+                type="button"
+                onClick={() => setAuditDate(new Date().toISOString().split('T')[0])}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 rounded-lg border border-slate-700 cursor-pointer"
+              >
+                Ir a Hoy
+              </button>
             </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => setAuditDate(new Date().toISOString().split('T')[0])}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 rounded-lg border border-slate-700 mt-4 sm:mt-0 cursor-pointer"
-          >
-            Ir a Hoy
-          </button>
-        </div>
-      </div>
+            <div className="h-4 w-px bg-slate-800 hidden sm:block"></div>
+
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('todos')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'todos'
+                  ? 'bg-primary text-slate-950 font-bold'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              Todos ({unifiedDailyList.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('Astillero')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'Astillero'
+                  ? 'bg-cyan-500 text-slate-950 font-bold'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              Astillero ({totalAstillero})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('Taller')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'Taller'
+                  ? 'bg-purple-500 text-slate-950 font-bold'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              Talleres ({unifiedDailyList.filter(i => i.type === 'Taller').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('Contratista')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'Contratista'
+                  ? 'bg-amber-500 text-slate-950 font-bold'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              Contratistas ({unifiedDailyList.filter(i => i.type === 'Contratista').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('sin_carga')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'sin_carga'
+                  ? 'bg-rose-500 text-white font-bold'
+                  : 'bg-slate-950 text-rose-400 hover:text-rose-300 border border-rose-900/40'
+              }`}
+            >
+              Sin Carga 🔴 ({sinCargaAstillero})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('incompleta')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'incompleta'
+                  ? 'bg-amber-500 text-slate-950 font-bold'
+                  : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-amber-900/40'
+              }`}
+            >
+              Incompletas 🟡 ({incompletasAstillero})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('completa')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'completa'
+                  ? 'bg-emerald-500 text-slate-950 font-bold'
+                  : 'bg-slate-950 text-emerald-400 hover:text-emerald-300 border border-emerald-900/40'
+              }`}
+            >
+              Completas 🟢 ({completasAstillero})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('revision_R')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'revision_R'
+                  ? 'bg-rose-600 text-white font-bold'
+                  : 'bg-slate-950 text-rose-400 hover:text-rose-300 border border-rose-900/40'
+              }`}
+            >
+              🔴 En Revisión R ({auditDateRCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDailyFilterType('corregidas_RR')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                dailyFilterType === 'corregidas_RR'
+                  ? 'bg-amber-500 text-slate-950 font-bold'
+                  : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-amber-900/40'
+              }`}
+            >
+              🟡 Corregidas RR ({auditDateRRCount})
+            </button>
+          </>
+        }
+      />
 
       {/* ZONA 4: TABLA PRINCIPAL DE CONTROL DIARIO EN MODO LISTA */}
       <div className="alon-zone-grid p-5 md:p-6 space-y-4">
-        {/* BARRA DE FILTROS & BÚSQUEDA */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-4">
-          <div>
-            <h2 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-cyan-400" />
-              Nómina Diaria en Modo Lista
-            </h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Regla Astillero: <strong>9 hs obligatorias</strong> (salvo Feriado = <strong>8 hs</strong>). Talleres y Contratistas no tienen regla de cuota diaria.
-            </p>
-          </div>
-
-          <CrawlerSearchBar
-            compact
-            value={dailySearch}
-            onChange={setDailySearch}
-            onClear={() => { setDailySearch(''); setDailyFilterType('todos') }}
-            viewsController={controlViewsController}
-            placeholder="Buscar operario, taller, rubro... (Ctrl+F | Esc limpia)"
-          />
-        </div>
-
-        {/* BOTONES DE FILTRO RÁPIDO */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('todos')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'todos'
-                ? 'bg-primary text-slate-950 font-bold'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            Todos ({unifiedDailyList.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('Astillero')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'Astillero'
-                ? 'bg-cyan-500 text-slate-950 font-bold'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            Astillero ({totalAstillero})
-          </button>
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('Taller')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'Taller'
-                ? 'bg-purple-500 text-slate-950 font-bold'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            Talleres ({unifiedDailyList.filter(i => i.type === 'Taller').length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('Contratista')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'Contratista'
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            Contratistas ({unifiedDailyList.filter(i => i.type === 'Contratista').length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('sin_carga')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'sin_carga'
-                ? 'bg-rose-500 text-white font-bold'
-                : 'bg-slate-950 text-rose-400 hover:text-rose-300 border border-rose-900/40'
-            }`}
-          >
-            Sin Carga 🔴 ({sinCargaAstillero})
-          </button>
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('incompleta')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'incompleta'
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-amber-900/40'
-            }`}
-          >
-            Incompletas 🟡 ({incompletasAstillero})
-          </button>
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('completa')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'completa'
-                ? 'bg-emerald-500 text-slate-950 font-bold'
-                : 'bg-slate-950 text-emerald-400 hover:text-emerald-300 border border-emerald-900/40'
-            }`}
-          >
-            Completas 🟢 ({completasAstillero})
-          </button>
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('revision_R')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'revision_R'
-                ? 'bg-rose-600 text-white font-bold'
-                : 'bg-slate-950 text-rose-400 hover:text-rose-300 border border-rose-900/40'
-            }`}
-          >
-            🔴 En Revisión R ({auditDateRCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setDailyFilterType('corregidas_RR')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              dailyFilterType === 'corregidas_RR'
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'bg-slate-950 text-amber-400 hover:text-amber-300 border border-amber-900/40'
-            }`}
-          >
-            🟡 Corregidas RR ({auditDateRRCount})
-          </button>
+        <div className="border-b border-slate-800 pb-3">
+          <h2 className="text-sm uppercase tracking-wider font-bold text-white flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-cyan-400" />
+            Nómina Diaria en Modo Lista
+          </h2>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Regla Astillero: <strong>9 hs obligatorias</strong> (salvo Feriado = <strong>8 hs</strong>). Talleres y Contratistas no tienen regla de cuota diaria.
+          </p>
         </div>
 
         {/* TABLA DE AUDITORÍA */}

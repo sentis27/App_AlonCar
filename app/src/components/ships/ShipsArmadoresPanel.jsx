@@ -6,18 +6,13 @@ import {
   CopyPlus,
   CheckSquare,
   Square,
-  Undo2,
-  Redo2,
-  Layers,
-  ClipboardList,
   Phone,
-  Mail,
-  X
+  Mail
 } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
@@ -291,85 +286,23 @@ export default function ShipsArmadoresPanel({
   return (
     <div className="space-y-4">
       {/* ZONA 3: TOOLBAR CORPORATIVA CON BUSCADOR Y CAMBIO DE VISTA */}
-      <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg flex flex-col gap-2.5">
-        <CrawlerSearchBar
-          inputRef={searchInputRef}
-          value={searchTerm}
-          onChange={setSearchTerm}
-          viewsController={armadoresViewsController}
-          placeholder="Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)"
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-          <div className="flex items-center gap-1.5">
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
-                title="Limpiar búsqueda"
-              >
-                <X className="w-3.5 h-3.5" />
-                <span>Limpiar</span>
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Deshacer / Rehacer */}
-            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5">
-              <button
-                type="button"
-                disabled={!ownersGrid.canUndo}
-                onClick={ownersGrid.undo}
-                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                title="Deshacer (Ctrl + Z)"
-              >
-                <Undo2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                disabled={!ownersGrid.canRedo}
-                onClick={ownersGrid.redo}
-                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                title="Rehacer (Ctrl + Y)"
-              >
-                <Redo2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* SWITCHER DE VISTA: FILAS VS FICHAS */}
-            <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 p-1 rounded-xl text-xs">
-              <button
-                type="button"
-                onClick={() => setViewModeOwners('tabla')}
-                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                  viewModeOwners === 'tabla'
-                    ? 'bg-amber-400 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Vista planilla editable"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Filas</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewModeOwners('tarjetas')}
-                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                  viewModeOwners === 'tarjetas'
-                    ? 'bg-amber-400 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Vista de fichas"
-              >
-                <ClipboardList className="w-3.5 h-3.5" />
-                <span>Fichas</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <CanonicalZone3Toolbar
+        className="rounded-2xl"
+        searchInputRef={searchInputRef}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Buscar empresa armadora, contacto, teléfono, email o CUIT... (Ctrl+F | Esc limpia todo)"
+        viewsController={armadoresViewsController}
+        hasActiveFilters={Boolean(searchTerm.trim())}
+        onClearAllFilters={() => setSearchTerm('')}
+        history={ownersGrid}
+        viewModeToggle={{
+          value: viewModeOwners,
+          onChange: setViewModeOwners,
+          rowsValue: 'tabla',
+          cardsValue: 'tarjetas'
+        }}
+      />
 
       {/* VISTA 1: TABLA EDITABLE (ZONA 4) */}
       {viewModeOwners === 'tabla' && (

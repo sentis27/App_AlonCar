@@ -9,6 +9,7 @@ import ComprasPedidosPanel from '../components/compras/ComprasPedidosPanel'
 import ComprasProveedoresPanel from '../components/compras/ComprasProveedoresPanel'
 import ComprasOcrPanel from '../components/compras/ComprasOcrPanel'
 import { parseOrderQueryParams, computeContractorGroups, getCurrentFortnight } from '../lib/comprasConstants'
+import { countLocalPendingOrders } from '../lib/comprasPedidosHelpers'
 
 const COMPRAS_REALTIME_TABLES = ['purchase_orders', 'suppliers', 'materials', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables', 'purchase_documents', 'system_settings']
 
@@ -43,6 +44,7 @@ export default function Compras() {
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [editingOrder, setEditingOrder] = useState(null)
   const [initialKpiFilter, setInitialKpiFilter] = useState(() => searchParams.get('kpi') || null)
+  const [mandadosOpenTick, setMandadosOpenTick] = useState(0)
 
   // Sincronización con parámetros URL (?mode=simple, ?nuevo=true, ?materialId=..., ?kpi=sin_precio)
   useEffect(() => {
@@ -112,6 +114,7 @@ export default function Compras() {
   const contractorGroups = useMemo(() => computeContractorGroups(workItems, suppliers), [workItems, suppliers])
   const astilleroWorkers = useMemo(() => workers.filter((w) => w.can_withdraw_materials), [workers])
   const currentFortnight = useMemo(() => getCurrentFortnight(), [])
+  const localPendingCount = useMemo(() => countLocalPendingOrders(purchaseOrders, suppliers), [purchaseOrders, suppliers])
 
   return (
     <div className="space-y-4 pb-10">
@@ -158,6 +161,17 @@ export default function Compras() {
             </button>
           )}
 
+          {activeTab === 'compras' && (
+            <button
+              type="button"
+              onClick={() => setMandadosOpenTick((n) => n + 1)}
+              className="px-2.5 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 font-bold text-xs flex items-center gap-1 cursor-pointer transition-all"
+              title="Generar mensaje de WhatsApp para el mandadero con materiales a retirar de proveedores locales"
+            >
+              <span>🛵 Mandados ({localPendingCount})</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
@@ -198,7 +212,7 @@ export default function Compras() {
           user={user} profile={profile} showFeedbackMsg={showFeedbackMsg} fetchData={fetchData}
           showOrderModal={showOrderModal} setShowOrderModal={setShowOrderModal}
           editingOrder={editingOrder} setEditingOrder={setEditingOrder} onCloseOrderModal={handleCloseOrderModal}
-          initialKpiFilter={initialKpiFilter}
+          mandadosOpenTick={mandadosOpenTick} initialKpiFilter={initialKpiFilter}
           onClearUrlKpi={() => {
             setInitialKpiFilter(null)
             if (searchParams.get('kpi')) {

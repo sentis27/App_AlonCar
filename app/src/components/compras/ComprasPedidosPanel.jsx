@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useComprasPedidosState } from '../../hooks/useComprasPedidosState'
 import ComprasKpiRadar from './ComprasKpiRadar'
 import ComprasPedidosToolbar from './ComprasPedidosToolbar'
@@ -28,11 +29,20 @@ export default function ComprasPedidosPanel(props) {
     setShowOrderModal,
     editingOrder,
     setEditingOrder,
-    onCloseOrderModal
+    onCloseOrderModal,
+    mandadosOpenTick = 0
   } = props
 
   const state = useComprasPedidosState(props)
   const { filters, selection, modals } = state
+  const { setMandadosPreselectedIds, setShowMandadosModal } = modals
+
+  useEffect(() => {
+    if (mandadosOpenTick > 0) {
+      setMandadosPreselectedIds([])
+      setShowMandadosModal(true)
+    }
+  }, [mandadosOpenTick, setMandadosPreselectedIds, setShowMandadosModal])
 
   return (
     <>
@@ -77,15 +87,7 @@ export default function ComprasPedidosPanel(props) {
           newMaterialsCount={state.kpis.newMaterialsCount}
           hideReconciled={filters.hideReconciled}
           setHideReconciled={filters.setHideReconciled}
-          localPendingCount={state.localPendingCount}
-          onOpenMandados={() => {
-            modals.setMandadosPreselectedIds([])
-            modals.setShowMandadosModal(true)
-          }}
-          canUndo={state.grid.canUndo}
-          onUndo={state.grid.undo}
-          canRedo={state.grid.canRedo}
-          onRedo={state.grid.redo}
+          history={state.grid}
           viewsController={filters.viewsController}
         />
 

@@ -43,9 +43,9 @@ export default function Panol() {
   const [pendingAlerts, setPendingAlerts] = useState([])
 
   const searchInputRef = useRef(null)
-  const {
-    safeTab, filtersByTab, activeFilters, hasActiveFilters: hasActivePanolFilter, setTabFilter, setActiveFilter, clearActiveTabFilters, viewsController: panolViewsController
-  } = useTabbedFilterMemory({
+  const [activeGridHistory, setActiveGridHistory] = useState(null)
+  useEffect(() => { setActiveGridHistory(null) }, [activeTab])
+  const { safeTab, filtersByTab, activeFilters, hasActiveFilters: hasActivePanolFilter, setTabFilter, setActiveFilter, clearActiveTabFilters, viewsController: panolViewsController } = useTabbedFilterMemory({
     modulePrefix: 'panol', tabs: ['planillas', 'gases', 'catalogo', 'epp'], activeTab,
     urlOverridesByTab: { planillas: { ...(searchParams.get('kpi') ? { activeKpiFilter: searchParams.get('kpi') } : {}), ...(searchParams.get('con_barco') === '1' ? { onlyWithShipFilter: true } : {}) } },
     summaryContext: { ships, workOrders, suppliers, materials }
@@ -238,6 +238,7 @@ export default function Panol() {
           filterStockOnly={!isAdmin ? true : filterStockOnly} setFilterStockOnly={(v) => setActiveFilter('filterStockOnly', v)}
           isAdmin={isAdmin} activeTab={activeTab} ships={ships} workOrders={workOrders} workItems={workItems}
           contractorOptions={availableGroups} hasActiveFilters={hasActivePanolFilter} onClearAllFilters={clearAllPanolFilters} viewsController={panolViewsController}
+          gridHistory={activeTab !== 'epp' ? activeGridHistory : null}
         />
 
         {activeTab === 'planillas' && (
@@ -255,7 +256,7 @@ export default function Panol() {
             onOpenRequestOtModal={({ txId, shipId, targetWorkerOrContractor }) => setRequestOtModal({ isOpen: true, txId, shipId, targetWorkerOrContractor, reason: '' })}
             onOpenWorkerPermissionModal={() => setWorkerPermissionModal({ isOpen: true, workerId: '', reason: '' })}
             onPreviewImage={setPreviewImage} showFeedback={showFeedback} setInventoryTx={setInventoryTx}
-            gasMovements={gasMovements} setGasMovements={setGasMovements}
+            gasMovements={gasMovements} setGasMovements={setGasMovements} onHistoryChange={setActiveGridHistory}
           />
         )}
 
@@ -264,13 +265,10 @@ export default function Panol() {
             activeTab={activeTab} filteredMaterials={filteredMaterials} materials={materials} rubros={rubros} gasStats={gasStats}
             gasMovements={gasMovements} setGasMovements={setGasMovements} suppliers={suppliers} ships={ships} workOrders={workOrders}
             searchQuery={searchQuery} activeKpiFilter={activeKpiFilter} filterCategory={filterCategory} filterStockOnly={!isAdmin ? true : filterStockOnly}
-            traceSupplierFilter={gasesFilters.traceSupplierFilter}
-            setTraceSupplierFilter={(v) => setTabFilter('gases', 'traceSupplierFilter', v)}
-            traceMaterialFilter={gasesFilters.traceMaterialFilter}
-            setTraceMaterialFilter={(v) => setTabFilter('gases', 'traceMaterialFilter', v)}
+            traceSupplierFilter={gasesFilters.traceSupplierFilter} setTraceSupplierFilter={(v) => setTabFilter('gases', 'traceSupplierFilter', v)}
+            traceMaterialFilter={gasesFilters.traceMaterialFilter} setTraceMaterialFilter={(v) => setTabFilter('gases', 'traceMaterialFilter', v)}
             isAdmin={isAdmin} user={user} criticalMaterialsCount={kpiStats.criticalCount}
-            stockControlledCount={materials.filter((m) => m.requires_stock_control).length}
-            onClearFilters={clearAllPanolFilters}
+            stockControlledCount={materials.filter((m) => m.requires_stock_control).length} onClearFilters={clearAllPanolFilters}
             onOpenEditMaterialModal={(mat) => setMaterialFormModal({ isOpen: true, material: mat })}
             onOpenStockAdjustModal={(mat) => setShowStockAdjustModal({ isOpen: true, material: mat })}
             onOpenConsumption6MModal={(mat) => setConsumption6MModal({ isOpen: true, material: mat })}
@@ -278,7 +276,7 @@ export default function Panol() {
             onOpenWithdrawalModal={() => { setEditingWithdrawalRow(null); setShowWithdrawalModal(true) }}
             onOpenGasFinalReturnModal={(cName) => setGasFinalReturnModal({ isOpen: true, contractorName: cName })}
             onOpenGasSupplierModal={(supplierId = '') => setGasSupplierModal({ isOpen: true, supplierId })}
-            onPreviewImage={setPreviewImage} showFeedback={showFeedback} fetchData={loadData} setMaterials={setMaterials}
+            onPreviewImage={setPreviewImage} showFeedback={showFeedback} fetchData={loadData} setMaterials={setMaterials} onHistoryChange={setActiveGridHistory}
           />
         )}
       </div>

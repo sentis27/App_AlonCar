@@ -72,19 +72,12 @@ export default function PanolMovimientosPanel({
   showFeedback,
   setInventoryTx,
   gasMovements = [],
-  setGasMovements = null
+  setGasMovements = null,
+  onHistoryChange = null
 }) {
   const [selectedTxIds, setSelectedTxIds] = useState(new Set())
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
-
-  const [pickerModal, setPickerModal] = useState({
-    isOpen: false,
-    txId: null,
-    shipId: '',
-    workOrderId: '',
-    workerName: '',
-    contractorName: ''
-  })
+  const [pickerModal, setPickerModal] = useState({ isOpen: false, txId: null, shipId: '', workOrderId: '', workerName: '', contractorName: '' })
 
   const [contractorPickerModal, setContractorPickerModal] = useState({
     isOpen: false,
@@ -305,6 +298,13 @@ export default function PanolMovimientosPanel({
       }
     }
   })
+
+  const gridUndoCount = grid.undoStack?.length || 0
+  const gridRedoCount = grid.redoStack?.length || 0
+  useEffect(() => {
+    onHistoryChange?.({ canUndo: grid.canUndo, canRedo: grid.canRedo, undoCount: gridUndoCount, redoCount: gridRedoCount, onUndo: grid.undo, onRedo: grid.redo })
+    return () => onHistoryChange?.(null)
+  }, [onHistoryChange, grid.canUndo, grid.canRedo, gridUndoCount, gridRedoCount, grid.undo, grid.redo])
 
   function getSpreadsheetCellProps(rowIndex, colKey) {
     const colIdx = SPREADSHEET_COLUMNS_PANOL.findIndex((c) => c.key === colKey)

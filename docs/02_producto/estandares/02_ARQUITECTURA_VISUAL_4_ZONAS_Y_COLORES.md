@@ -10,7 +10,7 @@ Toda pantalla del ERP AlonCar adopta la estética naval oscura de alta legibilid
 | :--- | :--- | :--- | :--- |
 | **Zona 1: Contexto** | `.alon-zone-context` | Azul Cielo (`border-l-sky-400`) | Título del módulo, indicador compacto de submódulo activo (`CanonicalActiveSubmoduleBadge`), **todos los parámetros y selectores iniciales** (ej. Buque, Orden de Trabajo, Alcance, Año) y botones de acción operativa principal. **Prohibido** colocar tiras de botones de pestañas de submódulo o selectores manuales de Terminal/Rol en Zona 1: toda navegación de submódulos vive exclusivamente en el **Menú Lateral Acordeón Canónico** (`navigationCatalog.js` + `useModuleTab.js`, contrato `FL-021`, con separador de grupo cuando coexisten hojas de *Obra Filtrada* e *Independientes*), y prohibido bajar selectores iniciales a paneles inferiores. |
 | **Zona 2: Radar de KPIs** | `.alon-zone-kpis` | Ámbar Cálido (`border-l-amber-400`) | Monitoreo en vivo de métricas críticas y alertas operativas. *(Opcional: si un módulo funcionalmente no requiere KPIs, esta zona se omite por completo)*. |
-| **Zona 3: Toolbar de Control** | `.alon-zone-toolbar` | Cian Eléctrico (`border-l-cyan-400`) | Buscador omnicanal profundo, selectores rápidos de filtrado, botones Deshacer (`Ctrl+Z`) y Rehacer (`Ctrl+Y`). |
+| **Zona 3: Toolbar de Control** | `.alon-zone-toolbar` | Cian Eléctrico (`border-l-cyan-400`) | Pieza canónica única `CanonicalZone3Toolbar` (`app/src/components/canonical/CanonicalZone3Toolbar.jsx`): Nivel 1 buscador omnicanal + Vistas, Nivel 2 variables de filtro a la izquierda y constante fija a la derecha (`Limpiar filtro` rojo carmín solo si hay filtros activos ➔ cápsula fija `Undo/Redo` ➔ toggle `Filas/Fichas`). |
 | **Zona 4: Planilla Sheets** | `.alon-zone-grid` | Borde Superior Esmeralda (`border-t-emerald-500/60`) | Hoja de cálculo interactiva con cabecera sticky, celdas interactivas y fill-down. |
 
 ---
@@ -49,10 +49,15 @@ En toda la arquitectura del ERP AlonCar rige la regla de oro de ergonomía opera
 - Toda vista `CARGA_EDICION` debe envolver `.alon-zone-toolbar` (Zona 3) y `.alon-zone-grid` (Zona 4) dentro de `<div className="alon-workspace-block">` (`sticky top-0 z-20 flex flex-col gap-2.5`).
 - Cuando el operario desciende hacia la planilla de datos, la Zona 1 (Contexto) y la Zona 2 (KPIs) se desplazan hacia arriba para ceder espacio, y el bloque unificado **Zona 3 + Zona 4 se ancla completo en el borde superior** con separación constante (`gap-2.5` = `10px`).
 
-### B. Jerarquía Estricta de 2 Niveles Internos en Zona 3 (`.alon-zone-toolbar`)
-Dentro de `.alon-zone-toolbar` los controles se organizan obligatoriamente en dos niveles compactos (`space-y-2.5`, altura máxima ~85px):
-1. **Nivel 1 (Superior — Buscador Omnicanal):** Contiene el componente canónico `<CrawlerSearchBar />` ocupando la franja principal superior (`w-full`), siempre despejado y a la vista.
-2. **Nivel 2 (Inferior — Filtros Rápidos y Reversión):** Contiene en una sola línea flexible las píldoras o selectores compactos de filtrado rápido y a la derecha los controles de reversión (`Undo / Redo`) y limpieza de filtros.
+### B. Jerarquía Estricta de 2 Niveles Internos en Zona 3 (`CanonicalZone3Toolbar`, contrato `FL-023`)
+Toda Zona 3 del ERP debe renderizarse mediante la pieza maestra `app/src/components/canonical/CanonicalZone3Toolbar.jsx` (prohibido declarar `<div className="alon-zone-toolbar">` artesanal fuera de `app/src/components/canonical/`), organizando los controles obligatoriamente en dos niveles compactos (`space-y-2.5`):
+1. **Nivel 1 (Superior — Buscador Omnicanal):** `<CrawlerSearchBar />` + `<SavedFilterViewsDropdown />`. El botón `✕` interno del buscador limpia **únicamente el texto buscado**; la tecla `Escape` (cuando está enfocado) limpia todos los filtros si existe `onClearAllFilters`.
+2. **Nivel 2 (Inferior — Variables a la Izquierda | Constante Fija a la Derecha):**
+   - **Izquierda (Variables propias de la planilla):** Selectores rápidos con paleta semántica (`getFilterSelectClass` / `getFilterPillClass` en `app/src/lib/filterThemeConstants.js`) y contador compacto opcional; nunca acciones modales ni botones de exportación en Zona 3 (ej. `🛵 Mandados` vive en Zona 1 de Compras; `Exportar` vive en Zona 4).
+   - **Derecha (Constante fija en orden invariable):**
+     1. `[✕ Limpiar filtro]` en **rojo carmín** (`CLEAR_FILTER_BTN_CLASS`), visible **únicamente cuando hay al menos un filtro o búsqueda activa** (siempre inmediatamente a la izquierda de `Undo/Redo`).
+     2. Cápsula fija `[Undo (N) | Redo (N)]` siempre visible en planillas con historial editable (atenuada al 35% si no hay pasos, encendida en ámbar/cian con contador al haber historial; habilitada también en Pañol y Compras Proveedores).
+     3. Alternador unificado `[Filas | Fichas]` (`ZONE3_VIEW_TOGGLE_GROUP_CLASS`) cuando la vista soporta modo dual.
 
 ### C. Contenedor de Scroll Tabular Estandarizado (`.alon-grid-scroll`) y Presupuesto de Viewport
 - Dentro de `.alon-zone-grid`, inmediatamente debajo de `<GridRibbon />`, el contenedor de la tabla debe utilizar la clase canónica `.alon-grid-scroll` (`max-h-[calc(100vh-340px)] overflow-y-auto overflow-x-auto`).

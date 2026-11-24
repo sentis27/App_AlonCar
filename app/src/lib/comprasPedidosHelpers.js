@@ -14,13 +14,7 @@ export const URGENCY_CYCLE = {
 }
 
 export const SIMPLE_STATUS_VALUES = [
-  'PEDIR',
-  'RECIBIDO',
-  'RECIB.COMP.DIRECT',
-  'PEDIDO INCOMPLETO',
-  'RECIBIDO 2',
-  'CANCELADOS',
-  'SE COMPRA?'
+  'PEDIR', 'RECIBIDO', 'RECIB.COMP.DIRECT', 'PEDIDO INCOMPLETO', 'RECIBIDO 2', 'CANCELADOS', 'SE COMPRA?'
 ]
 
 export const STATUS_SELECT_COLOR_MAP = {
@@ -264,4 +258,9 @@ export function computePedidosStats(targetList = [], macroVariables = []) {
   const avgPriceArs = count > 0 ? sumCostArs / count : 0
 
   return { count, sumQty, sumCostArs, sumCostUsd, avgPriceArs }
+}
+
+export function countLocalPendingOrders(purchaseOrders = [], suppliers = []) {
+  const localSupIds = new Set(suppliers.filter((s) => s?.id && s?.is_local_supplier).map((s) => s.id))
+  return purchaseOrders.filter((po) => ['PEDIDO', 'PEDIDO INCOMPLETO'].includes(po.status) && po.supplier_id && localSupIds.has(po.supplier_id)).length
 }

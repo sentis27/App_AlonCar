@@ -4,11 +4,9 @@
  */
 
 import React from 'react'
-import CrawlerSearchBar from '../CrawlerSearchBar'
-import { X, RotateCcw, RotateCw } from 'lucide-react'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import { OFFICIAL_TRADES, VOUCHER_TYPES } from '../../lib/tercerosConstants.js'
 import {
-  CLEAR_FILTER_BTN_CLASS,
   getFilterSelectClass,
   resolveOtFilterOptions
 } from '../../lib/filterThemeConstants.js'
@@ -41,20 +39,23 @@ export default function TercerosToolbar({
   const otOptions = resolveOtFilterOptions(workOrders, workItems, selectedShipFilter)
 
   return (
-    <div className="alon-zone-toolbar p-3 space-y-2.5">
-      {/* NIVEL 1: Buscador Canónico */}
-      <CrawlerSearchBar
-        value={searchTerm}
-        onChange={setSearchTerm}
-        onClear={clearAllFilters}
-        inputRef={searchInputRef}
-        viewsController={viewsController}
-        placeholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F | Esc limpia todo)"
-      />
-
-      {/* NIVEL 2: Filtros Dropdown Compactos + Limpiar + Undo/Redo + Conmutador de Vista */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-xs">
-        <div className="flex flex-wrap items-center gap-1.5">
+    <CanonicalZone3Toolbar
+      searchValue={searchTerm}
+      onSearchChange={setSearchTerm}
+      searchInputRef={searchInputRef}
+      searchPlaceholder="Buscar por contratista, N° factura, barco, OT, rubro, remito o detalle... (Ctrl+F | Esc limpia todo)"
+      viewsController={viewsController}
+      hasActiveFilters={hasActiveFilters}
+      onClearAllFilters={clearAllFilters}
+      history={grid}
+      viewModeToggle={{
+        value: viewMode,
+        onChange: setViewMode,
+        rowsValue: 'filas',
+        cardsValue: 'fichas'
+      }}
+      filters={
+        <>
           {/* 1. Buque (Cian) */}
           <select
             value={selectedShipFilter}
@@ -127,70 +128,8 @@ export default function TercerosToolbar({
               <option key={v.code} value={v.code} className="bg-slate-900">{v.label}</option>
             ))}
           </select>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 ml-auto">
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className={CLEAR_FILTER_BTN_CLASS}
-              title="Limpiar todos los filtros (Esc)"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Limpiar filtro</span>
-            </button>
-          )}
-          {grid?.canUndo && (
-            <button
-              type="button"
-              onClick={grid.undo}
-              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer"
-              title="Deshacer último cambio (Ctrl+Z)"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Deshacer</span>
-            </button>
-          )}
-          {grid?.canRedo && (
-            <button
-              type="button"
-              onClick={grid.redo}
-              className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer"
-              title="Rehacer cambio (Ctrl+Y)"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-              <span>Rehacer</span>
-            </button>
-          )}
-
-          {/* Toggle de Vistas Universales (Filas / Fichas) */}
-          <div className="bg-slate-950 border border-slate-800 p-1 rounded-xl flex items-center shrink-0">
-            <button
-              type="button"
-              onClick={() => setViewMode('filas')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                viewMode === 'filas'
-                  ? 'bg-cyan-400 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>☷ Filas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('fichas')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                viewMode === 'fichas'
-                  ? 'bg-cyan-400 text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>⊞ Fichas</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }

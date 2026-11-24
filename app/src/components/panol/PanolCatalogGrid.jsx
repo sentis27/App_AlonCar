@@ -14,7 +14,8 @@ import { buildMergedRubrosCatalog, saveInlineCatalogFieldService } from '../../l
 export default function PanolCatalogGrid({
   filteredMaterials, materials, rubros = [], searchQuery, activeKpiFilter, filterCategory, filterStockOnly,
   isAdmin, user, criticalMaterialsCount, stockControlledCount, onClearFilters, onOpenEditMaterialModal,
-  onOpenStockAdjustModal, onOpenConsumption6MModal, onPreviewImage, showFeedback, fetchData, setMaterials
+  onOpenStockAdjustModal, onOpenConsumption6MModal, onPreviewImage, showFeedback, fetchData, setMaterials,
+  onHistoryChange = null
 }) {
   const navigate = useNavigate()
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
@@ -53,6 +54,13 @@ export default function PanolCatalogGrid({
       grid: materialsGrid, setList: setMaterials, nameOf: (r) => r.name || r.id, showFeedback, user: user?.email
     })
   })
+
+  const matUndoCount = materialsGrid.undoStack?.length || 0
+  const matRedoCount = materialsGrid.redoStack?.length || 0
+  useEffect(() => {
+    onHistoryChange?.({ canUndo: materialsGrid.canUndo, canRedo: materialsGrid.canRedo, undoCount: matUndoCount, redoCount: matRedoCount, onUndo: materialsGrid.undo, onRedo: materialsGrid.redo })
+    return () => onHistoryChange?.(null)
+  }, [onHistoryChange, materialsGrid.canUndo, materialsGrid.canRedo, matUndoCount, matRedoCount, materialsGrid.undo, materialsGrid.redo])
 
   const handleDuplicateMaterial = async (mat) => {
     try {

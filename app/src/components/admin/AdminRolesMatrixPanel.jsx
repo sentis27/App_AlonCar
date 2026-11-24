@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Building2,
-  Search,
   Network,
   Plus,
   Eye,
@@ -31,6 +30,7 @@ import {
   Mail
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar.jsx'
 import { NAVIGATION_MODULES } from '../../lib/navigationCatalog.js'
 import {
   ROLE_PERMISSION_PRESETS,
@@ -443,38 +443,15 @@ export default function AdminRolesMatrixPanel({ onRoleCountChange }) {
         </div>
 
         {/* BARRA DE BÚSQUEDA ESTÁNDAR */}
-        <div className="alon-zone-toolbar p-2.5 rounded-xl border border-slate-800/60 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-          <div className="relative flex-1 min-w-[240px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Buscar puesto, responsable, departamento o nivel de seguridad... (Esc limpia)"
-              value={roleSearch}
-              onChange={(e) => setRoleSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  setRoleSearch('')
-                  e.target.blur()
-                }
-              }}
-              className="w-full border border-slate-800 rounded-lg pl-9 pr-10 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-all shadow-inner"
-            />
-            {roleSearch && (
-              <button
-                type="button"
-                onClick={() => setRoleSearch('')}
-                className="absolute right-3 top-2 text-slate-500 hover:text-white cursor-pointer"
-                title="Limpiar búsqueda"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          <span className="text-[11px] text-slate-400 whitespace-nowrap">
-            Mostrando {filteredRoles.length} de {roles.length} puestos
-          </span>
-        </div>
+        <CanonicalZone3Toolbar
+          className="rounded-xl"
+          searchValue={roleSearch}
+          onSearchChange={setRoleSearch}
+          searchPlaceholder="Buscar puesto, responsable, departamento o nivel de seguridad... (Ctrl+F | Esc limpia todo)"
+          counterText={`Mostrando ${filteredRoles.length} de ${roles.length} puestos`}
+          hasActiveFilters={Boolean(roleSearch.trim())}
+          onClearAllFilters={() => setRoleSearch('')}
+        />
 
         {/* ESQUEMA VISUAL DEL CIRCUITO OPERATIVO INTER-DEPARTAMENTAL ALON CAR */}
         {showWorkflowCircuit && (

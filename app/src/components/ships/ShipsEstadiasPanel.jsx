@@ -4,19 +4,15 @@ import {
   CopyPlus,
   CheckSquare,
   Square,
-  Undo2,
-  Redo2,
-  Layers,
-  ClipboardList,
   Anchor,
   Clock,
-  CheckCircle,
-  X
+  CheckCircle
 } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
@@ -371,99 +367,39 @@ export default function ShipsEstadiasPanel({
       </div>
 
       {/* ZONA 3: TOOLBAR CORPORATIVA CON BUSCADOR Y FILTROS */}
-      <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg flex flex-col gap-2.5">
-        <CrawlerSearchBar
-          inputRef={searchInputRef}
-          value={searchTerm}
-          onChange={setSearchTerm}
-          viewsController={estadiasViewsController}
-          placeholder="Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)"
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-medium cursor-pointer"
-            >
-              <option value="todos">Todas las Locaciones</option>
-              <option value="VARADERO">Varadero</option>
-              <option value="MUELLE">Muelle</option>
-              <option value="PUERTO">Puertos Aldana</option>
-            </select>
-
-            {(locationFilter !== 'todos' || searchTerm) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setLocationFilter('todos')
-                  setSearchTerm('')
-                }}
-                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
-                title="Limpiar filtros"
-              >
-                <X className="w-3.5 h-3.5" />
-                <span>Limpiar</span>
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Deshacer / Rehacer */}
-            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5">
-              <button
-                type="button"
-                disabled={!staysGrid.canUndo}
-                onClick={staysGrid.undo}
-                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                title="Deshacer (Ctrl + Z)"
-              >
-                <Undo2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                disabled={!staysGrid.canRedo}
-                onClick={staysGrid.redo}
-                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                title="Rehacer (Ctrl + Y)"
-              >
-                <Redo2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* SWITCHER DE VISTA: FILAS VS FICHAS */}
-            <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 p-1 rounded-xl text-xs">
-              <button
-                type="button"
-                onClick={() => setViewModeStays('tabla')}
-                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                  viewModeStays === 'tabla'
-                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Vista planilla editable"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Filas</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewModeStays('tarjetas')}
-                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                  viewModeStays === 'tarjetas'
-                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Vista de fichas"
-              >
-                <ClipboardList className="w-3.5 h-3.5" />
-                <span>Fichas</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <CanonicalZone3Toolbar
+        className="rounded-2xl"
+        searchInputRef={searchInputRef}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Buscar estadía por buque, locación o fecha... (Ctrl+F | Esc limpia todo)"
+        viewsController={estadiasViewsController}
+        hasActiveFilters={Boolean(locationFilter !== 'todos' || searchTerm.trim())}
+        onClearAllFilters={() => {
+          setLocationFilter('todos')
+          setSearchTerm('')
+        }}
+        history={staysGrid}
+        viewModeToggle={{
+          value: viewModeStays,
+          onChange: setViewModeStays,
+          rowsValue: 'tabla',
+          cardsValue: 'tarjetas'
+        }}
+        filters={
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            className={getFilterSelectClass('location', locationFilter !== 'todos')}
+            title="Filtrar por Locación"
+          >
+            <option value="todos" className="bg-slate-900">Todas las Locaciones</option>
+            <option value="VARADERO" className="bg-slate-900">Varadero</option>
+            <option value="MUELLE" className="bg-slate-900">Muelle</option>
+            <option value="PUERTO" className="bg-slate-900">Puertos Aldana</option>
+          </select>
+        }
+      />
 
       {/* VISTA 1: TABLA EDITABLE (ZONA 4) */}
       {viewModeStays === 'tabla' && (

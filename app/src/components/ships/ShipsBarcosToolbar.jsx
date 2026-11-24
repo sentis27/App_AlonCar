@@ -1,7 +1,6 @@
 import React from 'react'
-import { Undo2, Redo2, Layers, ClipboardList, X } from 'lucide-react'
-import CrawlerSearchBar from '../CrawlerSearchBar'
-import { CLEAR_FILTER_BTN_CLASS, getFilterSelectClass } from '../../lib/filterThemeConstants'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 
 /**
  * ShipsBarcosToolbar.jsx
@@ -29,17 +28,24 @@ export default function ShipsBarcosToolbar({
   viewsController
 }) {
   return (
-    <div className="alon-zone-toolbar p-3 rounded-2xl shadow-lg flex flex-col gap-2.5">
-      <CrawlerSearchBar
-        inputRef={searchInputRef}
-        value={searchTerm}
-        onChange={setSearchTerm}
-        viewsController={viewsController}
-        placeholder="Buscar por nombre de buque, matrícula, tipo, locación o empresa armadora... (Ctrl+F | Esc limpia todo)"
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-        <div className="flex flex-wrap items-center gap-1.5">
+    <CanonicalZone3Toolbar
+      className="rounded-2xl"
+      searchInputRef={searchInputRef}
+      searchValue={searchTerm}
+      onSearchChange={setSearchTerm}
+      searchPlaceholder="Buscar por nombre de buque, matrícula, tipo, locación o empresa armadora... (Ctrl+F | Esc limpia todo)"
+      viewsController={viewsController}
+      hasActiveFilters={hasActiveFilter}
+      onClearAllFilters={clearAllFilters}
+      history={shipsGrid}
+      viewModeToggle={{
+        value: viewModeShips,
+        onChange: setViewModeShips,
+        rowsValue: 'tabla',
+        cardsValue: 'tarjetas'
+      }}
+      filters={
+        <>
           {/* 1. Locaciones (Azul Cielo) */}
           <select
             value={locationFilter}
@@ -92,67 +98,8 @@ export default function ShipsBarcosToolbar({
               <option value="sin_ot" className="bg-slate-900">⚠️ Costos sin OT</option>
             </select>
           )}
-        </div>
-
-        <div className="flex items-center gap-2 ml-auto">
-          {hasActiveFilter && (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className={CLEAR_FILTER_BTN_CLASS}
-              title="Limpiar filtros"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Limpiar filtro</span>
-            </button>
-          )}
-          <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5">
-            <button
-              type="button"
-              disabled={!shipsGrid.canUndo}
-              onClick={shipsGrid.undo}
-              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-              title="Deshacer (Ctrl + Z)"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              disabled={!shipsGrid.canRedo}
-              onClick={shipsGrid.redo}
-              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-              title="Rehacer (Ctrl + Y)"
-            >
-              <Redo2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 p-1 rounded-xl text-xs">
-            <button
-              type="button"
-              onClick={() => setViewModeShips('tabla')}
-              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                viewModeShips === 'tabla' ? 'bg-primary text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Vista tipo planilla editable"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Filas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewModeShips('tarjetas')}
-              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                viewModeShips === 'tarjetas' ? 'bg-primary text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Vista de fichas / tarjetas"
-            >
-              <ClipboardList className="w-3.5 h-3.5" />
-              <span>Fichas</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }

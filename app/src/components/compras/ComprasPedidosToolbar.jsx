@@ -1,8 +1,7 @@
-import { AlertTriangle, RotateCcw, RotateCw, X } from 'lucide-react'
-import CrawlerSearchBar from '../CrawlerSearchBar'
+import { AlertTriangle } from 'lucide-react'
+import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import { STATUS_OPTIONS } from '../../lib/comprasConstants'
 import {
-  CLEAR_FILTER_BTN_CLASS,
   getFilterSelectClass,
   resolveOtFilterOptions
 } from '../../lib/filterThemeConstants'
@@ -37,29 +36,23 @@ export default function ComprasPedidosToolbar({
   newMaterialsCount,
   hideReconciled,
   setHideReconciled,
-  localPendingCount,
-  onOpenMandados,
-  canUndo,
-  onUndo,
-  canRedo,
-  onRedo,
+  history = null,
   viewsController
 }) {
   const otOptions = resolveOtFilterOptions(workOrders, workItems, filterShip)
 
   return (
-    <div className="alon-zone-toolbar p-3 space-y-2.5 text-xs">
-      <CrawlerSearchBar
-        value={searchQuery}
-        onChange={setSearchQuery}
-        onClear={onClearAllFilters}
-        inputRef={searchInputRef}
-        viewsController={viewsController}
-        placeholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F | Esc limpia todo)"
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-        <div className="flex flex-wrap items-center gap-1.5">
+    <CanonicalZone3Toolbar
+      searchValue={searchQuery}
+      onSearchChange={setSearchQuery}
+      searchInputRef={searchInputRef}
+      searchPlaceholder="Buscar por material, proveedor, buque, solicitante, factura... (Ctrl+F | Esc limpia todo)"
+      viewsController={viewsController}
+      hasActiveFilters={hasActiveFilters}
+      onClearAllFilters={onClearAllFilters}
+      history={history}
+      filters={
+        <>
           {/* 1. Destino (Azul Cielo) */}
           <select
             value={filterChargeType}
@@ -81,7 +74,7 @@ export default function ComprasPedidosToolbar({
                 setFilterShip(e.target.value)
                 setFilterOt?.('TODAS')
               }}
-              className={getFilterSelectClass('ship', filterShip !== 'TODOS', 'px-2 max-w-[155px]')}
+              className={getFilterSelectClass('ship', filterShip !== 'TODOS', 'px-2 max-w-[145px]')}
               title="Filtrar por Barco"
             >
               <option value="TODOS" className="bg-slate-900">Todos los Barcos</option>
@@ -98,7 +91,7 @@ export default function ComprasPedidosToolbar({
             <select
               value={filterOt}
               onChange={(e) => setFilterOt(e.target.value)}
-              className={getFilterSelectClass('ot', filterOt !== 'TODAS', 'px-2 max-w-[165px]')}
+              className={getFilterSelectClass('ot', filterOt !== 'TODAS', 'px-2 max-w-[155px]')}
               title="Filtrar por Orden de Trabajo"
             >
               <option value="TODAS" className="bg-slate-900">Todas las OTs</option>
@@ -116,7 +109,7 @@ export default function ComprasPedidosToolbar({
             <select
               value={filterSupplier}
               onChange={(e) => setFilterSupplier(e.target.value)}
-              className={getFilterSelectClass('supplier', filterSupplier !== 'TODOS', 'px-2 max-w-[165px]')}
+              className={getFilterSelectClass('supplier', filterSupplier !== 'TODOS', 'px-2 max-w-[155px]')}
               title="Filtrar por Proveedor"
             >
               <option value="TODOS" className="bg-slate-900">Todos los Proveedores</option>
@@ -156,12 +149,12 @@ export default function ComprasPedidosToolbar({
               </option>
             ))}
           </select>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 border-l border-slate-800 pl-2.5 ml-auto">
+          {/* 7. Píldoras de filtro rápido propias de Compras */}
           <button
+            type="button"
             onClick={() => setFilterNewOnly(!filterNewOnly)}
-            className={`px-2 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+            className={`px-2 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1 cursor-pointer ${
               filterNewOnly
                 ? 'bg-rose-950 border border-rose-500 text-rose-300'
                 : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
@@ -174,8 +167,9 @@ export default function ComprasPedidosToolbar({
 
           {viewMode === 'completa' && (
             <button
+              type="button"
               onClick={() => setHideReconciled(!hideReconciled)}
-              className={`px-2 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+              className={`px-2 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1 cursor-pointer ${
                 hideReconciled
                   ? 'bg-purple-950 border border-purple-500 text-purple-300'
                   : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
@@ -185,53 +179,8 @@ export default function ComprasPedidosToolbar({
               <span>🟣 Ocultar Conc.</span>
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={onOpenMandados}
-            className="px-2 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 font-bold text-xs flex items-center gap-1 cursor-pointer"
-            title="Generar mensaje de WhatsApp para el mandadero con materiales a retirar de proveedores locales"
-          >
-            <span>🛵 Mandados ({localPendingCount})</span>
-          </button>
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={onClearAllFilters}
-              className={CLEAR_FILTER_BTN_CLASS}
-              title="Limpiar todos los filtros (Esc)"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Limpiar filtro</span>
-            </button>
-          )}
-
-          {canUndo && (
-            <button
-              type="button"
-              onClick={onUndo}
-              className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
-              title="Deshacer el último cambio (Ctrl + Z)"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Deshacer (Ctrl+Z)</span>
-            </button>
-          )}
-
-          {canRedo && (
-            <button
-              type="button"
-              onClick={onRedo}
-              className="px-2 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400 text-cyan-300 font-bold text-xs shadow flex items-center gap-1 transition-all cursor-pointer animate-in fade-in"
-              title="Rehacer el cambio deshecho (Ctrl + Y)"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-              <span>Rehacer (Ctrl+Y)</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }
