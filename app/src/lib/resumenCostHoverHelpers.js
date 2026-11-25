@@ -65,8 +65,9 @@ export function mapWorkTypeToHoverCode(workTypeRaw) {
 
 /**
  * Resume horas físicas reales para tooltip emergente de Horas Aprobadas, Pendientes ("R") u OT.
- * Regla: agrupa por contratista (o ASTILLERO.<RUBRO> si es propio) + tipo (PRC / HH / CTRL),
- * ordena alfabéticamente por actor/contratista. Incluye horas PRC aunque su importe sea $0 (DEC-013).
+ * Regla: agrupa por contratista (o ASTILLERO.<RUBRO> si es propio) + modalidad (HH / PRC),
+ * excluyendo por completo la modalidad CONTROL y ordenando alfabéticamente por actor/contratista.
+ * Incluye horas PRC como dato informativo ($0, porque su costo ingresa en Terceros).
  */
 export function buildHoursHoverSummary(laborRows = [], { filterMode = 'ALL' } = {}) {
   const map = new Map()
@@ -75,8 +76,9 @@ export function buildHoursHoverSummary(laborRows = [], { filterMode = 'ALL' } = 
 
   for (const row of laborRows) {
     if (!row) continue
+    if (row.isControl || normKey(row.workType) === 'CONTROL' || normKey(row.workTypeCode) === 'CTRL') continue
     if (filterMode === 'APPROVED' && row.isPendingR) continue
-    if (filterMode === 'PENDING_R' && !row.isPendingR) continue
+    if (filterMode === 'PENDING_R' && (!row.isPendingR || row.isPresupuesto)) continue
 
     const hrs = Number(row.hoursPhysical) || 0
     if (hrs <= 0) continue

@@ -216,10 +216,18 @@ export default function ResumenOtDetailStrip({
                 <span className="text-[11px] uppercase text-slate-400 font-bold">Peso OT</span>
                 <span className="text-sm font-extrabold text-slate-100 tabular-nums">{formatKg(activeOt.weightKg, 1)}</span>
               </div>
-              <div className="bg-slate-950/70 border border-violet-500/25 rounded-lg px-3 py-1.5 flex items-center justify-between">
-                <span className="text-[11px] uppercase text-slate-400 font-bold">Horas OT</span>
-                <span className="text-sm font-extrabold text-slate-100 tabular-nums">
+              <div className="bg-slate-950/70 border border-violet-500/25 rounded-lg px-3 py-1.5 flex items-center justify-between gap-1.5">
+                <span className="text-[11px] uppercase text-slate-400 font-bold shrink-0">Horas OT</span>
+                <span className="text-sm font-extrabold text-slate-100 tabular-nums truncate">
                   {activeOt.physicalHours.toLocaleString('es-AR', { maximumFractionDigits: 1 })} hs
+                  {activeOt.presupuestoHours > 0 && (
+                    <span
+                      className="text-[10px] font-bold text-purple-300 ml-1"
+                      title="Horas bajo modalidad Presupuesto: informativas con costo US$ 0 (el importe ingresa en Terceros)"
+                    >
+                      ({activeOt.presupuestoHours.toLocaleString('es-AR', { maximumFractionDigits: 1 })}h PRC $0)
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="bg-slate-950/70 border border-violet-500/25 rounded-lg px-3 py-1.5 flex items-center justify-between">

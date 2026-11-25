@@ -58,7 +58,13 @@ import {
   buildArTimestampIso,
 } from '../../src/lib/dateTimeCanonical.js'
 import { matchesUniversalSearch } from '../../src/lib/searchEngine.js'
-import { enrichLaborLogs } from '../../src/lib/managerialSummaryService.js'
+import {
+  enrichLaborLogs,
+  computeShipManagerialSummary,
+} from '../../src/lib/managerialSummaryService.js'
+import { computeHorasKpis, filterResumenLaborRows } from '../../src/lib/resumenHojaFilters.js'
+import { buildHoursHoverSummary } from '../../src/lib/resumenCostHoverHelpers.js'
+import { computeOtUnvaluedBreakdown } from '../../src/lib/billingSheetMath.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '../..')
@@ -466,7 +472,6 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
       'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
       'app/src/components/resumenGerencial/BillingRightCostCard.jsx',
       'app/src/components/resumenGerencial/ComparadorNivel2OtTable.jsx',
-      'app/src/components/resumenGerencial/CostSheetChrome.jsx',
     ]
     for (const rel of surfaces) {
       expect(readRepoFile(rel)).toContain('CanonicalOtBadge')
@@ -875,5 +880,78 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(tercSrc).not.toContain('<th className="px-2.5 py-2">N° Comp.</th>')
     expect(tercSrc).toContain("{ key: 'voucherType', label: 'Comprobante' }")
     expect(tercSrc).toContain("{ key: 'voucherNumber', label: 'Nro Comp.' }")
+
+    // 6. Reglas de modalidades en Resumen Gerencial: CONTROL excluida, PRESUPUESTO $0 informativo, solo HORA computa costo
+    const ship = { id: 's-nono', name: 'NONO PASCUAL', status: 'Activo', is_active: true }
+    const wos = [
+      { id: 'wo-2', ship_id: 's-nono', ot_number: 'OT-2', title: 'VALVULAS', work_type: 'CONTROL', status: 'En ejecución' },
+      { id: 'wo-3', ship_id: 's-nono', ot_number: 'OT-3', title: 'CAMBIO CHAPA', work_type: 'PRESUPUESTO', status: 'En ejecución' },
+    ]
+    const workers = [
+      { id: 'w-ctrl', name: 'CALDERERO PROMEDIO', admin_center: 'ASTILLERO', hourly_rate_usd: 10 },
+      { id: 'w-prc', name: 'Alanis, Carlos', admin_center: 'ASTILLERO', category: 'AYUDANTE', hourly_rate_usd: 11 },
+      { id: 'w-hh', name: 'AGOUTBORDE OMAR', admin_center: 'CONTRATISTA', work_group: '4RG', hourly_rate_usd: 12 },
+    ]
+    const mixedLogs = [
+      { id: 'l-ctrl-1', ship_id: 's-nono', work_order_id: 'wo-2', worker_id: 'w-ctrl', worker_name: 'CALDERERO PROMEDIO', worker_type: 'Astillero', rubro: 'ESTADISTICA', work_type: 'CONTROL', hours_worked: 9, hours_normal: 9, date_logged: '2026-11-20', approval_status: 'Aprobado' },
+      { id: 'l-ctrl-2', ship_id: 's-nono', work_order_id: 'wo-2', worker_id: 'w-ctrl', worker_name: 'CALDERERO PROMEDIO', worker_type: 'Astillero', rubro: 'ESTADISTICA', work_type: null, hours_worked: 9, hours_normal: 9, date_logged: '2026-11-20', approval_status: 'Aprobado' },
+      { id: 'l-prc-1', ship_id: 's-nono', work_order_id: 'wo-3', worker_id: 'w-prc', worker_name: 'Alanis, Carlos', worker_type: 'Astillero', rubro: 'Calderería', work_type: 'PRESUPUESTO', hours_worked: 4, hours_normal: 4, date_logged: '2026-11-20', approval_status: 'Aprobado' },
+      { id: 'l-hh-1', ship_id: 's-nono', work_order_id: 'wo-2', worker_id: 'w-hh', worker_name: 'AGOUTBORDE OMAR', worker_type: 'Contratista', rubro: 'Calderería', work_type: 'HORA', hours_worked: 6, hours_normal: 6, date_logged: '2026-11-20', approval_status: 'Aprobado' },
+    ]
+
+    const enrichedMixed = enrichLaborLogs({ laborLogs: mixedLogs, workers, ships: [ship], workOrders: wos })
+    expect(enrichedMixed).toHaveLength(2)
+    expect(enrichedMixed.some((r) => r.workType === 'CONTROL')).toBe(false)
+
+    const prcRow = enrichedMixed.find((r) => r.id === 'l-prc-1')
+    expect(prcRow.isPresupuesto).toBe(true)
+    expect(prcRow.hoursPhysical).toBe(4)
+    expect(prcRow.hourlyRateUsd).toBe(0)
+    expect(prcRow.costUsd).toBe(0)
+    expect(prcRow.approvedUsd).toBe(0)
+
+    const hhRow = enrichedMixed.find((r) => r.id === 'l-hh-1')
+    expect(hhRow.isBillableHora).toBe(true)
+    expect(hhRow.costUsd).toBe(72)
+
+    const summary = computeShipManagerialSummary({
+      shipId: 's-nono',
+      activeOtId: 'wo-2',
+      ships: [ship],
+      workOrders: wos,
+      laborRows: enrichedMixed,
+    })
+    expect(summary.totals.horasUsd).toBe(72)
+    expect(summary.totals.directTotalUsd).toBe(72)
+    expect(summary.totals.physicalHours).toBe(10) // 6h HORA + 4h PRESUPUESTO (0h CONTROL)
+    expect(summary.totals.billableHours).toBe(6)
+    expect(summary.totals.presupuestoHours).toBe(4)
+
+    const hover = buildHoursHoverSummary(enrichedMixed, { filterMode: 'ALL' })
+    expect(hover.totalHours).toBe(10)
+    expect(hover.totalCostUsd).toBe(72)
+    expect(hover.items.some((i) => i.workTypeCode === 'CTRL')).toBe(false)
+
+    const unvaluedOt3 = computeOtUnvaluedBreakdown({ otId: 'wo-3', laborRows: enrichedMixed })
+    expect(unvaluedOt3.hsCount).toBe(0)
+
+    const kpis = computeHorasKpis(enrichedMixed)
+    const prcKpi = kpis.find((k) => k.id === 'DEC_013')
+    expect(prcKpi.count).toBe('4.0 hs')
+    expect(filterResumenLaborRows(enrichedMixed, { kpiFilter: 'DEC_013' })).toHaveLength(1)
+
+    // 7. Zona 1 y Zona 2 de Resumen Gerencial: Obras Activas en verde, Zona 2 centrada sin duplicados
+    const headerSrc = readRepoFile('app/src/components/resumenGerencial/ResumenGerencialHeader.jsx')
+    expect(headerSrc).toContain('bg-emerald-500/25 border-emerald-400')
+    expect(headerSrc).toContain('border-cyan-400')
+    expect(headerSrc).toContain('border-fuchsia-400')
+
+    const chromeSrc = readRepoFile('app/src/components/resumenGerencial/CostSheetChrome.jsx')
+    expect(chromeSrc).toContain('lg:grid-cols-[1fr_auto_1fr]')
+    expect(chromeSrc).toContain('General Todo el Buque')
+    expect(chromeSrc).toContain('Por O.T.')
+    expect(chromeSrc).toContain('border-rose-500/85')
+    expect(chromeSrc).not.toContain('Vista: Costos Generales')
+    expect(chromeSrc).not.toContain('onSelectOt')
   })
 })

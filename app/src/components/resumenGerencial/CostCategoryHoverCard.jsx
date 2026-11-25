@@ -13,7 +13,6 @@ function formatHoursClean(val) {
 
 const WORK_TYPE_BADGE = {
   PRC: 'bg-purple-950/90 text-purple-200 border-purple-500/60',
-  CTRL: 'bg-emerald-950/90 text-emerald-200 border-emerald-500/60',
   HH: 'bg-cyan-950/90 text-cyan-200 border-cyan-500/60'
 }
 
@@ -88,7 +87,7 @@ export default function CostCategoryHoverCard({
               ))}
             </div>
             <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between text-[11px]">
-              <span className="text-slate-400">{items.length} {items.length === 1 ? 'grupo' : 'grupos'} · PRC = Presupuesto (DEC-013)</span>
+              <span className="text-slate-400">{items.length} {items.length === 1 ? 'grupo' : 'grupos'} · PRC = Presupuesto ($0 · en Terceros)</span>
               <span className="font-mono font-black text-cyan-300 tabular-nums">Total: {formatHoursClean(totalHours)} hs</span>
             </div>
           </>

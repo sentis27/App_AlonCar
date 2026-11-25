@@ -28,7 +28,6 @@ export default function ResumenHojaTercerosPanel({
   thirdPartyRows = [],
   onSelectSheet,
   onChangeCostScope,
-  onSelectOt,
   onBackToSummary
 }) {
   const { user, profile } = useAuth()
@@ -111,7 +110,6 @@ export default function ResumenHojaTercerosPanel({
         activeOtId={activeOtId}
         onSelectSheet={onSelectSheet}
         onChangeCostScope={onChangeCostScope}
-        onSelectOt={onSelectOt}
         onBackToSummary={onBackToSummary}
       />
 

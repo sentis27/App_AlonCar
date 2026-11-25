@@ -85,11 +85,14 @@ export function filterResumenMaterialRows(scopedBaseRows = [], {
 }
 
 export function computeHorasKpis(scopedBaseRows = []) {
-  const approved = scopedBaseRows.filter((r) => !r.isPendingR && !r.isPresupuesto)
-  const pendingR = scopedBaseRows.filter((r) => r.isPendingR && !r.isCorrectedRR)
-  const correctedRR = scopedBaseRows.filter((r) => r.isCorrectedRR)
-  const missingOt = scopedBaseRows.filter((r) => r.hasMissingOt)
-  const budgetDec013 = scopedBaseRows.filter((r) => r.isPresupuesto)
+  const validRows = scopedBaseRows.filter(
+    (r) => r && !r.isControl && String(r.workType || '').trim().toUpperCase() !== 'CONTROL'
+  )
+  const approved = validRows.filter((r) => !r.isPendingR && !r.isPresupuesto)
+  const pendingR = validRows.filter((r) => r.isPendingR && !r.isCorrectedRR && !r.isPresupuesto)
+  const correctedRR = validRows.filter((r) => r.isCorrectedRR)
+  const missingOt = validRows.filter((r) => r.hasMissingOt)
+  const budgetDec013 = validRows.filter((r) => r.isPresupuesto)
 
   const sumHrs = (arr) => arr.reduce((acc, r) => acc + (r.hoursPhysical || 0), 0)
   const sumCost = (arr, field = 'costUsd') => arr.reduce((acc, r) => acc + (r[field] || 0), 0)
@@ -99,7 +102,7 @@ export function computeHorasKpis(scopedBaseRows = []) {
     { id: 'PENDING_R', label: 'Pendientes Revisión ("R")', count: formatUsd(sumCost(pendingR, 'pendingRUsd'), 0), subtext: `${sumHrs(pendingR).toFixed(1)} hs en revisión`, colorTheme: 'amber' },
     { id: 'CORRECTED_RR', label: 'Corregidas ("RR")', count: correctedRR.length, subtext: `${sumHrs(correctedRR).toFixed(1)} hs corregidas`, colorTheme: 'cyan' },
     { id: 'SIN_OT', label: 'Sin OT Asignada', count: missingOt.length, subtext: 'Partes pendientes de vincular OT', colorTheme: 'rose' },
-    { id: 'DEC_013', label: 'Presupuesto (DEC-013)', count: budgetDec013.length, subtext: `${sumHrs(budgetDec013).toFixed(1)} hs ($0 automático)`, colorTheme: 'purple' }
+    { id: 'DEC_013', label: 'Horas Presupuesto ($0)', count: `${sumHrs(budgetDec013).toFixed(1)} hs`, subtext: `${budgetDec013.length} partes · Costo US$ 0 (en Terceros)`, colorTheme: 'purple' }
   ]
 }
 
@@ -112,8 +115,9 @@ export function filterResumenLaborRows(scopedBaseRows = [], {
   searchQuery = ''
 } = {}) {
   return scopedBaseRows.filter((row) => {
+    if (!row || row.isControl || String(row.workType || '').trim().toUpperCase() === 'CONTROL') return false
     if (kpiFilter === 'APPROVED' && (row.isPendingR || row.isPresupuesto)) return false
-    if (kpiFilter === 'PENDING_R' && !(row.isPendingR && !row.isCorrectedRR)) return false
+    if (kpiFilter === 'PENDING_R' && !(row.isPendingR && !row.isCorrectedRR && !row.isPresupuesto)) return false
     if (kpiFilter === 'CORRECTED_RR' && !row.isCorrectedRR) return false
     if (kpiFilter === 'SIN_OT' && !row.hasMissingOt) return false
     if (kpiFilter === 'DEC_013' && !row.isPresupuesto) return false

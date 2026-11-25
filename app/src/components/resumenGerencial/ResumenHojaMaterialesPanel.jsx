@@ -32,7 +32,6 @@ export default function ResumenHojaMaterialesPanel({
   materialRows = [],
   onSelectSheet,
   onChangeCostScope,
-  onSelectOt,
   onBackToSummary
 }) {
   const { user, profile } = useAuth()
@@ -123,7 +122,6 @@ export default function ResumenHojaMaterialesPanel({
         activeOtId={activeOtId}
         onSelectSheet={onSelectSheet}
         onChangeCostScope={onChangeCostScope}
-        onSelectOt={onSelectOt}
         onBackToSummary={onBackToSummary}
       />
 

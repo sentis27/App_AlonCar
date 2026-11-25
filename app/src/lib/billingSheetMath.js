@@ -81,7 +81,7 @@ export function computeOtUnvaluedBreakdown({
   const matchOt = (row) => (otId === 'SIN_OT' ? !row.workOrderId : row.workOrderId === otId)
 
   for (const l of laborRows) {
-    if (!matchOt(l) || l.isPresupuesto) continue
+    if (!matchOt(l) || l.isPresupuesto || l.isControl || String(l.workType || '').trim().toUpperCase() === 'CONTROL') continue
     const missingRate = Number(l.hourlyRateUsd) <= 0
     if (missingRate || l.isPendingR) {
       hsCount += 1

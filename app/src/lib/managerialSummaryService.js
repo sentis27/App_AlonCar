@@ -6,7 +6,9 @@
  * Reglas de Oro cumplidas:
  * - Cero SQL directo en JSX (SKL-009 P1 / Candado #3).
  * - Fuente única contable vía `computeManagerialCostSummary` y `classifyWithdrawalCost` (`workCostRules.js`).
- * - Excluye `work_type = 'PRESUPUESTO'` del costo financiero en Horas (**DEC-013**).
+ * - Únicamente `work_type = 'HORA'` imputa costo al barco/OT:
+ *     · `CONTROL` se excluye por completo del Resumen Gerencial (solo estadística interna en `/horas`).
+ *     · `PRESUPUESTO` se incluye solo como horas informativas con tarifa y costo `US$ 0` (su importe ingresa en Terceros).
  * - Mantiene `ELEM. SEGURIDAD (REF. ASTILLERO)` separado e informativo (nunca suma al Total US$).
  * - Toda mutación del Remito Comercial o parámetros audita en `audit_logs` via `auditService.js`.
  */
@@ -518,8 +520,20 @@ function resolveHourlyRateForLog({ log, worker, rateCards = [], defaultDollarRat
   return { rateUsd: 0, source: 'SIN_TARIFA' }
 }
 
+function normalizeLaborModality(rawVal) {
+  const upper = normAscii(rawVal)
+  if (!upper) return ''
+  if (upper === 'HORA' || upper === 'HH' || upper === 'HORAS') return 'HORA'
+  if (upper === 'PRESUPUESTO' || upper === 'PRC') return 'PRESUPUESTO'
+  if (upper === 'CONTROL' || upper === 'CTRL') return 'CONTROL'
+  return ''
+}
+
 /**
- * Enriquece imputaciones de Mano de Obra (`labor_logs`) aplicando DEC-013 y tarifario quincenal.
+ * Enriquece imputaciones de Mano de Obra (`labor_logs`) aplicando la regla contable de modalidades:
+ * - Solo `HORA` computa costo real USD al barco/OT.
+ * - `PRESUPUESTO` se conserva solo como horas físicas informativas con tarifa y costo `US$ 0` (ingresa por Terceros).
+ * - `CONTROL` se excluye por completo del Resumen Gerencial (`excludeControl = true` por defecto).
  */
 export function enrichLaborLogs({
   laborLogs = [],
@@ -528,146 +542,157 @@ export function enrichLaborLogs({
   ships = [],
   workOrders = [],
   workItems = [],
-  defaultDollarRate = 1500
+  defaultDollarRate = 1500,
+  excludeControl = true
 }) {
   const shipMap = new Map(ships.map((s) => [s.id, s]))
   const woMap = new Map(workOrders.map((w) => [w.id, w]))
   const wiMap = new Map(workItems.map((wi) => [wi.id, wi]))
   const workerById = new Map(workers.map((w) => [w.id, w]))
   const workerByName = new Map(workers.map((w) => [normKey(w.name), w]))
-  const VALID_WORK_TYPES = new Set(['HORA', 'PRESUPUESTO', 'CONTROL'])
 
-  return laborLogs.map((log) => {
-    const worker =
-      (log.worker_id && workerById.get(log.worker_id)) ||
-      workerByName.get(normKey(log.worker_name)) ||
-      null
+  return laborLogs
+    .map((log) => {
+      if (!log) return null
+      const worker =
+        (log.worker_id && workerById.get(log.worker_id)) ||
+        workerByName.get(normKey(log.worker_name)) ||
+        null
 
-    const resolvedWo = log.work_order_id ? woMap.get(log.work_order_id) || null : null
-    const resolvedWi = log.work_item_id ? wiMap.get(log.work_item_id) || null : null
-    const resolvedShipId = log.ship_id || resolvedWo?.ship_id || null
-    const resolvedShip = resolvedShipId ? shipMap.get(resolvedShipId) || null : null
+      const resolvedWo = log.work_order_id ? woMap.get(log.work_order_id) || null : null
+      const resolvedWi = log.work_item_id ? wiMap.get(log.work_item_id) || null : null
+      const resolvedShipId = log.ship_id || resolvedWo?.ship_id || null
+      const resolvedShip = resolvedShipId ? shipMap.get(resolvedShipId) || null : null
 
-    let hNorm = Number(log.hours_normal ?? log.hours_worked ?? 0) || 0
-    const h50 = Number(log.hours_extra_50 || 0) || 0
-    const h100 = Number(log.hours_extra_100 || 0) || 0
-    if (hNorm === 0 && h50 === 0 && h100 === 0 && Number(log.hours_worked) > 0) {
-      hNorm = Number(log.hours_worked) || 0
-    }
-    const hoursPhysical = round2(Number(log.hours_worked) || hNorm + h50 + h100)
+      const rawLogWt = normalizeLaborModality(log.work_type)
+      const wiWt = normalizeLaborModality(resolvedWi?.work_type)
+      const woWt = normalizeLaborModality(resolvedWo?.work_type)
+      const workTypeUpper = rawLogWt || wiWt || woWt || 'HORA'
 
-    const isContractor =
-      normKey(log.worker_type) === 'CONTRATISTA' ||
-      normKey(log.worker_type) === 'TALLER' ||
-      normKey(worker?.admin_center) === 'CONTRATISTA' ||
-      normKey(worker?.admin_center) === 'TALLER'
+      const isControl =
+        workTypeUpper === 'CONTROL' || normAscii(log.cost_center) === 'CONTROL'
+      if (excludeControl && isControl) return null
 
-    const mult50 = isContractor ? 1.0 : 1.5
-    const mult100 = isContractor ? 1.0 : 2.0
-    const hoursExtra50Equiv = round2(h50 * mult50)
-    const hoursExtra100Equiv = round2(h100 * mult100)
-    const hoursExtraPhysical = round2(h50 + h100)
-    const hoursExtraEquiv = round2(hoursExtra50Equiv + hoursExtra100Equiv)
-    const hoursEquiv = isContractor
-      ? hoursPhysical
-      : round2(hNorm + hoursExtraEquiv)
+      let hNorm = Number(log.hours_normal ?? log.hours_worked ?? 0) || 0
+      const h50 = Number(log.hours_extra_50 || 0) || 0
+      const h100 = Number(log.hours_extra_100 || 0) || 0
+      if (hNorm === 0 && h50 === 0 && h100 === 0 && Number(log.hours_worked) > 0) {
+        hNorm = Number(log.hours_worked) || 0
+      }
+      const hoursPhysical = round2(Number(log.hours_worked) || hNorm + h50 + h100)
 
-    const rawLogWt = normKey(log.work_type)
-    const wiWt = normKey(resolvedWi?.work_type)
-    const woWt = normKey(resolvedWo?.work_type)
-    const workTypeUpper = VALID_WORK_TYPES.has(rawLogWt)
-      ? rawLogWt
-      : VALID_WORK_TYPES.has(wiWt)
-        ? wiWt
-        : VALID_WORK_TYPES.has(woWt)
-          ? woWt
-          : 'HORA'
+      const isContractor =
+        normKey(log.worker_type) === 'CONTRATISTA' ||
+        normKey(log.worker_type) === 'TALLER' ||
+        normKey(worker?.admin_center) === 'CONTRATISTA' ||
+        normKey(worker?.admin_center) === 'TALLER'
 
-    const isPresupuesto =
-      workTypeUpper === 'PRESUPUESTO' || normKey(log.cost_center) === 'PRESUPUESTO'
-    const workTypeCode = isPresupuesto ? 'PRC' : mapWorkTypeToHoverCode(workTypeUpper)
-    const contractorGroup = isContractor
-      ? normKey(worker?.work_group || log.worker_name || 'CONTRATISTA')
-      : 'ASTILLERO'
+      const mult50 = isContractor ? 1.0 : 1.5
+      const mult100 = isContractor ? 1.0 : 2.0
+      const hoursExtra50Equiv = round2(h50 * mult50)
+      const hoursExtra100Equiv = round2(h100 * mult100)
+      const hoursExtraPhysical = round2(h50 + h100)
+      const hoursExtraEquiv = round2(hoursExtra50Equiv + hoursExtra100Equiv)
+      const hoursEquiv = isContractor
+        ? hoursPhysical
+        : round2(hNorm + hoursExtraEquiv)
 
-    const { rateUsd, source: rateSource } = resolveHourlyRateForLog({
-      log,
-      worker,
-      rateCards,
-      defaultDollarRate
-    })
+      const isPresupuesto =
+        !isControl && (workTypeUpper === 'PRESUPUESTO' || normAscii(log.cost_center) === 'PRESUPUESTO')
+      const isBillableHora = !isControl && !isPresupuesto && workTypeUpper === 'HORA'
+      const workTypeCode = isPresupuesto ? 'PRC' : mapWorkTypeToHoverCode(workTypeUpper)
+      const contractorGroup = isContractor
+        ? normKey(worker?.work_group || log.worker_name || 'CONTRATISTA')
+        : 'ASTILLERO'
 
-    const costUsd = isPresupuesto ? 0 : round2(hoursEquiv * rateUsd)
-    const approvalRaw = normKey(log.approval_status || 'APROBADO')
-    const isPendingR = approvalRaw === 'R' || approvalRaw === 'RR'
-    const approvedUsd = isPendingR ? 0 : costUsd
-    const pendingRUsd = isPendingR ? costUsd : 0
-    const prcNumber = String(log.notes || '').match(/PRC[-_\s#]*(\d+)/i)?.[1] || ''
-    const workerName = log.worker_name || worker?.name || 'Operario'
-    const workerCategory = normKey(worker?.category || '')
-    const workerTrade = normKey(worker?.trade || '')
-    const rubro = normKey(log.rubro || worker?.trade || 'GENERAL')
-    const notes = log.notes || log.review_reason || ''
-    const equipmentType = classifyEquipmentLogType({
-      rubro,
-      workerName,
-      workerCategory,
-      workerTrade,
-      notes
-    })
+      const resolvedRate = isBillableHora
+        ? resolveHourlyRateForLog({
+            log,
+            worker,
+            rateCards,
+            defaultDollarRate
+          })
+        : { rateUsd: 0, source: isPresupuesto ? 'PRESUPUESTO_0' : 'EXCLUIDO' }
 
-    const logDateIso = toArIsoDate(log.date_logged)
+      const rateUsd = isBillableHora ? resolvedRate.rateUsd : 0
+      const rateSource = resolvedRate.source
+      const costUsd = isBillableHora ? round2(hoursEquiv * rateUsd) : 0
+      const approvalRaw = normKey(log.approval_status || 'APROBADO')
+      const isPendingR = approvalRaw === 'R' || approvalRaw === 'RR'
+      const approvedUsd = isPendingR ? 0 : costUsd
+      const pendingRUsd = isPendingR ? costUsd : 0
+      const prcNumber =
+        String(log.notes || '').match(/PRC[-_\s#]*(\d+)/i)?.[1] ||
+        String(resolvedWi?.specific_budget_id || resolvedWo?.budget_code || '').trim()
+      const workerName = log.worker_name || worker?.name || 'Operario'
+      const workerCategory = normKey(worker?.category || '')
+      const workerTrade = normKey(worker?.trade || '')
+      const rubro = normKey(log.rubro || worker?.trade || 'GENERAL')
+      const notes = log.notes || log.review_reason || ''
+      const equipmentType = classifyEquipmentLogType({
+        rubro,
+        workerName,
+        workerCategory,
+        workerTrade,
+        notes
+      })
 
-    return {
-      id: log.id,
-      date: logDateIso,
-      dateDisplay: formatDateAr(logDateIso, { fallback: '' }),
-      year: extractYear(logDateIso),
-      shipId: resolvedShipId,
-      shipName: resolvedShip?.name || 'SIN BUQUE',
-      workOrderId: log.work_order_id || null,
-      otNumber: resolvedWo?.ot_number || 'Sin OT',
-      otTitle: resolvedWo?.title || '',
-      otLabel: formatOtAnalysisLabel({
-        id: log.work_order_id || 'SIN_OT',
+      const logDateIso = toArIsoDate(log.date_logged)
+
+      return {
+        id: log.id,
+        date: logDateIso,
+        dateDisplay: formatDateAr(logDateIso, { fallback: '' }),
+        year: extractYear(logDateIso),
+        shipId: resolvedShipId,
+        shipName: resolvedShip?.name || 'SIN BUQUE',
+        workOrderId: log.work_order_id || null,
         otNumber: resolvedWo?.ot_number || 'Sin OT',
-        title: resolvedWo?.title || '',
-        description: resolvedWo?.description || ''
-      }),
-      workerName,
-      contractorGroup,
-      isContractor,
-      workerType: isContractor ? 'Contratista' : 'Astillero',
-      workerCategory,
-      workerTrade,
-      rubro,
-      equipmentType,
-      workType: workTypeUpper || 'HORA',
-      workTypeCode,
-      isPresupuesto,
-      prcNumber,
-      hoursNormal: round2(hNorm),
-      hours50: round2(h50),
-      hours100: round2(h100),
-      hoursExtraPhysical,
-      hoursExtra50Equiv,
-      hoursExtra100Equiv,
-      hoursExtraEquiv,
-      hoursPhysical,
-      hoursEquiv,
-      hourlyRateUsd: rateUsd,
-      rateSource,
-      costUsd,
-      approvedUsd,
-      pendingRUsd,
-      approvalStatus: log.approval_status || 'Aprobado',
-      isPendingR,
-      isCorrectedRR: approvalRaw === 'RR',
-      hasMissingOt: !log.work_order_id,
-      hasMissingPrc: isPresupuesto && !prcNumber,
-      notes
-    }
-  }).sort((a, b) => compareIsoDatesDesc(a.date, b.date))
+        otTitle: resolvedWo?.title || '',
+        otLabel: formatOtAnalysisLabel({
+          id: log.work_order_id || 'SIN_OT',
+          otNumber: resolvedWo?.ot_number || 'Sin OT',
+          title: resolvedWo?.title || '',
+          description: resolvedWo?.description || ''
+        }),
+        workerName,
+        contractorGroup,
+        isContractor,
+        workerType: isContractor ? 'Contratista' : 'Astillero',
+        workerCategory,
+        workerTrade,
+        rubro,
+        equipmentType,
+        workType: workTypeUpper || 'HORA',
+        workTypeCode,
+        isControl,
+        isPresupuesto,
+        isBillableHora,
+        prcNumber,
+        hoursNormal: round2(hNorm),
+        hours50: round2(h50),
+        hours100: round2(h100),
+        hoursExtraPhysical,
+        hoursExtra50Equiv,
+        hoursExtra100Equiv,
+        hoursExtraEquiv,
+        hoursPhysical,
+        hoursEquiv,
+        hourlyRateUsd: rateUsd,
+        rateSource,
+        costUsd,
+        approvedUsd,
+        pendingRUsd,
+        approvalStatus: log.approval_status || 'Aprobado',
+        isPendingR,
+        isCorrectedRR: approvalRaw === 'RR',
+        hasMissingOt: !log.work_order_id,
+        hasMissingPrc: isPresupuesto && !prcNumber,
+        notes
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => compareIsoDatesDesc(a.date, b.date))
 }
 
 /**
@@ -846,10 +871,15 @@ export function computeShipManagerialSummary({
     let horasUsd = 0
     let horasPendAprobarUsd = 0
     let physicalHours = 0
+    let billableHours = 0
+    let presupuestoHours = 0
     for (const l of labs) {
+      if (l.isControl || normKey(l.workType) === 'CONTROL') continue
       horasUsd += l.approvedUsd
       horasPendAprobarUsd += l.pendingRUsd
       physicalHours += l.hoursPhysical
+      if (l.isPresupuesto) presupuestoHours += l.hoursPhysical
+      else billableHours += l.hoursPhysical
     }
 
     const tercerosUsd = tps.reduce((acc, t) => acc + t.amountUsd, 0)
@@ -868,7 +898,9 @@ export function computeShipManagerialSummary({
       matPlusConsUsd: round2(summary.materialesUsd + summary.consumiblesObraUsd),
       manoObraTotalUsd: round2(summary.tercerosUsd + summary.horasUsd + summary.horasPendAprobarUsd),
       weightKg: round2(weightKg),
-      physicalHours: round2(physicalHours)
+      physicalHours: round2(physicalHours),
+      billableHours: round2(billableHours),
+      presupuestoHours: round2(presupuestoHours)
     }
   }
 

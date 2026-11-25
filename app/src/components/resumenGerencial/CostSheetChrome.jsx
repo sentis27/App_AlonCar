@@ -9,17 +9,43 @@ import {
   Lock
 } from 'lucide-react'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
-import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 const SHEETS = [
-  { id: 'materiales', label: 'MATERIALES', icon: Package },
-  { id: 'horas', label: 'HORAS', icon: Clock },
-  { id: 'terceros', label: 'TERCEROS', icon: Wrench }
+  {
+    id: 'materiales',
+    label: 'MATERIALES',
+    icon: Package,
+    inactiveCls:
+      'bg-slate-950 border border-blue-500/75 text-blue-200 hover:bg-blue-950/50 hover:border-blue-400',
+    activeCls:
+      'bg-blue-950/95 border-2 border-blue-400 text-white shadow-sm shadow-blue-500/25 ring-1 ring-blue-400/35'
+  },
+  {
+    id: 'horas',
+    label: 'HORAS',
+    icon: Clock,
+    inactiveCls:
+      'bg-slate-950 border border-violet-500/75 text-violet-200 hover:bg-violet-950/50 hover:border-violet-400',
+    activeCls:
+      'bg-violet-950/95 border-2 border-violet-400 text-white shadow-sm shadow-violet-500/25 ring-1 ring-violet-400/35'
+  },
+  {
+    id: 'terceros',
+    label: 'TERCEROS',
+    icon: Wrench,
+    inactiveCls:
+      'bg-slate-950 border border-emerald-500/75 text-emerald-200 hover:bg-emerald-950/50 hover:border-emerald-400',
+    activeCls:
+      'bg-emerald-950/95 border-2 border-emerald-400 text-white shadow-sm shadow-emerald-500/25 ring-1 ring-emerald-400/35'
+  }
 ]
 
 /**
- * Barra superior compartida para las 3 Hojas de Costo Solo Lectura (Arquetipo Gallina).
- * Permite volver a GS-004 RESUMEN, cambiar entre GENERAL / POR O.T. y navegar entre hojas.
+ * Barra superior compartida (Zona 2) para las 3 Hojas de Costo Solo Lectura (Arquetipo Gallina).
+ * Distribución equilibrada en 3 anclajes sin duplicar Buque/OT de Zona 1:
+ * - Izquierda: volver a GS-004 RESUMEN.
+ * - Centro: selector compacto MATERIALES / HORAS / TERCEROS + Solo Lectura.
+ * - Derecha: interruptor GENERAL TODO EL BUQUE / POR O.T.
  */
 export function CostSheetHeaderBar({
   activeSheet,
@@ -29,7 +55,6 @@ export function CostSheetHeaderBar({
   activeOtId,
   onSelectSheet,
   onChangeCostScope,
-  onSelectOt,
   onBackToSummary
 }) {
   const activeOt = otRows.find((o) => o.id === activeOtId) || null
@@ -38,24 +63,27 @@ export function CostSheetHeaderBar({
 
   return (
     <div
-      className={`rounded-xl p-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3 border transition-colors ${
+      className={`rounded-xl px-3 py-2 grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-center gap-2 border transition-colors ${
         isGeneral
-          ? 'bg-cyan-950/20 border-cyan-500/50'
-          : 'bg-violet-950/25 border-violet-500/50'
+          ? 'bg-cyan-950/20 border-cyan-500/45'
+          : 'bg-violet-950/25 border-violet-500/45'
       }`}
     >
-      <div className="flex flex-wrap items-center gap-2.5">
+      {/* Izquierda: Volver a Resumen GS-004 */}
+      <div className="flex items-center justify-start">
         <button
           type="button"
           onClick={onBackToSummary}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-600/80 cursor-pointer transition-colors"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-950/55 hover:bg-rose-900/70 text-rose-200 hover:text-white border-2 border-rose-500/85 hover:border-rose-400 cursor-pointer transition-all shadow-sm shadow-rose-950/30 whitespace-nowrap"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           Volver a Resumen GS-004
         </button>
+      </div>
 
-        {/* Selector de hoja */}
-        <div className="flex items-center bg-slate-950/90 border border-slate-800 rounded-lg p-0.5">
+      {/* Centro: Selector de hoja + Solo Lectura */}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <div className="inline-flex items-center gap-1 bg-slate-950/95 border border-slate-800 rounded-lg p-0.5">
           {SHEETS.map((s) => {
             const Icon = s.icon
             const isActive = activeSheet === s.id
@@ -64,91 +92,52 @@ export function CostSheetHeaderBar({
                 key={s.id}
                 type="button"
                 onClick={() => onSelectSheet(s.id)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
-                  isActive
-                    ? isGeneral
-                      ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
-                      : 'bg-violet-500/25 text-violet-200 border border-violet-400/50'
-                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-extrabold tracking-wide transition-all cursor-pointer whitespace-nowrap ${
+                  isActive ? s.activeCls : s.inactiveCls
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
+                <Icon className="w-3 h-3" />
                 {s.label}
               </button>
             )
           })}
         </div>
 
-        {/* Badge de vista solo lectura sin palabras internas */}
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/10 text-sky-300 border border-sky-400/35">
-          <Eye className="w-3.5 h-3.5" />
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10.5px] font-bold bg-sky-950/60 text-sky-300 border border-sky-400/50 whitespace-nowrap select-none">
+          <Eye className="w-3 h-3" />
           Solo Lectura
-          <Lock className="w-3 h-3 opacity-80" />
-        </span>
-
-        {/* Indicador cromático inequívoco: Costo General (Cian) vs Costo por OT (Violeta) */}
-        <span
-          className={`px-2.5 py-1 rounded-full text-[10.5px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
-            isGeneral
-              ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/50'
-              : 'bg-violet-500/25 text-violet-200 border-violet-400/50'
-          }`}
-          title={!isGeneral ? (activeOt?.canonicalTooltip || activeOtDisplay) : undefined}
-        >
-          {isGeneral ? 'Vista: Costos Generales (Buque)' : (
-            <>
-              <span>Vista O.T.:</span>
-              <CanonicalOtBadge wo={activeOt?.wo || null} otNumber={activeOt?.otNumber} otTitle={activeOt?.title} tooltipOverride={activeOt?.canonicalTooltip || ''} variant="compact" className="max-w-[220px]" />
-            </>
-          )}
+          <Lock className="w-2.5 h-2.5 opacity-80" />
         </span>
       </div>
 
-      {/* Switch GENERAL (todo el buque) <-> POR O.T. (OT específica) */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] text-slate-400 font-semibold">
-          Buque: <strong className="text-slate-100">{shipName}</strong>
-        </span>
-
-        <div className="flex items-center bg-slate-950/90 border border-slate-800 rounded-lg p-0.5">
+      {/* Esquina derecha: Switch compacto GENERAL TODO EL BUQUE / POR O.T. */}
+      <div className="flex items-center justify-start lg:justify-end">
+        <div className="inline-flex items-center gap-1 bg-slate-950/95 border border-slate-800 rounded-lg p-0.5">
           <button
             type="button"
             onClick={() => onChangeCostScope('GENERAL')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase cursor-pointer transition-colors ${
+            title={shipName ? `Ver todos los movimientos del buque ${shipName}` : 'Ver todos los movimientos del buque'}
+            className={`px-2.5 py-1 rounded-md text-[10.5px] font-extrabold uppercase tracking-wide cursor-pointer transition-all whitespace-nowrap ${
               costScope === 'GENERAL'
-                ? 'bg-cyan-600/30 text-cyan-200 border border-cyan-400/50'
-                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                ? 'bg-cyan-950/95 text-cyan-100 border-2 border-cyan-400 shadow-sm shadow-cyan-500/25'
+                : 'bg-slate-950 text-slate-400 hover:text-cyan-200 border border-cyan-500/45 hover:border-cyan-400/80'
             }`}
           >
-            General (Todo el Buque)
+            General Todo el Buque
           </button>
           <button
             type="button"
             onClick={() => onChangeCostScope('OT')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase cursor-pointer transition-colors ${
+            title={activeOt ? (activeOt.canonicalTooltip || activeOtDisplay) : 'Filtrar por la Orden de Trabajo seleccionada en Zona 1'}
+            className={`px-2.5 py-1 rounded-md text-[10.5px] font-extrabold uppercase tracking-wide cursor-pointer transition-all whitespace-nowrap ${
               costScope === 'OT'
-                ? 'bg-violet-600/30 text-violet-200 border border-violet-400/50'
-                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                ? 'bg-violet-950/95 text-violet-100 border-2 border-violet-400 shadow-sm shadow-violet-500/25'
+                : 'bg-slate-950 text-slate-400 hover:text-violet-200 border border-violet-500/45 hover:border-violet-400/80'
             }`}
           >
-            Por O.T {activeOt ? `(${activeOtDisplay})` : ''}
+            Por O.T.
           </button>
         </div>
-
-        {costScope === 'OT' && otRows.length > 0 && (
-          <select
-            value={activeOtId || ''}
-            onChange={(e) => onSelectOt(e.target.value)}
-            title={activeOt?.canonicalTooltip || activeOtDisplay}
-            className="bg-slate-950 border border-violet-500/40 rounded-lg px-2 py-1 text-xs font-semibold text-violet-100 outline-none"
-          >
-            {otRows.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.otLabel || `${o.otNumber} · ${o.title}`}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
     </div>
   )

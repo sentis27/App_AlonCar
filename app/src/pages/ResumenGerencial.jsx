@@ -153,7 +153,6 @@ export default function ResumenGerencial() {
                 setActiveCostSheet(nextSheet)
               }}
               onChangeCostScope={setCostSheetScope}
-              onSelectOt={state.setSelectedOtId}
               onBackToSummary={() => {
                 setCostSheetInitialKpi('ALL')
                 setResumenSubView('RESUMEN')
@@ -174,7 +173,6 @@ export default function ResumenGerencial() {
                 setActiveCostSheet(nextSheet)
               }}
               onChangeCostScope={setCostSheetScope}
-              onSelectOt={state.setSelectedOtId}
               onBackToSummary={() => {
                 setCostSheetInitialKpi('ALL')
                 setResumenSubView('RESUMEN')
@@ -195,7 +193,6 @@ export default function ResumenGerencial() {
                 setActiveCostSheet(nextSheet)
               }}
               onChangeCostScope={setCostSheetScope}
-              onSelectOt={state.setSelectedOtId}
               onBackToSummary={() => {
                 setCostSheetInitialKpi('ALL')
                 setResumenSubView('RESUMEN')

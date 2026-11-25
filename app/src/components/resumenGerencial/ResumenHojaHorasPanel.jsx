@@ -31,7 +31,6 @@ export default function ResumenHojaHorasPanel({
   laborRows = [],
   onSelectSheet,
   onChangeCostScope,
-  onSelectOt,
   onBackToSummary
 }) {
   const { user, profile } = useAuth()
@@ -76,8 +75,9 @@ export default function ResumenHojaHorasPanel({
     () => filteredRows.reduce((acc, r) => ({
       hoursPhysical: acc.hoursPhysical + (r.hoursPhysical || 0),
       hoursExtraEquiv: acc.hoursExtraEquiv + (r.hoursExtraEquiv || 0),
+      presupuestoHours: acc.presupuestoHours + (r.isPresupuesto ? (r.hoursPhysical || 0) : 0),
       totalUsd: acc.totalUsd + (r.costUsd || 0)
-    }), { hoursPhysical: 0, hoursExtraEquiv: 0, totalUsd: 0 }),
+    }), { hoursPhysical: 0, hoursExtraEquiv: 0, presupuestoHours: 0, totalUsd: 0 }),
     [filteredRows]
   )
 
@@ -115,14 +115,13 @@ export default function ResumenHojaHorasPanel({
         activeOtId={activeOtId}
         onSelectSheet={onSelectSheet}
         onChangeCostScope={onChangeCostScope}
-        onSelectOt={onSelectOt}
         onBackToSummary={onBackToSummary}
       />
 
       <div className="alon-zone-kpis p-3 bg-slate-900/70">
         <KpiRadar
-          title="⏱️ RADAR DE MANO DE OBRA, RECARGOS Y DEC-013 (SOLO LECTURA)"
-          subtitle="Clic en cualquier tarjeta para aislar estado o modalidad"
+          title="⏱️ RADAR DE MANO DE OBRA, RECARGOS Y PRESUPUESTO ($0) (SOLO LECTURA)"
+          subtitle="Clic en cualquier tarjeta para aislar estado o modalidad · Modalidad CONTROL excluida"
           cards={kpiCards}
           activeFilterId={kpiFilter === 'ALL' ? null : kpiFilter}
           onCardClick={(id) => setKpiFilter((prev) => (prev === id ? 'ALL' : id))}
@@ -188,7 +187,7 @@ export default function ResumenHojaHorasPanel({
       <div className="alon-zone-grid overflow-hidden bg-slate-900/75">
         <ReadOnlyGridRibbon
           badgeText={`👁️ HORAS · ${costScope === 'OT' ? 'POR O.T' : 'GENERAL'} (SOLO LECTURA)`}
-          hintText="Vista de consulta protegida · Valorizada por tarifario quincenal (Astillero c/ recargos, Presupuestos $0)."
+          hintText="Solo modalidad HORA imputa costo · Presupuesto = US$ 0 informativo (va en Terceros) · Control excluido."
           totalRows={filteredRows.length}
           entityName="partes"
           exportRows={filteredRows}
@@ -276,9 +275,18 @@ export default function ResumenHojaHorasPanel({
                     <td className="px-2.5 py-1.5 text-right">
                       <OvertimeBreakdownCell row={r} />
                     </td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums">{formatUsd(r.hourlyRateUsd)}</td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums font-bold text-emerald-300">
-                      {formatUsd(r.costUsd)}
+                    <td
+                      className={`px-2.5 py-1.5 text-right tabular-nums ${r.isPresupuesto ? 'text-purple-300/75' : ''}`}
+                      title={r.isPresupuesto ? 'Modalidad Presupuesto: no imputa tarifa horaria; el costo ingresa por Terceros' : undefined}
+                    >
+                      {formatUsd(r.isPresupuesto ? 0 : r.hourlyRateUsd)}
+                    </td>
+                    <td
+                      className={`px-2.5 py-1.5 text-right tabular-nums font-bold ${
+                        r.isPresupuesto ? 'text-purple-300/80' : 'text-emerald-300'
+                      }`}
+                    >
+                      {formatUsd(r.isPresupuesto ? 0 : r.costUsd)}
                     </td>
                     <td className="px-2.5 py-1.5 text-slate-400 truncate max-w-[180px]" title={r.notes}>
                       {r.notes || '—'}
@@ -300,6 +308,9 @@ export default function ResumenHojaHorasPanel({
           globalAggregates={[
             { label: 'TOTAL HORAS US$', value: formatUsd(summaryStats.totalUsd), highlight: true },
             { label: 'HORAS FÍSICAS', value: `${summaryStats.hoursPhysical.toFixed(1)} hs` },
+            ...(summaryStats.presupuestoHours > 0
+              ? [{ label: 'HS PRESUP. ($0)', value: `${summaryStats.presupuestoHours.toFixed(1)} hs` }]
+              : []),
             { label: 'HORAS EXTRA (CONV.)', value: `${summaryStats.hoursExtraEquiv.toFixed(1)} hs` }
           ]}
         />

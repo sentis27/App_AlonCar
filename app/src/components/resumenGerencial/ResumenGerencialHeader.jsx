@@ -10,7 +10,35 @@ import {
 import { RESUMEN_GERENCIAL_TABS, formatUsd } from '../../lib/drydockCatalogConstants'
 import { formatTimeAr } from '../../lib/dateTimeCanonical'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
+import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import CanonicalActiveSubmoduleBadge from '../canonical/CanonicalActiveSubmoduleBadge'
+
+const SCOPE_OPTIONS = [
+  {
+    id: 'activas',
+    label: 'Obras Activas',
+    activeCls:
+      'bg-emerald-500/25 border-emerald-400 text-emerald-100 font-extrabold shadow-sm shadow-emerald-500/25 ring-1 ring-emerald-400/40',
+    inactiveCls:
+      'bg-slate-950 border-emerald-500/55 text-emerald-300/90 hover:border-emerald-400 hover:text-emerald-200'
+  },
+  {
+    id: 'historico',
+    label: 'Histórico',
+    activeCls:
+      'bg-amber-950/90 border-amber-400 text-amber-200 font-extrabold shadow-sm shadow-amber-500/20 ring-1 ring-amber-400/35',
+    inactiveCls:
+      'bg-slate-950 border-slate-700/90 text-slate-400 hover:border-amber-500/65 hover:text-amber-200'
+  },
+  {
+    id: 'mixto',
+    label: 'Mixto',
+    activeCls:
+      'bg-sky-950/90 border-sky-400 text-sky-200 font-extrabold shadow-sm shadow-sky-500/20 ring-1 ring-sky-400/35',
+    inactiveCls:
+      'bg-slate-950 border-slate-700/90 text-slate-400 hover:border-sky-500/65 hover:text-sky-200'
+  }
+]
 
 /**
  * Zona 1 Canónica del Resumen Gerencial (Pestañas migradas al Menú Lateral Acordeón):
@@ -130,67 +158,77 @@ export default function ResumenGerencialHeader({
       {/* Fila 2: Parámetros Iniciales de Zona 1 (Buque + OT arriba) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
         {isObraScopedView ? (
-          <div className="flex flex-wrap items-center gap-2 flex-1">
-            <select
-              aria-label="Seleccionar Buque"
-              value={selectedShipId}
-              onChange={(e) => onChangeShip(e.target.value)}
-              className="w-full sm:w-auto bg-slate-950 border border-cyan-500/45 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white outline-none min-h-[34px]"
-            >
-              {selectableShips.length === 0 ? (
-                <option value="">Sin buques para este alcance</option>
-              ) : (
-                selectableShips.map((s) => (
-                  <option key={s.id} value={s.id}>Buque: {s.name} ({s.status || 'Activo'})</option>
-                ))
-              )}
-            </select>
+          <div className="w-full grid grid-cols-1 lg:grid-cols-[minmax(0,44%)_1fr] items-center gap-2 lg:gap-3">
+            <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 min-w-0">
+              <select
+                aria-label="Seleccionar Buque"
+                value={selectedShipId}
+                onChange={(e) => onChangeShip(e.target.value)}
+                className={`w-full sm:w-auto shrink-0 rounded-lg px-2.5 py-1 text-xs font-bold outline-none cursor-pointer transition-all min-h-[32px] border-2 ${
+                  selectedShipId
+                    ? 'bg-cyan-950/75 border-cyan-400 text-cyan-50 shadow-sm shadow-cyan-500/20'
+                    : 'bg-slate-950 border-cyan-500/60 text-cyan-200 hover:border-cyan-400'
+                }`}
+              >
+                {selectableShips.length === 0 ? (
+                  <option value="" className="bg-slate-900">Sin buques para este alcance</option>
+                ) : (
+                  selectableShips.map((s) => (
+                    <option key={s.id} value={s.id} className="bg-slate-900">Buque: {s.name} ({s.status || 'Activo'})</option>
+                  ))
+                )}
+              </select>
 
-            <select
-              aria-label="Seleccionar Orden de Trabajo"
-              value={selectedOtId || ''}
-              onChange={(e) => onChangeOt(e.target.value)}
-              disabled={otRows.length === 0}
-              className="w-full sm:w-auto sm:min-w-[230px] max-w-full sm:max-w-[360px] bg-slate-950 border border-violet-500/45 rounded-lg px-2.5 py-1.5 text-xs font-bold text-violet-100 outline-none disabled:opacity-50 min-h-[34px]"
-              title={otRows.find((o) => o.id === selectedOtId)?.canonicalTooltip || 'Filtra el detalle por Orden de Trabajo manteniendo intacto el Costo General del buque'}
-            >
-              {otRows.length === 0 ? (
-                <option value="">Sin OTs para este buque/alcance</option>
-              ) : (
-                otRows.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    OT: {o.otLabel || `${o.otNumber} · ${o.title}`} ({formatUsd(o.directTotalUsd, 0)})
-                  </option>
-                ))
-              )}
-            </select>
-
-            <div className="hidden md:flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-[11px]">
-              {[
-                { id: 'activas', label: 'Obras Activas' },
-                { id: 'historico', label: 'Histórico' },
-                { id: 'mixto', label: 'Mixto' }
-              ].map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => onChangeScope(s.id)}
-                  className={`px-2 py-1 rounded-md font-semibold cursor-pointer ${scope === s.id ? 'bg-sky-500/25 text-sky-200' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  {s.label}
-                </button>
-              ))}
+              <select
+                aria-label="Seleccionar Orden de Trabajo"
+                value={selectedOtId || ''}
+                onChange={(e) => onChangeOt(e.target.value)}
+                disabled={otRows.length === 0}
+                className={`w-full sm:w-auto lg:flex-1 lg:min-w-0 max-w-full sm:max-w-[350px] rounded-lg px-2.5 py-1 text-xs font-bold outline-none cursor-pointer transition-all disabled:opacity-50 min-h-[32px] border-2 ${
+                  selectedOtId
+                    ? 'bg-fuchsia-950/55 border-fuchsia-400/90 text-fuchsia-100 shadow-sm shadow-fuchsia-500/20'
+                    : 'bg-slate-950 border-violet-500/60 text-violet-200 hover:border-fuchsia-400'
+                }`}
+                title={otRows.find((o) => o.id === selectedOtId)?.canonicalTooltip || 'Filtra el detalle por Orden de Trabajo manteniendo intacto el Costo General del buque'}
+              >
+                {otRows.length === 0 ? (
+                  <option value="" className="bg-slate-900">Sin OTs para este buque/alcance</option>
+                ) : (
+                  otRows.map((o) => (
+                    <option key={o.id} value={o.id} className="bg-slate-900">
+                      OT: {o.otLabel || `${o.otNumber} · ${o.title}`} ({formatUsd(o.directTotalUsd, 0)})
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
 
-            <select
-              aria-label="Filtrar Año"
-              value={yearFilter}
-              onChange={(e) => onChangeYear(e.target.value)}
-              className="hidden md:block bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 outline-none"
-            >
-              <option value="TODOS">Año: Todos</option>
-              {availableYears.map((yr) => <option key={yr} value={yr}>Año {yr}</option>)}
-            </select>
+            <div className="hidden md:flex items-center gap-2">
+              <div className="flex items-center gap-1 bg-slate-950/95 border border-slate-800 rounded-lg p-0.5 text-[11px]">
+                {SCOPE_OPTIONS.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => onChangeScope(s.id)}
+                    className={`px-2.5 py-1 rounded-md border font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                      scope === s.id ? s.activeCls : s.inactiveCls
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              <select
+                aria-label="Filtrar Año"
+                value={yearFilter}
+                onChange={(e) => onChangeYear(e.target.value)}
+                className={getFilterSelectClass('period', yearFilter !== 'TODOS', 'min-h-[32px] py-1')}
+              >
+                <option value="TODOS" className="bg-slate-900">Año: Todos</option>
+                {availableYears.map((yr) => <option key={yr} value={yr} className="bg-slate-900">Año {yr}</option>)}
+              </select>
+            </div>
           </div>
         ) : isRemitoView ? (
           <div className="flex flex-wrap items-center gap-2 flex-1">
