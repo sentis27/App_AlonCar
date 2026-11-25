@@ -114,6 +114,59 @@ const REQUIRED_CANONICAL_ZONE3_SURFACES = [
   'app/src/components/admin/AdminRolesMatrixPanel.jsx',
 ]
 
+const REQUIRED_PROGRESSIVE_GRID_SURFACES = [
+  'app/src/components/personal/PersonalNominaTable.jsx',
+  'app/src/components/personal/PersonalTarifarioPanel.jsx',
+  'app/src/components/labor/LaborLogsTable.jsx',
+  'app/src/components/labor/LaborSabanaPanel.jsx',
+  'app/src/components/labor/LaborControlDiarioPanel.jsx',
+  'app/src/components/compras/ComprasPedidosTable.jsx',
+  'app/src/components/compras/ComprasProveedoresPanel.jsx',
+  'app/src/components/compras/ComprasOcrPanel.jsx',
+  'app/src/components/terceros/TercerosFilasPanel.jsx',
+  'app/src/components/terceros/TercerosFichasPanel.jsx',
+  'app/src/components/workOrders/WorkOrdersUnificadoPanel.jsx',
+  'app/src/components/workOrders/WorkOrdersOtsPanel.jsx',
+  'app/src/components/workOrders/WorkOrdersTercerosPanel.jsx',
+  'app/src/components/panol/PanolMovimientosPanel.jsx',
+  'app/src/components/panol/PanolCatalogGrid.jsx',
+  'app/src/components/panol/GasTraceabilityGrid.jsx',
+  'app/src/components/AdminAuditLedger.jsx',
+  'app/src/components/tesoreria/TesoreriaDeduccionesPanel.jsx',
+  'app/src/components/ships/ShipsBarcosPanel.jsx',
+  'app/src/components/ships/ShipsEstadiasPanel.jsx',
+  'app/src/components/ships/ShipsArmadoresPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaMaterialesPanel.jsx',
+  'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
+]
+
+const REQUIRED_HISTORY_RANGE_SURFACES = [
+  'app/src/components/labor/LaborLogsToolbar.jsx',
+  'app/src/components/compras/ComprasPedidosToolbar.jsx',
+  'app/src/components/terceros/TercerosToolbar.jsx',
+  'app/src/components/panol/PanolToolbar.jsx',
+  'app/src/components/AdminAuditLedger.jsx',
+]
+
+const REQUIRED_BATCHED_REPOSITORIES = [
+  'app/src/repositories/laborLogsRepository.js',
+  'app/src/repositories/purchaseOrdersRepository.js',
+  'app/src/repositories/thirdPartyServicesRepository.js',
+  'app/src/repositories/inventoryTransactionsRepository.js',
+  'app/src/repositories/gasMovementsRepository.js',
+  'app/src/repositories/materialsRepository.js',
+  'app/src/repositories/workOrdersRepository.js',
+  'app/src/repositories/workItemsRepository.js',
+  'app/src/repositories/auditLogsRepository.js',
+  'app/src/repositories/rateCardsRepository.js',
+  'app/src/repositories/workersRepository.js',
+  'app/src/repositories/shipStaysRepository.js',
+  'app/src/repositories/shipsRepository.js',
+  'app/src/repositories/ownersRepository.js',
+  'app/src/repositories/suppliersRepository.js',
+]
+
 const RAW_ZONE3_TOOLBAR_RE = /className\s*=\s*["'{`][^"'`}]*\balon-zone-toolbar\b/
 
 const RAW_UTC_TODAY_RE = /\bnew\s+Date\(\)\.toISOString\(\)\.(?:split\(['"]T['"]\)\[0\]|slice\(\s*0\s*,\s*10\s*\))/
@@ -201,6 +254,30 @@ export function checkCanonicalComponentsUsage(rootDir, appDir) {
     const content = fs.readFileSync(full, 'utf8')
     if (!content.includes('CanonicalZone3Toolbar')) {
       errors.push(`Superficie Zona 3 obligatoria sin CanonicalZone3Toolbar (FL-023): ${rel}`)
+    }
+  }
+  for (const rel of REQUIRED_PROGRESSIVE_GRID_SURFACES) {
+    const full = path.join(rootDir, rel)
+    if (!fs.existsSync(full)) continue
+    const content = fs.readFileSync(full, 'utf8')
+    if (!content.includes('useProgressiveRows') || !content.includes('CanonicalProgressiveTableFooter')) {
+      errors.push(`Grilla de alto volumen sin render progresivo canónico (FL-025): ${rel}`)
+    }
+  }
+  for (const rel of REQUIRED_HISTORY_RANGE_SURFACES) {
+    const full = path.join(rootDir, rel)
+    if (!fs.existsSync(full)) continue
+    const content = fs.readFileSync(full, 'utf8')
+    if (!content.includes('CanonicalHistoryRangeSelect')) {
+      errors.push(`Módulo diario sin selector de ventana histórica CanonicalHistoryRangeSelect (FL-025): ${rel}`)
+    }
+  }
+  for (const rel of REQUIRED_BATCHED_REPOSITORIES) {
+    const full = path.join(rootDir, rel)
+    if (!fs.existsSync(full)) continue
+    const content = fs.readFileSync(full, 'utf8')
+    if (!content.includes('findAllBatched')) {
+      errors.push(`Repositorio crítico sin paginación por lotes findAllBatched (FL-025): ${rel}`)
     }
   }
 

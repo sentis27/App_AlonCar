@@ -65,6 +65,14 @@ import {
 import { computeHorasKpis, filterResumenLaborRows } from '../../src/lib/resumenHojaFilters.js'
 import { buildHoursHoverSummary } from '../../src/lib/resumenCostHoverHelpers.js'
 import { computeOtUnvaluedBreakdown } from '../../src/lib/billingSheetMath.js'
+import { executeBatchedQuery } from '../../src/repositories/_baseRepositoryHelpers.js'
+import { computeEffectiveVisibleCount } from '../../src/hooks/useProgressiveRows.js'
+import {
+  DEFAULT_HISTORY_RANGE,
+  DEFAULT_PROGRESSIVE_INITIAL,
+  DEFAULT_PROGRESSIVE_BATCH,
+  buildDateRangeOption,
+} from '../../src/lib/gridPerformanceHelpers.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '../..')
@@ -122,6 +130,7 @@ const COVERED_CONTRACT_IDS = new Set([
   'FL-022',
   'FL-023',
   'FL-024',
+  'FL-025',
 ])
 
 describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', () => {
@@ -969,5 +978,67 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(chromeSrc).toContain('border-rose-500/85')
     expect(chromeSrc).not.toContain('Vista: Costos Generales')
     expect(chromeSrc).not.toContain('onSelectOt')
+  })
+
+  it('FL-025: blinda Escala 3 Capas (findAllBatched sin techo 1000, render progresivo 60+60, ventana 90d y RouteErrorBoundary)', async () => {
+    expect(STATUS_BY_ID.get('FL-025')).toBe('blindado')
+
+    // 1. Capa 1: executeBatchedQuery supera el techo silencioso de 1.000 filas de Supabase sin truncar ni duplicar
+    const syntheticRows = Array.from({ length: 2350 }, (_, i) => ({ id: `row-${i + 1}`, val: i }))
+    const mockClient = {
+      from: () => {
+        let fromIdx = 0
+        let toIdx = 999
+        const builder = {
+          select: () => builder,
+          eq: () => builder,
+          neq: () => builder,
+          in: () => builder,
+          is: () => builder,
+          gte: () => builder,
+          lte: () => builder,
+          gt: () => builder,
+          lt: () => builder,
+          order: () => builder,
+          range: (a, b) => {
+            fromIdx = a
+            toIdx = b
+            return Promise.resolve({ data: syntheticRows.slice(fromIdx, toIdx + 1), error: null })
+          },
+        }
+        return builder
+      },
+    }
+    const batched = await executeBatchedQuery({ table: 'labor_logs', primaryKey: 'id', client: mockClient, batchSize: 1000 })
+    expect(batched.error).toBeNull()
+    expect(batched.data).toHaveLength(2350)
+    expect(batched.data[0].id).toBe('row-1')
+    expect(batched.data[2349].id).toBe('row-2350')
+
+    // 2. Capa 2: parámetros canónicos 60+60 y ventana Opción A ('90d') + expansión por teclado
+    expect(DEFAULT_PROGRESSIVE_INITIAL).toBe(60)
+    expect(DEFAULT_PROGRESSIVE_BATCH).toBe(60)
+    expect(DEFAULT_HISTORY_RANGE).toBe('90d')
+    expect(buildDateRangeOption('date_logged', '90d')?.from).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(buildDateRangeOption('date_logged', 'all')).toBeNull()
+    expect(computeEffectiveVisibleCount({ totalCount: 3000, requestedCount: 60, initialCount: 60, activeIndex: 140 })).toBe(153)
+
+    // 3. Resumen Gerencial y Gas leen 100% del historial sin techos duros (sin limit: 4000 / 3000 / 2000 / 800)
+    const mgrSrc = readRepoFile('app/src/lib/managerialSummaryService.js')
+    expect(mgrSrc).not.toMatch(/limit:\s*(?:4000|3000|2000)\b/)
+    const gasRepoSrc = readRepoFile('app/src/repositories/gasMovementsRepository.js')
+    expect(gasRepoSrc).toContain('findAllBatched')
+    expect(gasRepoSrc).not.toContain('limit = 800')
+
+    // 4. Paracaídas global RouteErrorBoundary montado sobre <Outlet /> en Layout.jsx
+    const layoutSrc = readRepoFile('app/src/components/Layout.jsx')
+    expect(layoutSrc).toContain('RouteErrorBoundary')
+    expect(layoutSrc).toContain('<Outlet />')
+
+    // 5. Candados mecánicos FL-025 activos en antiRegressionChecks.mjs
+    const guardSrc = readRepoFile('app/scripts/lib/antiRegressionChecks.mjs')
+    expect(guardSrc).toContain('REQUIRED_PROGRESSIVE_GRID_SURFACES')
+    expect(guardSrc).toContain('REQUIRED_HISTORY_RANGE_SURFACES')
+    expect(guardSrc).toContain('REQUIRED_BATCHED_REPOSITORIES')
   })
 })
