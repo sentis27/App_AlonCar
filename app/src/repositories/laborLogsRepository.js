@@ -1,6 +1,7 @@
 /**
  * laborLogsRepository.js
  * Repositorio para `labor_logs` sobre `_baseRepository.js` + `LaborLogSchema`.
+ * Usa lectura por bloques `findAllBatched` por defecto para romper el techo de 1.000 filas (FL-025).
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { LaborLogSchema } from '../schemas/laborLogs.schema.js'
@@ -27,11 +28,16 @@ export function createLaborLogsRepository({ client = defaultClient } = {}) {
       orderBy = DEFAULT_ORDER,
       filters = {},
       isNull = [],
-      limit = 2000,
+      dateRange = null,
+      limit,
       page,
       pageSize,
+      maxRows,
     } = {}) {
-      return base.findAll({ select, orderBy, filters, isNull, limit, page, pageSize })
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ select, orderBy, filters, isNull, dateRange, limit, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy, filters, isNull, dateRange, maxRows })
     },
 
     async countLaborLogs() {

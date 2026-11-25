@@ -18,7 +18,7 @@ export function createShipStaysRepository({ client = defaultClient } = {}) {
     ...base,
 
     async listStays({ select = '*', orderBy = [{ column: 'start_date', ascending: false }], filters = {} } = {}) {
-      return base.findAll({ select, orderBy, filters })
+      return base.findAllBatched({ select, orderBy, filters })
     },
 
     async updateByIds(ids = [], patch, opts = {}) {

@@ -1,56 +1,54 @@
+import { memo } from 'react'
 import { CheckSquare, Copy, Edit3, Lightbulb, Paperclip, Plus, Square, Trash2, TrendingDown, TrendingUp, Truck } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
 import { describeFormula, getStoredCellFormula, formatFormulaNumericDisplay } from '../../lib/formulaEngine'
 import { InlineSupplierPicker } from './ComprasAuxModals'
-import { STATUS_OPTIONS, getSearchMatchMap } from '../../lib/comprasConstants'
 import { formatDateAr } from '../../lib/dateTimeCanonical'
+import { formatArsCached } from '../../lib/gridPerformanceHelpers'
+import { STATUS_BY_VALUE, getFastComprasMatchMap, buildMemoizedComprasCellProps } from '../../lib/comprasPerformanceHelpers'
 import { FillHandle, MaterialDisplayCell, MaterialInlineEditor, PedidoStatusSelect, RowClickNumMenu } from './ComprasRowCells'
 
-export default function ComprasPedidoRow({
-  po, rowIndex, viewMode, isSelected, suppliers, materials = [], ships, workOrders, workItems = [], documents, searchQuery,
-  isSupervisorOrAdmin, grid, getSpreadsheetCellProps, inlineEdit, setInlineEdit, rowMenuTarget, setRowMenuTarget,
-  toggleSelectRow, activateComprasCell, saveInlineEdit, saveInlineMaterialAndObs, handleQuickStatusChange,
-  handleCycleUrgency, handleInsertOrderContext, handleDuplicateOrder, handleDeleteOrder,
+const ComprasPedidoRow = memo(function ComprasPedidoRow({
+  po, rowIndex, viewMode, indexByKey, isSelected, sup, shp, wo, lineDocs, woDocs,
+  suppliers, materials = [], workOrders, workItems = [], searchQuery, isSupervisorOrAdmin,
+  activeColIndex = -1, selStartCol = -1, selEndCol = -1, fillColIndex = -1, fillHandleColIndex = -1,
+  rowInlineEdit = null, isClickNumMenuOpen = false, gridActions,
+  setInlineEdit, setRowMenuTarget, toggleSelectRow, activateComprasCell, saveInlineEdit, saveInlineMaterialAndObs,
+  handleQuickStatusChange, handleCycleUrgency, handleInsertOrderContext, handleDuplicateOrder, handleDeleteOrder,
   onOpenNewMaterial, onOpenDocs, onOpenReconcile, onOpenFreight, onOpenSupplierHelper, onEditOrder
 }) {
-  const sup = suppliers.find((s) => s.id === po.supplier_id)
-  const shp = ships.find((s) => s.id === po.ship_id)
-  const wo = workOrders.find((w) => w.id === po.work_order_id)
-  const matchMap = getSearchMatchMap(po, searchQuery, suppliers, ships, documents)
-  const lineDocs = documents.filter((d) => d.purchase_order_id === po.id)
+  const orderDocs = woDocs && woDocs.length > 0 ? [...lineDocs, ...woDocs] : lineDocs
+  const matchMap = getFastComprasMatchMap(po, searchQuery, { sup, shp, orderDocs })
   const quoted = Number(po.supplier_quoted_price) || 0
   const system = Number(po.system_unit_price) || 0
   const deltaPct = quoted > 0 && system > 0 ? Math.round(((quoted - system) / system) * 100) : null
   const urgency = po.urgency || 'SIN_APURO'
-  const statusDef = STATUS_OPTIONS.find((s) => s.value === po.status)
+  const statusDef = STATUS_BY_VALUE.get(po.status)
   const hasFreight = Boolean(po.freight_transport_name || po.freight_estimated_date)
+  const editingField = rowInlineEdit?.field || null
   const clearInline = () => setInlineEdit({ orderId: null, field: null, value: '' })
 
-  const cpCharge = getSpreadsheetCellProps(rowIndex, 'charge_type')
-  const cpDate = getSpreadsheetCellProps(rowIndex, 'order_date')
-  const cpShip = getSpreadsheetCellProps(rowIndex, 'ship_id')
-  const cpReq = getSpreadsheetCellProps(rowIndex, 'requested_by_name')
-  const cpMat = getSpreadsheetCellProps(rowIndex, 'material_name_raw')
-  const cpQty = getSpreadsheetCellProps(rowIndex, 'quantity')
-  const cpQuoted = getSpreadsheetCellProps(rowIndex, 'supplier_quoted_price')
-  const cpSys = getSpreadsheetCellProps(rowIndex, 'system_unit_price')
-  const cpSup = getSpreadsheetCellProps(rowIndex, 'supplier_id')
-  const cpStatus = getSpreadsheetCellProps(rowIndex, 'status')
-  const cpUrg = getSpreadsheetCellProps(rowIndex, 'urgency')
-  const cpDeliv = getSpreadsheetCellProps(rowIndex, 'delivery_date')
+  const cellProps = (colKey) => buildMemoizedComprasCellProps({
+    rowIndex, colKey, indexByKey, activeColIndex, selStartCol, selEndCol, fillColIndex, fillHandleColIndex, gridActions,
+  })
+  const cpCharge = cellProps('charge_type')
+  const cpDate = cellProps('order_date')
+  const cpShip = cellProps('ship_id')
+  const cpReq = cellProps('requested_by_name')
+  const cpMat = cellProps('material_name_raw')
+  const cpQty = cellProps('quantity')
+  const cpQuoted = cellProps('supplier_quoted_price')
+  const cpSys = cellProps('system_unit_price')
+  const cpSup = cellProps('supplier_id')
+  const cpStatus = cellProps('status')
+  const cpUrg = cellProps('urgency')
+  const cpDeliv = cellProps('delivery_date')
 
   return (
     <tr
-      onContextMenu={(e) => {
-        e.preventDefault(); e.stopPropagation()
-        if (grid.activeCell?.rowIndex !== rowIndex) {
-          grid.setActiveCell({ rowIndex, colIndex: grid.activeCell?.colIndex ?? 0 })
-          grid.setSelectionRange?.(null)
-        }
-        setRowMenuTarget({ order: po, rowIndex, mode: 'context_menu', x: e.clientX, y: e.clientY })
-      }}
+      onContextMenu={(e) => gridActions.onContextMenuRow(po, rowIndex, e)}
       className={`group transition-colors ${isSelected ? 'bg-cyan-950/30 hover:bg-cyan-950/40' : po.is_reconciled ? 'bg-slate-900/40 hover:bg-slate-800/40 text-slate-300' : 'hover:bg-slate-800/50'}`}
     >
       <td className="py-1 px-1 text-center w-8 select-none relative">
@@ -60,24 +58,21 @@ export default function ComprasPedidoRow({
           </button>
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setRowMenuTarget(rowMenuTarget?.order?.id === po.id && rowMenuTarget?.mode === 'click_num' ? null : { order: po, rowIndex, mode: 'click_num' })
-            }}
+            onClick={(e) => gridActions.onToggleClickNumMenu(po, rowIndex, e)}
             className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${isSelected ? 'text-cyan-300' : 'text-slate-500 group-hover:text-cyan-400'}`}
             title={`Fila #${po._rowSeq || rowIndex + 1} • Clic para opciones`}
           >
             {po._rowSeq || rowIndex + 1}
           </button>
         </div>
-        {rowMenuTarget?.order?.id === po.id && rowMenuTarget?.mode === 'click_num' && (
+        {isClickNumMenuOpen && (
           <RowClickNumMenu po={po} rowIndex={rowIndex} onClose={() => setRowMenuTarget(null)} onInsertContext={handleInsertOrderContext} onDuplicate={handleDuplicateOrder} />
         )}
       </td>
 
       <td {...cpCharge.domProps} onDoubleClick={() => activateComprasCell(po, 'charge_type')} className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer ${cpCharge.className}`} title="Doble clic para cambiar Destino">
-        {inlineEdit.orderId === po.id && inlineEdit.field === 'charge_type' ? (
-          <select autoFocus value={inlineEdit.value} onChange={(e) => saveInlineEdit(po.id, 'charge_type', e.target.value)} onBlur={() => clearInline()} onKeyDown={(e) => { if (e.key === 'Escape') clearInline() }} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] font-bold text-white focus:outline-none">
+        {editingField === 'charge_type' ? (
+          <select autoFocus value={rowInlineEdit.value} onChange={(e) => saveInlineEdit(po.id, 'charge_type', e.target.value)} onBlur={() => clearInline()} onKeyDown={(e) => { if (e.key === 'Escape') clearInline() }} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] font-bold text-white focus:outline-none">
             <option value="DIRECT">DIRECTO</option><option value="VIA_PANOL">PAÑOL</option><option value="STANDBY">STANDBY</option>
           </select>
         ) : po.charge_type === 'DIRECT' ? (
@@ -87,14 +82,14 @@ export default function ComprasPedidoRow({
         ) : (
           <span className="inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px]">{po.charge_type}</span>
         )}
-        {cpCharge.renderHandle && <FillHandle grid={grid} withTitle />}
+        {cpCharge.renderHandle && <FillHandle gridActions={gridActions} withTitle />}
       </td>
 
       <td {...cpDate.domProps} onDoubleClick={() => activateComprasCell(po, 'order_date')} className={`py-1.5 px-1.5 whitespace-nowrap font-mono cursor-pointer ${cpDate.className}`} title="Doble clic para editar fecha">
-        {inlineEdit.orderId === po.id && inlineEdit.field === 'order_date' ? (
-          <input type="date" autoFocus value={inlineEdit.value} onChange={(e) => { const v = e.target.value; setInlineEdit({ ...inlineEdit, value: v }); if (v) saveInlineEdit(po.id, 'order_date', v) }} onKeyDown={(e) => { if (e.key === 'Enter' && inlineEdit.value) saveInlineEdit(po.id, 'order_date', inlineEdit.value); if (e.key === 'Escape') clearInline() }} onBlur={() => { if (inlineEdit.value) saveInlineEdit(po.id, 'order_date', inlineEdit.value); else clearInline() }} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none cursor-pointer" />
+        {editingField === 'order_date' ? (
+          <input type="date" autoFocus value={rowInlineEdit.value} onChange={(e) => { const v = e.target.value; setInlineEdit({ ...rowInlineEdit, value: v }); if (v) saveInlineEdit(po.id, 'order_date', v) }} onKeyDown={(e) => { if (e.key === 'Enter' && rowInlineEdit.value) saveInlineEdit(po.id, 'order_date', rowInlineEdit.value); if (e.key === 'Escape') clearInline() }} onBlur={() => { if (rowInlineEdit.value) saveInlineEdit(po.id, 'order_date', rowInlineEdit.value); else clearInline() }} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none cursor-pointer" />
         ) : (<><div className="text-slate-200 text-[11px]">{formatDateAr(po.order_date)}</div><div className="text-[9px] text-slate-500">{po.fortnight_period}</div></>)}
-        {cpDate.renderHandle && <FillHandle grid={grid} />}
+        {cpDate.renderHandle && <FillHandle gridActions={gridActions} />}
       </td>
 
       <td {...cpShip.domProps} onDoubleClick={() => activateComprasCell(po, 'ship_id')} className={`py-1.5 px-1.5 cursor-pointer ${matchMap.ship ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cpShip.className}`} title="Doble clic para cambiar Buque u Orden de Trabajo">
@@ -108,21 +103,21 @@ export default function ComprasPedidoRow({
           variant="compact"
           className="text-[9px] text-slate-400 max-w-[115px]"
         />
-        {cpShip.renderHandle && <FillHandle grid={grid} />}
+        {cpShip.renderHandle && <FillHandle gridActions={gridActions} />}
       </td>
 
       <td {...cpReq.domProps} onDoubleClick={() => activateComprasCell(po, 'requested_by_name')} className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer ${matchMap.requested_by ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cpReq.className}`} title={`Solicita: ${po.requested_by_name || 'PAÑOL'} (Doble clic para editar)`}>
         <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 text-slate-200 font-semibold transition-all truncate max-w-[85px]"><HighlightText text={po.requested_by_name || 'PAÑOL'} query={searchQuery} /></div>
-        {cpReq.renderHandle && <FillHandle grid={grid} />}
+        {cpReq.renderHandle && <FillHandle gridActions={gridActions} />}
       </td>
 
       <td {...cpMat.domProps} onDoubleClick={() => activateComprasCell(po, 'material_name_raw')} className={`py-1.5 px-1.5 cursor-pointer ${matchMap.material ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cpMat.className}`} title="Doble clic para editar material y observaciones in-situ">
-        {inlineEdit.orderId === po.id && inlineEdit.field === 'material_name_raw' ? (
-          <MaterialInlineEditor po={po} materials={materials} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} onSave={saveInlineMaterialAndObs} />
+        {editingField === 'material_name_raw' ? (
+          <MaterialInlineEditor po={po} materials={materials} inlineEdit={rowInlineEdit} setInlineEdit={setInlineEdit} onSave={saveInlineMaterialAndObs} />
         ) : (
           <MaterialDisplayCell po={po} searchQuery={searchQuery} isSupervisorOrAdmin={isSupervisorOrAdmin} onOpenNewMaterial={onOpenNewMaterial} />
         )}
-        {cpMat.renderHandle && <FillHandle grid={grid} />}
+        {cpMat.renderHandle && <FillHandle gridActions={gridActions} />}
       </td>
 
       {(() => {
@@ -136,15 +131,15 @@ export default function ComprasPedidoRow({
             title={qtyMeta?.tooltipText || 'Doble clic para editar cantidad (acepta =42+45 o +1*0.5)'}
           >
             <FormulaCellCornerMark formula={qtyFormula} />
-            {inlineEdit.orderId === po.id && inlineEdit.field === 'quantity' ? (
+            {editingField === 'quantity' ? (
               <FormulaNumericInput
                 variant="cell"
                 autoFocus
                 maxDecimals={4}
                 emptyValue={1}
                 unitSuffix={po.unit_measure || 'un.'}
-                value={inlineEdit.value}
-                onChange={(val) => setInlineEdit({ ...inlineEdit, value: val })}
+                value={rowInlineEdit.value}
+                onChange={(val) => setInlineEdit({ ...rowInlineEdit, value: val })}
                 onCommit={(rawVal) => saveInlineEdit(po.id, 'quantity', rawVal)}
                 onCancel={clearInline}
                 className="w-20 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-right text-[11px] text-white focus:outline-none font-mono"
@@ -155,7 +150,7 @@ export default function ComprasPedidoRow({
                 <span className="text-[9px] text-slate-500">{po.unit_measure || 'un.'}</span>
               </div>
             )}
-            {cpQty.renderHandle && <FillHandle grid={grid} />}
+            {cpQty.renderHandle && <FillHandle gridActions={gridActions} />}
           </td>
         )
       })()}
@@ -173,43 +168,43 @@ export default function ComprasPedidoRow({
                 title={priceMeta?.tooltipText || 'Doble clic para editar $/U cotizado (acepta =42+45 o +42+45)'}
               >
                 <FormulaCellCornerMark formula={priceFormula} />
-                {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_quoted_price' ? (
+                {editingField === 'supplier_quoted_price' ? (
                   <FormulaNumericInput
                     variant="cell"
                     autoFocus
                     currencyPrefix="$"
                     maxDecimals={2}
                     emptyValue={0}
-                    value={inlineEdit.value}
-                    onChange={(val) => setInlineEdit({ ...inlineEdit, value: val })}
+                    value={rowInlineEdit.value}
+                    onChange={(val) => setInlineEdit({ ...rowInlineEdit, value: val })}
                     onCommit={(rawVal) => saveInlineEdit(po.id, 'supplier_quoted_price', rawVal)}
                     onCancel={clearInline}
                     className="w-24 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-right text-[11px] text-white focus:outline-none font-mono"
                   />
                 ) : (
                   <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all inline-block text-right">
-                    {po.supplier_quoted_price ? <span className="text-slate-200 font-semibold">${Number(po.supplier_quoted_price).toLocaleString('es-AR')}</span> : <span className="text-slate-600">—</span>}
+                    {po.supplier_quoted_price ? <span className="text-slate-200 font-semibold">${formatArsCached(po.supplier_quoted_price)}</span> : <span className="text-slate-600">—</span>}
                   </div>
                 )}
-                {cpQuoted.renderHandle && <FillHandle grid={grid} />}
+                {cpQuoted.renderHandle && <FillHandle gridActions={gridActions} />}
               </td>
             )
           })()}
           <td {...cpSys.domProps} className={`py-1.5 px-1.5 text-right whitespace-nowrap font-mono ${cpSys.className}`}>
-            <div className="text-slate-400">{po.system_unit_price ? `$${Number(po.system_unit_price).toLocaleString('es-AR')}` : '—'}</div>
+            <div className="text-slate-400">{po.system_unit_price ? `$${formatArsCached(po.system_unit_price)}` : '—'}</div>
             {deltaPct !== null && (
               <div className={`text-[9px] font-bold flex items-center justify-end gap-0.5 ${deltaPct > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                 {deltaPct > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
                 <span>{deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`}</span>
               </div>
             )}
-            {cpSys.renderHandle && <FillHandle grid={grid} />}
+            {cpSys.renderHandle && <FillHandle gridActions={gridActions} />}
           </td>
         </>
       )}
 
       <td {...cpSup.domProps} onDoubleClick={() => activateComprasCell(po, 'supplier_id')} className={`py-1.5 px-1.5 relative cursor-pointer ${matchMap.supplier ? 'bg-amber-400/20 ring-1 ring-inset ring-amber-400/50' : ''} ${cpSup.className}`} title={sup?.name ? `Proveedor: ${sup.name} (Doble clic para cambiar)` : 'Doble clic para asignar proveedor'}>
-        {inlineEdit.orderId === po.id && inlineEdit.field === 'supplier_id' ? (
+        {editingField === 'supplier_id' ? (
           <InlineSupplierPicker suppliers={suppliers} currentSupplierId={po.supplier_id} onSelect={(id) => saveInlineEdit(po.id, 'supplier_id', id)} onCancel={clearInline} />
         ) : (
           <div className="hover:bg-slate-800/80 px-1 py-0.5 rounded border border-transparent hover:border-cyan-500/30 transition-all flex items-center justify-between gap-1 max-w-[125px]">
@@ -219,19 +214,19 @@ export default function ComprasPedidoRow({
             )}
           </div>
         )}
-        {cpSup.renderHandle && <FillHandle grid={grid} />}
+        {cpSup.renderHandle && <FillHandle gridActions={gridActions} />}
       </td>
 
       <td {...cpStatus.domProps} className={`py-1.5 px-1.5 whitespace-nowrap ${cpStatus.className}`} title={statusDef?.tooltip ? `${po.status}: ${statusDef.tooltip}` : po.status}>
         <PedidoStatusSelect po={po} viewMode={viewMode} onQuickStatusChange={handleQuickStatusChange} />
-        {cpStatus.renderHandle && <FillHandle grid={grid} />}
+        {cpStatus.renderHandle && <FillHandle gridActions={gridActions} />}
       </td>
 
       <td {...cpUrg.domProps} className={`py-1.5 px-1.5 whitespace-nowrap ${cpUrg.className}`}>
         <button type="button" onClick={() => handleCycleUrgency(po.id, urgency)} className="cursor-pointer transition-transform hover:scale-105" title="Clic para cambiar urgencia">
           {urgency === 'URGENTE' ? <span className="inline-block px-1 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 font-extrabold text-[9px] animate-pulse">URGENTE</span> : urgency === 'PROXIMA_SALIDA' ? <span className="inline-block px-1 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[9px]">PRÓX. SAL.</span> : <span className="inline-block px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[9px]">Normal</span>}
         </button>
-        {cpUrg.renderHandle && <FillHandle grid={grid} />}
+        {cpUrg.renderHandle && <FillHandle gridActions={gridActions} />}
       </td>
 
       <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
@@ -241,10 +236,10 @@ export default function ComprasPedidoRow({
       </td>
 
       <td {...cpDeliv.domProps} onDoubleClick={() => activateComprasCell(po, 'delivery_date')} className={`py-1.5 px-1.5 text-center whitespace-nowrap font-mono cursor-pointer ${cpDeliv.className}`} title="Doble clic para cargar Fecha de Entrega">
-        {inlineEdit.orderId === po.id && inlineEdit.field === 'delivery_date' ? (
-          <input type="date" autoFocus value={inlineEdit.value} onChange={(e) => { const v = e.target.value; setInlineEdit({ ...inlineEdit, value: v }); if (v) saveInlineEdit(po.id, 'delivery_date', v) }} onKeyDown={(e) => { if (e.key === 'Enter') saveInlineEdit(po.id, 'delivery_date', inlineEdit.value || null); if (e.key === 'Escape') clearInline() }} onBlur={() => saveInlineEdit(po.id, 'delivery_date', inlineEdit.value || null)} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none cursor-pointer" />
+        {editingField === 'delivery_date' ? (
+          <input type="date" autoFocus value={rowInlineEdit.value} onChange={(e) => { const v = e.target.value; setInlineEdit({ ...rowInlineEdit, value: v }); if (v) saveInlineEdit(po.id, 'delivery_date', v) }} onKeyDown={(e) => { if (e.key === 'Enter') saveInlineEdit(po.id, 'delivery_date', rowInlineEdit.value || null); if (e.key === 'Escape') clearInline() }} onBlur={() => saveInlineEdit(po.id, 'delivery_date', rowInlineEdit.value || null)} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none cursor-pointer" />
         ) : po.delivery_date ? <span className="text-emerald-300 font-semibold text-[10px] bg-emerald-950/50 border border-emerald-800/50 px-1.5 py-0.5 rounded">{formatDateAr(po.delivery_date)}</span> : <span className="text-slate-600 hover:text-slate-400 text-[10px]">—</span>}
-        {cpDeliv.renderHandle && <FillHandle grid={grid} />}
+        {cpDeliv.renderHandle && <FillHandle gridActions={gridActions} />}
       </td>
 
       {viewMode === 'completa' && (
@@ -271,4 +266,6 @@ export default function ComprasPedidoRow({
       </td>
     </tr>
   )
-}
+})
+
+export default ComprasPedidoRow

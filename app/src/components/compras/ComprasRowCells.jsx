@@ -4,11 +4,11 @@ import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
 import { STATUS_OPTIONS } from '../../lib/comprasConstants'
 import { SIMPLE_STATUS_VALUES, getStatusTextColor } from '../../lib/comprasPedidosHelpers'
 
-export function FillHandle({ grid, withTitle = false }) {
+export function FillHandle({ grid, gridActions, withTitle = false }) {
   return (
     <div
-      onMouseDown={grid.handleFillHandleMouseDown}
-      onDoubleClick={grid.handleFillHandleDoubleClick}
+      onMouseDown={gridActions?.onFillHandleMouseDown || grid?.handleFillHandleMouseDown}
+      onDoubleClick={gridActions?.onFillHandleDoubleClick || grid?.handleFillHandleDoubleClick}
       className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
       title={withTitle ? 'Arrastra hacia abajo (o doble clic) para rellenar (Ctrl+D)' : undefined}
     />

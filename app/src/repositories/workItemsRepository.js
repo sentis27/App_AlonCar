@@ -1,6 +1,7 @@
 /**
  * workItemsRepository.js
  * Repositorio para `work_items` sobre `_baseRepository.js` + `WorkItemSchema`.
+ * Usa `findAllBatched` por defecto para romper el tope de 1.000 ítems de obra (FL-025).
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { WorkItemSchema } from '../schemas/workItems.schema.js'
@@ -21,20 +22,20 @@ export function createWorkItemsRepository({ client = defaultClient } = {}) {
     ...base,
 
     async listWorkItems({ select = '*', orderBy = [{ column: 'created_at', ascending: true }], filters = {} } = {}) {
-      return base.findAll({ select, orderBy, filters })
+      return base.findAllBatched({ select, orderBy, filters })
     },
 
     async listCanonicalWorkItems({ orderBy = [{ column: 'created_at', ascending: true }], filters = {} } = {}) {
-      return base.findAll({ select: WORK_ITEM_CANONICAL_SELECT, orderBy, filters })
+      return base.findAllBatched({ select: WORK_ITEM_CANONICAL_SELECT, orderBy, filters })
     },
 
     async listByWorkOrderIds(woIds = [], { select = 'id, work_order_id, status, comments' } = {}) {
       if (!Array.isArray(woIds) || woIds.length === 0) return { data: [], error: null, count: 0 }
-      return base.findAll({ select, inFilters: { work_order_id: woIds } })
+      return base.findAllBatched({ select, inFilters: { work_order_id: woIds } })
     },
 
     async listPendingBudgetAlerts() {
-      return base.findAll({
+      return base.findAllBatched({
         select: 'id, work_order_id, description, status, assignment_type, specific_budget_id, created_at, work_orders(id, ot_number, title, ship_id, ships(name))',
         filters: { assignment_type: 'Adicional / Específico' },
         neqFilters: { status: 'Desestimado' },

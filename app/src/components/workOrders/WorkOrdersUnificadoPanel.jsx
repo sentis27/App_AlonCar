@@ -1,62 +1,34 @@
-import {
-  Ship,
-  User,
-  Pencil,
-  CopyPlus,
-  GitBranch,
-  Eye,
-  Trash2,
-  Lock,
-  Unlock,
-  Plus,
-  Combine
-} from 'lucide-react'
+import { useRef } from 'react'
+import { Ship, User, Pencil, CopyPlus, GitBranch, Eye, Trash2, Lock, Unlock, Plus, Combine } from 'lucide-react'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import HighlightText from '../HighlightText'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import {
-  ESTADOS_TRABAJO,
-  TIPOS_DE_TRABAJO,
-  formatShortDate,
-  formatSpecificBudgetLabel,
-  isBudgetPendingAlert,
-  isWorkItemEliminada,
-  cleanWorkItemComment,
-  evaluateWorkItemAlerts
+  ESTADOS_TRABAJO, TIPOS_DE_TRABAJO, formatShortDate, formatSpecificBudgetLabel,
+  isBudgetPendingAlert, isWorkItemEliminada, cleanWorkItemComment, evaluateWorkItemAlerts
 } from '../../lib/workOrdersConstants'
 
+const ESTADO_BY_VALUE = new Map(ESTADOS_TRABAJO.map((s) => [s.value, s]))
+
 export default function WorkOrdersUnificadoPanel({
-  filteredRows = [],
-  unifiedRows = [],
-  woGrid,
-  ships = [],
-  foremenList = [],
-  searchQuery = '',
-  stats,
-  hasActiveFilters,
-  onClearAllFilters,
-  isRowLockedDec011,
-  hasThirdPartyPermission: _hasThirdPartyPermission,
-  inlineWoEdit,
-  setInlineWoEdit,
-  commitInlineWoEdit,
-  onOpenNewWorkModal,
-  onOpenEditWorkModal,
-  onOpenSeparateModal,
-  onOpenCloseTreeModal,
-  onOpenReopenModal,
-  onOpenUnifyModal,
-  onDuplicateWorkItem,
-  onDeleteWorkItem,
-  setSelectedWoDetail,
-  setEditingThirdParty,
-  menuTarget,
-  openMenu,
-  closeMenu,
-  showWoGridFeedback
+  filteredRows = [], unifiedRows = [], woGrid, ships = [], foremenList = [],
+  searchQuery = '', stats, hasActiveFilters, onClearAllFilters, isRowLockedDec011,
+  hasThirdPartyPermission: _hasThirdPartyPermission, inlineWoEdit, setInlineWoEdit, commitInlineWoEdit,
+  onOpenNewWorkModal, onOpenEditWorkModal, onOpenSeparateModal, onOpenCloseTreeModal, onOpenReopenModal,
+  onOpenUnifyModal, onDuplicateWorkItem, onDeleteWorkItem, setSelectedWoDetail, setEditingThirdParty,
+  menuTarget, openMenu, closeMenu, showWoGridFeedback
 }) {
+  const scrollRef = useRef(null)
+  const { visibleItems: visibleRows, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredRows,
+    activeIndex: woGrid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: scrollRef,
+    resetKey: `${searchQuery}|${filteredRows.length}`
+  })
   return (
     <div
       ref={woGrid.gridContainerRef}
@@ -76,7 +48,7 @@ export default function WorkOrdersUnificadoPanel({
         exportFilename={`ordenes_trabajo_${getTodayArIso()}`}
       />
 
-      <div className="alon-grid-scroll">
+      <div ref={scrollRef} className="alon-grid-scroll">
         <table className="w-full text-left text-xs text-slate-300">
           <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
             <tr>
@@ -101,8 +73,9 @@ export default function WorkOrdersUnificadoPanel({
                 </td>
               </tr>
             ) : (
-              filteredRows.map((row, rowIndex) => {
-                const stConfig = ESTADOS_TRABAJO.find((s) => s.value === row.status) || ESTADOS_TRABAJO[0]
+              <>
+              {visibleRows.map((row, rowIndex) => {
+                const stConfig = ESTADO_BY_VALUE.get(row.status) || ESTADOS_TRABAJO[0]
                 const alerts = evaluateWorkItemAlerts(row, row.wo)
                 const contractors = row.contractors || []
                 const tp = row.thirdPartyRecord
@@ -669,7 +642,14 @@ export default function WorkOrdersUnificadoPanel({
                     </td>
                   </tr>
                 )
-              })
+              })}
+              <CanonicalProgressiveTableFooter
+                visibleCount={visibleCount} totalCount={filteredRows.length}
+                hasMore={hasMore} remainingCount={remainingCount}
+                loadMore={loadMore} showAll={showAll}
+                sentinelRef={sentinelRef} colSpan={11} entityLabel="trabajos"
+              />
+              </>
             )}
           </tbody>
         </table>

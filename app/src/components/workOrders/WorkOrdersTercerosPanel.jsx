@@ -1,6 +1,10 @@
+import { useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ShieldCheck, Plus, ExternalLink, Pencil } from 'lucide-react'
 import HighlightText from '../HighlightText'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { buildLookupMap, formatArsCached } from '../../lib/gridPerformanceHelpers'
 import { formatShortDate } from '../../lib/workOrdersConstants'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 
@@ -11,18 +15,20 @@ export default function WorkOrdersTercerosPanel({
   onOpenTpCascadeModal,
   setEditingThirdParty
 }) {
-  const filteredTps = thirdPartyServices.filter((tp) => {
+  const scrollRef = useRef(null)
+  const workOrdersById = useMemo(() => buildLookupMap(workOrders), [workOrders])
+
+  const filteredTps = useMemo(() => thirdPartyServices.filter((tp) => {
     if (!searchQuery.trim()) return true
-    const wo = workOrders.find((w) => w.id === tp.work_order_id)
+    const wo = tp.work_order_id ? workOrdersById.get(String(tp.work_order_id)) : null
     return matchesUniversalSearch(
-      {
-        ...tp,
-        shipName: wo?.ships?.name,
-        otNumber: wo?.ot_number,
-        otTitle: wo?.title
-      },
+      { ...tp, shipName: wo?.ships?.name, otNumber: wo?.ot_number, otTitle: wo?.title },
       searchQuery
     )
+  }), [thirdPartyServices, workOrdersById, searchQuery])
+
+  const { visibleItems: visibleTps, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredTps, scrollContainerRef: scrollRef, resetKey: searchQuery
   })
 
   return (
@@ -57,7 +63,7 @@ export default function WorkOrdersTercerosPanel({
         </div>
       </div>
 
-      <div className="alon-grid-scroll border border-slate-800 rounded-xl">
+      <div ref={scrollRef} className="alon-grid-scroll border border-slate-800 rounded-xl">
         <table className="w-full text-left text-xs text-slate-300">
           <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
             <tr>
@@ -79,8 +85,9 @@ export default function WorkOrdersTercerosPanel({
                 </td>
               </tr>
             ) : (
-              filteredTps.map((tp) => {
-                const wo = workOrders.find((w) => w.id === tp.work_order_id)
+              <>
+              {visibleTps.map((tp) => {
+                const wo = tp.work_order_id ? workOrdersById.get(String(tp.work_order_id)) : null
                 const tpDate = tp.service_date || (tp.created_at ? String(tp.created_at).split('T')[0] : null)
                 return (
                   <tr key={tp.id} className="hover:bg-slate-800/30 transition-colors align-top">
@@ -106,7 +113,7 @@ export default function WorkOrdersTercerosPanel({
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">
-                      ${Number(tp.amount_ars || 0).toLocaleString('es-AR')}
+                      ${formatArsCached(tp.amount_ars || 0)}
                     </td>
                     <td className="py-3 px-3">
                       <div className="p-2 rounded-lg bg-slate-950 border border-cyan-900/50 text-slate-200 whitespace-pre-wrap text-[11px]">
@@ -134,7 +141,14 @@ export default function WorkOrdersTercerosPanel({
                     </td>
                   </tr>
                 )
-              })
+              })}
+              <CanonicalProgressiveTableFooter
+                visibleCount={visibleCount} totalCount={filteredTps.length}
+                hasMore={hasMore} remainingCount={remainingCount}
+                loadMore={loadMore} showAll={showAll}
+                sentinelRef={sentinelRef} colSpan={8} entityLabel="registros"
+              />
+              </>
             )}
           </tbody>
         </table>

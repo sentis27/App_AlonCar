@@ -3,69 +3,48 @@
  * Zona 4: Planilla Operativa Industrial sobre useSpreadsheetGrid (M5 / DEC-017).
  */
 
-import React from 'react'
+import React, { useMemo } from 'react'
 import HighlightText from '../HighlightText'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
 import { describeFormula, getStoredCellFormula, getEditableCellInitialValue } from '../../lib/formulaEngine'
 import GridRibbon from '../GridRibbon'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
-import {
-  Ship,
-  Square,
-  CheckSquare,
-  Sparkles,
-  History,
-  CopyPlus,
-  Edit3,
-  Trash2
-} from 'lucide-react'
+import { formatArsCached } from '../../lib/gridPerformanceHelpers'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { Ship, Square, CheckSquare, Sparkles, History, CopyPlus, Edit3, Trash2 } from 'lucide-react'
 import { VOUCHER_TYPES, OFFICIAL_TRADES, formatDate } from '../../lib/tercerosConstants.js'
 import RemitoAloncarHoverBadge from './RemitoAloncarHoverBadge.jsx'
 
+const VOUCHER_BY_CODE = new Map(VOUCHER_TYPES.map((v) => [v.code, v]))
+
 export default function TercerosFilasPanel({
-  filteredServices = [],
-  services = [],
-  contractors = [],
-  shipMap = new Map(),
-  otMap = new Map(),
-  contractorMap = new Map(),
-  workOrders = [],
-  workItems = [],
-  panolRemitoIndex = new Map(),
-  searchTerm = '',
-  canEditAmounts = false,
-  canMutateRows = true,
-  activeRolePerspective = 'maria_jose',
-  grid,
-  spreadsheetColumns = [],
-  menuTarget,
-  openMenu,
-  closeMenu,
-  selectedIds = new Set(),
-  handleSelectAll,
-  handleCheckboxToggle,
-  handleClearSelection,
-  inlineEdit,
-  setInlineEdit,
-  saveInlineEdit,
-  handleInsertBlankRow,
-  handleDuplicateService,
-  handleDeleteService,
-  handleOpenEvolutionModal,
-  handleOpenEditModal,
-  setHistoryService,
-  setPickerModal,
-  setContractorPickerModal,
-  stats,
-  hasActiveFilters,
-  clearAllFilters
+  filteredServices = [], services = [], contractors = [], shipMap = new Map(), otMap = new Map(),
+  contractorMap = new Map(), workOrders = [], workItems = [], panolRemitoIndex = new Map(),
+  filterResetKey = '', searchTerm = '', canEditAmounts = false, canMutateRows = true, activeRolePerspective = 'maria_jose',
+  grid, spreadsheetColumns = [], menuTarget, openMenu, closeMenu, selectedIds = new Set(),
+  handleSelectAll, handleCheckboxToggle, handleClearSelection, inlineEdit, setInlineEdit, saveInlineEdit,
+  handleInsertBlankRow, handleDuplicateService, handleDeleteService, handleOpenEvolutionModal,
+  handleOpenEditModal, setHistoryService, setPickerModal, setContractorPickerModal, stats, hasActiveFilters, clearAllFilters
 }) {
-  // Helper de propiedades para cada celda
+  const colIndexByKey = useMemo(() => {
+    const map = new Map()
+    spreadsheetColumns.forEach((c, idx) => map.set(c.key, idx))
+    return map
+  }, [spreadsheetColumns])
+
+  const { visibleItems: visibleServices, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredServices,
+    activeIndex: grid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: grid.gridContainerRef,
+    resetKey: filterResetKey || searchTerm
+  })
+
   function getSpreadsheetCellProps(rowIndex, colKey) {
-    const colIdx = spreadsheetColumns.findIndex((c) => c.key === colKey)
+    const colIdx = colIndexByKey.get(colKey) ?? -1
     if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
 
     const isActive = grid.isCellActive(rowIndex, colIdx)
@@ -163,11 +142,11 @@ export default function TercerosFilasPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-mono">
-            {filteredServices.map((srv, index) => {
+            {visibleServices.map((srv, index) => {
               const isSelected = selectedIds.has(srv.id)
               const shipName = shipMap.get(srv.ship_id)?.name || 'Sin Buque'
               const ot = otMap.get(srv.work_order_id)
-              const voucherConfig = VOUCHER_TYPES.find((v) => v.code === srv.voucher_type) || VOUCHER_TYPES[0]
+              const voucherConfig = VOUCHER_BY_CODE.get(srv.voucher_type) || VOUCHER_TYPES[0]
               const isEvolvable = srv.voucher_type === 'RMO' || srv.voucher_type === 'RPF'
               const contractorObj = contractorMap.get(srv.contractor_name?.toUpperCase()?.trim())
               const effectiveTrade = srv.trade || (contractorObj?.trade && contractorObj.trade !== 'MANUAL' ? contractorObj.trade : null)
@@ -440,7 +419,7 @@ export default function TercerosFilasPanel({
                           />
                         ) : (
                           Number(srv.amount_ars) > 0 ? (
-                            <span>$<HighlightText text={Number(srv.amount_ars).toLocaleString('es-AR')} query={searchTerm} /></span>
+                            <span>$<HighlightText text={formatArsCached(srv.amount_ars)} query={searchTerm} /></span>
                           ) : (
                             <span className="text-amber-400 text-xs font-bold">$0 (Sin Precio)</span>
                           )
@@ -460,10 +439,10 @@ export default function TercerosFilasPanel({
                   {/* 5. Dólar / US$ */}
                   <td className="py-2.5 px-2 text-right whitespace-nowrap">
                     <div className="font-mono font-extrabold text-cyan-300">
-                      $<HighlightText text={Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} query={searchTerm} />
+                      $<HighlightText text={formatArsCached(srv.amount_usd || 0)} query={searchTerm} />
                     </div>
                     <div className="text-[10px] text-slate-500 font-mono">
-                      Cotiz: $<HighlightText text={Number(srv.usd_rate || 0).toLocaleString('es-AR')} query={searchTerm} />
+                      Cotiz: $<HighlightText text={formatArsCached(srv.usd_rate || 0)} query={searchTerm} />
                     </div>
                   </td>
 
@@ -723,6 +702,12 @@ export default function TercerosFilasPanel({
                 </tr>
               )
             })}
+            <CanonicalProgressiveTableFooter
+              visibleCount={visibleCount} totalCount={filteredServices.length}
+              hasMore={hasMore} remainingCount={remainingCount}
+              loadMore={loadMore} showAll={showAll}
+              sentinelRef={sentinelRef} colSpan={10} entityLabel="comprobantes"
+            />
           </tbody>
         </table>
       </div>

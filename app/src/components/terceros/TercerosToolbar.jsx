@@ -5,6 +5,7 @@
 
 import React from 'react'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalHistoryRangeSelect from '../canonical/CanonicalHistoryRangeSelect'
 import { OFFICIAL_TRADES, VOUCHER_TYPES } from '../../lib/tercerosConstants.js'
 import {
   getFilterSelectClass,
@@ -34,7 +35,10 @@ export default function TercerosToolbar({
   grid,
   viewMode,
   setViewMode,
-  viewsController
+  viewsController,
+  historyRange = '90d',
+  setHistoryRange,
+  loading = false
 }) {
   const otOptions = resolveOtFilterOptions(workOrders, workItems, selectedShipFilter)
 
@@ -56,6 +60,10 @@ export default function TercerosToolbar({
       }}
       filters={
         <>
+          {setHistoryRange && (
+            <CanonicalHistoryRangeSelect value={historyRange} onChange={setHistoryRange} loading={loading} />
+          )}
+
           {/* 1. Buque (Cian) */}
           <select
             value={selectedShipFilter}

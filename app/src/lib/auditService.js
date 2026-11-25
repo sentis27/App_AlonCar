@@ -333,20 +333,10 @@ export async function getHistoryForEntity(entityId, entityType = null, limit = 5
  * Consulta el Libro de Auditoría Global (alimenta AdminAuditLedger en AdminDashboard)
  */
 export async function getGlobalAuditLedger({
-  entityType = 'ALL',
-  actionFilter = 'ALL',
-  userFilter = 'ALL',
-  dateFrom = '',
-  dateTo = '',
-  limit = 300
+  entityType = 'ALL', actionFilter = 'ALL', userFilter = 'ALL', dateFrom = '', dateTo = '', dateRange = null, limit = null, maxRows
 } = {}) {
   const { data, error } = await auditLogsRepository.listGlobalLedger({
-    entityType,
-    actionFilter,
-    userFilter,
-    dateFrom,
-    dateTo,
-    limit,
+    entityType, actionFilter, userFilter, dateFrom, dateTo, dateRange, limit, maxRows,
   })
   if (error) throw new Error(error)
   return data || []

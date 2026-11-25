@@ -13,13 +13,16 @@ import { shipsRepository } from '../repositories/shipsRepository.js'
 import { shipStaysRepository } from '../repositories/shipStaysRepository.js'
 import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { workItemsRepository } from '../repositories/workItemsRepository.js'
+import { buildDateRangeOption, DEFAULT_HISTORY_RANGE } from '../lib/gridPerformanceHelpers.js'
 
 /**
  * Carga completa de imputaciones de mano de obra, buques, OTs y personal habilitado.
+ * Respeta ventana histórica configurable (`90d` | `year` | `all`) sin techo de 1.000 filas (FL-025).
  */
-export async function fetchLaborData() {
+export async function fetchLaborData({ historyRange = DEFAULT_HISTORY_RANGE } = {}) {
+  const dateRange = buildDateRangeOption('date_logged', historyRange)
   const [logsRes, shipsRes, staysRes, woRes, workItemsRes, workersRes] = await Promise.all([
-    laborLogsRepository.listLaborLogs(),
+    laborLogsRepository.listLaborLogs({ dateRange }),
     shipsRepository.listShips({ select: 'id, name, status, current_location, is_active' }),
     shipStaysRepository.listStays({ select: 'id, ship_id, location, start_date, end_date' }),
     workOrdersRepository.listCanonicalWorkOrders(),

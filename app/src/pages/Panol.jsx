@@ -19,6 +19,7 @@ import {
 } from '../lib/panolConstants'
 import { filterEligiblePersonnel, getContractorEnabledWos, getEnabledWorkersAndContractors } from '../lib/allocationEngine'
 import { exportPlateCutsReport } from '../lib/plateCutsExport'
+import { DEFAULT_HISTORY_RANGE } from '../lib/gridPerformanceHelpers'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 const PANOL_REALTIME_TABLES = ['materials', 'inventory_transactions', 'gas_cylinder_movements', 'compliance_alerts', 'ships', 'work_orders', 'work_items', 'workers', 'suppliers', 'material_rubros', 'macro_variables', 'system_settings']
@@ -29,20 +30,12 @@ export default function Panol() {
   const isAdmin = capabilities ? capabilities.isPanolAdmin : isPanolAdminRole(profile)
   const { activeTab, setActiveTab, activeSubmodule, searchParams, setSearchParams } = useModuleTab('panol')
 
-  const [loading, setLoading] = useState(true)
-  const [feedback, setFeedback] = useState(null)
-  const [materials, setMaterials] = useState([])
-  const [inventoryTx, setInventoryTx] = useState([])
-  const [gasMovements, setGasMovements] = useState([])
-  const [rubros, setRubros] = useState([])
-  const [suppliers, setSuppliers] = useState([])
-  const [ships, setShips] = useState([])
-  const [workOrders, setWorkOrders] = useState([])
-  const [workers, setWorkers] = useState([])
-  const [workItems, setWorkItems] = useState([])
-  const [pendingAlerts, setPendingAlerts] = useState([])
-  const [macroVariables, setMacroVariables] = useState([])
-  const [pricingPolicy, setPricingPolicy] = useState(null)
+  const [loading, setLoading] = useState(true); const [feedback, setFeedback] = useState(null)
+  const [historyRange, setHistoryRange] = useState(DEFAULT_HISTORY_RANGE)
+  const [materials, setMaterials] = useState([]); const [inventoryTx, setInventoryTx] = useState([]); const [gasMovements, setGasMovements] = useState([])
+  const [rubros, setRubros] = useState([]); const [suppliers, setSuppliers] = useState([]); const [ships, setShips] = useState([])
+  const [workOrders, setWorkOrders] = useState([]); const [workers, setWorkers] = useState([]); const [workItems, setWorkItems] = useState([])
+  const [pendingAlerts, setPendingAlerts] = useState([]); const [macroVariables, setMacroVariables] = useState([]); const [pricingPolicy, setPricingPolicy] = useState(null)
 
   const searchInputRef = useRef(null)
   const [activeGridHistory, setActiveGridHistory] = useState(null)
@@ -89,7 +82,7 @@ export default function Panol() {
   const loadData = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
-      const d = await fetchPanolData()
+      const d = await fetchPanolData({ historyRange })
       setMaterials(d.materials); setInventoryTx(d.inventoryTx); setGasMovements(d.gasMovements)
       setRubros(d.rubros); setSuppliers(d.suppliers); setShips(d.ships); setWorkOrders(d.workOrders)
       setWorkers(d.workers); setWorkItems(d.workItems); setPendingAlerts(d.pendingAlerts)
@@ -99,7 +92,7 @@ export default function Panol() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [])
+  }, [historyRange])
 
   const isPanolModalOpen = Boolean(showWithdrawalModal || materialFormModal.isOpen || showRubrosModal || consumption6MModal.isOpen || showStockAdjustModal.isOpen || showGasModal.isOpen || gasFinalReturnModal.isOpen || gasSupplierModal.isOpen || quickPurchaseModal.isOpen || requestOtModal.isOpen || workerPermissionModal.isOpen)
   useSupabaseRealtimeRefresh({
@@ -236,11 +229,13 @@ export default function Panol() {
           isAdmin={isAdmin} activeTab={activeTab} ships={ships} workOrders={workOrders} workItems={workItems}
           contractorOptions={availableGroups} hasActiveFilters={hasActivePanolFilter} onClearAllFilters={clearAllPanolFilters} viewsController={panolViewsController}
           gridHistory={activeTab !== 'epp' ? activeGridHistory : null}
+          historyRange={historyRange} setHistoryRange={setHistoryRange} loading={loading}
         />
 
         {activeTab === 'planillas' && (
           <PanolMovimientosPanel
             filteredTransactions={filteredTransactions} totalTransactionsCount={inventoryTx.length} loading={loading}
+            filterResetKey={`${searchQuery}|${planillasFilters.filterPeriod || ''}|${planillasFilters.filterShip || ''}|${planillasFilters.filterOt || ''}|${planillasFilters.filterContractor || ''}|${planillasFilters.filterCategory || ''}|${planillasFilters.filterMaterialQuick || ''}|${planillasFilters.onlyZeroCost || ''}|${planillasFilters.activeKpiFilter || ''}|${historyRange}`}
             materials={materials} setMaterials={setMaterials} ships={ships} workOrders={workOrders} workItems={workItems}
             astilleroWorkers={astilleroWorkers} contractorGroups={contractorGroups} availableGroups={availableGroups}
             pendingAlerts={pendingAlerts} isAdmin={isAdmin} searchQuery={searchQuery} hasActivePanolFilter={hasActivePanolFilter}

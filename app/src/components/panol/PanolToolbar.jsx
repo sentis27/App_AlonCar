@@ -1,4 +1,5 @@
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalHistoryRangeSelect from '../canonical/CanonicalHistoryRangeSelect'
 import { Package, Lock, Scissors, AlertTriangle } from 'lucide-react'
 import {
   getFilterPillClass,
@@ -39,7 +40,10 @@ export default function PanolToolbar({
   hasActiveFilters = false,
   onClearAllFilters,
   gridHistory = null,
-  viewsController
+  viewsController,
+  historyRange = '90d',
+  setHistoryRange,
+  loading = false
 }) {
   const otOptions = resolveOtFilterOptions(workOrders, workItems, filterShip)
 
@@ -48,6 +52,9 @@ export default function PanolToolbar({
       <>
         {activeTab === 'planillas' && (
           <>
+            {setHistoryRange && (
+              <CanonicalHistoryRangeSelect value={historyRange} onChange={setHistoryRange} loading={loading} />
+            )}
             {/* 1. Período (Índigo) */}
             <select
               value={filterPeriod}

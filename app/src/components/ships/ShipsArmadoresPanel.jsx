@@ -1,18 +1,11 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import {
-  Building2,
-  Pencil,
-  Trash2,
-  CopyPlus,
-  CheckSquare,
-  Square,
-  Phone,
-  Mail
-} from 'lucide-react'
+import { Building2, Pencil, Trash2, CopyPlus, CheckSquare, Square, Phone, Mail } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
@@ -20,26 +13,15 @@ import { useGridContextMenu } from '../../hooks/useGridContextMenu'
 import { duplicateRecord, buildPasteRowHandler } from '../../lib/gridRowActions'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
+import { buildGroupedMap } from '../../lib/gridPerformanceHelpers'
 import HighlightText from '../HighlightText'
-import {
-  cleanShipName,
-  OWNER_CLONE_FIELDS
-} from '../../lib/shipsConstants'
+import { cleanShipName, OWNER_CLONE_FIELDS } from '../../lib/shipsConstants'
 import { buildOwnerFieldPatch, updateGridEntityRowsService } from '../../lib/shipsService'
 import { buildGridCellMeta, executeGridBatchUpdate, resolveShipsAuditUser } from '../../lib/shipsGridHelpers'
 
 export default function ShipsArmadoresPanel({
-  owners = [],
-  setOwners,
-  ships = [],
-  setShips,
-  user,
-  activeRolePerspective = 'admin',
-  onOpenNewOwner,
-  onOpenEditOwner,
-  onOpenDeleteOwner,
-  setStatusMessage,
-  loadInitialData
+  owners = [], setOwners, ships = [], setShips, user, activeRolePerspective = 'admin',
+  onOpenNewOwner, onOpenEditOwner, onOpenDeleteOwner, setStatusMessage, loadInitialData
 }) {
   const { profile } = useAuth()
   const initialFilters = useMemo(
@@ -60,6 +42,8 @@ export default function ShipsArmadoresPanel({
   const [inlineOwnerEdit, setInlineOwnerEdit] = useState(null)
   const searchInputRef = useRef(null)
   const ownersPasteRef = useRef(null)
+  const gridScrollRef = useRef(null)
+  const shipsByOwnerId = useMemo(() => buildGroupedMap(ships, 'owner_id'), [ships])
   const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const showFeedback = useCallback((type, text) => setStatusMessage?.({ type, text }), [setStatusMessage])
 
@@ -189,6 +173,13 @@ export default function ShipsArmadoresPanel({
     },
     storageKey: 'aloncar_grid_owners',
     showFeedback
+  })
+
+  const { visibleItems: visibleOwners, visibleCount: visibleOwnersCount, hasMore: hasMoreOwners, remainingCount: remainingOwnersCount, loadMore: loadMoreOwners, showAll: showAllOwners, sentinelRef: ownersSentinelRef } = useProgressiveRows({
+    items: filteredOwners,
+    resetKey: `${searchTerm}|${viewModeOwners}`,
+    activeIndex: ownersGrid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: gridScrollRef
   })
 
   useEffect(() => {
@@ -325,7 +316,7 @@ export default function ShipsArmadoresPanel({
             exportFilename={`barcos_armadores_${getTodayArIso()}`}
           />
 
-          <div className="alon-grid-scroll">
+          <div ref={gridScrollRef} className="alon-grid-scroll">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                 <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
@@ -362,9 +353,10 @@ export default function ShipsArmadoresPanel({
                     </td>
                   </tr>
                 ) : (
-                  filteredOwners.map((owner, rowIndex) => {
+                  <>
+                    {visibleOwners.map((owner, rowIndex) => {
                     const isOwnerSelected = ownersGrid.selectedRowIds.has(owner.id)
-                    const ownerShips = ships.filter(s => s.owner_id === owner.id)
+                    const ownerShips = shipsByOwnerId.get(owner.id) || []
                     const cpName = getOwnersCellProps(rowIndex, 'name')
                     const cpArmador = getOwnersCellProps(rowIndex, 'armador_name')
                     const cpPhone = getOwnersCellProps(rowIndex, 'armador_phone')
@@ -572,7 +564,9 @@ export default function ShipsArmadoresPanel({
                         </td>
                       </tr>
                     )
-                  })
+                  })}
+                    <CanonicalProgressiveTableFooter colSpan={7} visibleCount={visibleOwnersCount} totalCount={filteredOwners.length} remainingCount={remainingOwnersCount} hasMore={hasMoreOwners} loadMore={loadMoreOwners} showAll={showAllOwners} sentinelRef={ownersSentinelRef} entityLabel="armadores" />
+                  </>
                 )}
               </tbody>
             </table>
@@ -606,8 +600,9 @@ export default function ShipsArmadoresPanel({
               No hay empresas armadoras que coincidan con la búsqueda.
             </div>
           ) : (
-            filteredOwners.map(owner => {
-              const ownerShips = ships.filter(s => s.owner_id === owner.id)
+            <>
+              {visibleOwners.map(owner => {
+              const ownerShips = shipsByOwnerId.get(owner.id) || []
 
               return (
                 <div
@@ -701,7 +696,9 @@ export default function ShipsArmadoresPanel({
                   </div>
                 </div>
               )
-            })
+            })}
+              <CanonicalProgressiveTableFooter asDiv className="col-span-full" visibleCount={visibleOwnersCount} totalCount={filteredOwners.length} remainingCount={remainingOwnersCount} hasMore={hasMoreOwners} loadMore={loadMoreOwners} showAll={showAllOwners} sentinelRef={ownersSentinelRef} entityLabel="armadores" />
+            </>
           )}
         </div>
       )}

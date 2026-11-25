@@ -17,8 +17,11 @@ export function createShipsRepository({ client = defaultClient } = {}) {
   return {
     ...base,
 
-    async listShips({ select = '*', orderBy = [{ column: 'name', ascending: true }], filters = {} } = {}) {
-      return base.findAll({ select, orderBy, filters })
+    async listShips({ select = '*', orderBy = [{ column: 'name', ascending: true }], filters = {}, limit, page, pageSize } = {}) {
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ select, orderBy, filters, limit, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy, filters })
     },
 
     async countShips() {

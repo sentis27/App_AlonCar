@@ -1,17 +1,11 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import {
-  Pencil,
-  CopyPlus,
-  CheckSquare,
-  Square,
-  Anchor,
-  Clock,
-  CheckCircle
-} from 'lucide-react'
+import { Pencil, CopyPlus, CheckSquare, Square, Anchor, Clock, CheckCircle } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -21,20 +15,8 @@ import { duplicateRecord, buildPasteRowHandler } from '../../lib/gridRowActions'
 import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import HighlightText from '../HighlightText'
-import {
-  cleanShipName,
-  cleanLocation,
-  calculateStayDays,
-  STANDARD_LOCATIONS,
-  STAY_CLONE_FIELDS,
-  calculateBerthMeters
-} from '../../lib/shipsConstants'
-import {
-  buildStayFieldPatch,
-  updateGridEntityRowsService,
-  syncShipLocationFromStayService,
-  closeStayQuickService
-} from '../../lib/shipsService'
+import { cleanShipName, cleanLocation, calculateStayDays, STANDARD_LOCATIONS, STAY_CLONE_FIELDS, calculateBerthMeters } from '../../lib/shipsConstants'
+import { buildStayFieldPatch, updateGridEntityRowsService, syncShipLocationFromStayService, closeStayQuickService } from '../../lib/shipsService'
 import { buildGridCellMeta, executeGridBatchUpdate, resolveShipsAuditUser } from '../../lib/shipsGridHelpers'
 
 export default function ShipsEstadiasPanel({
@@ -69,6 +51,7 @@ export default function ShipsEstadiasPanel({
   const [inlineStayEdit, setInlineStayEdit] = useState(null)
   const searchInputRef = useRef(null)
   const staysPasteRef = useRef(null)
+  const gridScrollRef = useRef(null)
   const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const showFeedback = useCallback((type, text) => setStatusMessage?.({ type, text }), [setStatusMessage])
 
@@ -216,6 +199,13 @@ export default function ShipsEstadiasPanel({
     },
     storageKey: 'aloncar_grid_ship_stays',
     showFeedback
+  })
+
+  const { visibleItems: visibleStays, visibleCount: visibleStaysCount, hasMore: hasMoreStays, remainingCount: remainingStaysCount, loadMore: loadMoreStays, showAll: showAllStays, sentinelRef: staysSentinelRef } = useProgressiveRows({
+    items: filteredStays,
+    resetKey: `${searchTerm}|${locationFilter}|${viewModeStays}`,
+    activeIndex: staysGrid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: gridScrollRef
   })
 
   useEffect(() => {
@@ -422,7 +412,7 @@ export default function ShipsEstadiasPanel({
             exportFilename={`barcos_estadias_${getTodayArIso()}`}
           />
 
-          <div className="alon-grid-scroll">
+          <div ref={gridScrollRef} className="alon-grid-scroll">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                 <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
@@ -459,7 +449,8 @@ export default function ShipsEstadiasPanel({
                     </td>
                   </tr>
                 ) : (
-                  filteredStays.map((stay, rowIndex) => {
+                  <>
+                    {visibleStays.map((stay, rowIndex) => {
                     const isStaySelected = staysGrid.selectedRowIds.has(stay.id)
                     const isOngoing = !stay.end_date
                     const days = calculateStayDays(stay.start_date, stay.end_date)
@@ -677,7 +668,9 @@ export default function ShipsEstadiasPanel({
                         </td>
                       </tr>
                     )
-                  })
+                  })}
+                    <CanonicalProgressiveTableFooter colSpan={7} visibleCount={visibleStaysCount} totalCount={filteredStays.length} remainingCount={remainingStaysCount} hasMore={hasMoreStays} loadMore={loadMoreStays} showAll={showAllStays} sentinelRef={staysSentinelRef} entityLabel="estadías" />
+                  </>
                 )}
               </tbody>
             </table>
@@ -710,7 +703,8 @@ export default function ShipsEstadiasPanel({
               No hay movimientos registrados que coincidan con la búsqueda.
             </div>
           ) : (
-            filteredStays.map(stay => {
+            <>
+              {visibleStays.map(stay => {
               const days = calculateStayDays(stay.start_date, stay.end_date)
               const locClean = cleanLocation(stay.location)
               const isOngoing = !stay.end_date
@@ -776,7 +770,9 @@ export default function ShipsEstadiasPanel({
                   </div>
                 </div>
               )
-            })
+            })}
+              <CanonicalProgressiveTableFooter asDiv className="col-span-full" visibleCount={visibleStaysCount} totalCount={filteredStays.length} remainingCount={remainingStaysCount} hasMore={hasMoreStays} loadMore={loadMoreStays} showAll={showAllStays} sentinelRef={staysSentinelRef} entityLabel="estadías" />
+            </>
           )}
         </div>
       )}

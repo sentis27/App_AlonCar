@@ -1,11 +1,13 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { CheckSquare, Square, History, Trash2, Filter, Building2, Flame, Link2, Truck, X } from 'lucide-react'
 import { CLEAR_FILTER_BTN_CLASS, getFilterSelectClass } from '../../lib/filterThemeConstants'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import GridRibbon from '../GridRibbon'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import HighlightText from '../HighlightText'
 import { GAS_TRACEABILITY_COLUMNS, GAS_OPERATION_META, buildGasTraceabilityRows } from '../../lib/panolConstants'
 import { updateGasMovementInlineService, deleteGasMovementService } from '../../lib/panolService'
@@ -18,22 +20,10 @@ import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
  * Cumple Estándar CARGA_EDICION (useSpreadsheetGrid + Columna 0 + GridContextMenu + audit_logs).
  */
 export default function GasTraceabilityGrid({
-  gasMovements = [],
-  setGasMovements,
-  suppliers = [],
-  materials = [],
-  ships = [],
-  workOrders = [],
-  searchQuery = '',
-  filterSupplierId = 'TODOS',
-  setFilterSupplierId = null,
-  filterMaterialId = 'TODOS',
-  setFilterMaterialId = null,
-  isAdmin: _isAdmin = false,
-  user = null,
-  showFeedback,
-  onOpenSupplierModal = null,
-  onHistoryChange = null
+  gasMovements = [], setGasMovements, suppliers = [], materials = [], ships = [], workOrders = [],
+  searchQuery = '', filterSupplierId = 'TODOS', setFilterSupplierId = null,
+  filterMaterialId = 'TODOS', setFilterMaterialId = null, isAdmin: _isAdmin = false,
+  user = null, showFeedback, onOpenSupplierModal = null, onHistoryChange = null
 }) {
   const [filterScope, setFilterScope] = useState('TODOS') // TODOS | PROVEEDOR | CONTRATISTA
   const [filterOpType, setFilterOpType] = useState('TODAS')
@@ -205,12 +195,25 @@ export default function GasTraceabilityGrid({
     }
   })
 
+  const gasHistoryActionsRef = useRef({ undo: grid.undo, redo: grid.redo })
+  useEffect(() => {
+    gasHistoryActionsRef.current = { undo: grid.undo, redo: grid.redo }
+  }, [grid.undo, grid.redo])
+
   const gasUndoCount = grid.undoStack?.length || 0
   const gasRedoCount = grid.redoStack?.length || 0
   useEffect(() => {
-    onHistoryChange?.({ canUndo: grid.canUndo, canRedo: grid.canRedo, undoCount: gasUndoCount, redoCount: gasRedoCount, onUndo: grid.undo, onRedo: grid.redo })
-    return () => onHistoryChange?.(null)
-  }, [onHistoryChange, grid.canUndo, grid.canRedo, gasUndoCount, gasRedoCount, grid.undo, grid.redo])
+    onHistoryChange?.({
+      canUndo: grid.canUndo,
+      canRedo: grid.canRedo,
+      undoCount: gasUndoCount,
+      redoCount: gasRedoCount,
+      onUndo: () => gasHistoryActionsRef.current.undo?.(),
+      onRedo: () => gasHistoryActionsRef.current.redo?.()
+    })
+  }, [onHistoryChange, grid.canUndo, grid.canRedo, gasUndoCount, gasRedoCount])
+
+  useEffect(() => () => onHistoryChange?.(null), [onHistoryChange])
 
   const getCellProps = (rowIndex, colKey) => {
     const colIdx = GAS_TRACEABILITY_COLUMNS.findIndex((c) => c.key === colKey)
@@ -278,18 +281,18 @@ export default function GasTraceabilityGrid({
     [filteredRows]
   )
 
+  const { visibleItems: visibleRows, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredRows,
+    activeIndex: grid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: grid.gridContainerRef,
+    resetKey: `${searchQuery}|${filterScope}|${filterOpType}|${activeSupplierFilter}|${activeMaterialFilter}`
+  })
+
   const exportColumns = [
-    { key: 'fecha', label: 'Fecha' },
-    { key: 'operacion', label: 'Operación' },
-    { key: 'remito', label: 'N° Remito' },
-    { key: 'gas', label: 'Tipo de Gas' },
-    { key: 'actor', label: 'Empresa / Contratista' },
-    { key: 'buque_ot', label: 'Buque / OT' },
-    { key: 'estado', label: 'Estado Tubo' },
-    { key: 'impacto', label: 'Impacto Patio / Deuda' },
-    { key: 'cantidad', label: 'Cantidad' },
-    { key: 'observaciones', label: 'Observaciones' },
-    { key: 'responsable', label: 'Registrado Por' }
+    { key: 'fecha', label: 'Fecha' }, { key: 'operacion', label: 'Operación' }, { key: 'remito', label: 'N° Remito' },
+    { key: 'gas', label: 'Tipo de Gas' }, { key: 'actor', label: 'Empresa / Contratista' }, { key: 'buque_ot', label: 'Buque / OT' },
+    { key: 'estado', label: 'Estado Tubo' }, { key: 'impacto', label: 'Impacto Patio / Deuda' }, { key: 'cantidad', label: 'Cantidad' },
+    { key: 'observaciones', label: 'Observaciones' }, { key: 'responsable', label: 'Registrado Por' }
   ]
 
   return (
@@ -449,7 +452,8 @@ export default function GasTraceabilityGrid({
                 </td>
               </tr>
             ) : (
-              filteredRows.map((row, rowIndex) => {
+              <>
+              {visibleRows.map((row, rowIndex) => {
                 const isRowSelected = grid.selectedRowIds.has(row.id)
                 const dateProps = getCellProps(rowIndex, 'movement_date')
                 const remitoProps = getCellProps(rowIndex, 'remito_number')
@@ -774,7 +778,13 @@ export default function GasTraceabilityGrid({
                     </td>
                   </tr>
                 )
-              })
+              })}
+              <CanonicalProgressiveTableFooter
+                visibleCount={visibleCount} totalCount={filteredRows.length} hasMore={hasMore}
+                remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
+                sentinelRef={sentinelRef} colSpan={11} entityLabel="movimientos de gas"
+              />
+              </>
             )}
           </tbody>
         </table>

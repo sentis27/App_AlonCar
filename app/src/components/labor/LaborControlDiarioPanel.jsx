@@ -1,17 +1,15 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import CanonicalHistoryRangeSelect from '../canonical/CanonicalHistoryRangeSelect'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
-import {
-  Calendar,
-  UserCheck,
-  Ship,
-  Pencil,
-  Plus,
-  Trash2
-} from 'lucide-react'
+import { buildLookupMap } from '../../lib/gridPerformanceHelpers'
+import { buildDailyControlUnifiedList } from '../../lib/laborPerformanceHelpers'
+import { Calendar, UserCheck, Ship, Pencil, Plus, Trash2 } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
@@ -47,9 +45,15 @@ export default function LaborControlDiarioPanel({
   setShipPickerModal,
   openQuickLogModal,
   handleEditFromDaily,
-  handleDeleteLog
+  handleDeleteLog,
+  historyRange = '90d',
+  setHistoryRange,
+  loading = false
 }) {
   const { user, profile } = useAuth()
+  const scrollContainerRef = useRef(null)
+  const shipsById = useMemo(() => buildLookupMap(ships), [ships])
+  const workOrdersById = useMemo(() => buildLookupMap(workOrders), [workOrders])
   const initialDailyFilters = useMemo(
     () => resolveInitialModuleFilters(user, profile, 'labor_control_diario'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,83 +155,17 @@ export default function LaborControlDiarioPanel({
     return CONTRATISTAS_FRECUENTES
   }, [dbWorkers])
 
-  const allKnownWorkers = useMemo(() => {
-    const list = []
-    const astilleroNames = new Set(astilleroSource.map(w => w.name))
-    recentLogs.forEach(l => {
-      if (l.worker_name && l.worker_type === 'Astillero') astilleroNames.add(l.worker_name)
-    })
-    astilleroNames.forEach(name => {
-      const base = astilleroSource.find(b => b.name === name)
-      list.push({ name, defaultRubro: base?.defaultRubro || 'General', type: 'Astillero' })
-    })
+  const logsForAuditDate = useMemo(
+    () => recentLogs.filter(l => l.date_logged === auditDate),
+    [recentLogs, auditDate]
+  )
 
-    const tallerNames = new Set(tallerSource)
-    recentLogs.forEach(l => {
-      if (l.worker_name && l.worker_type === 'Taller') tallerNames.add(l.worker_name)
-    })
-    tallerNames.forEach(name => {
-      list.push({ name, defaultRubro: 'Taller Externo', type: 'Taller' })
-    })
+  const allAuditDateLogIds = useMemo(() => logsForAuditDate.map(l => l.id), [logsForAuditDate])
 
-    const contratistaNames = new Set(contratistaSource)
-    recentLogs.forEach(l => {
-      if (l.worker_name && l.worker_type === 'Contratista') contratistaNames.add(l.worker_name)
-    })
-    contratistaNames.forEach(name => {
-      list.push({ name, defaultRubro: 'Servicio Contratista', type: 'Contratista' })
-    })
-
-    return list
-  }, [astilleroSource, tallerSource, contratistaSource, recentLogs])
-
-  const logsForAuditDate = useMemo(() => {
-    return recentLogs.filter(l => l.date_logged === auditDate)
-  }, [recentLogs, auditDate])
-
-  const allAuditDateLogIds = useMemo(() => {
-    return logsForAuditDate.map(l => l.id)
-  }, [logsForAuditDate])
-
-  const unifiedDailyList = useMemo(() => {
-    return allKnownWorkers.map(w => {
-      const logs = logsForAuditDate.filter(l => l.worker_name === w.name)
-      const totalNormal = logs.reduce((a, b) => a + (parseFloat(b.hours_normal) || (parseFloat(b.hours_worked) || 0)), 0)
-      const total50 = logs.reduce((a, b) => a + (parseFloat(b.hours_extra_50) || 0), 0)
-      const total100 = logs.reduce((a, b) => a + (parseFloat(b.hours_extra_100) || 0), 0)
-      const totalDay = totalNormal + total50 + total100
-
-      const isFeriado = logs.some(l => (l.rubro || '').toLowerCase().includes('feriado'))
-      const targetHours = w.type === 'Astillero' ? (isFeriado ? 8 : 9) : null
-
-      let status = 'sin_carga'
-      if (w.type === 'Astillero') {
-        if (totalDay === 0) {
-          status = 'sin_carga'
-        } else if (totalNormal < targetHours) {
-          status = 'incompleta'
-        } else if (totalNormal >= targetHours) {
-          status = (total50 > 0 || total100 > 0 || totalDay > targetHours) ? 'extras' : 'completa'
-        }
-      } else {
-        status = totalDay > 0 ? 'registrado' : 'sin_carga'
-      }
-
-      return {
-        worker: w,
-        type: w.type,
-        defaultRubro: w.defaultRubro,
-        isFeriado,
-        targetHours,
-        totalNormal,
-        total50,
-        total100,
-        totalDay,
-        status,
-        logs
-      }
-    })
-  }, [allKnownWorkers, logsForAuditDate])
+  const unifiedDailyList = useMemo(
+    () => buildDailyControlUnifiedList({ astilleroSource, tallerSource, contratistaSource, recentLogs, logsForAuditDate }),
+    [astilleroSource, tallerSource, contratistaSource, recentLogs, logsForAuditDate]
+  )
 
   const filteredDailyList = useMemo(() => {
     return unifiedDailyList.filter(item => {
@@ -272,6 +210,12 @@ export default function LaborControlDiarioPanel({
   const auditDateRCount = useMemo(() => logsForAuditDate.filter(l => l.approval_status === 'R').length, [logsForAuditDate])
   const auditDateRRCount = useMemo(() => logsForAuditDate.filter(l => l.approval_status === 'RR').length, [logsForAuditDate])
 
+  const { visibleItems: visibleDailyItems, visibleCount: dailyVisibleCount, hasMore: dailyHasMore, remainingCount: dailyRemainingCount, loadMore: dailyLoadMore, showAll: dailyShowAll, sentinelRef: dailySentinelRef } = useProgressiveRows({
+    items: filteredDailyList,
+    scrollContainerRef,
+    resetKey: `${auditDate}|${dailySearch}|${dailyFilterType}|${historyRange}`
+  })
+
   return (
     <div className="alon-workspace-block">
       {/* ZONA 3: BARRA DE FECHA, BÚSQUEDA Y FILTROS DE CONTROL DIARIO */}
@@ -303,6 +247,9 @@ export default function LaborControlDiarioPanel({
               >
                 Ir a Hoy
               </button>
+              {setHistoryRange && (
+                <CanonicalHistoryRangeSelect value={historyRange} onChange={setHistoryRange} loading={loading} />
+              )}
             </div>
 
             <div className="h-4 w-px bg-slate-800 hidden sm:block"></div>
@@ -423,7 +370,7 @@ export default function LaborControlDiarioPanel({
         </div>
 
         {/* TABLA DE AUDITORÍA */}
-        <div className="alon-grid-scroll border border-slate-800 rounded-xl">
+        <div ref={scrollContainerRef} className="alon-grid-scroll border border-slate-800 rounded-xl">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
               <tr>
@@ -458,7 +405,8 @@ export default function LaborControlDiarioPanel({
                   </td>
                 </tr>
               ) : (
-                filteredDailyList.map(item => {
+                <>
+                {visibleDailyItems.map(item => {
                   const isAstillero = item.type === 'Astillero'
                   const isSinCarga = item.status === 'sin_carga'
                   const isIncompleta = item.status === 'incompleta'
@@ -598,8 +546,8 @@ export default function LaborControlDiarioPanel({
                           <div className="space-y-2 py-0.5">
                             {item.logs.map(l => {
                               const shipName = cleanShipName(l.ships?.name || l.work_orders?.ships?.name || '') || 'Sin Buque'
-                              const ot = (l.work_order_id && workOrders.find((w) => String(w.id) === String(l.work_order_id))) || l.work_orders || null
-                              const shipObj = ships.find((s) => String(s.id) === String(l.ship_id || ot?.ship_id)) || l.ships || l.work_orders?.ships || null
+                              const ot = (l.work_order_id && workOrdersById.get(String(l.work_order_id))) || l.work_orders || null
+                              const shipObj = shipsById.get(String(l.ship_id || ot?.ship_id || '')) || l.ships || l.work_orders?.ships || null
 
                               return (
                                 <div 
@@ -900,7 +848,19 @@ export default function LaborControlDiarioPanel({
                       </td>
                     </tr>
                   )
-                })
+                })}
+                <CanonicalProgressiveTableFooter
+                  visibleCount={dailyVisibleCount}
+                  totalCount={filteredDailyList.length}
+                  hasMore={dailyHasMore}
+                  remainingCount={dailyRemainingCount}
+                  loadMore={dailyLoadMore}
+                  showAll={dailyShowAll}
+                  sentinelRef={dailySentinelRef}
+                  colSpan={12}
+                  entityLabel="operarios"
+                />
+                </>
               )}
             </tbody>
           </table>

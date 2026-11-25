@@ -1,6 +1,7 @@
 /**
  * materialsRepository.js
  * Repositorios para `materials` y `material_rubros` sobre `_baseRepository.js`.
+ * Usa `findAllBatched` por defecto para soportar catálogos > 1.000 materiales sin recorte (FL-025).
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { MaterialSchema, MaterialRubroSchema } from '../schemas/panol.schema.js'
@@ -18,7 +19,7 @@ export function createMaterialsRepository({ client = defaultClient } = {}) {
     ...base,
 
     async listMaterials({ select = '*', orderBy = [{ column: 'name', ascending: true }], filters = {} } = {}) {
-      return base.findAll({ select, orderBy, filters })
+      return base.findAllBatched({ select, orderBy, filters })
     },
 
     async countMaterials() {
@@ -47,7 +48,7 @@ export function createMaterialRubrosRepository({ client = defaultClient } = {}) 
     ...base,
 
     async listRubros() {
-      return base.findAll({ orderBy: [{ column: 'name', ascending: true }] })
+      return base.findAllBatched({ orderBy: [{ column: 'name', ascending: true }] })
     },
   }
 }

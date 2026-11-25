@@ -2,43 +2,22 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import {
-  FileSpreadsheet,
-  Building2,
-  HardHat,
-  Plus,
-  Search,
-  Lock,
-  Unlock,
-  History,
-  X,
-  Check,
-  CheckCheck,
-  Briefcase,
-  AlertCircle,
-  CheckCircle2,
-  Save,
-  Pencil,
-  Square,
-  CheckSquare,
-  ArrowRight,
-  ChevronDown,
-  Calendar,
-  HelpCircle
+  FileSpreadsheet, Building2, HardHat, Plus, Search, Lock, Unlock, History, X, Check,
+  CheckCheck, Briefcase, AlertCircle, CheckCircle2, Save, Pencil, Square, CheckSquare,
+  ArrowRight, ChevronDown, Calendar, HelpCircle
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import {
-  loadTarifarioOrgRolesService,
-  loadAllTarifarioRateCardsService,
-  loadTarifarioScopeRateCardsService,
-  upsertTarifarioRateCardsBatchService,
-  saveAstilleroCategoryRateService,
-  saveContractorRateAndSyncWorkersService,
-  patchTarifarioRateCardCellService
+  loadTarifarioOrgRolesService, loadAllTarifarioRateCardsService, loadTarifarioScopeRateCardsService,
+  upsertTarifarioRateCardsBatchService, saveAstilleroCategoryRateService,
+  saveContractorRateAndSyncWorkersService, patchTarifarioRateCardCellService
 } from '../../services/personalTarifarioService'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { fetchMacroVariables } from '../../lib/macroVariablesService'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -781,6 +760,14 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
     showFeedback: showGridFeedback
   })
 
+  const ratesScrollRef = useRef(null)
+  const { visibleItems: visibleRateCards, visibleCount: visibleRatesCount, hasMore: hasMoreRates, remainingCount: remainingRatesCount, loadMore: loadMoreRates, showAll: showAllRates, sentinelRef: ratesSentinelRef } = useProgressiveRows({
+    items: filteredRateCards,
+    activeIndex: ratesGrid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: ratesScrollRef,
+    resetKey: `${rateTableSearch}|${rateCenterFilter}|${ratePeriodFilter}`
+  })
+
   const RATE_CLONE_FIELDS = ['period', 'year', 'month', 'quincena', 'admin_center', 'rate_oficial_ars', 'rate_oficial_usd', 'has_ayudante', 'rate_ayudante_ars', 'rate_ayudante_usd', 'dollar_rate']
   const RATE_PASTE_FIELDS = ['rate_oficial_ars', 'rate_oficial_usd', 'has_ayudante', 'rate_ayudante_ars', 'rate_ayudante_usd']
 
@@ -1496,7 +1483,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
             exportRows={filteredRateCards}
             exportFilename={`personal_tarifas_${getTodayArIso()}`}
           />
-          <div className="alon-grid-scroll">
+          <div ref={ratesScrollRef} className="alon-grid-scroll">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
                 <tr>
@@ -1536,7 +1523,8 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
                     </td>
                   </tr>
                 ) : (
-                  filteredRateCards.map((rc, rowIndex) => {
+                  <>
+                  {visibleRateCards.map((rc, rowIndex) => {
                     const isLocked = Boolean(rc.is_locked)
                     const canEditAyudante = !isLocked && rc.admin_center === 'CONTRATISTA' && Boolean(rc.has_ayudante || rc.rate_ayudante_ars !== null)
                     const isEditingOficial = inlineRateEdit && inlineRateEdit.rowId === rc.id && inlineRateEdit.colKey === 'rate_oficial_ars'
@@ -1758,7 +1746,13 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
                         </td>
                       </tr>
                     )
-                  })
+                  })}
+                  <CanonicalProgressiveTableFooter
+                    visibleCount={visibleRatesCount} totalCount={filteredRateCards.length} hasMore={hasMoreRates}
+                    remainingCount={remainingRatesCount} loadMore={loadMoreRates} showAll={showAllRates}
+                    sentinelRef={ratesSentinelRef} colSpan={10} entityLabel="tarifas"
+                  />
+                  </>
                 )}
               </tbody>
             </table>

@@ -1,5 +1,6 @@
 import React from 'react'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar.jsx'
+import CanonicalHistoryRangeSelect from '../canonical/CanonicalHistoryRangeSelect.jsx'
 import { cleanShipName } from '../../lib/laborConstants.js'
 import {
   getFilterSelectClass,
@@ -38,7 +39,10 @@ export default function LaborLogsToolbar({
   redoCount = 0,
   onUndo,
   onRedo,
-  viewsController
+  viewsController,
+  historyRange = '90d',
+  setHistoryRange,
+  loading = false
 }) {
   const hasFilters = Boolean(
     hasActiveFilters ||
@@ -67,6 +71,10 @@ export default function LaborLogsToolbar({
       history={{ canUndo, canRedo, undoCount, redoCount, onUndo, onRedo }}
       filters={
         <>
+          {setHistoryRange && (
+            <CanonicalHistoryRangeSelect value={historyRange} onChange={setHistoryRange} loading={loading} />
+          )}
+
           {/* Fecha (Índigo) */}
           <input
             type="date"

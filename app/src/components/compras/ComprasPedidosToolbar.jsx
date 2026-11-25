@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalHistoryRangeSelect from '../canonical/CanonicalHistoryRangeSelect'
 import { STATUS_OPTIONS } from '../../lib/comprasConstants'
 import {
   getFilterSelectClass,
@@ -37,7 +38,10 @@ export default function ComprasPedidosToolbar({
   hideReconciled,
   setHideReconciled,
   history = null,
-  viewsController
+  viewsController,
+  historyRange = '90d',
+  setHistoryRange,
+  loading = false
 }) {
   const otOptions = resolveOtFilterOptions(workOrders, workItems, filterShip)
 
@@ -53,6 +57,10 @@ export default function ComprasPedidosToolbar({
       history={history}
       filters={
         <>
+          {setHistoryRange && (
+            <CanonicalHistoryRangeSelect value={historyRange} onChange={setHistoryRange} loading={loading} />
+          )}
+
           {/* 1. Destino (Azul Cielo) */}
           <select
             value={filterChargeType}

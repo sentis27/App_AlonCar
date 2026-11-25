@@ -1,20 +1,14 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import {
-  CheckSquare,
-  Square,
-  RefreshCw,
-  Anchor,
-  Edit3,
-  ShoppingCart,
-  Copy,
-  Trash2
-} from 'lucide-react'
+import { CheckSquare, Square, RefreshCw, Anchor, Edit3, ShoppingCart, Copy, Trash2 } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { buildPasteRowHandler } from '../../lib/gridRowActions'
+import { buildLookupMap } from '../../lib/gridPerformanceHelpers'
 import GridRibbon from '../GridRibbon'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import HighlightText from '../HighlightText'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
 import ContractorPickerModal from '../ContractorPickerModal'
@@ -22,68 +16,27 @@ import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
 import PanolMovimientoCostCell from './PanolMovimientoCostCell'
-import {
-  describeFormula,
-  getStoredCellFormula,
-  getEditableCellInitialValue,
-  formatFormulaNumericDisplay
-} from '../../lib/formulaEngine'
-import {
-  getPanolMovimientosColumns,
-  getPanolPasteFields,
-  resolvePanolTxCost
-} from '../../lib/panolCostHelpers'
+import { describeFormula, getStoredCellFormula, getEditableCellInitialValue, formatFormulaNumericDisplay } from '../../lib/formulaEngine'
+import { getPanolMovimientosColumns, getPanolPasteFields, resolvePanolTxCost } from '../../lib/panolCostHelpers'
 import { formatUsd } from '../../lib/drydockCatalogConstants'
 import { formatUnitMeasureShort } from '../../lib/unitMeasureUtils'
 import { getLocalDateKey, formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
 import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 import { evaluateAllocationState } from '../../lib/allocationEngine'
 import {
-  saveShipAndWorkOrderService,
-  saveInlineTxService,
-  insertBlankRowService,
-  duplicateTxService,
-  requestDeletionTxService,
-  permanentDeleteTxService,
-  restoreTxService
+  saveShipAndWorkOrderService, saveInlineTxService, insertBlankRowService,
+  duplicateTxService, requestDeletionTxService, permanentDeleteTxService, restoreTxService
 } from '../../lib/panolService'
 
 export default function PanolMovimientosPanel({
-  filteredTransactions,
-  totalTransactionsCount,
-  loading,
-  materials,
-  setMaterials,
-  ships,
-  workOrders,
-  workItems,
-  astilleroWorkers,
-  contractorGroups,
-  availableGroups,
-  pendingAlerts,
-  isAdmin,
-  searchQuery,
-  hasActivePanolFilter,
-  panolTotals,
-  user,
-  profile,
-  getEnabledWorkersAndContractors,
-  getEnabledWosForShipAndContractor,
-  formatWorkOrderTooltip,
-  onClearAllFilters,
-  onOpenWithdrawalModal,
-  onOpenQuickPurchaseModal,
-  onOpenRequestOtModal,
-  onOpenWorkerPermissionModal,
-  onPreviewImage,
-  showFeedback,
-  setInventoryTx,
-  gasMovements = [],
-  setGasMovements = null,
-  macroVariables = [],
-  pricingPolicy = null,
-  onOpenEditMaterialModal = null,
-  onHistoryChange = null
+  filteredTransactions, totalTransactionsCount, loading, filterResetKey = '',
+  materials, setMaterials, ships, workOrders, workItems, astilleroWorkers, contractorGroups,
+  availableGroups, pendingAlerts, isAdmin, searchQuery, hasActivePanolFilter, panolTotals,
+  user, profile, getEnabledWorkersAndContractors, getEnabledWosForShipAndContractor,
+  formatWorkOrderTooltip, onClearAllFilters, onOpenWithdrawalModal, onOpenQuickPurchaseModal,
+  onOpenRequestOtModal, onOpenWorkerPermissionModal, onPreviewImage, showFeedback, setInventoryTx,
+  gasMovements = [], setGasMovements = null, macroVariables = [], pricingPolicy = null,
+  onOpenEditMaterialModal = null, onHistoryChange = null
 }) {
   const [selectedTxIds, setSelectedTxIds] = useState(new Set())
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
@@ -236,12 +189,14 @@ export default function PanolMovimientosPanel({
     }
   }
 
-  const materialById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials])
+  const materialById = useMemo(() => buildLookupMap(materials), [materials])
+  const shipById = useMemo(() => buildLookupMap(ships), [ships])
+  const workOrderById = useMemo(() => buildLookupMap(workOrders), [workOrders])
   const movimientosColumns = useMemo(
     () =>
       getPanolMovimientosColumns(isAdmin, {
         getCostTotalUsd: (row) =>
-          resolvePanolTxCost(row, materialById.get(row?.material_id) || null, {
+          resolvePanolTxCost(row, row?.material_id ? (materialById.get(String(row.material_id)) || null) : null, {
             macroVariables,
             policy: pricingPolicy
           }).totalUsd
@@ -323,12 +278,32 @@ export default function PanolMovimientosPanel({
     }
   })
 
+  const { visibleItems: visibleTransactions, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredTransactions,
+    activeIndex: grid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: grid.gridContainerRef,
+    resetKey: filterResetKey || searchQuery
+  })
+
+  const gridHistoryActionsRef = useRef({ undo: grid.undo, redo: grid.redo })
+  useEffect(() => {
+    gridHistoryActionsRef.current = { undo: grid.undo, redo: grid.redo }
+  }, [grid.undo, grid.redo])
+
   const gridUndoCount = grid.undoStack?.length || 0
   const gridRedoCount = grid.redoStack?.length || 0
   useEffect(() => {
-    onHistoryChange?.({ canUndo: grid.canUndo, canRedo: grid.canRedo, undoCount: gridUndoCount, redoCount: gridRedoCount, onUndo: grid.undo, onRedo: grid.redo })
-    return () => onHistoryChange?.(null)
-  }, [onHistoryChange, grid.canUndo, grid.canRedo, gridUndoCount, gridRedoCount, grid.undo, grid.redo])
+    onHistoryChange?.({
+      canUndo: grid.canUndo,
+      canRedo: grid.canRedo,
+      undoCount: gridUndoCount,
+      redoCount: gridRedoCount,
+      onUndo: () => gridHistoryActionsRef.current.undo?.(),
+      onRedo: () => gridHistoryActionsRef.current.redo?.()
+    })
+  }, [onHistoryChange, grid.canUndo, grid.canRedo, gridUndoCount, gridRedoCount])
+
+  useEffect(() => () => onHistoryChange?.(null), [onHistoryChange])
 
   function getSpreadsheetCellProps(rowIndex, colKey) {
     const colIdx = movimientosColumns.findIndex((c) => c.key === colKey)
@@ -470,11 +445,12 @@ export default function PanolMovimientosPanel({
                 </td>
               </tr>
             ) : (
-              filteredTransactions.map((tx, rowIndex) => {
+              <>
+              {visibleTransactions.map((tx, rowIndex) => {
                 const isSelected = selectedTxIds.has(tx.id)
-                const mat = materials.find((m) => m.id === tx.material_id)
-                const ship = ships.find((s) => s.id === tx.ship_id)
-                const wo = workOrders.find((w) => w.id === tx.work_order_id)
+                const mat = tx.material_id ? (materialById.get(String(tx.material_id)) || null) : null
+                const ship = tx.ship_id ? (shipById.get(String(tx.ship_id)) || null) : null
+                const wo = tx.work_order_id ? (workOrderById.get(String(tx.work_order_id)) || null) : null
                 const isDeletionReq = Boolean(tx.is_deletion_requested)
 
                 return (
@@ -1022,7 +998,14 @@ export default function PanolMovimientosPanel({
                     </td>
                   </tr>
                 )
-              })
+              })}
+              <CanonicalProgressiveTableFooter
+                visibleCount={visibleCount} totalCount={filteredTransactions.length}
+                hasMore={hasMore} remainingCount={remainingCount}
+                loadMore={loadMore} showAll={showAll}
+                sentinelRef={sentinelRef} colSpan={totalColSpan} entityLabel="retiros"
+              />
+              </>
             )}
           </tbody>
         </table>

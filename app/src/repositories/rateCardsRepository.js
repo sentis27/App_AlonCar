@@ -26,19 +26,11 @@ export function createRateCardsRepository({ client = defaultClient, audit = { lo
     ...base,
 
     async listRateCards({ select = '*', period, adminCenter, year, month, page, pageSize, limit } = {}) {
-      return base.findAll({
-        select,
-        orderBy: DEFAULT_ORDER,
-        filters: {
-          period,
-          admin_center: adminCenter,
-          year,
-          month,
-        },
-        page,
-        pageSize,
-        limit,
-      })
+      const queryOpts = { select, orderBy: DEFAULT_ORDER, filters: { period, admin_center: adminCenter, year, month } }
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ ...queryOpts, page, pageSize, limit })
+      }
+      return base.findAllBatched(queryOpts)
     },
 
     async getLatestPeriodRate() {

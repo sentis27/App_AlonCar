@@ -1,45 +1,45 @@
-import React from 'react'
+import React, { useMemo, useRef } from 'react'
 import { useModuleFilterMemory } from '../../hooks/useModuleFilterMemory'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import CrawlerSearchBar from '../CrawlerSearchBar'
-import {
-  Table,
-  Pencil,
-  Plus,
-  Trash2,
-  AlertCircle,
-  CheckCircle
-} from 'lucide-react'
+import { Table, Pencil, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import CanonicalHistoryRangeSelect from '../canonical/CanonicalHistoryRangeSelect'
 import { formatDateAr } from '../../lib/dateTimeCanonical'
+import { buildLookupMap } from '../../lib/gridPerformanceHelpers'
+import { buildSabanaMatrixIndex, filterQuincenaLogs } from '../../lib/laborPerformanceHelpers'
 
 export default function LaborSabanaPanel({
-  ships = [],
-  workOrders = [],
-  workItems = [],
-  selectedYear,
-  selectedMonth,
-  setSelectedMonth,
-  selectedQuincena,
-  setSelectedQuincena,
-  sabanaSearch,
-  setSabanaSearch,
-  selectedQuincenaWorker,
-  setSelectedQuincenaWorker,
-  daysInQuincena = [],
-  filteredSabanaWorkers = [],
-  allQuincenaWorkers = [],
-  recentLogs = [],
-  selectedLogIds = new Set(),
-  toggleSelectLog,
-  toggleSelectAllLogs,
-  handleEditDayCell,
-  handleQuickAddFromSabana,
-  handleEditFromDaily,
-  handleDeleteLog,
-  handleUpdateApprovalStatus,
-  setReviewReasonModal
+  ships = [], workOrders = [], workItems = [],
+  selectedYear, selectedMonth, setSelectedMonth, selectedQuincena, setSelectedQuincena,
+  sabanaSearch, setSabanaSearch, selectedQuincenaWorker, setSelectedQuincenaWorker,
+  daysInQuincena = [], filteredSabanaWorkers = [], allQuincenaWorkers = [], recentLogs = [],
+  selectedLogIds = new Set(), toggleSelectLog, toggleSelectAllLogs,
+  handleEditDayCell, handleQuickAddFromSabana, handleEditFromDaily,
+  handleDeleteLog, handleUpdateApprovalStatus, setReviewReasonModal,
+  historyRange = '90d', setHistoryRange, loading = false
 }) {
+  const matrixScrollRef = useRef(null)
+  const detailScrollRef = useRef(null)
+  const shipsById = useMemo(() => buildLookupMap(ships), [ships])
+  const workOrdersById = useMemo(() => buildLookupMap(workOrders), [workOrders])
+  const sabanaIndex = useMemo(() => buildSabanaMatrixIndex(recentLogs, daysInQuincena), [recentLogs, daysInQuincena])
+  const quincenaLogs = useMemo(
+    () => filterQuincenaLogs(recentLogs, { selectedYear, selectedMonth, selectedQuincena, selectedQuincenaWorker }),
+    [recentLogs, selectedYear, selectedMonth, selectedQuincena, selectedQuincenaWorker]
+  )
+  const { visibleItems: visibleWorkers, visibleCount: workersVisibleCount, hasMore: workersHasMore, remainingCount: workersRemainingCount, loadMore: workersLoadMore, showAll: workersShowAll, sentinelRef: workersSentinelRef } = useProgressiveRows({
+    items: filteredSabanaWorkers,
+    scrollContainerRef: matrixScrollRef,
+    resetKey: `${sabanaSearch}|${selectedYear}|${selectedMonth}|${selectedQuincena}`
+  })
+  const { visibleItems: visibleQuincenaLogs, visibleCount: logsVisibleCount, hasMore: logsHasMore, remainingCount: logsRemainingCount, loadMore: logsLoadMore, showAll: logsShowAll, sentinelRef: logsSentinelRef } = useProgressiveRows({
+    items: quincenaLogs,
+    scrollContainerRef: detailScrollRef,
+    resetKey: `${selectedYear}|${selectedMonth}|${selectedQuincena}|${selectedQuincenaWorker || ''}`
+  })
   const sabanaViewsController = useModuleFilterMemory({
     moduleKey: 'labor_sabana',
     currentFilters: { sabanaSearch, selectedMonth, selectedQuincena },
@@ -99,6 +99,10 @@ export default function LaborSabanaPanel({
             {selectedYear}
           </span>
 
+          {setHistoryRange && (
+            <CanonicalHistoryRangeSelect value={historyRange} onChange={setHistoryRange} loading={loading} />
+          )}
+
           {/* Buscador de Operario en Sábana */}
           <CrawlerSearchBar
             compact
@@ -112,7 +116,7 @@ export default function LaborSabanaPanel({
       </div>
 
       {/* MATRIZ TIPO SHEETS */}
-      <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
+      <div ref={matrixScrollRef} className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
         <table className="w-full text-center text-xs border-collapse">
           <thead className="sticky top-0 z-20 bg-slate-950 shadow-sm">
             <tr className="bg-slate-950 text-slate-300 font-bold border-b border-slate-800">
@@ -144,10 +148,10 @@ export default function LaborSabanaPanel({
                 </td>
               </tr>
             ) : (
-              filteredSabanaWorkers.map(w => {
-                let sumNorm = 0
-                let sum50 = 0
-                let sum100 = 0
+              <>
+              {visibleWorkers.map(w => {
+                const workerDaysMap = sabanaIndex.byWorkerDate.get(w.name)
+                const tot = sabanaIndex.totalsByWorker.get(w.name) || { sumNorm: 0, sum50: 0, sum100: 0 }
 
                 return (
                   <tr key={w.name} className="hover:bg-slate-800/30 transition-colors">
@@ -183,19 +187,14 @@ export default function LaborSabanaPanel({
                     </td>
 
                     {daysInQuincena.map(day => {
-                      const dayLogs = recentLogs.filter(l => l.worker_name === w.name && l.date_logged === day.dateStr)
-                      const dayHours = dayLogs.reduce((acc, l) => acc + (parseFloat(l.hours_worked) || 0), 0)
-                      const dayNorm = dayLogs.reduce((acc, l) => acc + (parseFloat(l.hours_normal) || parseFloat(l.hours_worked) || 0), 0)
-                      const day50 = dayLogs.reduce((acc, l) => acc + (parseFloat(l.hours_extra_50) || 0), 0)
-                      const day100 = dayLogs.reduce((acc, l) => acc + (parseFloat(l.hours_extra_100) || 0), 0)
-                      const hasFeriado = dayLogs.some(l => (l.rubro || '').toLowerCase().includes('feriado'))
-                      const target = hasFeriado ? 8 : 9
-                      const hasR = dayLogs.some(l => l.approval_status === 'R')
-                      const hasRR = dayLogs.some(l => l.approval_status === 'RR')
-
-                      sumNorm += dayNorm
-                      sum50 += day50
-                      sum100 += day100
+                      const cell = workerDaysMap?.get(day.dateStr)
+                      const dayLogs = cell?.logs || []
+                      const dayHours = cell?.dayHours || 0
+                      const day50 = cell?.day50 || 0
+                      const day100 = cell?.day100 || 0
+                      const target = cell?.hasFeriado ? 8 : 9
+                      const hasR = Boolean(cell?.hasR)
+                      const hasRR = Boolean(cell?.hasRR)
 
                       return (
                         <td 
@@ -250,20 +249,32 @@ export default function LaborSabanaPanel({
                     })}
 
                     <td className="py-2.5 px-3 font-mono font-bold text-slate-300 border-l border-slate-800 bg-slate-950/40">
-                      {sumNorm}
+                      {tot.sumNorm}
                     </td>
                     <td className="py-2.5 px-3 font-mono font-bold text-cyan-400 bg-cyan-950/20">
-                      {sum50}
+                      {tot.sum50}
                     </td>
                     <td className="py-2.5 px-3 font-mono font-bold text-amber-400 bg-amber-950/20">
-                      {sum100}
+                      {tot.sum100}
                     </td>
                     <td className="py-2.5 px-4 font-mono font-extrabold text-primary bg-slate-950">
-                      {sumNorm + sum50 + sum100} hs
+                      {tot.sumNorm + tot.sum50 + tot.sum100} hs
                     </td>
                   </tr>
                 )
-              })
+              })}
+              <CanonicalProgressiveTableFooter
+                visibleCount={workersVisibleCount}
+                totalCount={filteredSabanaWorkers.length}
+                hasMore={workersHasMore}
+                remainingCount={workersRemainingCount}
+                loadMore={workersLoadMore}
+                showAll={workersShowAll}
+                sentinelRef={workersSentinelRef}
+                colSpan={daysInQuincena.length + 5}
+                entityLabel="operarios"
+              />
+              </>
             )}
           </tbody>
         </table>
@@ -359,186 +370,97 @@ export default function LaborSabanaPanel({
         </div>
 
         {/* Grilla Detallada de la Quincena */}
-        {(() => {
-          const quincenaLogs = recentLogs.filter(log => {
-            if (!log.date_logged) return false
-            const [year, month, day] = log.date_logged.split('-').map(Number)
-            const matchYear = year === parseInt(selectedYear, 10)
-            const matchMonth = month === parseInt(selectedMonth, 10)
-            const matchQuincena = selectedQuincena === '1' ? (day >= 1 && day <= 15) : (day >= 16)
-            const matchWorker = !selectedQuincenaWorker || log.worker_name === selectedQuincenaWorker
-            return matchYear && matchMonth && matchQuincena && matchWorker
-          })
-
-          if (quincenaLogs.length === 0) {
-            return (
-              <div className="py-8 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
-                No se encontraron registros de horas para {selectedQuincenaWorker || 'este período'}.
-              </div>
-            )
-          }
-
-          return (
-            <div className="overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
-                  <tr>
-                    <th className="py-2.5 px-2 text-center w-8 bg-slate-950">
-                      <input
-                        type="checkbox"
-                        checked={quincenaLogs.length > 0 && quincenaLogs.every(l => selectedLogIds.has(l.id))}
-                        onChange={() => toggleSelectAllLogs(quincenaLogs.map(l => l.id))}
-                        className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                        title="Seleccionar todas las imputaciones visibles"
-                      />
-                    </th>
-                    <th className="py-2.5 px-3 bg-slate-950">Fecha</th>
-                    <th className="py-2.5 px-3 bg-slate-950">Operario</th>
-                    <th className="py-2.5 px-2 bg-slate-950">Tipo</th>
-                    <th className="py-2.5 px-3 bg-slate-950">Barco & OT</th>
-                    <th className="py-2.5 px-3 bg-slate-950">Rubro</th>
-                    <th className="py-2.5 px-2 text-center bg-slate-950">Norm</th>
-                    <th className="py-2.5 px-2 text-center text-cyan-400 bg-slate-950">50%</th>
-                    <th className="py-2.5 px-2 text-center text-amber-400 bg-slate-950">100%</th>
-                    <th className="py-2.5 px-3 text-center text-primary font-bold bg-slate-950">Total</th>
-                    <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
-                    <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {quincenaLogs.map(log => {
-                    const isSelected = selectedLogIds.has(log.id)
-                    return (
-                      <tr 
-                        key={log.id} 
-                        onClick={(e) => {
-                          if (e.target.closest('button') || e.target.closest('select') || e.target.tagName === 'INPUT') return
-                          toggleSelectLog(log.id)
-                        }}
-                        className={`transition-colors cursor-pointer select-none ${
-                          isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'
-                        }`}
-                      >
-                        <td className="py-2 px-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleSelectLog(log.id)}
-                            className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                          />
-                        </td>
-                        <td className="py-2 px-3 font-mono text-slate-400">{formatDateAr(log.date_logged)}</td>
-                        <td className="py-2 px-3 font-bold text-white">{log.worker_name}</td>
-                        <td className="py-2 px-2">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-                            log.worker_type === 'Astillero' 
-                              ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60' 
-                              : log.worker_type === 'Taller'
-                              ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
-                              : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
-                          }`}>
-                            {log.worker_type || 'Astillero'}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 max-w-[230px]">
-                          <span className="font-semibold text-white block truncate">{log.ships?.name || log.work_orders?.ships?.name || 'Sin Buque'}</span>
-                          <CanonicalOtBadge
-                            wo={(log.work_order_id && workOrders.find((w) => String(w.id) === String(log.work_order_id))) || log.work_orders || null}
-                            ship={ships.find((s) => String(s.id) === String(log.ship_id || log.work_orders?.ship_id)) || log.ships || log.work_orders?.ships || null}
-                            workItems={workItems}
-                            workOrders={workOrders}
-                            variant="compact"
-                            className="text-[11px] text-slate-400 max-w-[215px]"
-                          />
-                        </td>
-                        <td className="py-2 px-3">
-                          <span className={`px-2 py-0.5 rounded text-[11px] ${
-                            (log.rubro || '').toLowerCase().includes('feriado')
-                              ? 'bg-amber-950 text-amber-300 border border-amber-700/80 font-bold'
-                              : 'bg-slate-800 text-slate-300'
-                          }`}>
-                            {log.rubro || 'General'}
-                          </span>
-                        </td>
-                        <td className="py-2 px-2 text-center font-mono">{log.hours_normal || log.hours_worked}</td>
-                        <td className="py-2 px-2 text-center font-mono text-cyan-400">{log.hours_extra_50 || 0}</td>
-                        <td className="py-2 px-2 text-center font-mono text-amber-400">{log.hours_extra_100 || 0}</td>
-                        <td className="py-2 px-3 text-center font-mono font-bold text-primary">{log.hours_worked} hs</td>
-                        <td className="py-2 px-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <select
-                              value={log.approval_status || ''}
-                              onChange={(e) => handleUpdateApprovalStatus(log.id, e.target.value)}
-                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none ${
-                                log.approval_status === 'S' || log.approval_status === 'Aprobado'
-                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-600'
-                                  : log.approval_status === 'R'
-                                  ? 'bg-rose-950 text-rose-300 border-rose-500 shadow-sm shadow-rose-900/50'
-                                  : log.approval_status === 'RR'
-                                  ? 'bg-amber-950 text-amber-300 border-amber-500'
-                                  : log.approval_status === 'RRR'
-                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-500'
-                                  : 'bg-slate-900 text-slate-400 border-slate-700'
-                              }`}
-                              title={`Estado de revisión de ${log.worker_name}`}
-                            >
-                              <option value="">-</option>
-                              <option value="S">S (Aprobado)</option>
-                              <option value="R">R (Revisión)</option>
-                              <option value="RR">RR (Corregido)</option>
-                              <option value="RRR">RRR (Aprobado Fin)</option>
-                            </select>
-                            {log.review_reason && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setReviewReasonModal({
-                                    isOpen: true,
-                                    logId: log.id,
-                                    workerName: log.worker_name,
-                                    dateLogged: log.date_logged,
-                                    shipWo: `${log.work_orders?.ships?.name || ''} - ${log.work_orders?.title || ''}`,
-                                    targetStatus: log.approval_status || 'R',
-                                    reason: log.review_reason || '',
-                                    response: log.worker_response || ''
-                                  })
-                                }}
-                                className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-900/40 transition-colors"
-                                title={`Motivo de observación (R): ${log.review_reason}`}
-                              >
-                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleEditFromDaily(log)}
-                              className="p-1 text-slate-400 hover:text-primary rounded hover:bg-slate-800 transition-colors cursor-pointer"
-                              title="Editar registro"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
+        {quincenaLogs.length === 0 ? (
+          <div className="py-8 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
+            No se encontraron registros de horas para {selectedQuincenaWorker || 'este período'}.
+          </div>
+        ) : (
+          <div ref={detailScrollRef} className="overflow-y-auto max-h-[calc(100vh-320px)] border border-slate-800 rounded-xl">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
+                <tr>
+                  <th className="py-2.5 px-2 text-center w-8 bg-slate-950">
+                    <input type="checkbox" checked={quincenaLogs.length > 0 && quincenaLogs.every(l => selectedLogIds.has(l.id))} onChange={() => toggleSelectAllLogs(quincenaLogs.map(l => l.id))} className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary" title="Seleccionar todas las imputaciones visibles" />
+                  </th>
+                  <th className="py-2.5 px-3 bg-slate-950">Fecha</th>
+                  <th className="py-2.5 px-3 bg-slate-950">Operario</th>
+                  <th className="py-2.5 px-2 bg-slate-950">Tipo</th>
+                  <th className="py-2.5 px-3 bg-slate-950">Barco & OT</th>
+                  <th className="py-2.5 px-3 bg-slate-950">Rubro</th>
+                  <th className="py-2.5 px-2 text-center bg-slate-950">Norm</th>
+                  <th className="py-2.5 px-2 text-center text-cyan-400 bg-slate-950">50%</th>
+                  <th className="py-2.5 px-2 text-center text-amber-400 bg-slate-950">100%</th>
+                  <th className="py-2.5 px-3 text-center text-primary font-bold bg-slate-950">Total</th>
+                  <th className="py-2.5 px-2 text-center bg-slate-950">Estado</th>
+                  <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {visibleQuincenaLogs.map(log => {
+                  const isSelected = selectedLogIds.has(log.id)
+                  const resolvedWo = (log.work_order_id && workOrdersById.get(String(log.work_order_id))) || log.work_orders || null
+                  const resolvedShip = shipsById.get(String(log.ship_id || resolvedWo?.ship_id || '')) || log.ships || log.work_orders?.ships || null
+                  return (
+                    <tr key={log.id} onClick={(e) => { if (!e.target.closest('button') && !e.target.closest('select') && e.target.tagName !== 'INPUT') toggleSelectLog(log.id) }} className={`transition-colors cursor-pointer select-none ${isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'}`}>
+                      <td className="py-2 px-2 text-center">
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelectLog(log.id)} className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary" />
+                      </td>
+                      <td className="py-2 px-3 font-mono text-slate-400">{formatDateAr(log.date_logged)}</td>
+                      <td className="py-2 px-3 font-bold text-white">{log.worker_name}</td>
+                      <td className="py-2 px-2">
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${log.worker_type === 'Astillero' ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60' : log.worker_type === 'Taller' ? 'bg-purple-950/80 text-purple-300 border-purple-800/60' : 'bg-amber-950/80 text-amber-300 border-amber-800/60'}`}>{log.worker_type || 'Astillero'}</span>
+                      </td>
+                      <td className="py-2 px-3 max-w-[230px]">
+                        <span className="font-semibold text-white block truncate">{log.ships?.name || log.work_orders?.ships?.name || 'Sin Buque'}</span>
+                        <CanonicalOtBadge wo={log.work_order_id ? resolvedWo : null} ship={resolvedShip} workItems={workItems} workOrders={workOrders} variant="compact" className="text-[11px] text-slate-400 max-w-[215px]" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className={`px-2 py-0.5 rounded text-[11px] ${(log.rubro || '').toLowerCase().includes('feriado') ? 'bg-amber-950 text-amber-300 border border-amber-700/80 font-bold' : 'bg-slate-800 text-slate-300'}`}>{log.rubro || 'General'}</span>
+                      </td>
+                      <td className="py-2 px-2 text-center font-mono">{log.hours_normal || log.hours_worked}</td>
+                      <td className="py-2 px-2 text-center font-mono text-cyan-400">{log.hours_extra_50 || 0}</td>
+                      <td className="py-2 px-2 text-center font-mono text-amber-400">{log.hours_extra_100 || 0}</td>
+                      <td className="py-2 px-3 text-center font-mono font-bold text-primary">{log.hours_worked} hs</td>
+                      <td className="py-2 px-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <select value={log.approval_status || ''} onChange={(e) => handleUpdateApprovalStatus(log.id, e.target.value)} className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer focus:outline-none ${log.approval_status === 'S' || log.approval_status === 'Aprobado' ? 'bg-emerald-950 text-emerald-300 border-emerald-600' : log.approval_status === 'R' ? 'bg-rose-950 text-rose-300 border-rose-500 shadow-sm shadow-rose-900/50' : log.approval_status === 'RR' ? 'bg-amber-950 text-amber-300 border-amber-500' : log.approval_status === 'RRR' ? 'bg-cyan-950 text-cyan-300 border-cyan-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`} title={`Estado de revisión de ${log.worker_name}`}>
+                            <option value="">-</option>
+                            <option value="S">S (Aprobado)</option>
+                            <option value="R">R (Revisión)</option>
+                            <option value="RR">RR (Corregido)</option>
+                            <option value="RRR">RRR (Aprobado Fin)</option>
+                          </select>
+                          {log.review_reason && (
+                            <button type="button" onClick={() => setReviewReasonModal({ isOpen: true, logId: log.id, workerName: log.worker_name, dateLogged: log.date_logged, shipWo: `${log.work_orders?.ships?.name || ''} - ${log.work_orders?.title || ''}`, targetStatus: log.approval_status || 'R', reason: log.review_reason || '', response: log.worker_response || '' })} className="p-1 text-rose-400 hover:text-rose-300 rounded hover:bg-rose-900/40 transition-colors" title={`Motivo de observación (R): ${log.review_reason}`}>
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteLog(log.id, log.worker_name)}
-                              className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
-                              title="Eliminar registro"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )
-        })()}
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button type="button" onClick={() => handleEditFromDaily(log)} className="p-1 text-slate-400 hover:text-primary rounded hover:bg-slate-800 transition-colors cursor-pointer" title="Editar registro"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button type="button" onClick={() => handleDeleteLog(log.id, log.worker_name)} className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors cursor-pointer" title="Eliminar registro"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+                <CanonicalProgressiveTableFooter
+                  visibleCount={logsVisibleCount}
+                  totalCount={quincenaLogs.length}
+                  hasMore={logsHasMore}
+                  remainingCount={logsRemainingCount}
+                  loadMore={logsLoadMore}
+                  showAll={logsShowAll}
+                  sentinelRef={logsSentinelRef}
+                  colSpan={12}
+                  entityLabel="imputaciones"
+                />
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

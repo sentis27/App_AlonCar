@@ -1,6 +1,7 @@
 /**
  * inventoryTransactionsRepository.js
  * Repositorio para `inventory_transactions` (Movimientos de Pañol y Retiros) sobre `_baseRepository.js`.
+ * Usa lectura por bloques `findAllBatched` por defecto para romper el techo de 1.000 filas (FL-025).
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { InventoryTransactionSchema } from '../schemas/panol.schema.js'
@@ -23,22 +24,27 @@ export function createInventoryTransactionsRepository({ client = defaultClient }
       filters = {},
       gteFilters = {},
       lteFilters = {},
+      dateRange = null,
       limit,
+      page,
+      pageSize,
+      maxRows,
     } = {}) {
-      return base.findAll({ select, orderBy, filters, gteFilters, lteFilters, limit })
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ select, orderBy, filters, gteFilters, lteFilters, dateRange, limit, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy, filters, gteFilters, lteFilters, dateRange, maxRows })
     },
 
     async listWithVoucherNumber({
       select = 'id, material_id, work_order_id, ship_id, quantity_withdrawn, weight_total, voucher_number, transaction_date, contractor_name, worker_name, notes',
     } = {}) {
-      const { data, error } = await client
-        .from('inventory_transactions')
-        .select(select)
-        .not('voucher_number', 'is', null)
-        .neq('voucher_number', '')
-        .order('transaction_date', { ascending: false })
-      if (error) return { data: [], error: error.message || 'Error consultando remitos de Pañol' }
-      return { data: data || [], error: null }
+      return base.findAllBatched({
+        select,
+        neqFilters: { voucher_number: '' },
+        orFilter: 'voucher_number.not.is.null',
+        orderBy: [{ column: 'transaction_date', ascending: false }],
+      })
     },
 
     async insertBlankRow(payload) {

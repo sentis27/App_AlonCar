@@ -24,15 +24,18 @@ export function createWorkersRepository({ client = defaultClient } = {}) {
     ...base,
 
     async listWorkers({ select = '*', orderBy = DEFAULT_ORDER, filters = {}, page, pageSize } = {}) {
-      return base.findAll({ select, orderBy, filters, page, pageSize })
+      if (page !== undefined || pageSize !== undefined) {
+        return base.findAll({ select, orderBy, filters, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy, filters })
     },
 
     async listLookup() {
-      return base.findAll({ select: 'id, name', orderBy: [{ column: 'name', ascending: true }] })
+      return base.findAllBatched({ select: 'id, name', orderBy: [{ column: 'name', ascending: true }] })
     },
 
     async listThirdPartyEnabled() {
-      return base.findAll({
+      return base.findAllBatched({
         select: 'id, name, trade, work_group, admin_center, can_charge_third_party',
         filters: { can_charge_third_party: true },
         orderBy: [{ column: 'name', ascending: true }],

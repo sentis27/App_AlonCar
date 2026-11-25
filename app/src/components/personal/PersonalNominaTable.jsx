@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { Square, CheckSquare, HelpCircle, ChevronDown } from 'lucide-react'
+import { Square, CheckSquare, HelpCircle } from 'lucide-react'
 import GridRibbon from '../GridRibbon'
 import PersonalNominaRow from './PersonalNominaRow'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import { SAFETY_ITEMS_HELP_TEXT } from '../../lib/workCostRules'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import { NOMINA_COLUMNS } from '../../lib/personalNominaHelpers'
+import { computeGridSelectionBounds } from '../../lib/gridPerformanceHelpers'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 
 export default function PersonalNominaTable({
@@ -110,26 +112,16 @@ export default function PersonalNominaTable({
     }
   }), [setContextMenuTarget])
 
-  // Precalcular cotas de selección y tirador en O(1) para pasar solo primitivos a cada fila memoizada
-  const selMinR = selRange ? Math.min(selRange.startRow, selRange.endRow) : -1
-  const selMaxR = selRange ? Math.max(selRange.startRow, selRange.endRow) : -1
-  const selMinC = selRange ? Math.min(selRange.startCol, selRange.endCol) : -1
-  const selMaxC = selRange ? Math.max(selRange.startCol, selRange.endCol) : -1
-
-  const fillFromR = fillRange ? fillRange.fromRow : -1
-  const fillMaxR = fillRange ? Math.max(fillRange.fromRow, fillRange.toRow) : -1
-  const fillCol = fillRange ? fillRange.colIndex : -1
-
-  let handleRow = -1
-  let handleCol = -1
-  if (activeCell) {
-    const candidateRow = selRange ? selMaxR : activeCell.rowIndex
-    const candidateCol = selRange ? selMaxC : activeCell.colIndex
-    if (!NOMINA_COLUMNS[candidateCol]?.readOnly) {
-      handleRow = candidateRow
-      handleCol = candidateCol
-    }
-  }
+  const {
+    selMinR, selMaxR, selMinC, selMaxC,
+    fillFromR, fillMaxR, fillCol,
+    handleRow, handleCol
+  } = computeGridSelectionBounds({
+    activeCell,
+    selectionRange: selRange,
+    fillRange,
+    columns: NOMINA_COLUMNS
+  })
 
   return (
     <div
@@ -238,35 +230,17 @@ export default function PersonalNominaTable({
                     />
                   )
                 })}
-                {hasMore && (
-                  <tr ref={sentinelRef} className="bg-slate-900/70">
-                    <td colSpan={14} className="py-3 px-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
-                        <span>
-                          Mostrando <strong className="text-cyan-300 font-mono">{visibleCount}</strong> de{' '}
-                          <strong className="text-white font-mono">{filteredWorkers.length}</strong> operarios (el buscador, los filtros y la exportación trabajan sobre los {filteredWorkers.length})
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={loadMore}
-                            className="px-3 py-1 rounded-lg bg-cyan-950/90 hover:bg-cyan-900 text-cyan-300 border border-cyan-600/60 font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
-                          >
-                            <ChevronDown className="w-3.5 h-3.5" />
-                            <span>Cargar +{Math.min(60, remainingCount)}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={showAll}
-                            className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold cursor-pointer transition-colors"
-                          >
-                            Mostrar todos ({filteredWorkers.length})
-                          </button>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
+                <CanonicalProgressiveTableFooter
+                  visibleCount={visibleCount}
+                  totalCount={filteredWorkers.length}
+                  hasMore={hasMore}
+                  remainingCount={remainingCount}
+                  loadMore={loadMore}
+                  showAll={showAll}
+                  sentinelRef={sentinelRef}
+                  colSpan={14}
+                  entityLabel="operarios"
+                />
               </>
             )}
           </tbody>

@@ -1,29 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
-import {
-  Building2,
-  MapPin,
-  AlertTriangle,
-  Phone,
-  Mail,
-  Tag,
-  Plus,
-  X,
-  CheckSquare,
-  Square,
-  Edit3,
-  Trash2,
-  MessageSquare,
-  Copy
-} from 'lucide-react'
-import {
-  saveSupplierFromModalService,
-  patchSupplierInlineService,
-  deleteSupplierRecordService
-} from '../../services/comprasOcrSettingsService'
+import { Building2, MapPin, AlertTriangle, Phone, Mail, Tag, Plus, X, CheckSquare, Square, Edit3, Trash2, MessageSquare, Copy } from 'lucide-react'
+import { saveSupplierFromModalService, patchSupplierInlineService, deleteSupplierRecordService } from '../../services/comprasOcrSettingsService'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -35,21 +18,8 @@ import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/Canoni
 import { COMPRAS_SUPPLIER_STEP_HELP } from '../../lib/businessHelpRegistry.js'
 
 const STANDARD_TRADES = [
-  'FERRETERIA',
-  'GASES',
-  'TORNERIA',
-  'PINTURA',
-  'METALES',
-  'CALDERERIA',
-  'ELECTRICIDAD',
-  'SERVICIOS',
-  'BULONERIA',
-  'MADERA',
-  'HIDRAULICA',
-  'CORTE/PLEGADO',
-  'MECANICA',
-  'SEGURIDAD',
-  'LUBRICANTES'
+  'FERRETERIA', 'GASES', 'TORNERIA', 'PINTURA', 'METALES', 'CALDERERIA', 'ELECTRICIDAD', 'SERVICIOS',
+  'BULONERIA', 'MADERA', 'HIDRAULICA', 'CORTE/PLEGADO', 'MECANICA', 'SEGURIDAD', 'LUBRICANTES'
 ]
 
 export function formatArgPhoneForWhatsApp(phoneStr = '') {
@@ -418,6 +388,14 @@ export default function ComprasProveedoresPanel({
     }
   })
 
+  const suppliersScrollRef = useRef(null)
+  const { visibleItems: visibleSuppliers, visibleCount: suppliersVisibleCount, hasMore: suppliersHasMore, remainingCount: suppliersRemainingCount, loadMore: suppliersLoadMore, showAll: suppliersShowAll, sentinelRef: suppliersSentinelRef } = useProgressiveRows({
+    items: filteredSuppliers,
+    activeIndex: suppliersGrid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: suppliersScrollRef,
+    resetKey: `${supplierSearchQuery}|${supplierKpiFilter}|${suppliersViewMode}`
+  })
+
   const SUPPLIERS_PASTE_FIELDS = ['name', 'trades', 'trade', 'cuit_cuil', 'phone', 'email', 'payment_method', 'observations', 'is_local_supplier']
 
   useEffect(() => {
@@ -663,7 +641,7 @@ export default function ComprasProveedoresPanel({
               exportRows={filteredSuppliers}
               exportFilename={`padron_proveedores_${getTodayArIso()}`}
             />
-            <div className="alon-grid-scroll">
+            <div ref={suppliersScrollRef} className="alon-grid-scroll">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="sticky top-0 z-20 alon-grid-thead">
                   <tr>
@@ -703,7 +681,8 @@ export default function ComprasProveedoresPanel({
                       </td>
                     </tr>
                   ) : (
-                    filteredSuppliers.map((sup, sIdx) => {
+                    <>
+                    {visibleSuppliers.map((sup, sIdx) => {
                       const allTrades = sup.trades && sup.trades.length > 0 ? sup.trades : sup.trade ? [sup.trade] : []
                       const isRowSelected = suppliersGrid.isRowSelected(sup.id)
                       const isEditing = (colKey) =>
@@ -948,7 +927,14 @@ export default function ComprasProveedoresPanel({
                           </td>
                         </tr>
                       )
-                    })
+                    })}
+                    <CanonicalProgressiveTableFooter
+                      visibleCount={suppliersVisibleCount} totalCount={filteredSuppliers.length}
+                      hasMore={suppliersHasMore} remainingCount={suppliersRemainingCount}
+                      loadMore={suppliersLoadMore} showAll={suppliersShowAll}
+                      sentinelRef={suppliersSentinelRef} colSpan={10} entityLabel="proveedores"
+                    />
+                    </>
                   )}
                 </tbody>
               </table>
@@ -974,7 +960,7 @@ export default function ComprasProveedoresPanel({
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredSuppliers.map((sup) => (
+            {visibleSuppliers.map((sup) => (
               <div key={sup.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between hover:border-slate-700 transition-all">
                 <div>
                   <div className="flex items-start justify-between gap-2">
@@ -1044,6 +1030,12 @@ export default function ComprasProveedoresPanel({
               </div>
             ))}
             </div>
+            <CanonicalProgressiveTableFooter
+              asDiv visibleCount={suppliersVisibleCount} totalCount={filteredSuppliers.length}
+              hasMore={suppliersHasMore} remainingCount={suppliersRemainingCount}
+              loadMore={suppliersLoadMore} showAll={suppliersShowAll}
+              sentinelRef={suppliersSentinelRef} entityLabel="proveedores"
+            />
           </div>
         )}
 

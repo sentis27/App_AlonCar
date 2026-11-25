@@ -1,6 +1,7 @@
 /**
  * purchaseOrdersRepository.js
  * Repositorios para `purchase_orders` y `purchase_documents` (incluye Storage bucket `compras`).
+ * Usa lectura por bloques `findAllBatched` por defecto para romper el techo de 1.000 filas (FL-025).
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { PurchaseOrderSchema, PurchaseDocumentSchema } from '../schemas/purchases.schema.js'
@@ -22,8 +23,11 @@ export function createPurchaseOrdersRepository({ client = defaultClient } = {}) 
   return {
     ...base,
 
-    async listOrders({ select = '*', orderBy = DEFAULT_ORDER, filters = {}, isNull = [], limit } = {}) {
-      return base.findAll({ select, orderBy, filters, isNull, limit })
+    async listOrders({ select = '*', orderBy = DEFAULT_ORDER, filters = {}, isNull = [], dateRange = null, limit, page, pageSize, maxRows } = {}) {
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ select, orderBy, filters, isNull, dateRange, limit, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy, filters, isNull, dateRange, maxRows })
     },
 
     async updateByIds(ids = [], patch, opts = {}) {
@@ -51,8 +55,11 @@ export function createPurchaseDocumentsRepository({ client = defaultClient } = {
   return {
     ...base,
 
-    async listDocuments({ select = '*', orderBy = [{ column: 'created_at', ascending: false }], filters = {} } = {}) {
-      return base.findAll({ select, orderBy, filters })
+    async listDocuments({ select = '*', orderBy = [{ column: 'created_at', ascending: false }], filters = {}, dateRange = null, limit, page, pageSize, maxRows } = {}) {
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ select, orderBy, filters, dateRange, limit, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy, filters, dateRange, maxRows })
     },
 
     async uploadToStorage(storagePath, file) {

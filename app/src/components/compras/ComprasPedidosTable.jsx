@@ -1,11 +1,25 @@
+import { useEffect, useMemo, useRef } from 'react'
 import { CheckSquare, Square } from 'lucide-react'
 import GridRibbon from '../GridRibbon'
 import GridContextMenu from '../GridContextMenu'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import ComprasPedidoRow from './ComprasPedidoRow'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
+import {
+  buildLookupMap,
+  buildGroupedMap,
+  computeGridSelectionBounds,
+  DEFAULT_PROGRESSIVE_INITIAL,
+  DEFAULT_PROGRESSIVE_BATCH,
+} from '../../lib/gridPerformanceHelpers'
+import { getComprasColumnsMeta } from '../../lib/comprasPerformanceHelpers'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+
+const EMPTY_DOCS = []
 
 export default function ComprasPedidosTable({
   filteredOrders,
+  filterResetKey = '',
   materials,
   suppliers,
   ships,
@@ -16,7 +30,6 @@ export default function ComprasPedidosTable({
   viewMode,
   isSupervisorOrAdmin,
   grid,
-  getSpreadsheetCellProps,
   selectedOrderIds,
   isAllFilteredSelected,
   toggleSelectAll,
@@ -41,25 +54,100 @@ export default function ComprasPedidosTable({
   onOpenSupplierHelper,
   onEditOrder
 }) {
+  const {
+    gridContainerRef, handleKeyDown, activeCellBadge, undoStack, activeCell, selectionRange,
+    fillRange, copyActiveCell, copyRow, pasteToActiveOrRange, deleteActiveCellOrRange,
+  } = grid
+
+  const gridHandlersRef = useRef(null)
+  const rowMenuRef = useRef(rowMenuTarget)
+
+  useEffect(() => {
+    gridHandlersRef.current = {
+      handleCellClick: grid.handleCellClick,
+      handleCellMouseDown: grid.handleCellMouseDown,
+      handleCellMouseEnter: grid.handleCellMouseEnter,
+      handleFillHandleMouseDown: grid.handleFillHandleMouseDown,
+      handleFillHandleDoubleClick: grid.handleFillHandleDoubleClick,
+      setActiveCell: grid.setActiveCell,
+      setSelectionRange: grid.setSelectionRange,
+      activeCell: grid.activeCell,
+    }
+    rowMenuRef.current = rowMenuTarget
+  })
+
+  const suppliersById = useMemo(() => buildLookupMap(suppliers), [suppliers])
+  const shipsById = useMemo(() => buildLookupMap(ships), [ships])
+  const workOrdersById = useMemo(() => buildLookupMap(workOrders), [workOrders])
+  const docsByOrderId = useMemo(() => buildGroupedMap(documents, 'purchase_order_id'), [documents])
+  const docsByWoId = useMemo(() => buildGroupedMap(documents, 'work_order_id'), [documents])
+  const exportFilename = useMemo(() => `compras_pedidos_${getTodayArIso()}`, [])
+
+  const { cols: comprasCols, indexByKey } = getComprasColumnsMeta(viewMode)
+
+  const {
+    visibleItems: visibleOrders,
+    visibleCount,
+    hasMore,
+    remainingCount,
+    loadMore,
+    showAll,
+    sentinelRef,
+  } = useProgressiveRows({
+    items: filteredOrders,
+    initialCount: DEFAULT_PROGRESSIVE_INITIAL,
+    batchSize: DEFAULT_PROGRESSIVE_BATCH,
+    activeIndex: activeCell?.rowIndex ?? -1,
+    scrollContainerRef: gridContainerRef,
+    resetKey: filterResetKey,
+  })
+
+  const gridActions = useMemo(() => ({
+    onCellClick: (rowIdx, colIdx, e) => gridHandlersRef.current?.handleCellClick(rowIdx, colIdx, e),
+    onCellMouseDown: (rowIdx, colIdx, e) => gridHandlersRef.current?.handleCellMouseDown(rowIdx, colIdx, e),
+    onCellMouseEnter: (rowIdx, colIdx) => gridHandlersRef.current?.handleCellMouseEnter(rowIdx, colIdx),
+    onFillHandleMouseDown: (e) => gridHandlersRef.current?.handleFillHandleMouseDown(e),
+    onFillHandleDoubleClick: (e) => gridHandlersRef.current?.handleFillHandleDoubleClick(e),
+    onContextMenuRow: (po, rowIdx, e) => {
+      e.preventDefault(); e.stopPropagation()
+      const h = gridHandlersRef.current
+      if (h && h.activeCell?.rowIndex !== rowIdx) {
+        h.setActiveCell({ rowIndex: rowIdx, colIndex: h.activeCell?.colIndex ?? 0 })
+        h.setSelectionRange?.(null)
+      }
+      setRowMenuTarget({ order: po, rowIndex: rowIdx, mode: 'context_menu', x: e.clientX, y: e.clientY })
+    },
+    onToggleClickNumMenu: (po, rowIdx, e) => {
+      e.stopPropagation()
+      const cur = rowMenuRef.current
+      setRowMenuTarget(cur?.order?.id === po.id && cur?.mode === 'click_num' ? null : { order: po, rowIndex: rowIdx, mode: 'click_num' })
+    },
+  }), [setRowMenuTarget])
+
+  const { selMinR, selMaxR, selMinC, selMaxC, fillFromR, fillMaxR, fillCol, handleRow, handleCol } =
+    computeGridSelectionBounds({ activeCell, selectionRange, fillRange, columns: comprasCols })
+
+  const hasSearch = Boolean(searchQuery && searchQuery.trim())
+
   return (
     <div className="alon-zone-grid">
       <GridRibbon
-        activeCellBadge={grid.activeCellBadge}
+        activeCellBadge={activeCellBadge}
         onInsertRow={() => {
-          const targetIdx = grid.activeCell?.rowIndex >= 0 ? grid.activeCell.rowIndex : 0
+          const targetIdx = activeCell?.rowIndex >= 0 ? activeCell.rowIndex : 0
           const targetPo = filteredOrders[targetIdx]
           if (targetPo) handleInsertOrderContext(targetPo, targetIdx, 'below')
           else handleAddNewBlankOrder()
         }}
         insertRowLabel="Nueva Fila en Blanco"
-        undoCount={grid.undoStack?.length || 0}
+        undoCount={undoStack?.length || 0}
         totalRows={filteredOrders.length}
         entityName="pedidos"
         exportRows={filteredOrders}
-        exportFilename={`compras_pedidos_${getTodayArIso()}`}
+        exportFilename={exportFilename}
       />
 
-      <div tabIndex={0} onKeyDown={grid.handleKeyDown} ref={grid.gridContainerRef} className="alon-grid-scroll">
+      <div tabIndex={0} onKeyDown={handleKeyDown} ref={gridContainerRef} className="alon-grid-scroll">
         <table className="w-full text-left text-[11px] border-collapse">
           <thead className="sticky top-0 z-20 alon-grid-thead">
             <tr>
@@ -108,44 +196,72 @@ export default function ComprasPedidosTable({
                 </td>
               </tr>
             ) : (
-              filteredOrders.map((po, rowIndex) => (
-                <ComprasPedidoRow
-                  key={po.id}
-                  po={po}
-                  rowIndex={rowIndex}
-                  viewMode={viewMode}
-                  isSelected={selectedOrderIds.has(po.id)}
-                  suppliers={suppliers}
-                  materials={materials}
-                  ships={ships}
-                  workOrders={workOrders}
-                  workItems={workItems}
-                  documents={documents}
-                  searchQuery={searchQuery}
-                  isSupervisorOrAdmin={isSupervisorOrAdmin}
-                  grid={grid}
-                  getSpreadsheetCellProps={getSpreadsheetCellProps}
-                  inlineEdit={inlineEdit}
-                  setInlineEdit={setInlineEdit}
-                  rowMenuTarget={rowMenuTarget}
-                  setRowMenuTarget={setRowMenuTarget}
-                  toggleSelectRow={toggleSelectRow}
-                  activateComprasCell={activateComprasCell}
-                  saveInlineEdit={saveInlineEdit}
-                  saveInlineMaterialAndObs={saveInlineMaterialAndObs}
-                  handleQuickStatusChange={handleQuickStatusChange}
-                  handleCycleUrgency={handleCycleUrgency}
-                  handleInsertOrderContext={handleInsertOrderContext}
-                  handleDuplicateOrder={handleDuplicateOrder}
-                  handleDeleteOrder={handleDeleteOrder}
-                  onOpenNewMaterial={onOpenNewMaterial}
-                  onOpenDocs={onOpenDocs}
-                  onOpenReconcile={onOpenReconcile}
-                  onOpenFreight={onOpenFreight}
-                  onOpenSupplierHelper={onOpenSupplierHelper}
-                  onEditOrder={onEditOrder}
+              <>
+                {visibleOrders.map((po, rowIndex) => {
+                  const isEditingRow = inlineEdit.orderId === po.id
+                  const rowInSel = selectionRange && rowIndex >= selMinR && rowIndex <= selMaxR
+                  const rowInFill = fillRange && rowIndex > fillFromR && rowIndex <= fillMaxR
+                  const lineDocs = docsByOrderId.get(String(po.id)) || EMPTY_DOCS
+                  const woDocs = hasSearch && po.work_order_id ? (docsByWoId.get(String(po.work_order_id)) || EMPTY_DOCS) : EMPTY_DOCS
+                  return (
+                    <ComprasPedidoRow
+                      key={po.id}
+                      po={po}
+                      rowIndex={rowIndex}
+                      viewMode={viewMode}
+                      indexByKey={indexByKey}
+                      isSelected={selectedOrderIds.has(po.id)}
+                      sup={po.supplier_id ? (suppliersById.get(String(po.supplier_id)) || null) : null}
+                      shp={po.ship_id ? (shipsById.get(String(po.ship_id)) || null) : null}
+                      wo={po.work_order_id ? (workOrdersById.get(String(po.work_order_id)) || null) : null}
+                      lineDocs={lineDocs}
+                      woDocs={woDocs}
+                      suppliers={suppliers}
+                      materials={materials}
+                      workOrders={workOrders}
+                      workItems={workItems}
+                      searchQuery={searchQuery}
+                      isSupervisorOrAdmin={isSupervisorOrAdmin}
+                      activeColIndex={activeCell?.rowIndex === rowIndex ? activeCell.colIndex : -1}
+                      selStartCol={rowInSel ? selMinC : -1}
+                      selEndCol={rowInSel ? selMaxC : -1}
+                      fillColIndex={rowInFill ? fillCol : -1}
+                      fillHandleColIndex={handleRow === rowIndex ? handleCol : -1}
+                      rowInlineEdit={isEditingRow ? inlineEdit : null}
+                      isClickNumMenuOpen={Boolean(rowMenuTarget?.order?.id === po.id && rowMenuTarget?.mode === 'click_num')}
+                      gridActions={gridActions}
+                      setInlineEdit={setInlineEdit}
+                      setRowMenuTarget={setRowMenuTarget}
+                      toggleSelectRow={toggleSelectRow}
+                      activateComprasCell={activateComprasCell}
+                      saveInlineEdit={saveInlineEdit}
+                      saveInlineMaterialAndObs={saveInlineMaterialAndObs}
+                      handleQuickStatusChange={handleQuickStatusChange}
+                      handleCycleUrgency={handleCycleUrgency}
+                      handleInsertOrderContext={handleInsertOrderContext}
+                      handleDuplicateOrder={handleDuplicateOrder}
+                      handleDeleteOrder={handleDeleteOrder}
+                      onOpenNewMaterial={onOpenNewMaterial}
+                      onOpenDocs={onOpenDocs}
+                      onOpenReconcile={onOpenReconcile}
+                      onOpenFreight={onOpenFreight}
+                      onOpenSupplierHelper={onOpenSupplierHelper}
+                      onEditOrder={onEditOrder}
+                    />
+                  )
+                })}
+                <CanonicalProgressiveTableFooter
+                  visibleCount={visibleCount}
+                  totalCount={filteredOrders.length}
+                  hasMore={hasMore}
+                  remainingCount={remainingCount}
+                  loadMore={loadMore}
+                  showAll={showAll}
+                  sentinelRef={sentinelRef}
+                  colSpan={viewMode === 'completa' ? 16 : 13}
+                  entityLabel="pedidos"
                 />
-              ))
+              </>
             )}
           </tbody>
         </table>
@@ -153,18 +269,12 @@ export default function ComprasPedidosTable({
 
       {rowMenuTarget && rowMenuTarget.mode === 'context_menu' && (
         <GridContextMenu
-          target={{
-            row: rowMenuTarget.order,
-            rowIndex: rowMenuTarget.rowIndex,
-            x: rowMenuTarget.x,
-            y: rowMenuTarget.y,
-            isRowHeader: false
-          }}
+          target={{ row: rowMenuTarget.order, rowIndex: rowMenuTarget.rowIndex, x: rowMenuTarget.x, y: rowMenuTarget.y, isRowHeader: false }}
           onClose={() => setRowMenuTarget(null)}
-          onCopyCell={grid.copyActiveCell}
-          onCopyRow={grid.copyRow}
-          onPaste={grid.pasteToActiveOrRange}
-          onDeleteCell={grid.deleteActiveCellOrRange}
+          onCopyCell={copyActiveCell}
+          onCopyRow={copyRow}
+          onPaste={pasteToActiveOrRange}
+          onDeleteCell={deleteActiveCellOrRange}
           onInsertRowAbove={(row, idx) => handleInsertOrderContext(row, idx, 'above')}
           onInsertRowBelow={(row, idx) => handleInsertOrderContext(row, idx, 'below')}
           onDuplicateRow={(row) => handleDuplicateOrder(row)}

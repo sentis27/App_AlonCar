@@ -15,11 +15,14 @@ import { systemSettingsRepository } from '../repositories/systemSettingsReposito
 import { materialsRepository } from '../repositories/materialsRepository.js'
 import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { workItemsRepository } from '../repositories/workItemsRepository.js'
+import { buildDateRangeOption, DEFAULT_HISTORY_RANGE } from '../lib/gridPerformanceHelpers.js'
 
 /**
  * Carga completa de órdenes de compra, catálogo de proveedores, materiales y metadatos navales.
+ * Aplica ventana temporal configurable (`90d` | `year` | `all`) sin techo de 1.000 filas (FL-025).
  */
-export async function fetchComprasData() {
+export async function fetchComprasData({ historyRange = DEFAULT_HISTORY_RANGE } = {}) {
+  const dateRange = buildDateRangeOption('order_date', historyRange)
   const [
     ordersRes,
     suppliersRes,
@@ -32,7 +35,7 @@ export async function fetchComprasData() {
     docsRes,
     whatsappSettingRes,
   ] = await Promise.all([
-    purchaseOrdersRepository.listOrders(),
+    purchaseOrdersRepository.listOrders({ dateRange }),
     suppliersRepository.listSuppliers(),
     materialsRepository.listMaterials(),
     shipsRepository.listShips({ select: 'id, name, vessel_type' }),

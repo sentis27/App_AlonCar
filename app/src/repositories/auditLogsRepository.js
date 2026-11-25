@@ -1,6 +1,7 @@
 /**
  * auditLogsRepository.js
  * Repositorio para `audit_logs` (GEMINI.md §3) sobre `_baseRepository.js` + `AuditLogSchema`.
+ * Soporta lectura por bloques `findAllBatched` + `dateRange` para romper el tope de 300/1.000 eventos (FL-025).
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { AuditLogSchema } from '../schemas/auditLogs.schema.js'
@@ -46,19 +47,21 @@ export function createAuditLogsRepository({ client = defaultClient } = {}) {
       userFilter = 'ALL',
       dateFrom = '',
       dateTo = '',
-      limit = 300,
+      dateRange = null,
+      limit = null,
+      maxRows = 10000,
     } = {}) {
-      return base.findAll({
-        filters: {
-          entity_type: entityType,
-          action: actionFilter,
-          performed_by: userFilter,
-        },
+      const queryOpts = {
+        filters: { entity_type: entityType, action: actionFilter, performed_by: userFilter },
         gteFilters: dateFrom ? { created_at: `${dateFrom}T00:00:00` } : {},
         lteFilters: dateTo ? { created_at: `${dateTo}T23:59:59` } : {},
+        dateRange: !dateFrom && !dateTo ? dateRange : null,
         orderBy: [{ column: 'created_at', ascending: false }],
-        limit,
-      })
+      }
+      if (limit && limit <= 1000) {
+        return base.findAll({ ...queryOpts, limit })
+      }
+      return base.findAllBatched({ ...queryOpts, maxRows })
     },
   }
 }

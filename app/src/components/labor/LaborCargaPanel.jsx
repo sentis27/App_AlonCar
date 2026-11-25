@@ -35,6 +35,9 @@ export default function LaborCargaPanel({
   setStatusMessage,
   activeLoadModal = null,
   setActiveLoadModal,
+  historyRange = '90d',
+  setHistoryRange,
+  loading = false,
   user
 }) {
   const crew = useLaborCargaCrewState({
@@ -110,6 +113,9 @@ export default function LaborCargaPanel({
           redoCount={gridState.horasGrid.redoStack?.length || 0}
           onUndo={gridState.horasGrid.undo}
           onRedo={gridState.horasGrid.redo}
+          historyRange={historyRange}
+          setHistoryRange={setHistoryRange}
+          loading={loading}
         />
 
         <LaborLogsTable
@@ -118,6 +124,7 @@ export default function LaborCargaPanel({
           workItems={workItems}
           filteredLogs={gridState.filteredLogs}
           recentLogs={recentLogs}
+          filterResetKey={`${gridState.filterWorker}|${gridState.filterDate}|${gridState.filterShip}|${gridState.filterOt}|${gridState.filterContractor}|${gridState.filterRubro}|${gridState.filterModality}|${activeKpiFilter || ''}|${historyRange}`}
           selectedLogIds={selectedLogIds}
           setSelectedLogIds={setSelectedLogIds}
           toggleSelectLog={toggleSelectLog}

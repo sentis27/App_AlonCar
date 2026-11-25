@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { auditService } from '../../lib/auditService.js'
 
 const STORAGE_KEY_AUDIT_MAP = {
@@ -27,6 +27,11 @@ export function useGridHistory({
 }) {
   const undoStorageKey = `${storageKey}_undo_stack`
   const redoStorageKey = `${storageKey}_redo_stack`
+
+  const latestRef = useRef({ rows, columns, getRowId, onBatchUpdate, showFeedback })
+  useEffect(() => {
+    latestRef.current = { rows, columns, getRowId, onBatchUpdate, showFeedback }
+  })
 
   // Pila de Deshacer (Undo Stack)
   const [undoStack, setUndoStack] = useState(() => {
@@ -91,8 +96,9 @@ export function useGridHistory({
     const mappedEntityType = STORAGE_KEY_AUDIT_MAP[storageKey]
     if (mappedEntityType && normalizedAction) {
       try {
+        const { rows: curRows, columns: curColumns, getRowId: curGetRowId } = latestRef.current
         const resolveRowName = (rId) => {
-          const r = rows.find((item) => String(getRowId(item)) === String(rId))
+          const r = curRows.find((item) => String(curGetRowId(item)) === String(rId))
           if (!r) return String(rId)
           return (
             r.name ||
@@ -107,7 +113,7 @@ export function useGridHistory({
         }
         if (normalizedAction.previousValues && normalizedAction.colKey) {
           const entries = Object.entries(normalizedAction.previousValues)
-          const cDef = columns.find((c) => c.key === normalizedAction.colKey)
+          const cDef = curColumns.find((c) => c.key === normalizedAction.colKey)
           const fLabel = normalizedAction.colLabel || cDef?.label || normalizedAction.colKey
           entries.forEach(([rId, oldVal]) => {
             auditService.logCellChange({
@@ -126,12 +132,13 @@ export function useGridHistory({
         console.warn('[useGridHistory] Error enviando log de auditoría:', auditErr)
       }
     }
-  }, [maxUndoSteps, undoStorageKey, redoStorageKey, storageKey, rows, getRowId, columns])
+  }, [maxUndoSteps, undoStorageKey, redoStorageKey, storageKey])
 
   // Deshacer el último cambio (Ctrl + Z)
   const undo = useCallback(async () => {
+    const { onBatchUpdate: curBatchUpdate, showFeedback: curShowFeedback } = latestRef.current
     if (undoStack.length === 0) {
-      if (showFeedback) showFeedback('info', 'No hay más acciones para deshacer en esta planilla.')
+      if (curShowFeedback) curShowFeedback('info', 'No hay más acciones para deshacer en esta planilla.')
       return
     }
 
@@ -152,7 +159,7 @@ export function useGridHistory({
     if (lastAction.undoFn && typeof lastAction.undoFn === 'function') {
       try {
         await lastAction.undoFn()
-        if (showFeedback) showFeedback('success', `Deshecho (Ctrl+Z): ${lastAction.actionLabel || 'Acción revertida'}.`)
+        if (curShowFeedback) curShowFeedback('success', `Deshecho (Ctrl+Z): ${lastAction.actionLabel || 'Acción revertida'}.`)
       } catch (err) {
         console.error('Error en undoFn personalizada:', err)
       }
@@ -160,41 +167,42 @@ export function useGridHistory({
     }
 
     if (lastAction.type === 'multi_column_mutations' && lastAction.mutationsByCol) {
-      if (onBatchUpdate) {
+      if (curBatchUpdate) {
         for (const [colKey, revertMap] of Object.entries(lastAction.mutationsByCol.prev)) {
-          await onBatchUpdate({
+          await curBatchUpdate({
             colKey,
             revertMap,
             isRevert: true,
             actionLabel: lastAction.actionLabel || 'deshacer'
           })
         }
-        if (showFeedback) {
-          showFeedback('success', `Deshecho (Ctrl+Z): Se restauraron cambios en ${lastAction.colLabel || lastAction.colKey}.`)
+        if (curShowFeedback) {
+          curShowFeedback('success', `Deshecho (Ctrl+Z): Se restauraron cambios en ${lastAction.colLabel || lastAction.colKey}.`)
         }
       }
       return
     }
 
-    if (onBatchUpdate && lastAction.previousValues) {
+    if (curBatchUpdate && lastAction.previousValues) {
       const entries = Object.entries(lastAction.previousValues)
-      await onBatchUpdate({
+      await curBatchUpdate({
         colKey: lastAction.colKey,
         revertMap: lastAction.previousValues,
         isRevert: true,
         actionLabel: lastAction.actionLabel || 'deshacer'
       })
 
-      if (showFeedback) {
-        showFeedback('success', `Deshecho (Ctrl+Z): Se restauraron ${entries.length} celda(s) en ${lastAction.colLabel || lastAction.colKey}.`)
+      if (curShowFeedback) {
+        curShowFeedback('success', `Deshecho (Ctrl+Z): Se restauraron ${entries.length} celda(s) en ${lastAction.colLabel || lastAction.colKey}.`)
       }
     }
-  }, [undoStack, onBatchUpdate, maxUndoSteps, showFeedback, undoStorageKey, redoStorageKey])
+  }, [undoStack, maxUndoSteps, undoStorageKey, redoStorageKey])
 
   // Rehacer el último cambio deshecho (Ctrl + Y o Ctrl + Shift + Z)
   const redo = useCallback(async () => {
+    const { onBatchUpdate: curBatchUpdate, showFeedback: curShowFeedback } = latestRef.current
     if (redoStack.length === 0) {
-      if (showFeedback) showFeedback('info', 'No hay más acciones para rehacer en esta planilla.')
+      if (curShowFeedback) curShowFeedback('info', 'No hay más acciones para rehacer en esta planilla.')
       return
     }
 
@@ -215,7 +223,7 @@ export function useGridHistory({
     if (actionToRedo.redoFn && typeof actionToRedo.redoFn === 'function') {
       try {
         await actionToRedo.redoFn()
-        if (showFeedback) showFeedback('success', `Rehecho (Ctrl+Y): ${actionToRedo.actionLabel || 'Acción reaplicada'}.`)
+        if (curShowFeedback) curShowFeedback('success', `Rehecho (Ctrl+Y): ${actionToRedo.actionLabel || 'Acción reaplicada'}.`)
       } catch (err) {
         console.error('Error en redoFn personalizada:', err)
       }
@@ -223,33 +231,33 @@ export function useGridHistory({
     }
 
     if (actionToRedo.type === 'multi_column_mutations' && actionToRedo.mutationsByCol) {
-      if (onBatchUpdate) {
+      if (curBatchUpdate) {
         for (const [colKey, revertMap] of Object.entries(actionToRedo.mutationsByCol.next)) {
-          await onBatchUpdate({
+          await curBatchUpdate({
             colKey,
             revertMap,
             isRevert: true,
             actionLabel: actionToRedo.actionLabel || 'rehacer'
           })
         }
-        if (showFeedback) {
-          showFeedback('success', `Rehecho (Ctrl+Y): Se re-aplicó el cambio en ${actionToRedo.colLabel || actionToRedo.colKey}.`)
+        if (curShowFeedback) {
+          curShowFeedback('success', `Rehecho (Ctrl+Y): Se re-aplicó el cambio en ${actionToRedo.colLabel || actionToRedo.colKey}.`)
         }
       }
       return
     }
 
-    if (onBatchUpdate) {
+    if (curBatchUpdate) {
       const targetIds = Object.keys(actionToRedo.previousValues || {})
       if (actionToRedo.newValuesMap) {
-        await onBatchUpdate({
+        await curBatchUpdate({
           colKey: actionToRedo.colKey,
           revertMap: actionToRedo.newValuesMap,
           isRevert: true,
           actionLabel: actionToRedo.actionLabel || 'rehacer'
         })
       } else {
-        await onBatchUpdate({
+        await curBatchUpdate({
           colKey: actionToRedo.colKey,
           newValue: actionToRedo.newValue,
           targetIds,
@@ -258,11 +266,11 @@ export function useGridHistory({
         })
       }
 
-      if (showFeedback) {
-        showFeedback('success', `Rehecho (Ctrl+Y): Se re-aplicó el cambio en ${actionToRedo.colLabel || actionToRedo.colKey}.`)
+      if (curShowFeedback) {
+        curShowFeedback('success', `Rehecho (Ctrl+Y): Se re-aplicó el cambio en ${actionToRedo.colLabel || actionToRedo.colKey}.`)
       }
     }
-  }, [redoStack, onBatchUpdate, maxUndoSteps, showFeedback, undoStorageKey, redoStorageKey])
+  }, [redoStack, maxUndoSteps, undoStorageKey, redoStorageKey])
 
   return {
     undoStack,

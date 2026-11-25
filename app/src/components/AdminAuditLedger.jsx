@@ -1,31 +1,16 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  History,
-  Search,
-  RefreshCw,
-  Download,
-  Filter,
-  User,
-  Clock,
-  FileSpreadsheet,
-  ArrowRight,
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  ExternalLink,
-  Layers,
-  Database,
-  Copy,
-  X
+  History, Search, RefreshCw, Download, User, FileSpreadsheet, ArrowRight,
+  Activity, AlertTriangle, ExternalLink, Layers, Database, Copy, X
 } from 'lucide-react'
-import {
-  auditService,
-  AUDIT_ENTITY_CATALOG,
-  AUDIT_ACTION_LABELS
-} from '../lib/auditService'
+import { auditService, AUDIT_ENTITY_CATALOG, AUDIT_ACTION_LABELS } from '../lib/auditService'
 import { formatDateTimeAr, getTodayArIso } from '../lib/dateTimeCanonical'
+import { buildDateRangeOption, DEFAULT_HISTORY_RANGE } from '../lib/gridPerformanceHelpers'
 import { exportToSpreadsheet } from '../lib/exportEngine'
+import { useProgressiveRows } from '../hooks/useProgressiveRows'
+import CanonicalProgressiveTableFooter from './canonical/CanonicalProgressiveTableFooter'
+import CanonicalHistoryRangeSelect from './canonical/CanonicalHistoryRangeSelect'
 import HighlightText from './HighlightText'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 
@@ -33,13 +18,15 @@ export default function AdminAuditLedger() {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [historyRange, setHistoryRange] = useState(DEFAULT_HISTORY_RANGE)
+  const scrollRef = useRef(null)
 
   // Filtros multidimensionales
   const [entityFilter, setEntityFilter] = useState('ALL')
   const [actionFilter, setActionFilter] = useState('ALL')
   const [userFilter, setUserFilter] = useState('ALL')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom] = useState('')
+  const [dateTo] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedLogDetail, setSelectedLogDetail] = useState(null)
 
@@ -47,13 +34,9 @@ export default function AdminAuditLedger() {
     try {
       setLoading(true)
       setError(null)
+      const dateRange = buildDateRangeOption('created_at', historyRange, { asTimestamp: true })
       const data = await auditService.getGlobalAuditLedger({
-        entityType: entityFilter,
-        actionFilter,
-        userFilter,
-        dateFrom,
-        dateTo,
-        limit: 400
+        entityType: entityFilter, actionFilter, userFilter, dateFrom, dateTo, dateRange, limit: null
       })
       setLogs(data || [])
     } catch (err) {
@@ -62,19 +45,20 @@ export default function AdminAuditLedger() {
     } finally {
       setLoading(false)
     }
-  }, [entityFilter, actionFilter, userFilter, dateFrom, dateTo])
+  }, [entityFilter, actionFilter, userFilter, dateFrom, dateTo, historyRange])
 
-  useEffect(() => {
-    loadAuditLedger()
-  }, [loadAuditLedger])
+  useEffect(() => { loadAuditLedger() }, [loadAuditLedger])
 
-  // Usuarios únicos presentes en los logs
-  const uniqueUsers = useMemo(() => {
-    const set = new Set()
-    logs.forEach((l) => {
-      if (l.performed_by) set.add(l.performed_by)
-    })
-    return Array.from(set).sort()
+  // Usuarios únicos y conteo por entidad en una sola pasada O(N) (elimina O(22×N))
+  const { uniqueUsers, entityCountsMap } = useMemo(() => {
+    const userSet = new Set()
+    const counts = new Map()
+    for (let i = 0; i < logs.length; i++) {
+      const l = logs[i]
+      if (l.performed_by) userSet.add(l.performed_by)
+      if (l.entity_type) counts.set(l.entity_type, (counts.get(l.entity_type) || 0) + 1)
+    }
+    return { uniqueUsers: Array.from(userSet).sort(), entityCountsMap: counts }
   }, [logs])
 
   // Filtrado instantáneo por buscador de texto omnicanal (Estándar 03)
@@ -98,9 +82,13 @@ export default function AdminAuditLedger() {
   }, [logs, searchQuery])
 
   // Métricas analíticas en vivo
-  const metrics = useMemo(() => {
-    return auditService.computeAuditMetrics(filteredLogs)
-  }, [filteredLogs])
+  const metrics = useMemo(() => auditService.computeAuditMetrics(filteredLogs), [filteredLogs])
+
+  const { visibleItems: visibleLogs, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredLogs,
+    scrollContainerRef: scrollRef,
+    resetKey: `${entityFilter}|${actionFilter}|${userFilter}|${searchQuery}|${historyRange}`
+  })
 
   // Exportación a CSV / Excel
   const handleExportAuditCsv = () => {
@@ -165,6 +153,7 @@ export default function AdminAuditLedger() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <CanonicalHistoryRangeSelect value={historyRange} onChange={setHistoryRange} loading={loading} />
             <button
               type="button"
               onClick={loadAuditLedger}
@@ -265,7 +254,7 @@ export default function AdminAuditLedger() {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(AUDIT_ENTITY_CATALOG).map(([key, meta]) => {
-                const count = logs.filter((l) => l.entity_type === key).length
+                const count = entityCountsMap.get(key) || 0
                 const isSelected = entityFilter === key
                 return (
                   <button
@@ -367,7 +356,7 @@ export default function AdminAuditLedger() {
 
         {/* GRILLA CANÓNICA DEL LIBRO DE AUDITORÍA */}
         <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60">
-          <div className="overflow-x-auto max-h-[600px]">
+          <div ref={scrollRef} className="overflow-x-auto max-h-[600px]">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-slate-900/95 text-slate-300 uppercase text-[10px] font-mono sticky top-0 z-10 border-b border-slate-800">
                 <tr>
@@ -401,7 +390,8 @@ export default function AdminAuditLedger() {
                     </td>
                   </tr>
                 ) : (
-                  filteredLogs.map((log, idx) => {
+                  <>
+                  {visibleLogs.map((log, idx) => {
                     const catalogMeta = AUDIT_ENTITY_CATALOG[log.entity_type] || {
                       label: log.entity_type,
                       route: '/'
@@ -494,7 +484,13 @@ export default function AdminAuditLedger() {
                         </td>
                       </tr>
                     )
-                  })
+                  })}
+                  <CanonicalProgressiveTableFooter
+                    visibleCount={visibleCount} totalCount={filteredLogs.length} hasMore={hasMore}
+                    remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
+                    sentinelRef={sentinelRef} colSpan={8} entityLabel="eventos"
+                  />
+                  </>
                 )}
               </tbody>
             </table>

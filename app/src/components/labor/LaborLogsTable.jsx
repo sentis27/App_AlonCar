@@ -1,9 +1,20 @@
-import React from 'react'
+import React, { useEffect, useMemo, useRef, useCallback } from 'react'
 import GridRibbon from '../GridRibbon.jsx'
 import GridContextMenu from '../GridContextMenu.jsx'
 import GridStatusBarBottom from '../GridStatusBarBottom.jsx'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter.jsx'
 import LaborLogsTableRow from './LaborLogsTableRow.jsx'
 import { getTodayArIso } from '../../lib/dateTimeCanonical.js'
+import { buildHorasSpreadsheetColumns } from '../../lib/laborCargaGridHelpers.js'
+import {
+  buildLookupMap,
+  computeGridSelectionBounds,
+  DEFAULT_PROGRESSIVE_INITIAL,
+  DEFAULT_PROGRESSIVE_BATCH,
+} from '../../lib/gridPerformanceHelpers.js'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows.js'
+
+const HORAS_COLUMNS = buildHorasSpreadsheetColumns()
 
 export default function LaborLogsTable({
   ships = [],
@@ -11,6 +22,7 @@ export default function LaborLogsTable({
   workItems = [],
   filteredLogs = [],
   recentLogs = [],
+  filterResetKey = '',
   selectedLogIds = new Set(),
   setSelectedLogIds,
   toggleSelectLog,
@@ -23,7 +35,6 @@ export default function LaborLogsTable({
   inlineLogEdit,
   setInlineLogEdit,
   horasGrid,
-  getHorasCellProps,
   activateHorasCell,
   saveInlineLogEdit,
   handleInsertRow,
@@ -40,7 +51,65 @@ export default function LaborLogsTable({
   setActiveTab,
   setDailyFilterType
 }) {
-  const handleOpenReviewReason = (log, shipDisplayName, otTitle) => {
+  const {
+    gridContainerRef, handleKeyDown, activeCellBadge, undoStack, activeCell, selectionRange,
+    fillRange, selectionStats, setSelectionRange, copyActiveCell, copyRow, pasteToActiveOrRange, deleteActiveCellOrRange,
+  } = horasGrid
+
+  const gridHandlersRef = useRef(null)
+  const openMenuRef = useRef(openMenu)
+  const horasGridRef = useRef(horasGrid)
+
+  useEffect(() => {
+    gridHandlersRef.current = {
+      handleCellClick: horasGrid.handleCellClick,
+      handleCellMouseDown: horasGrid.handleCellMouseDown,
+      handleCellMouseEnter: horasGrid.handleCellMouseEnter,
+      handleFillHandleMouseDown: horasGrid.handleFillHandleMouseDown,
+      handleFillHandleDoubleClick: horasGrid.handleFillHandleDoubleClick,
+    }
+    openMenuRef.current = openMenu
+    horasGridRef.current = horasGrid
+  })
+
+  const shipsById = useMemo(() => buildLookupMap(ships), [ships])
+  const workOrdersById = useMemo(() => buildLookupMap(workOrders), [workOrders])
+  const exportFilename = useMemo(() => `horas_imputaciones_${getTodayArIso()}`, [])
+
+  const {
+    visibleItems: visibleLogs,
+    visibleCount,
+    hasMore,
+    remainingCount,
+    loadMore,
+    showAll,
+    sentinelRef,
+  } = useProgressiveRows({
+    items: filteredLogs,
+    initialCount: DEFAULT_PROGRESSIVE_INITIAL,
+    batchSize: DEFAULT_PROGRESSIVE_BATCH,
+    activeIndex: activeCell?.rowIndex ?? -1,
+    scrollContainerRef: gridContainerRef,
+    resetKey: filterResetKey,
+  })
+
+  const gridActions = useMemo(() => ({
+    onCellClick: (rowIdx, colIdx, e) => gridHandlersRef.current?.handleCellClick(rowIdx, colIdx, e),
+    onCellMouseDown: (rowIdx, colIdx, e) => gridHandlersRef.current?.handleCellMouseDown(rowIdx, colIdx, e),
+    onCellMouseEnter: (rowIdx, colIdx) => gridHandlersRef.current?.handleCellMouseEnter(rowIdx, colIdx),
+    onFillHandleMouseDown: (e) => gridHandlersRef.current?.handleFillHandleMouseDown(e),
+    onFillHandleDoubleClick: (e) => gridHandlersRef.current?.handleFillHandleDoubleClick(e),
+    onOpenContextMenu: (e, targetLog, rIdx) =>
+      openMenuRef.current?.(
+        e,
+        targetLog,
+        rIdx,
+        { entityType: 'daily_labor_logs', recordId: targetLog.id, recordLabel: targetLog.worker_name },
+        horasGridRef.current
+      ),
+  }), [])
+
+  const handleOpenReviewReason = useCallback((log, shipDisplayName, otTitle) => {
     setReviewReasonModal({
       isOpen: true,
       logId: log.id,
@@ -51,19 +120,22 @@ export default function LaborLogsTable({
       reason: log.review_reason || '',
       response: log.worker_response || ''
     })
-  }
+  }, [setReviewReasonModal])
+
+  const { selMinR, selMaxR, selMinC, selMaxC, fillFromR, fillMaxR, fillCol, handleRow, handleCol } =
+    computeGridSelectionBounds({ activeCell, selectionRange, fillRange, columns: HORAS_COLUMNS })
 
   return (
     <div className="alon-zone-grid">
       <GridRibbon
-        activeCellBadge={horasGrid.activeCellBadge}
+        activeCellBadge={activeCellBadge}
         onInsertRow={handleInsertRow}
         insertRowLabel="Fila en Blanco"
-        undoCount={horasGrid.undoStack?.length || 0}
+        undoCount={undoStack?.length || 0}
         totalRows={filteredLogs.length}
         entityName="imputaciones"
         exportRows={filteredLogs}
-        exportFilename={`horas_imputaciones_${getTodayArIso()}`}
+        exportFilename={exportFilename}
       />
 
       {filteredLogs.length === 0 ? (
@@ -85,8 +157,8 @@ export default function LaborLogsTable({
       ) : (
         <div
           tabIndex={0}
-          onKeyDown={horasGrid.handleKeyDown}
-          ref={horasGrid.gridContainerRef}
+          onKeyDown={handleKeyDown}
+          ref={gridContainerRef}
           className="alon-grid-scroll"
         >
           <table className="w-full text-left text-xs text-slate-300 border-collapse">
@@ -116,34 +188,52 @@ export default function LaborLogsTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {filteredLogs.map((log, rowIndex) => (
-                <LaborLogsTableRow
-                  key={log.id}
-                  log={log}
-                  ships={ships}
-                  workOrders={workOrders}
-                  workItems={workItems}
-                  rowIndex={rowIndex}
-                  isSelected={selectedLogIds.has(log.id)}
-                  filterWorker={filterWorker}
-                  inlineLogEdit={inlineLogEdit}
-                  setInlineLogEdit={setInlineLogEdit}
-                  getHorasCellProps={getHorasCellProps}
-                  activateHorasCell={activateHorasCell}
-                  saveInlineLogEdit={saveInlineLogEdit}
-                  onToggleSelectLog={toggleSelectLog}
-                  onUpdateApprovalStatus={handleUpdateApprovalStatus}
-                  onOpenReviewReason={handleOpenReviewReason}
-                  onEditFromDaily={handleEditFromDaily}
-                  onDuplicateLog={handleDuplicateLog}
-                  onDeleteLog={handleDeleteLog}
-                  onOpenContextMenu={(e, targetLog, rIdx) =>
-                    openMenu(e, targetLog, rIdx, { entityType: 'daily_labor_logs', recordId: targetLog.id, recordLabel: targetLog.worker_name }, horasGrid)
-                  }
-                  onFillHandleMouseDown={horasGrid.handleFillHandleMouseDown}
-                  onFillHandleDoubleClick={horasGrid.handleFillHandleDoubleClick}
-                />
-              ))}
+              {visibleLogs.map((log, rowIndex) => {
+                const isEditingRow = inlineLogEdit.id === log.id
+                const rowInSel = selectionRange && rowIndex >= selMinR && rowIndex <= selMaxR
+                const rowInFill = fillRange && rowIndex > fillFromR && rowIndex <= fillMaxR
+                return (
+                  <LaborLogsTableRow
+                    key={log.id}
+                    log={log}
+                    shipsById={shipsById}
+                    workOrdersById={workOrdersById}
+                    workOrders={workOrders}
+                    workItems={workItems}
+                    rowIndex={rowIndex}
+                    isSelected={selectedLogIds.has(log.id)}
+                    filterWorker={filterWorker}
+                    activeColIndex={activeCell?.rowIndex === rowIndex ? activeCell.colIndex : -1}
+                    selStartCol={rowInSel ? selMinC : -1}
+                    selEndCol={rowInSel ? selMaxC : -1}
+                    fillColIndex={rowInFill ? fillCol : -1}
+                    fillHandleColIndex={handleRow === rowIndex ? handleCol : -1}
+                    editingField={isEditingRow ? inlineLogEdit.field : null}
+                    editingValue={isEditingRow ? inlineLogEdit.value : ''}
+                    setInlineLogEdit={setInlineLogEdit}
+                    gridActions={gridActions}
+                    activateHorasCell={activateHorasCell}
+                    saveInlineLogEdit={saveInlineLogEdit}
+                    onToggleSelectLog={toggleSelectLog}
+                    onUpdateApprovalStatus={handleUpdateApprovalStatus}
+                    onOpenReviewReason={handleOpenReviewReason}
+                    onEditFromDaily={handleEditFromDaily}
+                    onDuplicateLog={handleDuplicateLog}
+                    onDeleteLog={handleDeleteLog}
+                  />
+                )
+              })}
+              <CanonicalProgressiveTableFooter
+                visibleCount={visibleCount}
+                totalCount={filteredLogs.length}
+                hasMore={hasMore}
+                remainingCount={remainingCount}
+                loadMore={loadMore}
+                showAll={showAll}
+                sentinelRef={sentinelRef}
+                colSpan={13}
+                entityLabel="imputaciones"
+              />
             </tbody>
           </table>
         </div>
@@ -153,10 +243,10 @@ export default function LaborLogsTable({
         <GridContextMenu
           target={menuTarget}
           onClose={closeMenu}
-          onCopyCell={horasGrid.copyActiveCell}
-          onCopyRow={horasGrid.copyRow}
-          onPaste={horasGrid.pasteToActiveOrRange}
-          onDeleteCell={horasGrid.deleteActiveCellOrRange}
+          onCopyCell={copyActiveCell}
+          onCopyRow={copyRow}
+          onPaste={pasteToActiveOrRange}
+          onDeleteCell={deleteActiveCellOrRange}
           onDuplicateRow={(row) => handleDuplicateLog(row)}
           onDeleteRow={(row) => handleDeleteLog(row.id, row.worker_name)}
           entityType={menuTarget.entityType}
@@ -171,8 +261,8 @@ export default function LaborLogsTable({
         entityName="imputaciones"
         hasActiveFilter={Boolean(hasActiveFilter || filterWorker || filterDate || filterShip || (activeKpiFilter && activeKpiFilter !== 'todos'))}
         onClearFilters={clearAllFilters}
-        selectionStats={horasGrid.selectionStats}
-        onClearSelection={() => horasGrid.setSelectionRange(null)}
+        selectionStats={selectionStats}
+        onClearSelection={() => setSelectionRange(null)}
         customSelection={selectedLogIds.size > 0 ? {
           count: selectedLogIds.size,
           label: 'filas tildadas',

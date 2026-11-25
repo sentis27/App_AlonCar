@@ -2,7 +2,9 @@ import { useMemo, useRef, useState } from 'react'
 import { Download, Shield, Package, Users, Layers, CheckCircle2, Info } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import HighlightText from '../HighlightText'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
@@ -34,6 +36,7 @@ export default function TesoreriaDeduccionesPanel({
   const [categoryFilter, setCategoryFilter] = useState(initialFilters.categoryFilter) // 'ALL' | 'CONSUMIBLES' | 'ELEM.SEGURIDAD'
   const [selectedContractor, setSelectedContractor] = useState(initialFilters.selectedContractor)
   const searchRef = useRef(null)
+  const scrollRef = useRef(null)
 
   const tesoreriaViewsController = useModuleFilterMemory({
     moduleKey: 'tesoreria_deducciones',
@@ -46,52 +49,36 @@ export default function TesoreriaDeduccionesPanel({
   const summaryRows = useMemo(() => data?.summaryByContractor || [], [data?.summaryByContractor])
   const detailRows = useMemo(() => data?.deductibleRows || [], [data?.deductibleRows])
   const exemptRows = useMemo(() => data?.exemptedGrayZoneRows || [], [data?.exemptedGrayZoneRows])
-  const totals = data?.totals || {
-    contractorsCount: 0,
-    deductibleItemsCount: 0,
-    exemptedGrayZoneCount: 0,
-    totalDeductArs: 0,
-    totalDeductUsd: 0,
-    totalReferenceExemptUsd: 0
-  }
+  const totals = data?.totals || { contractorsCount: 0, deductibleItemsCount: 0, exemptedGrayZoneCount: 0, totalDeductArs: 0, totalDeductUsd: 0, totalReferenceExemptUsd: 0 }
+  const contractorOptions = useMemo(() => summaryRows.map((r) => r.contractorLabel), [summaryRows])
 
-  const contractorOptions = useMemo(
-    () => summaryRows.map((r) => r.contractorLabel),
-    [summaryRows]
-  )
+  const filteredSummary = useMemo(() => summaryRows.filter((row) => {
+    if (selectedContractor !== 'ALL' && row.contractorLabel !== selectedContractor) return false
+    if (categoryFilter === 'CONSUMIBLES' && row.consumablesCount === 0) return false
+    if (categoryFilter === 'ELEM.SEGURIDAD' && row.safetyCount === 0) return false
+    if (searchTerm && !matchesUniversalSearch(row, searchTerm)) return false
+    return true
+  }), [summaryRows, selectedContractor, categoryFilter, searchTerm])
 
-  const filteredSummary = useMemo(() => {
-    return summaryRows.filter((row) => {
-      if (selectedContractor !== 'ALL' && row.contractorLabel !== selectedContractor) return false
-      if (categoryFilter === 'CONSUMIBLES' && row.consumablesCount === 0) return false
-      if (categoryFilter === 'ELEM.SEGURIDAD' && row.safetyCount === 0) return false
-      if (searchTerm && !matchesUniversalSearch(row, searchTerm)) return false
-      return true
-    })
-  }, [summaryRows, selectedContractor, categoryFilter, searchTerm])
+  const filteredDetails = useMemo(() => detailRows.filter((row) => {
+    if (selectedContractor !== 'ALL' && row.contractorLabel !== selectedContractor) return false
+    if (categoryFilter !== 'ALL' && row.category !== categoryFilter) return false
+    if (searchTerm && !matchesUniversalSearch(row, searchTerm)) return false
+    return true
+  }), [detailRows, selectedContractor, categoryFilter, searchTerm])
 
-  const filteredDetails = useMemo(() => {
-    return detailRows.filter((row) => {
-      if (selectedContractor !== 'ALL' && row.contractorLabel !== selectedContractor) return false
-      if (categoryFilter !== 'ALL' && row.category !== categoryFilter) return false
-      if (searchTerm && !matchesUniversalSearch(row, searchTerm)) return false
-      return true
-    })
-  }, [detailRows, selectedContractor, categoryFilter, searchTerm])
+  const filteredExempt = useMemo(() => exemptRows.filter((row) => {
+    if (selectedContractor !== 'ALL' && row.contractorLabel !== selectedContractor) return false
+    if (searchTerm && !matchesUniversalSearch(row, searchTerm)) return false
+    return true
+  }), [exemptRows, selectedContractor, searchTerm])
 
-  const filteredExempt = useMemo(() => {
-    return exemptRows.filter((row) => {
-      if (selectedContractor !== 'ALL' && row.contractorLabel !== selectedContractor) return false
-      if (searchTerm && !matchesUniversalSearch(row, searchTerm)) return false
-      return true
-    })
-  }, [exemptRows, selectedContractor, searchTerm])
+  const activeDetailRows = subView === 'exentos' ? filteredExempt : filteredDetails
+  const resetKey = `${selectedPeriod}|${subView}|${selectedContractor}|${categoryFilter}|${searchTerm}`
+  const { visibleItems: visibleSummary, visibleCount: visSummaryCount, hasMore: hasMoreSummary, remainingCount: remSummary, loadMore: loadMoreSummary, showAll: showAllSummary, sentinelRef: summarySentinelRef } = useProgressiveRows({ items: filteredSummary, resetKey, scrollContainerRef: scrollRef })
+  const { visibleItems: visibleDetailRows, visibleCount: visDetailCount, hasMore: hasMoreDetail, remainingCount: remDetail, loadMore: loadMoreDetail, showAll: showAllDetail, sentinelRef: detailSentinelRef } = useProgressiveRows({ items: activeDetailRows, resetKey, scrollContainerRef: scrollRef })
 
-  const clearFilters = () => {
-    setSearchTerm('')
-    setCategoryFilter('ALL')
-    setSelectedContractor('ALL')
-  }
+  const clearFilters = () => { setSearchTerm(''); setCategoryFilter('ALL'); setSelectedContractor('ALL') }
 
   const handleExport = () => {
     if (subView === 'consolidado') {
@@ -313,7 +300,7 @@ export default function TesoreriaDeduccionesPanel({
           </div>
         </div>
 
-        <div className="alon-grid-scroll">
+        <div ref={scrollRef} className="alon-grid-scroll">
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-400">Calculando extracciones de la quincena {selectedPeriod}...</div>
           ) : subView === 'consolidado' ? (
@@ -339,32 +326,21 @@ export default function TesoreriaDeduccionesPanel({
                     </td>
                   </tr>
                 ) : (
-                  filteredSummary.map((r, idx) => (
-                    <tr key={r.contractorLabel} className="hover:bg-slate-800/40">
-                      <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
-                      <td className="py-2 px-3 font-bold text-white">
-                        <HighlightText text={r.contractorLabel} query={searchTerm} />
-                      </td>
-                      <td className="py-2 px-3 text-[10px] font-bold text-amber-300">{r.adminCenter}</td>
-                      <td className="py-2 px-3 text-center">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-bold">
-                          {r.safetyCenter}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-200">
-                        ${r.consumablesArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.consumablesCount})
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-200">
-                        ${r.safetyArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.safetyCount})
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-black text-emerald-300">
-                        ${r.totalDeductArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-bold text-cyan-300">
-                        US$ {r.totalDeductUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ))
+                  <>
+                    {visibleSummary.map((r, idx) => (
+                      <tr key={r.contractorLabel} className="hover:bg-slate-800/40">
+                        <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
+                        <td className="py-2 px-3 font-bold text-white"><HighlightText text={r.contractorLabel} query={searchTerm} /></td>
+                        <td className="py-2 px-3 text-[10px] font-bold text-amber-300">{r.adminCenter}</td>
+                        <td className="py-2 px-3 text-center"><span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-bold">{r.safetyCenter}</span></td>
+                        <td className="py-2 px-3 text-right font-mono text-slate-200">${r.consumablesArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.consumablesCount})</td>
+                        <td className="py-2 px-3 text-right font-mono text-slate-200">${r.safetyArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.safetyCount})</td>
+                        <td className="py-2 px-3 text-right font-mono font-black text-emerald-300">${r.totalDeductArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold text-cyan-300">US$ {r.totalDeductUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                    <CanonicalProgressiveTableFooter colSpan={8} visibleCount={visSummaryCount} totalCount={filteredSummary.length} remainingCount={remSummary} hasMore={hasMoreSummary} loadMore={loadMoreSummary} showAll={showAllSummary} sentinelRef={summarySentinelRef} entityLabel="contratistas" />
+                  </>
                 )}
               </tbody>
             </table>
@@ -386,59 +362,40 @@ export default function TesoreriaDeduccionesPanel({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {(subView === 'exentos' ? filteredExempt : filteredDetails).length === 0 ? (
+                {activeDetailRows.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-10 text-center text-slate-500">
                       No hay movimientos para mostrar con los filtros actuales.
                     </td>
                   </tr>
                 ) : (
-                  (subView === 'exentos' ? filteredExempt : filteredDetails).map((r, idx) => (
-                    <tr key={r.id || idx} className="hover:bg-slate-800/40">
-                      <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
-                      <td className="py-2 px-3 font-mono text-slate-300">{formatDateAr(r.date)}</td>
-                      <td className="py-2 px-3 font-bold text-white">
-                        <HighlightText text={r.contractorLabel} query={searchTerm} />
-                      </td>
-                      <td className="py-2 px-3 text-slate-300">
-                        <HighlightText text={r.workerName} query={searchTerm} />
-                      </td>
-                      <td className="py-2 px-3 font-semibold text-slate-100">
-                        <HighlightText text={r.materialName} query={searchTerm} />
-                      </td>
-                      <td className="py-2 px-3">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${
-                          r.category === 'ELEM.SEGURIDAD'
-                            ? 'bg-cyan-950 text-cyan-300 border-cyan-700'
-                            : 'bg-amber-950 text-amber-300 border-amber-700'
-                        }`}>
-                          {r.category}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-200">
-                        {r.quantity} {r.unitMeasure}
-                      </td>
-                      <td className="py-2 px-3 text-slate-300">
-                        <span className="font-bold text-white">{r.shipName}</span> · <span className="text-[11px] text-slate-400">{r.otLabel}</span>
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono">
-                        {subView === 'exentos' ? (
-                          <span className="text-purple-300 font-bold">
-                            US$ {r.classification.referenceUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })} (No desc.)
-                          </span>
-                        ) : (
-                          <div>
-                            <div className="font-bold text-emerald-300">
-                              ${r.classification.deductArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.classification.contractorDeductPct}%)
+                  <>
+                    {visibleDetailRows.map((r, idx) => (
+                      <tr key={r.id || idx} className="hover:bg-slate-800/40">
+                        <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
+                        <td className="py-2 px-3 font-mono text-slate-300">{formatDateAr(r.date)}</td>
+                        <td className="py-2 px-3 font-bold text-white"><HighlightText text={r.contractorLabel} query={searchTerm} /></td>
+                        <td className="py-2 px-3 text-slate-300"><HighlightText text={r.workerName} query={searchTerm} /></td>
+                        <td className="py-2 px-3 font-semibold text-slate-100"><HighlightText text={r.materialName} query={searchTerm} /></td>
+                        <td className="py-2 px-3">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${r.category === 'ELEM.SEGURIDAD' ? 'bg-cyan-950 text-cyan-300 border-cyan-700' : 'bg-amber-950 text-amber-300 border-amber-700'}`}>{r.category}</span>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-slate-200">{r.quantity} {r.unitMeasure}</td>
+                        <td className="py-2 px-3 text-slate-300"><span className="font-bold text-white">{r.shipName}</span> · <span className="text-[11px] text-slate-400">{r.otLabel}</span></td>
+                        <td className="py-2 px-3 text-right font-mono">
+                          {subView === 'exentos' ? (
+                            <span className="text-purple-300 font-bold">US$ {r.classification.referenceUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })} (No desc.)</span>
+                          ) : (
+                            <div>
+                              <div className="font-bold text-emerald-300">${r.classification.deductArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.classification.contractorDeductPct}%)</div>
+                              <div className="text-[10px] text-cyan-300">US$ {r.classification.deductUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
                             </div>
-                            <div className="text-[10px] text-cyan-300">
-                              US$ {r.classification.deductUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    <CanonicalProgressiveTableFooter colSpan={9} visibleCount={visDetailCount} totalCount={activeDetailRows.length} remainingCount={remDetail} hasMore={hasMoreDetail} loadMore={loadMoreDetail} showAll={showAllDetail} sentinelRef={detailSentinelRef} entityLabel="movimientos" />
+                  </>
                 )}
               </tbody>
             </table>

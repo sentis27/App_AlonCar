@@ -1,6 +1,7 @@
 /**
  * workOrdersRepository.js
  * Repositorio para `work_orders` sobre `_baseRepository.js` + `WorkOrderSchema`.
+ * Usa `findAllBatched` por defecto para romper el tope de 1.000 OTs (FL-025).
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { WorkOrderSchema } from '../schemas/workOrders.schema.js'
@@ -21,11 +22,11 @@ export function createWorkOrdersRepository({ client = defaultClient } = {}) {
     ...base,
 
     async listWorkOrders({ select = '*', orderBy = [{ column: 'created_at', ascending: false }], filters = {} } = {}) {
-      return base.findAll({ select, orderBy, filters })
+      return base.findAllBatched({ select, orderBy, filters })
     },
 
     async listCanonicalWorkOrders({ orderBy = [{ column: 'ot_number', ascending: true }], filters = {} } = {}) {
-      return base.findAll({ select: WORK_ORDER_CANONICAL_SELECT, orderBy, filters })
+      return base.findAllBatched({ select: WORK_ORDER_CANONICAL_SELECT, orderBy, filters })
     },
 
     async countWorkOrders() {

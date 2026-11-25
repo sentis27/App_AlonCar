@@ -89,10 +89,14 @@ export default function ComprasPedidosPanel(props) {
           setHideReconciled={filters.setHideReconciled}
           history={state.grid}
           viewsController={filters.viewsController}
+          historyRange={props.historyRange}
+          setHistoryRange={props.setHistoryRange}
+          loading={props.loading}
         />
 
         <ComprasPedidosTable
           filteredOrders={state.filteredOrders}
+          filterResetKey={`${filters.searchQuery}|${filters.filterShip}|${filters.filterOt}|${filters.filterSupplier}|${filters.filterStatus}|${filters.filterFortnight}|${filters.filterChargeType}|${filters.filterNewOnly}|${filters.hideReconciled}|${filters.activeKpiFilter || ''}|${props.historyRange || ''}`}
           materials={materials}
           suppliers={suppliers}
           ships={ships}

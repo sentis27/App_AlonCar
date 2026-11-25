@@ -27,6 +27,7 @@ import { workItemsRepository } from '../repositories/workItemsRepository.js'
 import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
 import { dataRequirementsRepository, complianceAlertsRepository, workerPermissionRequestsRepository } from '../repositories/complianceAlertsRepository.js'
 import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
+import { buildDateRangeOption, DEFAULT_HISTORY_RANGE } from './gridPerformanceHelpers.js'
 
 let _hasGasTxLinkCache = null
 
@@ -44,17 +45,7 @@ export async function supportsGasTxLink() {
  * Valida y construye la carga útil canónica de gases (compartida entre alta y edición).
  */
 export function buildGasMovementPayload({
-  item,
-  mat,
-  date,
-  rawNotes,
-  suppliers = [],
-  shipId,
-  workOrderId,
-  workerName,
-  workerId,
-  txId = null,
-  includeTxLink = false
+  item, mat, date, rawNotes, suppliers = [], shipId, workOrderId, workerName, workerId, txId = null, includeTxLink = false
 }) {
   const opType = item.gasOperationType || 'PRIMERA_ENTREGA'
   if (!['PRIMERA_ENTREGA', 'RECAMBIO_1X1'].includes(opType)) {
@@ -162,12 +153,13 @@ export async function ensurePanolRequirementId(code) {
   return data.id
 }
 
-export async function fetchPanolData() {
+export async function fetchPanolData({ historyRange = DEFAULT_HISTORY_RANGE } = {}) {
+  const txDateRange = buildDateRangeOption('transaction_date', historyRange, { asTimestamp: true })
   const [matRes, invRes, gasRes, rubrosRes, supRes, shipsRes, woRes, workersRes, workItemsRes, alertsRes, macroRes, policyRes] =
     await Promise.all([
       materialsRepository.listMaterials(),
-      inventoryTransactionsRepository.listTransactions({ limit: 800 }),
-      gasMovementsRepository.listGasMovements({ limit: 800 }),
+      inventoryTransactionsRepository.listTransactions({ dateRange: txDateRange }),
+      gasMovementsRepository.listGasMovements(),
       materialRubrosRepository.listRubros(),
       suppliersRepository.listSuppliers(),
       shipsRepository.listShips(),

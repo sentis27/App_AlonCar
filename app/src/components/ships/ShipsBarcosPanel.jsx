@@ -1,21 +1,11 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
-import {
-  Ship,
-  Pencil,
-  Trash2,
-  CopyPlus,
-  Eye,
-  CheckSquare,
-  Square,
-  AlertTriangle,
-  BellRing,
-  CheckCircle,
-  X
-} from 'lucide-react'
+import { Ship, Pencil, Trash2, CopyPlus, Eye, CheckSquare, Square, AlertTriangle, BellRing, CheckCircle, X } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import ShipsBarcosToolbar from './ShipsBarcosToolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
@@ -24,13 +14,7 @@ import { useGridContextMenu } from '../../hooks/useGridContextMenu'
 import { duplicateRecord, buildPasteRowHandler } from '../../lib/gridRowActions'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import HighlightText from '../HighlightText'
-import {
-  cleanShipName,
-  cleanLocation,
-  STANDARD_LOCATIONS,
-  PREDEFINED_VESSEL_TYPES,
-  SHIP_CLONE_FIELDS
-} from '../../lib/shipsConstants'
+import { cleanShipName, cleanLocation, STANDARD_LOCATIONS, PREDEFINED_VESSEL_TYPES, SHIP_CLONE_FIELDS } from '../../lib/shipsConstants'
 import { buildShipFieldPatch, updateGridEntityRowsService } from '../../lib/shipsService'
 import { buildGridCellMeta, executeGridBatchUpdate, resolveShipsAuditUser } from '../../lib/shipsGridHelpers'
 
@@ -83,6 +67,7 @@ export default function ShipsBarcosPanel({
   const [inlineShipEdit, setInlineShipEdit] = useState(null)
   const searchInputRef = useRef(null)
   const shipsPasteRef = useRef(null)
+  const gridScrollRef = useRef(null)
   const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const showFeedback = useCallback((type, text) => setStatusMessage?.({ type, text }), [setStatusMessage])
 
@@ -245,6 +230,13 @@ export default function ShipsBarcosPanel({
     showFeedback
   })
 
+  const { visibleItems: visibleShips, visibleCount: visibleShipsCount, hasMore: hasMoreShips, remainingCount: remainingShipsCount, loadMore: loadMoreShips, showAll: showAllShips, sentinelRef: shipsSentinelRef } = useProgressiveRows({
+    items: filteredShips,
+    resetKey: `${searchTerm}|${locationFilter}|${requestFilter}|${ownerFilter}|${roleQuickFilter}|${viewModeShips}`,
+    activeIndex: shipsGrid.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: gridScrollRef
+  })
+
   useEffect(() => {
     shipsPasteRef.current = buildPasteRowHandler({
       table: 'ships',
@@ -398,7 +390,7 @@ export default function ShipsBarcosPanel({
             exportFilename={`barcos_flota_${getTodayArIso()}`}
           />
 
-          <div className="alon-grid-scroll">
+          <div ref={gridScrollRef} className="alon-grid-scroll">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="alon-grid-thead sticky top-0 z-20 shadow-sm backdrop-blur-md">
                 <tr className="text-slate-300 font-bold uppercase text-[10px] tracking-wider">
@@ -437,7 +429,8 @@ export default function ShipsBarcosPanel({
                     </td>
                   </tr>
                 ) : (
-                  filteredShips.map((ship, rowIndex) => {
+                  <>
+                    {visibleShips.map((ship, rowIndex) => {
                     const cleanName = cleanShipName(ship.name)
                     const locClean = cleanLocation(ship.current_location)
                     const hasPendingReq = ship.info_request_status && ship.info_request_status !== 'completo'
@@ -783,7 +776,9 @@ export default function ShipsBarcosPanel({
                         </td>
                       </tr>
                     )
-                  })
+                  })}
+                    <CanonicalProgressiveTableFooter colSpan={9} visibleCount={visibleShipsCount} totalCount={filteredShips.length} remainingCount={remainingShipsCount} hasMore={hasMoreShips} loadMore={loadMoreShips} showAll={showAllShips} sentinelRef={shipsSentinelRef} entityLabel="buques" />
+                  </>
                 )}
               </tbody>
             </table>
@@ -818,7 +813,8 @@ export default function ShipsBarcosPanel({
               No se encontraron buques con los filtros actuales.
             </div>
           ) : (
-            filteredShips.map(ship => {
+            <>
+              {visibleShips.map(ship => {
               const cleanName = cleanShipName(ship.name)
               const locClean = cleanLocation(ship.current_location)
               const otMetrics = getShipOtMetrics[ship.id] || { total: 0, active: 0 }
@@ -900,7 +896,9 @@ export default function ShipsBarcosPanel({
                   </div>
                 </div>
               )
-            })
+            })}
+              <CanonicalProgressiveTableFooter asDiv className="col-span-full" visibleCount={visibleShipsCount} totalCount={filteredShips.length} remainingCount={remainingShipsCount} hasMore={hasMoreShips} loadMore={loadMoreShips} showAll={showAllShips} sentinelRef={shipsSentinelRef} entityLabel="buques" />
+            </>
           )}
         </div>
       )}

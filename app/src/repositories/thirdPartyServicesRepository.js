@@ -1,6 +1,7 @@
 /**
  * thirdPartyServicesRepository.js
  * Repositorios para `third_party_services` y `third_party_voucher_history`.
+ * Usa lectura por bloques `findAllBatched` por defecto para romper el techo de 1.000 filas (FL-025).
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { ThirdPartyServiceSchema, ThirdPartyVoucherHistorySchema } from '../schemas/thirdParty.schema.js'
@@ -22,8 +23,16 @@ export function createThirdPartyServicesRepository({ client = defaultClient } = 
       orderBy = [{ column: 'created_at', ascending: false }],
       filters = {},
       isNull = [],
+      dateRange = null,
+      limit,
+      page,
+      pageSize,
+      maxRows,
     } = {}) {
-      return base.findAll({ select, orderBy, filters, isNull })
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ select, orderBy, filters, isNull, dateRange, limit, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy, filters, isNull, dateRange, maxRows })
     },
 
     async insertBlankRow(payload) {
@@ -68,7 +77,7 @@ export function createThirdPartyVoucherHistoryRepository({ client = defaultClien
     ...base,
 
     async listHistory({ orderBy = [{ column: 'created_at', ascending: false }] } = {}) {
-      return base.findAll({ orderBy })
+      return base.findAllBatched({ orderBy })
     },
   }
 }

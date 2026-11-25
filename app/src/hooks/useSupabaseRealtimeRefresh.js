@@ -17,7 +17,11 @@ function isEditingControlFocused() {
 
 /**
  * Suscripción reutilizable a Supabase Realtime (`postgres_changes`) + respaldo por foco de ventana.
- * Con guardia anti-colisión: difiere la recarga automática mientras haya edición o modal abierto.
+ * Optimizaciones FL-025:
+ * - Evita re-renders innecesarios cuando el estado no cambia.
+ * - Bloquea solapamiento de recargas simultáneas (`inFlightRef` + cola única).
+ * - Cuando Realtime está `SUBSCRIBED`, espacia el polling de respaldo (`subscribedPollIntervalMs = 180s`)
+ *   en lugar de recargar tablas completas cada 30s.
  */
 export function useSupabaseRealtimeRefresh({
   channelName = 'aloncar_live_sync',
@@ -28,7 +32,8 @@ export function useSupabaseRealtimeRefresh({
   pauseWhileEditing = true,
   debounceMs = 400,
   focusCooldownMs = 8000,
-  pollIntervalMs = 30000
+  pollIntervalMs = 30000,
+  subscribedPollIntervalMs = 180000,
 }) {
   const [realtimeStatus, setRealtimeStatus] = useState('CONNECTING')
   const [lastSyncAt, setLastSyncAt] = useState(null)
@@ -37,7 +42,11 @@ export function useSupabaseRealtimeRefresh({
   const onSyncRef = useRef(onSync)
   const pauseWhenRef = useRef(pauseWhen)
   const pauseEditingRef = useRef(pauseWhileEditing)
+  const realtimeStatusRef = useRef('CONNECTING')
   const pendingSyncRef = useRef(false)
+  const inFlightRef = useRef(false)
+  const requeueAfterFlightRef = useRef(false)
+  const runOrDeferSyncRef = useRef(null)
   const lastTriggerRef = useRef(0)
   const timerRef = useRef(null)
 
@@ -49,6 +58,18 @@ export function useSupabaseRealtimeRefresh({
     pauseWhenRef.current = Boolean(pauseWhen)
     pauseEditingRef.current = Boolean(pauseWhileEditing)
   }, [pauseWhen, pauseWhileEditing])
+
+  const setStatusIfChanged = useCallback((nextStatus) => {
+    if (realtimeStatusRef.current === nextStatus) return
+    realtimeStatusRef.current = nextStatus
+    setRealtimeStatus(nextStatus)
+  }, [])
+
+  const setPendingIfChanged = useCallback((nextPending) => {
+    if (pendingSyncRef.current === nextPending) return
+    pendingSyncRef.current = nextPending
+    setHasPendingSync(nextPending)
+  }, [])
 
   const shouldPause = useCallback(() => {
     if (pauseWhenRef.current) return true
@@ -63,15 +84,33 @@ export function useSupabaseRealtimeRefresh({
 
   const runOrDeferSync = useCallback(() => {
     if (shouldPause()) {
-      pendingSyncRef.current = true
-      setHasPendingSync(true)
+      setPendingIfChanged(true)
       return
     }
-    pendingSyncRef.current = false
-    setHasPendingSync(false)
+    if (inFlightRef.current) {
+      requeueAfterFlightRef.current = true
+      return
+    }
+    setPendingIfChanged(false)
     lastTriggerRef.current = Date.now()
-    onSyncRef.current?.()
-  }, [shouldPause])
+    inFlightRef.current = true
+    Promise.resolve(onSyncRef.current?.())
+      .catch(() => {})
+      .finally(() => {
+        inFlightRef.current = false
+        if (requeueAfterFlightRef.current) {
+          requeueAfterFlightRef.current = false
+          if (timerRef.current) clearTimeout(timerRef.current)
+          timerRef.current = setTimeout(() => {
+            runOrDeferSyncRef.current?.()
+          }, debounceMs)
+        }
+      })
+  }, [shouldPause, setPendingIfChanged, debounceMs])
+
+  useEffect(() => {
+    runOrDeferSyncRef.current = runOrDeferSync
+  }, [runOrDeferSync])
 
   const scheduleSync = useCallback((customDelayMs = debounceMs) => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -104,9 +143,9 @@ export function useSupabaseRealtimeRefresh({
     })
 
     channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') setRealtimeStatus('SUBSCRIBED')
+      if (status === 'SUBSCRIBED') setStatusIfChanged('SUBSCRIBED')
       else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-        setRealtimeStatus('FALLBACK')
+        setStatusIfChanged('FALLBACK')
       }
     })
 
@@ -133,7 +172,12 @@ export function useSupabaseRealtimeRefresh({
     const pollId =
       pollIntervalMs > 0
         ? setInterval(() => {
-            if (document.visibilityState === 'visible') {
+            if (document.visibilityState !== 'visible') return
+            const effectiveInterval =
+              realtimeStatusRef.current === 'SUBSCRIBED'
+                ? Math.max(pollIntervalMs, subscribedPollIntervalMs)
+                : pollIntervalMs
+            if (Date.now() - lastTriggerRef.current >= effectiveInterval) {
               scheduleSync()
             }
           }, pollIntervalMs)
@@ -147,7 +191,17 @@ export function useSupabaseRealtimeRefresh({
       document.removeEventListener('focusout', handleFocusOut)
       supabase.removeChannel(channel)
     }
-  }, [enabled, channelName, tablesKey, scheduleSync, shouldPause, focusCooldownMs, pollIntervalMs])
+  }, [
+    enabled,
+    channelName,
+    tablesKey,
+    scheduleSync,
+    shouldPause,
+    setStatusIfChanged,
+    focusCooldownMs,
+    pollIntervalMs,
+    subscribedPollIntervalMs,
+  ])
 
   return { realtimeStatus, lastSyncAt, hasPendingSync, markSynced }
 }

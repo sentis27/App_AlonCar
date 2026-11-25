@@ -18,6 +18,7 @@ import { getEditableCellInitialValue } from '../lib/formulaEngine.js'
 import { calculateTercerosKpis, calculateTercerosStats, filterTercerosServices, getSpreadsheetColumnsTerceros, buildTercerosMaps, TERCEROS_CLONE_FIELDS, TERCEROS_PASTE_BASE_FIELDS } from '../lib/tercerosConstants.js'
 import { buildPanolRemitoIndex } from '../lib/tercerosRemitoMatcher.js'
 import { getTodayArIso } from '../lib/dateTimeCanonical.js'
+import { DEFAULT_HISTORY_RANGE } from '../lib/gridPerformanceHelpers.js'
 import { AlertTriangle, CheckCircle2, Clock, Wrench } from 'lucide-react'
 
 export default function Terceros() {
@@ -28,15 +29,10 @@ export default function Terceros() {
   const actor = orgRole?.holder_name || profile?.full_name || user?.email || (activeRolePerspective === 'jefe_obra' ? 'JEFE DE OBRA' : 'ADMINISTRACIÓN')
 
   // Datos principales
-  const [services, setServices] = useState([])
-  const [ships, setShips] = useState([])
-  const [workOrders, setWorkOrders] = useState([])
-  const [workItems, setWorkItems] = useState([])
-  const [contractors, setContractors] = useState([])
-  const [macroVariables, setMacroVariables] = useState([])
-  const [voucherHistory, setVoucherHistory] = useState([])
-  const [panolRemitoTx, setPanolRemitoTx] = useState([])
-  const [materials, setMaterials] = useState([])
+  const [services, setServices] = useState([]); const [ships, setShips] = useState([]); const [workOrders, setWorkOrders] = useState([])
+  const [workItems, setWorkItems] = useState([]); const [contractors, setContractors] = useState([]); const [macroVariables, setMacroVariables] = useState([])
+  const [voucherHistory, setVoucherHistory] = useState([]); const [panolRemitoTx, setPanolRemitoTx] = useState([]); const [materials, setMaterials] = useState([])
+  const [historyRange, setHistoryRange] = useState(DEFAULT_HISTORY_RANGE)
   const [loading, setLoading] = useState(true)
   const [feedbackMessage, setFeedbackMessage] = useState(null)
 
@@ -87,14 +83,13 @@ export default function Terceros() {
   const loadData = useCallback(async ({ silent = false } = {}) => {
     try {
       if (!silent) setLoading(true)
-      const d = await fetchTercerosData()
+      const d = await fetchTercerosData({ historyRange })
       setServices(d.services); setShips(d.ships); setWorkOrders(d.workOrders)
-      setWorkItems(d.workItems); setContractors(d.contractors)
-      setMacroVariables(d.macroVariables); setVoucherHistory(d.voucherHistory)
-      setPanolRemitoTx(d.panolRemitoTx || []); setMaterials(d.materials || [])
+      setWorkItems(d.workItems); setContractors(d.contractors); setMacroVariables(d.macroVariables)
+      setVoucherHistory(d.voucherHistory); setPanolRemitoTx(d.panolRemitoTx || []); setMaterials(d.materials || [])
     } catch (err) { showFeedback('error', 'Error al sincronizar datos: ' + err.message) }
     finally { if (!silent) setLoading(false) }
-  }, [showFeedback])
+  }, [showFeedback, historyRange])
 
   useSupabaseRealtimeRefresh({
     channelName: 'terceros_live',
@@ -238,6 +233,7 @@ export default function Terceros() {
           selectedVoucherFilter={selectedVoucherFilter} setSelectedVoucherFilter={setSelectedVoucherFilter}
           ships={ships} workOrders={workOrders} workItems={workItems} contractors={contractors} hasActiveFilters={hasActiveFilters} clearAllFilters={clearAllFilters}
           grid={grid} viewMode={viewMode} setViewMode={setViewMode} viewsController={tercerosViewsController}
+          historyRange={historyRange} setHistoryRange={setHistoryRange} loading={loading}
         />
 
         {loading ? (
@@ -256,6 +252,7 @@ export default function Terceros() {
         ) : viewMode === 'filas' ? (
           <TercerosFilasPanel
             filteredServices={filteredServices} services={services} contractors={contractors} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} panolRemitoIndex={panolRemitoIndex}
+            filterResetKey={`${searchTerm}|${kpiFilter}|${selectedShipFilter}|${selectedOtFilter}|${selectedContractorFilter}|${selectedTradeFilter}|${selectedVoucherFilter}|${historyRange}`}
             searchTerm={searchTerm} canEditAmounts={canEditAmounts} canMutateRows={canMutateRows} activeRolePerspective={activeRolePerspective}
             grid={grid} spreadsheetColumns={spreadsheetColumns} menuTarget={menuTarget} openMenu={openMenu} closeMenu={closeMenu}
             selectedIds={selectedIds} handleSelectAll={() => setSelectedIds(selectedIds.size === filteredServices.length ? new Set() : new Set(filteredServices.map((s) => s.id)))}
@@ -269,6 +266,7 @@ export default function Terceros() {
         ) : (
           <TercerosFichasPanel
             filteredServices={filteredServices} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} panolRemitoIndex={panolRemitoIndex} selectedIds={selectedIds}
+            filterResetKey={`${searchTerm}|${kpiFilter}|${selectedShipFilter}|${selectedOtFilter}|${selectedContractorFilter}|${selectedTradeFilter}|${selectedVoucherFilter}|${historyRange}`}
             handleRowClick={(id, idx, e) => { if (!e.target.closest('button, a, input')) toggleRowSelection(id, idx, e.shiftKey) }}
             handleCheckboxToggle={(id, idx, e) => { e.stopPropagation(); toggleRowSelection(id, idx, e.shiftKey) }}
             handleClearSelection={() => { setSelectedIds(new Set()); setLastSelectedIndex(null) }}

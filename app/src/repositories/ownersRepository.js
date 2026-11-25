@@ -17,8 +17,11 @@ export function createOwnersRepository({ client = defaultClient } = {}) {
   return {
     ...base,
 
-    async listOwners({ select = '*', orderBy = [{ column: 'name', ascending: true }], filters = {} } = {}) {
-      return base.findAll({ select, orderBy, filters })
+    async listOwners({ select = '*', orderBy = [{ column: 'name', ascending: true }], filters = {}, limit, page, pageSize } = {}) {
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ select, orderBy, filters, limit, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy, filters })
     },
 
     async updateByIds(ids = [], patch, opts = {}) {
@@ -39,8 +42,11 @@ export function createContactsRepository({ client = defaultClient } = {}) {
   return {
     ...base,
 
-    async listContacts({ select = '*, owners(id, name), ships(id, name)', orderBy = [{ column: 'name', ascending: true }] } = {}) {
-      return base.findAll({ select, orderBy })
+    async listContacts({ select = '*, owners(id, name), ships(id, name)', orderBy = [{ column: 'name', ascending: true }], limit, page, pageSize } = {}) {
+      if (page !== undefined || pageSize !== undefined || (limit && limit <= 1000)) {
+        return base.findAll({ select, orderBy, limit, page, pageSize })
+      }
+      return base.findAllBatched({ select, orderBy })
     },
   }
 }

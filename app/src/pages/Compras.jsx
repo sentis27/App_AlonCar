@@ -10,6 +10,7 @@ import ComprasProveedoresPanel from '../components/compras/ComprasProveedoresPan
 import ComprasOcrPanel from '../components/compras/ComprasOcrPanel'
 import { parseOrderQueryParams, computeContractorGroups, getCurrentFortnight } from '../lib/comprasConstants'
 import { countLocalPendingOrders } from '../lib/comprasPedidosHelpers'
+import { DEFAULT_HISTORY_RANGE } from '../lib/gridPerformanceHelpers'
 
 const COMPRAS_REALTIME_TABLES = ['purchase_orders', 'suppliers', 'materials', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables', 'purchase_documents', 'system_settings']
 
@@ -39,6 +40,7 @@ export default function Compras() {
   const [macroVariables, setMacroVariables] = useState([])
   const [documents, setDocuments] = useState([])
   const [systemSettings, setSystemSettings] = useState(null)
+  const [historyRange, setHistoryRange] = useState(DEFAULT_HISTORY_RANGE)
 
   // Modal de carga inicial y nuevo pedido
   const [showOrderModal, setShowOrderModal] = useState(false)
@@ -81,24 +83,18 @@ export default function Compras() {
   const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
     try {
-      const d = await fetchComprasData()
-      setPurchaseOrders(d.purchaseOrders)
-      setSuppliers(d.suppliers)
-      setMaterials(d.materials)
-      setShips(d.ships)
-      setWorkOrders(d.workOrders)
-      setWorkItems(d.workItems)
-      setWorkers(d.workers)
-      setMacroVariables(d.macroVariables)
-      setDocuments(d.purchaseDocuments)
-      setSystemSettings(d.whatsappSetting)
+      const d = await fetchComprasData({ historyRange })
+      setPurchaseOrders(d.purchaseOrders); setSuppliers(d.suppliers); setMaterials(d.materials)
+      setShips(d.ships); setWorkOrders(d.workOrders); setWorkItems(d.workItems)
+      setWorkers(d.workers); setMacroVariables(d.macroVariables)
+      setDocuments(d.purchaseDocuments); setSystemSettings(d.whatsappSetting)
     } catch (err) {
       console.error('Error cargando Compras:', err)
       showFeedbackMsg('error', 'Error al sincronizar datos de Compras: ' + (err.message || err))
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [showFeedbackMsg])
+  }, [showFeedbackMsg, historyRange])
 
   useSupabaseRealtimeRefresh({
     channelName: 'compras_live',
@@ -213,6 +209,7 @@ export default function Compras() {
           showOrderModal={showOrderModal} setShowOrderModal={setShowOrderModal}
           editingOrder={editingOrder} setEditingOrder={setEditingOrder} onCloseOrderModal={handleCloseOrderModal}
           mandadosOpenTick={mandadosOpenTick} initialKpiFilter={initialKpiFilter}
+          historyRange={historyRange} setHistoryRange={setHistoryRange} loading={loading}
           onClearUrlKpi={() => {
             setInitialKpiFilter(null)
             if (searchParams.get('kpi')) {

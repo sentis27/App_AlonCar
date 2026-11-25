@@ -1,45 +1,38 @@
-import React from 'react'
+import React, { memo } from 'react'
 import HighlightText from '../HighlightText.jsx'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
 import { cleanShipName } from '../../lib/laborConstants.js'
 import { formatDateAr } from '../../lib/dateTimeCanonical.js'
 import { TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants.js'
 import { normalizeLaborWorkType, getWorkTypeBadgeMeta } from '../../lib/laborCargaGridHelpers.js'
+import { buildMemoizedHorasCellProps } from '../../lib/laborPerformanceHelpers.js'
 import LaborInlineCell from './LaborInlineCell.jsx'
 import LaborRowTrailingCells from './LaborRowTrailingCells.jsx'
 
 const NUMERIC_HOUR_CELLS = [
-  {
-    field: 'hours_normal',
-    title: 'Doble clic para editar Horas Normales',
-    cellClass: 'py-2 px-2 text-center font-mono cursor-pointer',
-    getDisplay: (log) => log.hours_normal ?? log.hours_worked ?? 0
-  },
-  {
-    field: 'hours_extra_50',
-    title: 'Doble clic para editar Horas 50%',
-    cellClass: 'py-2 px-2 text-center font-mono text-cyan-400 cursor-pointer',
-    getDisplay: (log) => log.hours_extra_50 || 0
-  },
-  {
-    field: 'hours_extra_100',
-    title: 'Doble clic para editar Horas 100%',
-    cellClass: 'py-2 px-2 text-center font-mono text-amber-400 cursor-pointer',
-    getDisplay: (log) => log.hours_extra_100 || 0
-  }
+  { field: 'hours_normal', title: 'Doble clic para editar Horas Normales', cellClass: 'py-2 px-2 text-center font-mono cursor-pointer', getDisplay: (log) => log.hours_normal ?? log.hours_worked ?? 0 },
+  { field: 'hours_extra_50', title: 'Doble clic para editar Horas 50%', cellClass: 'py-2 px-2 text-center font-mono text-cyan-400 cursor-pointer', getDisplay: (log) => log.hours_extra_50 || 0 },
+  { field: 'hours_extra_100', title: 'Doble clic para editar Horas 100%', cellClass: 'py-2 px-2 text-center font-mono text-amber-400 cursor-pointer', getDisplay: (log) => log.hours_extra_100 || 0 }
 ]
 
-export default function LaborLogsTableRow({
+const LaborLogsTableRow = memo(function LaborLogsTableRow({
   log,
-  ships = [],
+  shipsById,
+  workOrdersById,
   workOrders = [],
   workItems = [],
   rowIndex,
   isSelected,
   filterWorker,
-  inlineLogEdit,
+  activeColIndex = -1,
+  selStartCol = -1,
+  selEndCol = -1,
+  fillColIndex = -1,
+  fillHandleColIndex = -1,
+  editingField = null,
+  editingValue = '',
   setInlineLogEdit,
-  getHorasCellProps,
+  gridActions,
   activateHorasCell,
   saveInlineLogEdit,
   onToggleSelectLog,
@@ -48,16 +41,24 @@ export default function LaborLogsTableRow({
   onEditFromDaily,
   onDuplicateLog,
   onDeleteLog,
-  onOpenContextMenu,
-  onFillHandleMouseDown,
-  onFillHandleDoubleClick
 }) {
   const shipDisplayName = cleanShipName(log.ships?.name || log.work_orders?.ships?.name || '') || 'Sin Buque'
-  const resolvedWo = (log.work_order_id && workOrders.find((w) => String(w.id) === String(log.work_order_id))) || log.work_orders || null
-  const resolvedShip = ships.find((s) => String(s.id) === String(log.ship_id || resolvedWo?.ship_id)) || log.ships || log.work_orders?.ships || null
+  const resolvedWo = (log.work_order_id && workOrdersById?.get(String(log.work_order_id))) || log.work_orders || null
+  const resolvedShipId = log.ship_id || resolvedWo?.ship_id
+  const resolvedShip = (resolvedShipId && shipsById?.get(String(resolvedShipId))) || log.ships || log.work_orders?.ships || null
   const otTitle = resolvedWo?.title || log.work_orders?.title
 
-  const isEditingField = (field) => inlineLogEdit.id === log.id && inlineLogEdit.field === field
+  const getCellProps = (colKey) => buildMemoizedHorasCellProps({
+    rowIndex,
+    colKey,
+    activeColIndex,
+    selStartCol,
+    selEndCol,
+    fillColIndex,
+    fillHandleColIndex,
+    gridActions,
+  })
+
   const cancelInlineEdit = () => setInlineLogEdit({ id: null, field: null, value: '' })
 
   const renderInlineInput = (field, { type = 'text', list, step, min, max, className }) => (
@@ -68,20 +69,20 @@ export default function LaborLogsTableRow({
       min={min}
       max={max}
       autoFocus
-      value={inlineLogEdit.value}
-      onChange={(e) => setInlineLogEdit({ ...inlineLogEdit, value: e.target.value })}
+      value={editingValue}
+      onChange={(e) => setInlineLogEdit({ id: log.id, field, value: e.target.value })}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') saveInlineLogEdit(log.id, field, inlineLogEdit.value)
+        if (e.key === 'Enter') saveInlineLogEdit(log.id, field, editingValue)
         if (e.key === 'Escape') cancelInlineEdit()
       }}
-      onBlur={() => saveInlineLogEdit(log.id, field, inlineLogEdit.value)}
+      onBlur={() => saveInlineLogEdit(log.id, field, editingValue)}
       className={className}
     />
   )
 
   return (
     <tr
-      onContextMenu={(e) => onOpenContextMenu(e, log, rowIndex)}
+      onContextMenu={(e) => gridActions.onOpenContextMenu(e, log, rowIndex)}
       className={`transition-colors select-none ${
         isSelected ? 'bg-cyan-950/50 hover:bg-cyan-950/70 border-l-2 border-l-cyan-400' : 'hover:bg-slate-800/30'
       }`}
@@ -104,29 +105,29 @@ export default function LaborLogsTableRow({
       </td>
 
       <LaborInlineCell
-        cellProps={getHorasCellProps(rowIndex, 'date_logged')}
+        cellProps={getCellProps('date_logged')}
         onDoubleClick={() => activateHorasCell(log, 'date_logged')}
         className="py-2 px-3 font-mono text-slate-300 cursor-pointer whitespace-nowrap"
         title="Doble clic para editar Fecha"
-        isEditing={isEditingField('date_logged')}
+        isEditing={editingField === 'date_logged'}
         editInput={renderInlineInput('date_logged', {
           type: 'date',
           className: 'bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none'
         })}
-        onFillHandleMouseDown={onFillHandleMouseDown}
-        onFillHandleDoubleClick={onFillHandleDoubleClick}
+        onFillHandleMouseDown={gridActions.onFillHandleMouseDown}
+        onFillHandleDoubleClick={gridActions.onFillHandleDoubleClick}
       >
         <span><HighlightText text={formatDateAr(log.date_logged)} query={filterWorker} /></span>
       </LaborInlineCell>
 
       <LaborInlineCell
-        cellProps={getHorasCellProps(rowIndex, 'ship_wo')}
+        cellProps={getCellProps('ship_wo')}
         onDoubleClick={() => activateHorasCell(log, 'ship_wo')}
         className="py-2 px-3 cursor-pointer"
         title="Doble clic para cambiar Buque u Orden de Trabajo"
         isEditing={false}
-        onFillHandleMouseDown={onFillHandleMouseDown}
-        onFillHandleDoubleClick={onFillHandleDoubleClick}
+        onFillHandleMouseDown={gridActions.onFillHandleMouseDown}
+        onFillHandleDoubleClick={gridActions.onFillHandleDoubleClick}
       >
         <span className="font-semibold text-white block truncate max-w-[160px]">
           <HighlightText text={shipDisplayName} query={filterWorker} />
@@ -144,13 +145,13 @@ export default function LaborLogsTableRow({
       </LaborInlineCell>
 
       <LaborInlineCell
-        cellProps={getHorasCellProps(rowIndex, 'worker_name')}
+        cellProps={getCellProps('worker_name')}
         onDoubleClick={() => activateHorasCell(log, 'worker_name')}
         className="py-2 px-2.5 cursor-pointer"
         title="Doble clic para elegir Operario o Contratista habilitado"
         isEditing={false}
-        onFillHandleMouseDown={onFillHandleMouseDown}
-        onFillHandleDoubleClick={onFillHandleDoubleClick}
+        onFillHandleMouseDown={gridActions.onFillHandleMouseDown}
+        onFillHandleDoubleClick={gridActions.onFillHandleDoubleClick}
       >
         <div className="flex items-center gap-1.5">
           <span className={`font-medium ${log.worker_name ? 'text-slate-200' : 'text-amber-400 italic'}`}>
@@ -173,18 +174,18 @@ export default function LaborLogsTableRow({
       </LaborInlineCell>
 
       <LaborInlineCell
-        cellProps={getHorasCellProps(rowIndex, 'rubro')}
+        cellProps={getCellProps('rubro')}
         onDoubleClick={() => activateHorasCell(log, 'rubro')}
         className="py-2 px-3 cursor-pointer"
         title="Doble clic para editar Rubro"
-        isEditing={isEditingField('rubro')}
+        isEditing={editingField === 'rubro'}
         editInput={renderInlineInput('rubro', {
           type: 'text',
           list: 'rubros-list-carga',
           className: 'w-32 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none'
         })}
-        onFillHandleMouseDown={onFillHandleMouseDown}
-        onFillHandleDoubleClick={onFillHandleDoubleClick}
+        onFillHandleMouseDown={gridActions.onFillHandleMouseDown}
+        onFillHandleDoubleClick={gridActions.onFillHandleDoubleClick}
       >
         <span
           className={`px-2 py-0.5 rounded text-[11px] ${
@@ -198,18 +199,18 @@ export default function LaborLogsTableRow({
       </LaborInlineCell>
 
       <LaborInlineCell
-        cellProps={getHorasCellProps(rowIndex, 'work_type')}
+        cellProps={getCellProps('work_type')}
         onDoubleClick={() => activateHorasCell(log, 'work_type')}
         className="py-2 px-2 text-center cursor-pointer whitespace-nowrap"
         title="Doble clic o Enter para elegir Modalidad (Col. F: Hora / Presupuesto / Control)"
-        isEditing={isEditingField('work_type')}
+        isEditing={editingField === 'work_type'}
         editInput={
           <select
             autoFocus
-            value={normalizeLaborWorkType(inlineLogEdit.value, 'HORA')}
+            value={normalizeLaborWorkType(editingValue, 'HORA')}
             onChange={(e) => {
               const nextVal = e.target.value
-              setInlineLogEdit({ ...inlineLogEdit, value: nextVal })
+              setInlineLogEdit({ id: log.id, field: 'work_type', value: nextVal })
               saveInlineLogEdit(log.id, 'work_type', nextVal)
             }}
             onKeyDown={(e) => {
@@ -226,8 +227,8 @@ export default function LaborLogsTableRow({
             ))}
           </select>
         }
-        onFillHandleMouseDown={onFillHandleMouseDown}
-        onFillHandleDoubleClick={onFillHandleDoubleClick}
+        onFillHandleMouseDown={gridActions.onFillHandleMouseDown}
+        onFillHandleDoubleClick={gridActions.onFillHandleDoubleClick}
       >
         {(() => {
           const wt = getWorkTypeBadgeMeta(log.work_type)
@@ -245,11 +246,11 @@ export default function LaborLogsTableRow({
       {NUMERIC_HOUR_CELLS.map((cfg) => (
         <LaborInlineCell
           key={cfg.field}
-          cellProps={getHorasCellProps(rowIndex, cfg.field)}
+          cellProps={getCellProps(cfg.field)}
           onDoubleClick={() => activateHorasCell(log, cfg.field)}
           className={cfg.cellClass}
           title={cfg.title}
-          isEditing={isEditingField(cfg.field)}
+          isEditing={editingField === cfg.field}
           editInput={renderInlineInput(cfg.field, {
             type: 'number',
             step: '0.5',
@@ -257,8 +258,8 @@ export default function LaborLogsTableRow({
             max: '24',
             className: 'w-14 bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-center text-xs text-white focus:outline-none font-mono'
           })}
-          onFillHandleMouseDown={onFillHandleMouseDown}
-          onFillHandleDoubleClick={onFillHandleDoubleClick}
+          onFillHandleMouseDown={gridActions.onFillHandleMouseDown}
+          onFillHandleDoubleClick={gridActions.onFillHandleDoubleClick}
         >
           <span><HighlightText text={cfg.getDisplay(log)} query={filterWorker} /></span>
         </LaborInlineCell>
@@ -274,21 +275,23 @@ export default function LaborLogsTableRow({
         shipDisplayName={shipDisplayName}
         otTitle={otTitle}
         filterWorker={filterWorker}
-        isEditingNotes={isEditingField('notes')}
+        isEditingNotes={editingField === 'notes'}
         notesEditInput={renderInlineInput('notes', {
           type: 'text',
           className: 'w-36 bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none'
         })}
-        getHorasCellProps={getHorasCellProps}
+        getHorasCellProps={(_r, colKey) => getCellProps(colKey)}
         activateHorasCell={activateHorasCell}
         onUpdateApprovalStatus={onUpdateApprovalStatus}
         onOpenReviewReason={onOpenReviewReason}
         onEditFromDaily={onEditFromDaily}
         onDuplicateLog={onDuplicateLog}
         onDeleteLog={onDeleteLog}
-        onFillHandleMouseDown={onFillHandleMouseDown}
-        onFillHandleDoubleClick={onFillHandleDoubleClick}
+        onFillHandleMouseDown={gridActions.onFillHandleMouseDown}
+        onFillHandleDoubleClick={gridActions.onFillHandleDoubleClick}
       />
     </tr>
   )
-}
+})
+
+export default LaborLogsTableRow

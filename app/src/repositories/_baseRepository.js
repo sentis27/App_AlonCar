@@ -1,116 +1,26 @@
 /**
  * _baseRepository.js
- * Capa base de acceso a datos para AlonCar ERP (patrón adoptado de Automatiza `_base-repository.ts` + SKL-011).
+ * Capa base de acceso a datos para AlonCar ERP (patrón SKL-011 + FL-025).
  *
  * Garantías:
  * 1. Contrato uniforme `{ data, error, count? }` en todas las operaciones (cero errores silenciosos — SKL-015).
- * 2. Normalización de errores de Supabase / PostgreSQL (`23505`, `23503`, RLS, red) a mensajes claros.
- * 3. Paginación acotada (`paginate`), validación Zod completa en altas/upserts y validación parcial en PATCH.
- * 4. Bloqueo defensivo contra inyección de eventos DOM / `[object Object]` en cualquier mutación (SKL-015).
+ * 2. Lectura sin techo de 1.000 filas vía `findAllBatched()` con filtro opcional `dateRange` (FL-025).
+ * 3. Normalización de errores de Supabase / PostgreSQL (`23505`, `23503`, RLS, red) a mensajes claros.
+ * 4. Validación Zod completa en altas/upserts, validación parcial en PATCH y bloqueo de eventos DOM.
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
-import { findInvalidEventField, validatePayload, validatePartialPayload } from '../schemas/index.js'
+import {
+  handleSupabaseError,
+  paginate,
+  applyQueryFilters,
+  hasAnyFilter,
+  validateOne,
+  dbErrorResult,
+  mergeDateRangeFilters,
+  executeBatchedQuery,
+} from './_baseRepositoryHelpers.js'
 
-const PG_ERROR_CODE_LABELS = {
-  23505: 'Registro duplicado (conflicto de clave única)',
-  23503: 'Operación bloqueada por integridad referencial (tiene registros asociados)',
-  23502: 'Falta un campo obligatorio en la base de datos',
-  42501: 'Permiso denegado por política de seguridad (RLS)',
-}
-
-export function handleSupabaseError(error) {
-  if (!error) return ''
-  if (typeof error === 'string') return error
-  if (typeof error === 'object') {
-    const code = error.code ? String(error.code) : ''
-    const baseMsg = error.message || error.details || error.hint || 'Error desconocido de base de datos'
-    const friendlyPrefix = PG_ERROR_CODE_LABELS[code]
-    if (friendlyPrefix && !baseMsg.includes(friendlyPrefix)) {
-      return `${friendlyPrefix}: ${baseMsg}`
-    }
-    return baseMsg
-  }
-  return 'Error desconocido'
-}
-
-export function paginate(params = {}) {
-  const maxPageSize = Math.max(1, Number(params.maxPageSize) || 500)
-  const page = Math.max(1, Number(params.page) || 1)
-  const rawSize = Number(params.pageSize) || 50
-  const pageSize = Math.min(maxPageSize, Math.max(1, rawSize))
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
-  return { page, pageSize, from, to, limit: pageSize }
-}
-
-function applyQueryFilters(query, {
-  filters = {},
-  inFilters = {},
-  neqFilters = {},
-  gteFilters = {},
-  lteFilters = {},
-  ilikeFilters = {},
-  isNull = [],
-  orFilter = '',
-} = {}) {
-  for (const [col, val] of Object.entries(filters)) {
-    if (val !== undefined && val !== null && val !== '' && val !== 'ALL') {
-      query = query.eq(col, val)
-    }
-  }
-  for (const [col, arr] of Object.entries(inFilters)) {
-    if (Array.isArray(arr) && arr.length > 0) query = query.in(col, arr)
-  }
-  for (const [col, val] of Object.entries(neqFilters)) {
-    if (val !== undefined) query = query.neq(col, val)
-  }
-  for (const [col, val] of Object.entries(gteFilters)) {
-    if (val !== undefined && val !== null && val !== '') query = query.gte(col, val)
-  }
-  for (const [col, val] of Object.entries(lteFilters)) {
-    if (val !== undefined && val !== null && val !== '') query = query.lte(col, val)
-  }
-  for (const [col, val] of Object.entries(ilikeFilters)) {
-    if (val !== undefined && val !== null && val !== '') query = query.ilike(col, val)
-  }
-  for (const col of isNull) {
-    if (col) query = query.is(col, null)
-  }
-  if (orFilter) {
-    query = query.or(orFilter)
-  }
-  return query
-}
-
-function hasAnyFilter(opts = {}) {
-  const hasScalar = (obj) => Object.values(obj || {}).some((v) => v !== undefined && v !== null && v !== '' && v !== 'ALL')
-  const hasArray = (obj) => Object.values(obj || {}).some((v) => Array.isArray(v) && v.length > 0)
-  return hasScalar(opts.filters) || hasScalar(opts.neqFilters) || hasArray(opts.inFilters) || (opts.isNull?.length || 0) > 0 || Boolean(opts.orFilter)
-}
-
-function validateOne(schema, payload, { validate, partial = false } = {}) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return { data: null, error: 'Payload requerido para guardar' }
-  }
-  if (validate && schema) {
-    const res = partial ? validatePartialPayload(schema, payload) : validatePayload(schema, payload)
-    if (!res.success) return { data: null, error: res.error, issues: res.issues }
-    return { data: res.data, error: null }
-  }
-  const invalidField = findInvalidEventField(payload)
-  if (invalidField) {
-    return { data: null, error: `${invalidField}: Valor inválido bloqueado (Event / [object Object])` }
-  }
-  return { data: payload, error: null }
-}
-
-function dbErrorResult(error, fallbackData = null) {
-  return {
-    data: fallbackData,
-    error: handleSupabaseError(error),
-    code: error?.code ? String(error.code) : undefined,
-  }
-}
+export { handleSupabaseError, paginate }
 
 export function createBaseRepository({
   table,
@@ -136,15 +46,17 @@ export function createBaseRepository({
       ilikeFilters = {},
       isNull = [],
       orFilter = '',
+      dateRange = null,
       page,
       pageSize,
       maxPageSize,
       limit,
       head = false,
     } = {}) {
+      const mergedDates = mergeDateRangeFilters({ gteFilters, lteFilters, dateRange })
       const selectOpts = head ? { count: 'exact', head: true } : { count: 'exact' }
       let query = applyQueryFilters(client.from(table).select(select, selectOpts), {
-        filters, inFilters, neqFilters, gteFilters, lteFilters, ilikeFilters, isNull, orFilter,
+        filters, inFilters, neqFilters, ...mergedDates, ilikeFilters, isNull, orFilter,
       })
 
       for (const ord of orderBy) {
@@ -160,6 +72,34 @@ export function createBaseRepository({
       const { data, error, count } = await query
       if (error) return { ...dbErrorResult(error, []), count: 0 }
       return { data: data || [], error: null, count: count ?? (data ? data.length : 0) }
+    },
+
+    async findAllBatched({
+      select = '*',
+      orderBy = [],
+      filters = {},
+      inFilters = {},
+      neqFilters = {},
+      gteFilters = {},
+      lteFilters = {},
+      ilikeFilters = {},
+      isNull = [],
+      orFilter = '',
+      dateRange = null,
+      batchSize,
+      maxRows,
+    } = {}) {
+      return executeBatchedQuery({
+        table,
+        primaryKey,
+        client,
+        select,
+        orderBy,
+        filterOpts: { filters, inFilters, neqFilters, gteFilters, lteFilters, ilikeFilters, isNull, orFilter },
+        dateRange,
+        batchSize,
+        maxRows,
+      })
     },
 
     async findById(id, { select = '*' } = {}) {

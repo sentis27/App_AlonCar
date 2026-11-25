@@ -1,25 +1,12 @@
 import { useState, useMemo } from 'react'
-import {
-  FileText,
-  SlidersHorizontal,
-  List,
-  LayoutGrid,
-  Paperclip,
-  Plus,
-  Trash2,
-  FileCheck,
-  Eye, ExternalLink
-} from 'lucide-react'
-import {
-  createPurchaseDocumentWithUploadService,
-  updatePurchaseDocumentService,
-  replacePurchaseDocumentFileService,
-  deletePurchaseDocumentService
-} from '../../services/comprasOcrSettingsService'
+import { FileText, SlidersHorizontal, List, LayoutGrid, Paperclip, Plus, Trash2, Eye } from 'lucide-react'
+import { createPurchaseDocumentWithUploadService, updatePurchaseDocumentService, replacePurchaseDocumentFileService, deletePurchaseDocumentService } from '../../services/comprasOcrSettingsService'
 import { useAuth } from '../../context/AuthContext'
 import { formatDateAr } from '../../lib/dateTimeCanonical'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import { extractTextFromPdf } from '../../lib/pdfTextExtractor'
 
 export function UploadDocModal({ order, supplier, onClose, onSuccess }) {
@@ -410,6 +397,11 @@ export default function ComprasOcrPanel({
     })
   }, [documents, filterDocType, searchQuery])
 
+  const { visibleItems: visibleDocs, visibleCount: docsVisibleCount, hasMore: docsHasMore, remainingCount: docsRemainingCount, loadMore: docsLoadMore, showAll: docsShowAll, sentinelRef: docsSentinelRef } = useProgressiveRows({
+    items: filteredDocs,
+    resetKey: `${searchQuery}|${filterDocType}|${docsViewMode}`
+  })
+
   const handleDocSuccess = ({ action, updatedDoc, deletedId }) => {
     if (action === 'delete') {
       setDocuments?.((prev) => prev.filter((d) => d.id !== deletedId))
@@ -438,23 +430,11 @@ export default function ComprasOcrPanel({
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-            <button
-              onClick={() => setDocsViewMode('lista')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                docsViewMode === 'lista' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-              <span>Vista Lista</span>
+            <button onClick={() => setDocsViewMode('lista')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${docsViewMode === 'lista' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'}`}>
+              <List className="w-3.5 h-3.5" /><span>Vista Lista</span>
             </button>
-            <button
-              onClick={() => setDocsViewMode('fichas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                docsViewMode === 'fichas' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Vista Fichas</span>
+            <button onClick={() => setDocsViewMode('fichas')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${docsViewMode === 'fichas' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'}`}>
+              <LayoutGrid className="w-3.5 h-3.5" /><span>Vista Fichas</span>
             </button>
           </div>
 
@@ -519,7 +499,8 @@ export default function ComprasOcrPanel({
                   </td>
                 </tr>
               ) : (
-                filteredDocs.map((d) => (
+                <>
+                {visibleDocs.map((d) => (
                   <tr key={d.id} className="hover:bg-slate-800/50 transition-colors">
                     <td className="py-2 px-3 font-bold text-white flex items-center gap-2">
                       <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
@@ -564,14 +545,22 @@ export default function ComprasOcrPanel({
                       </div>
                     </td>
                   </tr>
-                ))
+                ))}
+                <CanonicalProgressiveTableFooter
+                  visibleCount={docsVisibleCount} totalCount={filteredDocs.length}
+                  hasMore={docsHasMore} remainingCount={docsRemainingCount}
+                  loadMore={docsLoadMore} showAll={docsShowAll}
+                  sentinelRef={docsSentinelRef} colSpan={6} entityLabel="documentos"
+                />
+                </>
               )}
             </tbody>
           </table>
         </div>
       ) : (
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredDocs.map((d) => (
+          {visibleDocs.map((d) => (
             <div key={d.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
               <div>
                 <div className="flex items-start justify-between gap-2">
@@ -616,6 +605,13 @@ export default function ComprasOcrPanel({
             </div>
           ))}
         </div>
+        <CanonicalProgressiveTableFooter
+          asDiv visibleCount={docsVisibleCount} totalCount={filteredDocs.length}
+          hasMore={docsHasMore} remainingCount={docsRemainingCount}
+          loadMore={docsLoadMore} showAll={docsShowAll}
+          sentinelRef={docsSentinelRef} entityLabel="documentos"
+        />
+        </>
       )}
 
       {/* Modales */}

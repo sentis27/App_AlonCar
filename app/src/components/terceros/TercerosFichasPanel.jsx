@@ -5,43 +5,33 @@
 
 import React from 'react'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
-import {
-  Ship,
-  Sparkles,
-  History,
-  Edit3,
-  Trash2
-} from 'lucide-react'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { formatArsCached } from '../../lib/gridPerformanceHelpers'
+import { Ship, Sparkles, History, Edit3, Trash2 } from 'lucide-react'
 import { VOUCHER_TYPES, formatDate } from '../../lib/tercerosConstants.js'
 import RemitoAloncarHoverBadge from './RemitoAloncarHoverBadge.jsx'
 
+const VOUCHER_BY_CODE = new Map(VOUCHER_TYPES.map((v) => [v.code, v]))
+
 export default function TercerosFichasPanel({
-  filteredServices = [],
-  shipMap = new Map(),
-  otMap = new Map(),
-  contractorMap = new Map(),
-  workOrders = [],
-  workItems = [],
-  panolRemitoIndex = new Map(),
-  selectedIds = new Set(),
-  handleRowClick,
-  handleCheckboxToggle,
-  handleClearSelection,
-  canEditAmounts = false,
-  activeRolePerspective = 'maria_jose',
-  handleOpenEvolutionModal,
-  setHistoryService,
-  handleOpenEditModal,
-  handleDeleteService,
-  stats
+  filteredServices = [], shipMap = new Map(), otMap = new Map(), contractorMap = new Map(),
+  workOrders = [], workItems = [], panolRemitoIndex = new Map(), selectedIds = new Set(), filterResetKey = '',
+  handleRowClick, handleCheckboxToggle, handleClearSelection, canEditAmounts = false,
+  activeRolePerspective = 'maria_jose', handleOpenEvolutionModal, setHistoryService,
+  handleOpenEditModal, handleDeleteService, stats
 }) {
+  const { visibleItems: visibleServices, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredServices, resetKey: filterResetKey
+  })
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredServices.map((srv, index) => {
+        {visibleServices.map((srv, index) => {
           const shipName = shipMap.get(srv.ship_id)?.name || 'Sin Buque'
           const ot = otMap.get(srv.work_order_id)
-          const voucherConfig = VOUCHER_TYPES.find((v) => v.code === srv.voucher_type) || VOUCHER_TYPES[0]
+          const voucherConfig = VOUCHER_BY_CODE.get(srv.voucher_type) || VOUCHER_TYPES[0]
           const isEvolvable = srv.voucher_type === 'RMO' || srv.voucher_type === 'RPF'
           const contractorObj = contractorMap.get(srv.contractor_name?.toUpperCase()?.trim())
           const effectiveTrade = srv.trade || (contractorObj?.trade && contractorObj.trade !== 'MANUAL' ? contractorObj.trade : null)
@@ -185,23 +175,17 @@ export default function TercerosFichasPanel({
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase font-bold block">Importe AR$</span>
-                  <span className="font-mono font-bold text-slate-200 text-sm">
-                    ${Number(srv.amount_ars).toLocaleString('es-AR')}
-                  </span>
+                  <span className="font-mono font-bold text-slate-200 text-sm">${formatArsCached(srv.amount_ars)}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-cyan-400 uppercase font-bold block">Costo Total US$</span>
-                  <span className="font-mono font-extrabold text-cyan-300 text-lg">
-                    ${Number(srv.amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                  <span className="font-mono font-extrabold text-cyan-300 text-lg">${formatArsCached(srv.amount_usd || 0)}</span>
                 </div>
               </div>
 
               {/* Footer de Tarjeta con Acciones */}
               <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                <span className="text-[10px] text-slate-500 font-mono">
-                  Cotiz: ${Number(srv.usd_rate || 0).toLocaleString('es-AR')}
-                </span>
+                <span className="text-[10px] text-slate-500 font-mono">Cotiz: ${formatArsCached(srv.usd_rate || 0)}</span>
 
                 <div className="flex items-center gap-1">
                   {isEvolvable && activeRolePerspective !== 'direccion' && (
@@ -264,6 +248,12 @@ export default function TercerosFichasPanel({
           )
         })}
       </div>
+      <CanonicalProgressiveTableFooter
+        asDiv visibleCount={visibleCount} totalCount={filteredServices.length}
+        hasMore={hasMore} remainingCount={remainingCount}
+        loadMore={loadMore} showAll={showAll}
+        sentinelRef={sentinelRef} entityLabel="fichas"
+      />
 
       {/* BARRA DE TOTALES Y ESTADÍSTICAS REACTIVA (MODO FICHAS) */}
       <div className="bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xl">

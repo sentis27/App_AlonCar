@@ -12,10 +12,7 @@ import { getDollarRateForDate } from './tercerosConstants.js'
 import { getTodayArIso } from './dateTimeCanonical.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { resolveWorkerIdFromCatalog } from './workerIdentity.js'
-import {
-  thirdPartyServicesRepository,
-  thirdPartyVoucherHistoryRepository,
-} from '../repositories/thirdPartyServicesRepository.js'
+import { thirdPartyServicesRepository, thirdPartyVoucherHistoryRepository } from '../repositories/thirdPartyServicesRepository.js'
 import { shipsRepository } from '../repositories/shipsRepository.js'
 import { workersRepository } from '../repositories/workersRepository.js'
 import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
@@ -23,10 +20,12 @@ import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { workItemsRepository } from '../repositories/workItemsRepository.js'
 import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
 import { materialsRepository } from '../repositories/materialsRepository.js'
+import { buildDateRangeOption, DEFAULT_HISTORY_RANGE } from './gridPerformanceHelpers.js'
 
-export async function fetchTercerosData() {
+export async function fetchTercerosData({ historyRange = DEFAULT_HISTORY_RANGE } = {}) {
+  const dateRange = buildDateRangeOption('service_date', historyRange)
   const [srvRes, shpRes, woRes, wiRes, wkrRes, mvRes, vhRes, panolRemitoRes, matRes] = await Promise.all([
-    thirdPartyServicesRepository.listServices(),
+    thirdPartyServicesRepository.listServices({ dateRange }),
     shipsRepository.listShips({ select: 'id, name, vessel_type, current_location' }),
     workOrdersRepository.listCanonicalWorkOrders(),
     workItemsRepository.listCanonicalWorkItems(),

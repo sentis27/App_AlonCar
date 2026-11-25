@@ -201,7 +201,7 @@ export function filterEligiblePersonnel(workers = [], options = {}) {
   return {
     astilleroWorkers: finalAstillero,
     contractorGroups: finalContractors,
-    allEligibleNames: [...finalAstillero.map((w) => w.name), ...finalContractors],
+    allEligibleNames: Array.from(new Set([...finalAstillero.map((w) => w.name), ...finalContractors].filter(Boolean))),
     unauthorizedWorkers
   }
 }

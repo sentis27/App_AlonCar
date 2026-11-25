@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { CheckSquare, Square, ShoppingCart, Edit3, Layers, Scale, Lightbulb, Lock, Camera } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { buildPasteRowHandler, duplicateRecord } from '../../lib/gridRowActions'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import HighlightText from '../HighlightText'
 import CanonicalPriceHelpBadge from '../canonical/CanonicalPriceHelpBadge'
 import { CatalogPriceArsCell, CatalogPriceUsdCell } from './PanolCatalogPriceCells'
@@ -71,12 +73,22 @@ export default function PanolCatalogGrid({
     })
   })
 
-  const matUndoCount = materialsGrid.undoStack?.length || 0
-  const matRedoCount = materialsGrid.redoStack?.length || 0
+  const scrollRef = useRef(null)
+  const { visibleItems: visibleMaterials, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredMaterials, activeIndex: materialsGrid.activeCell?.rowIndex ?? -1, scrollContainerRef: scrollRef,
+    resetKey: `${searchQuery || ''}|${activeKpiFilter || ''}|${filterCategory || ''}|${filterStockOnly}`
+  })
+
+  const matHistoryActionsRef = useRef({ undo: materialsGrid.undo, redo: materialsGrid.redo })
+  useEffect(() => { matHistoryActionsRef.current = { undo: materialsGrid.undo, redo: materialsGrid.redo } }, [materialsGrid.undo, materialsGrid.redo])
+  const matUndoCount = materialsGrid.undoStack?.length || 0; const matRedoCount = materialsGrid.redoStack?.length || 0
   useEffect(() => {
-    onHistoryChange?.({ canUndo: materialsGrid.canUndo, canRedo: materialsGrid.canRedo, undoCount: matUndoCount, redoCount: matRedoCount, onUndo: materialsGrid.undo, onRedo: materialsGrid.redo })
-    return () => onHistoryChange?.(null)
-  }, [onHistoryChange, materialsGrid.canUndo, materialsGrid.canRedo, matUndoCount, matRedoCount, materialsGrid.undo, materialsGrid.redo])
+    onHistoryChange?.({
+      canUndo: materialsGrid.canUndo, canRedo: materialsGrid.canRedo, undoCount: matUndoCount, redoCount: matRedoCount,
+      onUndo: () => matHistoryActionsRef.current.undo?.(), onRedo: () => matHistoryActionsRef.current.redo?.()
+    })
+  }, [onHistoryChange, materialsGrid.canUndo, materialsGrid.canRedo, matUndoCount, matRedoCount])
+  useEffect(() => () => onHistoryChange?.(null), [onHistoryChange])
 
   const handleDuplicateMaterial = async (mat) => {
     try {
@@ -118,7 +130,7 @@ export default function PanolCatalogGrid({
         )}
       </div>
 
-      <div className="alon-grid-scroll">
+      <div ref={scrollRef} className="alon-grid-scroll">
         <table className="w-full text-left text-[11px] border-collapse">
           <thead className="sticky top-0 z-20 alon-grid-thead">
             <tr>
@@ -152,7 +164,7 @@ export default function PanolCatalogGrid({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-sans">
-            {filteredMaterials.map((mat, idx) => {
+            {visibleMaterials.map((mat, idx) => {
               const isSelected = materialsGrid.selectedRowIds.has(mat.id)
               const isCritical = (Number(mat.current_stock) || 0) <= (Number(mat.minimum_stock) || 0) && mat.requires_stock_control
               const badge = getSecurityFactorBadge(mat.security_factor)
@@ -257,6 +269,11 @@ export default function PanolCatalogGrid({
                 </tr>
               )
             })}
+            <CanonicalProgressiveTableFooter
+              visibleCount={visibleCount} totalCount={filteredMaterials.length} hasMore={hasMore}
+              remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
+              sentinelRef={sentinelRef} colSpan={isAdmin ? 13 : 11} entityLabel="materiales"
+            />
           </tbody>
         </table>
       </div>

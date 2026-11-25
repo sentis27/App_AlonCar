@@ -1,60 +1,48 @@
+import { useMemo } from 'react'
 import { Ship, Eye, Trash2, GitBranch, Lock, Unlock, Combine } from 'lucide-react'
 import HighlightText from '../HighlightText'
-import {
-  ESTADOS_TRABAJO,
-  formatShortDate,
-  computeOtState,
-  isWorkItemEliminada
-} from '../../lib/workOrdersConstants'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { ESTADOS_TRABAJO, formatShortDate, computeOtState, isWorkItemEliminada } from '../../lib/workOrdersConstants'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { isMergedWorkOrder } from '../../lib/workOrderUnificationEngine'
 
 export default function WorkOrdersOtsPanel({
-  workOrders = [],
-  itemsByWoMap = {},
-  otMetricsAndDatesMap = {},
-  thirdPartyByItemMap = {},
-  selectedShipFilter = 'todos',
-  searchQuery = '',
-  onOpenNewWorkModal,
-  onOpenEditWorkModal,
-  onOpenSeparateModal,
-  onOpenCloseTreeModal,
-  onOpenReopenModal,
-  onOpenUnifyModal,
-  setSelectedWoDetail,
-  onDeleteWo
+  workOrders = [], itemsByWoMap = {}, otMetricsAndDatesMap = {}, thirdPartyByItemMap = {},
+  selectedShipFilter = 'todos', searchQuery = '',
+  onOpenNewWorkModal, onOpenEditWorkModal, onOpenSeparateModal, onOpenCloseTreeModal,
+  onOpenReopenModal, onOpenUnifyModal, setSelectedWoDetail, onDeleteWo
 }) {
-  const filteredWos = workOrders.filter((w) => {
+  const filteredWos = useMemo(() => workOrders.filter((w) => {
     if (isMergedWorkOrder(w)) return false
     if (selectedShipFilter !== 'todos' && w.ship_id !== selectedShipFilter) return false
     if (searchQuery.trim()) {
       const items = itemsByWoMap[w.id] || []
       const matchSearch = matchesUniversalSearch(
         {
-          ...w,
-          shipName: w.ships?.name,
-          otNumber: w.ot_number,
-          otTitle: w.title,
-          itemsText: items
-            .map((it) => `${it.description || ''} ${(it.contractors || []).join(' ')} ${it.foreman_name || ''}`)
-            .join(' ')
+          ...w, shipName: w.ships?.name, otNumber: w.ot_number, otTitle: w.title,
+          itemsText: items.map((it) => `${it.description || ''} ${(it.contractors || []).join(' ')} ${it.foreman_name || ''}`).join(' ')
         },
         searchQuery
       )
       if (!matchSearch) return false
     }
     return true
+  }), [workOrders, itemsByWoMap, selectedShipFilter, searchQuery])
+
+  const { visibleItems: visibleWos, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredWos, resetKey: `${selectedShipFilter}|${searchQuery}`
   })
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 font-sans">
+    <div className="space-y-3 font-sans">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {filteredWos.length === 0 ? (
         <div className="col-span-full py-16 text-center text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800">
           No hay Órdenes de Trabajo para los filtros seleccionados.
         </div>
       ) : (
-        filteredWos.map((wo) => {
+        visibleWos.map((wo) => {
           const items = itemsByWoMap[wo.id] || []
           const computed = computeOtState(wo, items)
           const datesAndMetrics = otMetricsAndDatesMap[wo.id] || {
@@ -268,6 +256,13 @@ export default function WorkOrdersOtsPanel({
           )
         })
       )}
+    </div>
+    <CanonicalProgressiveTableFooter
+      asDiv visibleCount={visibleCount} totalCount={filteredWos.length}
+      hasMore={hasMore} remainingCount={remainingCount}
+      loadMore={loadMore} showAll={showAll}
+      sentinelRef={sentinelRef} entityLabel="OTs"
+    />
     </div>
   )
 }
