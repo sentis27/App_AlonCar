@@ -13,7 +13,7 @@ import PanolBasketFastEntryCard from './PanolBasketFastEntryCard'
 export default function PanolCostBasketModal({
   isOpen, onClose, workers = [], ships = [], workOrders = [], workItems = [],
   inventoryTx = [], materials = [], suppliers = [], gasStats = null, gasMovements = [],
-  astilleroWorkers = [], user, onRefreshData, showFeedback
+  astilleroWorkers = [], macroVariables = [], pricingPolicy = null, user, onRefreshData, showFeedback
 }) {
   const [targetDate, setTargetDate] = useState(() => getLocalDateKey(new Date()))
   const [contractorQuery, setContractorQuery] = useState('')
@@ -80,7 +80,7 @@ export default function PanolCostBasketModal({
       await saveMultiWithdrawalService({
         shipId: basket.shipId, workOrderId: basket.isSinOt ? null : basket.workOrderId,
         workItems, contractorGroup: basket.contractorName, voucherNumber, notes, date, time, items,
-        gasMovements, materials, suppliers, ships, astilleroWorkers, user,
+        gasMovements, materials, suppliers, ships, astilleroWorkers, macroVariables, pricingPolicy, user,
         changeOrigin: 'COST_BASKET_COUNTER'
       })
       const msg = `✔ Registrado en ${basket.contractorName} · ${basket.shipName} (${items.length} ítem/s a las ${time} hs).`

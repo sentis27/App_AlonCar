@@ -87,22 +87,19 @@ export default function MultiWithdrawalItemsStep({
                   <span className="text-[9px] text-slate-500">({mat?.weight_kg || 0} c/u)</span>
                 </div>
 
-                <div className="w-28 shrink-0">
-                  <select
-                    value={item.customCostCenter || 'CLIENTE'}
-                    disabled={!isAdmin}
-                    onChange={(e) => onItemChange(idx, 'customCostCenter', e.target.value)}
-                    className={`w-full px-2 py-1.5 rounded-lg text-[11px] font-bold border ${
-                      !isAdmin
-                        ? 'bg-slate-950 border-slate-800 text-cyan-400 opacity-90 cursor-not-allowed'
-                        : 'bg-slate-950 border-cyan-500/70 text-cyan-300'
-                    }`}
-                    title={!isAdmin ? 'Deducido automáticamente (Solo Admin puede modificar)' : 'Centro de Costo'}
-                  >
-                    <option value="CLIENTE">CLIENTE</option>
-                    <option value="CONTRATISTA">CONTRATISTA</option>
-                  </select>
-                </div>
+                {isAdmin && (
+                  <div className="w-28 shrink-0">
+                    <select
+                      value={item.customCostCenter || 'CLIENTE'}
+                      onChange={(e) => onItemChange(idx, 'customCostCenter', e.target.value)}
+                      className="w-full px-2 py-1.5 rounded-lg text-[11px] font-bold border bg-slate-950 border-cyan-500/70 text-cyan-300"
+                      title="Centro de Costo (Solo Administrador)"
+                    >
+                      <option value="CLIENTE">CLIENTE</option>
+                      <option value="CONTRATISTA">CONTRATISTA</option>
+                    </select>
+                  </div>
+                )}
 
                 <button
                   type="button"

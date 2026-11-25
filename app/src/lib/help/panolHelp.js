@@ -36,12 +36,12 @@ export const PANOL_MATERIAL_STEP_HELP = {
     step: 2,
     title: 'PASO 2 · PRECIO Y % SEGURIDAD',
     uiBullets: [
-      { label: 'Fórmula', text: 'Costo AR$ × % Seguridad ÷ Dólar = Costo US$' },
-      { label: 'Por defecto', text: 'Dejar siempre cargado en 6%.' },
-      { label: 'Atención', text: 'Si el material supera US$ 4.000, usar 2% de porcentaje de seguridad.' }
+      { label: 'Fórmula', text: 'Costo AR$ × % Seguridad ÷ Dólar de la quincena = Costo US$ (por defecto 6%; si supera US$ 4.000, usar 2%).' },
+      { label: 'Congelamiento quincenal', text: 'Los cambios de precio o dólar aplican únicamente desde la quincena en curso en adelante; quincenas pasadas quedan congeladas.' },
+      { label: 'Regla editable', text: 'Configurable desde Panel Administrador ➔ Variables Macro & Cierre (solo visible para Administrador).' }
     ],
     aiRuleContext:
-      'Regla de Precio y Porcentaje de Seguridad Naval en Pañol AlonCar: El costo en dólares se calcula mediante la fórmula (cost_ars * security_factor) / dolar_referencia_vigente, tomando el dólar de referencia desde macro_variables. El porcentaje de seguridad por defecto es 6% (factor 1.06). Regla fija de alto valor: si el valor del material supera US$ 4.000, debe utilizarse 2% de porcentaje de seguridad (factor 1.02). Solo el Administrador puede modificar el % de seguridad.'
+      'Regla de Precio, % Seguridad y Congelamiento Quincenal en Pañol AlonCar: El costo en dólares se calcula como (cost_ars * security_factor) / dolar_quincena_vigente (6% por defecto, 2% si supera US$ 4.000). Los costos de retiros quedan congelados por quincena: si cambia el dólar o sube el precio en Catálogo, aplica únicamente desde la quincena en curso en adelante sin alterar quincenas anteriores ni obras facturadas. Política editable en Admin -> Variables Macro & Cierre (system_settings.material_pricing_policy). Información exclusiva del Administrador.'
   },
   3: {
     id: 'panol_material_step_3',

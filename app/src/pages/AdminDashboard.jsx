@@ -15,6 +15,7 @@ import AdminLiveKpiRadar from '../components/admin/AdminLiveKpiRadar.jsx'
 import ZeroCostDashboardAlertCard from '../components/ZeroCostDashboardAlertCard.jsx'
 import AdminRolesMatrixPanel from '../components/admin/AdminRolesMatrixPanel.jsx'
 import AdminMacroPanel from '../components/admin/AdminMacroPanel.jsx'
+import AdminMaterialPricingPolicyCard from '../components/admin/AdminMaterialPricingPolicyCard.jsx'
 import AdminAlertsCompliancePanel from '../components/admin/AdminAlertsCompliancePanel.jsx'
 import AiGovernancePanel from '../components/AiGovernancePanel.jsx'
 import ComprasSettingsPanel from '../components/ComprasSettingsPanel.jsx'
@@ -134,7 +135,12 @@ export default function AdminDashboard() {
 
       {/* RENDERIZADO MODULAR DE SUBMÓDULOS (Navegación vía Menú Lateral Acordeón) */}
       {activeTab === 'matriz' && <AdminRolesMatrixPanel onRoleCountChange={setRolesCount} />}
-      {activeTab === 'macro' && <AdminMacroPanel />}
+      {activeTab === 'macro' && (
+        <div className="space-y-5">
+          <AdminMaterialPricingPolicyCard />
+          <AdminMacroPanel />
+        </div>
+      )}
       {activeTab === 'alertas' && <AdminAlertsCompliancePanel onSummaryChange={handleAlertsSummaryChange} />}
       {activeTab === 'ia' && <AiGovernancePanel />}
       {activeTab === 'compras' && <ComprasSettingsPanel />}

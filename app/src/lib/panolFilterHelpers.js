@@ -6,6 +6,7 @@
 import { normalizeText } from './allocationEngine.js'
 import { matchesUniversalSearch } from './searchEngine.js'
 import { isPanolTxZeroCost, isBillableShip } from './zeroCostAlertsRules.js'
+import { isPanolWithdrawalUnvalued } from './panolCostHelpers.js'
 import { getLocalDateKey } from './panolBasketsEngine.js'
 import { matchesMaterialQuickType } from './filterThemeConstants.js'
 
@@ -31,6 +32,7 @@ export function isDateInFilterPeriod(dateStr, filterPeriod) {
 export function filterPanolTransactions(inventoryTx = [], {
   activeKpiFilter,
   onlyWithShip = false,
+  onlyZeroCost = false,
   filterPeriod,
   filterShip,
   filterOt = 'TODAS',
@@ -40,7 +42,9 @@ export function filterPanolTransactions(inventoryTx = [], {
   searchQuery,
   materials = [],
   ships = [],
-  workOrders = []
+  workOrders = [],
+  macroVariables = [],
+  pricingPolicy = null
 }) {
   const shipMap = new Map(ships.map((s) => [s.id, s]))
   const woMap = new Map(workOrders.map((w) => [w.id, w]))
@@ -50,6 +54,9 @@ export function filterPanolTransactions(inventoryTx = [], {
     if (activeKpiFilter === 'sin_ot' && t.work_order_id) return false
     if (activeKpiFilter === 'hoy' && getLocalDateKey(t.transaction_date) !== getLocalDateKey(new Date())) return false
     if (activeKpiFilter === 'bajas_pendientes' && !t.is_deletion_requested) return false
+    if (onlyZeroCost) {
+      if (!isPanolWithdrawalUnvalued(t, mat, { macroVariables, policy: pricingPolicy })) return false
+    }
     if (activeKpiFilter === 'sin_precio') {
       if (!isPanolTxZeroCost(t, mat)) return false
       if (onlyWithShip) {

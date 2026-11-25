@@ -7,13 +7,17 @@ import { buildPasteRowHandler, duplicateRecord } from '../../lib/gridRowActions'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import HighlightText from '../HighlightText'
+import CanonicalPriceHelpBadge from '../canonical/CanonicalPriceHelpBadge'
+import { CatalogPriceArsCell, CatalogPriceUsdCell } from './PanolCatalogPriceCells'
 import { OFFICIAL_UNITS, SECURITY_FACTORS, formatUnitMeasureShort, normalizeUnitMeasure } from '../../lib/unitMeasureUtils'
 import { MATERIAL_CATEGORIES, getMaterialsColumns, getMaterialsPasteFields, getSecurityFactorBadge, MATERIALS_CLONE_FIELDS } from '../../lib/panolConstants'
 import { buildMergedRubrosCatalog, saveInlineCatalogFieldService } from '../../lib/panolCatalogService'
+import { getFortnightPeriodKey, resolveDollarRateForFortnight } from '../../lib/materialPricingPolicy'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 
 export default function PanolCatalogGrid({
   filteredMaterials, materials, rubros = [], searchQuery, activeKpiFilter, filterCategory, filterStockOnly,
-  isAdmin, user, criticalMaterialsCount, stockControlledCount, onClearFilters, onOpenEditMaterialModal,
+  isAdmin, user, macroVariables = [], pricingPolicy = null, criticalMaterialsCount, stockControlledCount, onClearFilters, onOpenEditMaterialModal,
   onOpenStockAdjustModal, onOpenConsumption6MModal, onPreviewImage, showFeedback, fetchData, setMaterials,
   onHistoryChange = null
 }) {
@@ -23,12 +27,24 @@ export default function PanolCatalogGrid({
   const materialsPasteRef = useRef(null)
   const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const materialsColumns = useMemo(() => getMaterialsColumns(isAdmin), [isAdmin])
+  const todayIso = getTodayArIso()
+  const activeDollarRate = useMemo(() => resolveDollarRateForFortnight(todayIso, macroVariables, 1500), [todayIso, macroVariables])
+  const currentPeriodKey = useMemo(() => getFortnightPeriodKey(todayIso), [todayIso])
 
   const handleSaveInlineMaterial = async (matId, field, value) => {
     try {
-      const updates = await saveInlineCatalogFieldService({ matId, field, value, materials, isAdmin, user })
+      const result = await saveInlineCatalogFieldService({
+        matId, field, value, materials, isAdmin, user,
+        dollarRate: activeDollarRate, macroVariables, pricingPolicy
+      })
+      const { _propagation, _highValueWarning, ...updates } = result
       setMaterials((prev) => prev.map((m) => (m.id === matId ? { ...m, ...updates } : m)))
-      showFeedback('success', 'Catálogo de materiales actualizado con éxito.')
+      if (_propagation?.updatedCount > 0) fetchData?.({ silent: true })
+      const propNote = _propagation?.updatedCount > 0
+        ? ` · Propagado a ${_propagation.updatedCount} retiro(s) desde ${_propagation.currentPeriod || 'quincena actual'}.`
+        : ''
+      const hiNote = _highValueWarning ? ' ⚠️ Supera US$ 4.000: se recomienda 2% de seguridad.' : ''
+      showFeedback('success', `Catálogo actualizado.${propNote}${hiNote}`)
     } catch (err) {
       showFeedback('error', err.message || 'Error actualizando material.')
     }
@@ -76,11 +92,7 @@ export default function PanolCatalogGrid({
     }
   }
 
-  const commitTextOrNum = (matId, field) => {
-    handleSaveInlineMaterial(matId, field, inlineEdit.value)
-    setInlineEdit({ id: null, field: null, value: '' })
-  }
-
+  const commitTextOrNum = (matId, field) => { handleSaveInlineMaterial(matId, field, inlineEdit.value); setInlineEdit({ id: null, field: null, value: '' }) }
   const clearEdit = () => setInlineEdit({ id: null, field: null, value: '' })
 
   return (
@@ -88,26 +100,20 @@ export default function PanolCatalogGrid({
       <div className="alon-grid-ribbon">
         <div className="flex items-center gap-2">
           <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-black font-mono text-[10px] inline-flex items-center gap-1">
-            <Layers className="w-3 h-3 text-cyan-400 shrink-0" />
-            <span>CATÁLOGO B.D MATERIALES</span>
+            <Layers className="w-3 h-3 text-cyan-400 shrink-0" /><span>CATÁLOGO B.D MATERIALES</span>
           </span>
           <span className="text-slate-400 text-[11px]">
             {materialsGrid.activeCellBadge || (isAdmin
-              ? 'Doble clic en celdas para editar Material, Rubro, Categoría, Unidad, Peso, Mínimos y % Seguridad'
+              ? `Doble clic en celdas para editar Material, Rubro, Categoría, Unidad, Peso, Precio AR$/US$ (Dólar ${currentPeriodKey || ''}: $${activeDollarRate.toLocaleString('es-AR')}), Mínimos y % Seguridad`
               : 'Vista Pañolero (Solo Control de Stock): podés ajustar stock (⚖️), subir fotos (📷/✏️) y ver consumo (💡)')}
           </span>
         </div>
         {materialsGrid.selectedRowIds.size > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              const selectedList = materials.filter((m) => materialsGrid.selectedRowIds.has(m.id)).map((m) => ({ id: m.id, name: m.name, unit_measure: normalizeUnitMeasure(m.unit_measure, m.name) }))
-              navigate(`/compras?nuevo=true&multiMaterials=${encodeURIComponent(JSON.stringify(selectedList))}`)
-            }}
-            className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg"
-          >
-            <ShoppingCart className="w-3.5 h-3.5 stroke-[3]" />
-            <span>🛒 Generar Pedido de Compra en Lote ({materialsGrid.selectedRowIds.size})</span>
+          <button type="button" onClick={() => {
+            const selectedList = materials.filter((m) => materialsGrid.selectedRowIds.has(m.id)).map((m) => ({ id: m.id, name: m.name, unit_measure: normalizeUnitMeasure(m.unit_measure, m.name) }))
+            navigate(`/compras?nuevo=true&multiMaterials=${encodeURIComponent(JSON.stringify(selectedList))}`)
+          }} className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg">
+            <ShoppingCart className="w-3.5 h-3.5 stroke-[3]" /><span>🛒 Generar Pedido de Compra en Lote ({materialsGrid.selectedRowIds.size})</span>
           </button>
         )}
       </div>
@@ -132,7 +138,16 @@ export default function PanolCatalogGrid({
               <th className="py-2 px-1.5 text-right">Stock Actual</th>
               <th className="py-2 px-1.5 text-right">Stock Mín. {isAdmin ? '✎' : '🔒'}</th>
               <th className="py-2 px-1.5 text-center">Lleva Stock {isAdmin ? '✎' : '🔒'}</th>
+              {isAdmin && (
+                <th className="py-2 px-1.5 text-right whitespace-nowrap">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <span>Precio AR$ ✎</span>
+                    <CanonicalPriceHelpBadge isAdmin={isAdmin} pricingPolicy={pricingPolicy} dollarRate={activeDollarRate} periodKey={currentPeriodKey} size="xs" />
+                  </span>
+                </th>
+              )}
               <th className="py-2 px-1.5 text-center">% Seg. Naval {isAdmin ? '✎' : '🔒'}</th>
+              {isAdmin && <th className="py-2 px-1.5 text-right whitespace-nowrap" title={`Costo US$ calculado con dólar vigente ($${activeDollarRate.toLocaleString('es-AR')})`}>Costo US$ ✎</th>}
               <th className="py-2 px-1.5 text-center">Acciones</th>
             </tr>
           </thead>
@@ -219,6 +234,8 @@ export default function PanolCatalogGrid({
                     </span>
                   </td>
 
+                  {isAdmin && <CatalogPriceArsCell mat={mat} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} commitTextOrNum={commitTextOrNum} clearEdit={clearEdit} pricingPolicy={pricingPolicy} dollarRate={activeDollarRate} periodKey={currentPeriodKey} />}
+
                   <td onDoubleClick={() => { if (isAdmin) setInlineEdit({ id: mat.id, field: 'security_factor', value: String(mat.security_factor || 1.06) }); else showFeedback('error', 'Solo el Administrador puede modificar el % de seguridad.') }} className={`py-1.5 px-1.5 text-center ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`} title={isAdmin ? 'Doble clic para editar % seguridad naval (Solo Admin)' : '🔒 Solo editable por Administrador'}>
                     {inlineEdit.id === mat.id && inlineEdit.field === 'security_factor' ? (
                       <select autoFocus value={inlineEdit.value} onChange={(e) => { handleSaveInlineMaterial(mat.id, 'security_factor', e.target.value); clearEdit() }} onBlur={() => clearEdit()} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-white focus:outline-none">
@@ -226,6 +243,8 @@ export default function PanolCatalogGrid({
                       </select>
                     ) : <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${badge.style}`}><span>{badge.label}</span>{!isAdmin && <Lock className="w-2.5 h-2.5 text-slate-500" />}</span>}
                   </td>
+
+                  {isAdmin && <CatalogPriceUsdCell mat={mat} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} commitTextOrNum={commitTextOrNum} clearEdit={clearEdit} />}
 
                   <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
                     <div className="flex items-center justify-center gap-1">

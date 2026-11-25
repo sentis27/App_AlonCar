@@ -595,6 +595,8 @@ export function PanolModalsContainer({
   suppliers,
   rubros,
   workers,
+  macroVariables = [],
+  pricingPolicy = null,
   isAdmin,
   user,
   showFeedback,
@@ -604,14 +606,8 @@ export function PanolModalsContainer({
   const handleSaveMultiWithdrawal = async (payload) => {
     try {
       const res = await saveMultiWithdrawalService({
-        ...payload,
-        originalTx: editingWithdrawalRow,
-        gasMovements,
-        materials,
-        suppliers,
-        ships, workItems,
-        astilleroWorkers,
-        user
+        ...payload, originalTx: editingWithdrawalRow, gasMovements, materials, suppliers,
+        ships, workItems, astilleroWorkers, macroVariables, pricingPolicy, user
       })
       if (res.isEdit) {
         setInventoryTx((prev) => prev.map((t) => (t.id === payload.editId ? { ...t, ...res.updates } : t)))
@@ -671,6 +667,7 @@ export function PanolModalsContainer({
           user
         })
         setMaterials((prev) => prev.map((m) => (m.id === material.id ? { ...m, ...updated } : m)))
+        if (isAdmin && onRefreshData) onRefreshData({ silent: true })
         showFeedback(
           'success',
           isAdmin
@@ -845,10 +842,8 @@ export function PanolModalsContainer({
       {materialFormModal?.isOpen && (
         <MaterialCatalogFormModal
           key={materialFormModal.material?.id || 'new-material'}
-          material={materialFormModal.material}
-          rubros={rubros}
-          materials={materials}
-          isAdmin={isAdmin}
+          material={materialFormModal.material} rubros={rubros} materials={materials}
+          isAdmin={isAdmin} pricingPolicy={pricingPolicy}
           onOpenRubrosManager={isAdmin ? () => setShowRubrosModal(true) : null}
           onClose={() => setMaterialFormModal({ isOpen: false, material: null })}
           onSave={handleSaveMaterialForm}

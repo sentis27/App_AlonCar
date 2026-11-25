@@ -14,6 +14,8 @@ import { buildArTimestampIso, getTodayArIso, toArIsoDate } from './dateTimeCanon
 import { normalizeUnitMeasure } from './comprasConstants.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog } from './workerIdentity.js'
+import { computeFortnightUnitSnapshot, getFortnightPeriodKey, compareFortnightKeys } from './materialPricingPolicy.js'
+import { fetchMaterialPricingPolicyService } from '../services/materialPricingService.js'
 import { materialsRepository, materialRubrosRepository } from '../repositories/materialsRepository.js'
 import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
 import { gasMovementsRepository } from '../repositories/gasMovementsRepository.js'
@@ -22,11 +24,8 @@ import { shipsRepository } from '../repositories/shipsRepository.js'
 import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { workersRepository } from '../repositories/workersRepository.js'
 import { workItemsRepository } from '../repositories/workItemsRepository.js'
-import {
-  dataRequirementsRepository,
-  complianceAlertsRepository,
-  workerPermissionRequestsRepository,
-} from '../repositories/complianceAlertsRepository.js'
+import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
+import { dataRequirementsRepository, complianceAlertsRepository, workerPermissionRequestsRepository } from '../repositories/complianceAlertsRepository.js'
 import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
 
 let _hasGasTxLinkCache = null
@@ -164,7 +163,7 @@ export async function ensurePanolRequirementId(code) {
 }
 
 export async function fetchPanolData() {
-  const [matRes, invRes, gasRes, rubrosRes, supRes, shipsRes, woRes, workersRes, workItemsRes, alertsRes] =
+  const [matRes, invRes, gasRes, rubrosRes, supRes, shipsRes, woRes, workersRes, workItemsRes, alertsRes, macroRes, policyRes] =
     await Promise.all([
       materialsRepository.listMaterials(),
       inventoryTransactionsRepository.listTransactions({ limit: 800 }),
@@ -176,23 +175,15 @@ export async function fetchPanolData() {
       workersRepository.listWorkers({ orderBy: [{ column: 'name', ascending: true }] }),
       workItemsRepository.listCanonicalWorkItems(),
       complianceAlertsRepository.listPending(),
+      macroVariablesRepository.listMacroVariables(),
+      fetchMaterialPricingPolicyService()
     ])
-
-  if (workersRes.data) {
-    setAllocationWorkersCache(workersRes.data)
-  }
-
+  if (workersRes.data) setAllocationWorkersCache(workersRes.data)
   return {
-    materials: matRes.data || [],
-    inventoryTx: invRes.data ? assignMonotonicFolios(invRes.data, { dateField: 'transaction_date' }) : [],
-    gasMovements: gasRes.data || [],
-    rubros: rubrosRes.data || [],
-    suppliers: supRes.data || [],
-    ships: shipsRes.data || [],
-    workOrders: woRes.data || [],
-    workers: workersRes.data || [],
-    workItems: workItemsRes.data || [],
-    pendingAlerts: alertsRes.data || []
+    materials: matRes.data || [], inventoryTx: invRes.data ? assignMonotonicFolios(invRes.data, { dateField: 'transaction_date' }) : [],
+    gasMovements: gasRes.data || [], rubros: rubrosRes.data || [], suppliers: supRes.data || [], ships: shipsRes.data || [],
+    workOrders: woRes.data || [], workers: workersRes.data || [], workItems: workItemsRes.data || [], pendingAlerts: alertsRes.data || [],
+    macroVariables: macroRes.data || [], pricingPolicy: policyRes?.policy || null
   }
 }
 
@@ -253,7 +244,7 @@ export async function saveShipAndWorkOrderService({
   return { updates, deassigned }
 }
 
-export async function saveInlineTxService({ txId, field, value, tx, materials, user }) {
+export async function saveInlineTxService({ txId, field, value, tx, materials, user, macroVariables = [], pricingPolicy = null }) {
   let normalizedVal = field === 'transaction_date' && value
     ? buildTransactionTimestampIso(value, formatLocalTimeHHMM(tx?.transaction_date) || null)
     : field === 'voucher_number'
@@ -264,9 +255,7 @@ export async function saveInlineTxService({ txId, field, value, tx, materials, u
 
   if (field === 'quantity_withdrawn') {
     const parsed = evaluateFormulaInput(value, { allowNegative: false, maxDecimals: 4, emptyValue: 0 })
-    if (!parsed.ok) {
-      throw new Error(parsed.error || 'Cantidad o fórmula inválida.')
-    }
+    if (!parsed.ok) throw new Error(parsed.error || 'Cantidad o fórmula inválida.')
     normalizedVal = parsed.value ?? 0
     updates.quantity_withdrawn = normalizedVal
     updates.cell_formulas = buildCellFormulasPatch(tx?.cell_formulas, 'quantity_withdrawn', parsed.formula)
@@ -277,6 +266,11 @@ export async function saveInlineTxService({ txId, field, value, tx, materials, u
     const targetMat = materials.find((m) => m.id === (field === 'material_id' ? value : tx?.material_id))
     if (targetMat) {
       updates.weight_total = (Number(targetMat.weight_kg) || 0) * (field === 'quantity_withdrawn' ? Number(normalizedVal) : Number(tx?.quantity_withdrawn) || 1)
+      if (field === 'material_id') {
+        const snap = computeFortnightUnitSnapshot({ material: targetMat, transactionDate: tx?.transaction_date, macroVariables, policy: pricingPolicy })
+        updates.unit_cost_ars_snapshot = snap.unit_cost_ars_snapshot
+        updates.unit_cost_usd_snapshot = snap.unit_cost_usd_snapshot
+      }
     }
   }
 
@@ -337,7 +331,7 @@ export async function saveInlineMaterialService({ matId, field, value, materials
 export async function saveMultiWithdrawalService({
   shipId, workOrderId, workItemId = null, workItems = [], contractorGroup, voucherNumber = '', notes, date, time = null, items, editId,
   originalTx = null, linkedGasMovement = null, gasMovements = [], materials, suppliers = [], ships = [], astilleroWorkers, user,
-  changeOrigin = 'MODAL_WITHDRAWAL'
+  macroVariables = [], pricingPolicy = null, changeOrigin = 'MODAL_WITHDRAWAL'
 }) {
   const matchedAst = astilleroWorkers.find((w) => w.name.toUpperCase() === String(contractorGroup || '').toUpperCase())
   const workerName = matchedAst ? matchedAst.name : contractorGroup || 'Sin asignar'
@@ -405,6 +399,13 @@ export async function saveMultiWithdrawalService({
     }
 
     const finalNotes = rowIsGas ? gasPayload.itemNotes : baseUserNotes
+    const txIso = buildTransactionTimestampIso(date, time)
+    const shouldRefreshSnap =
+      !originalTx || originalTx.material_id !== mat.id || Number(originalTx.unit_cost_usd_snapshot || 0) <= 0 ||
+      compareFortnightKeys(getFortnightPeriodKey(txIso), getFortnightPeriodKey(getTodayArIso())) >= 0
+    const editSnap = shouldRefreshSnap
+      ? computeFortnightUnitSnapshot({ material: mat, transactionDate: txIso, macroVariables, policy: pricingPolicy })
+      : null
     const updates = {
       material_id: item.material_id || null,
       quantity_withdrawn: qty,
@@ -420,7 +421,8 @@ export async function saveMultiWithdrawalService({
       movement_type: mat?.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
       voucher_number: cleanVoucherNumber,
       notes: finalNotes,
-      transaction_date: buildTransactionTimestampIso(date, time)
+      transaction_date: txIso,
+      ...(editSnap ? { unit_cost_ars_snapshot: editSnap.unit_cost_ars_snapshot, unit_cost_usd_snapshot: editSnap.unit_cost_usd_snapshot } : {})
     }
 
     const { error: updErr } = await inventoryTransactionsRepository.updateById(editId, updates, { select: null })
@@ -552,6 +554,8 @@ export async function saveMultiWithdrawalService({
     }
 
     const prevStock = Number(mat.current_stock) || 0
+    const rowTxIso = buildTransactionTimestampIso(date, time)
+    const rowSnap = computeFortnightUnitSnapshot({ material: mat, transactionDate: rowTxIso, macroVariables, policy: pricingPolicy })
     matUpdates.push({ id: mat.id, prevStock, newStock: prevStock - qty })
     txInserts.push({
       material_id: mat.id,
@@ -565,10 +569,12 @@ export async function saveMultiWithdrawalService({
       worker_id: workerId,
       cost_center: item.customCostCenter || 'CLIENTE',
       weight_total: (Number(mat.weight_kg) || 0) * qty,
+      unit_cost_ars_snapshot: rowSnap.unit_cost_ars_snapshot,
+      unit_cost_usd_snapshot: rowSnap.unit_cost_usd_snapshot,
       movement_type: mat.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
       voucher_number: cleanVoucherNumber,
       notes: itemNotes,
-      transaction_date: buildTransactionTimestampIso(date, time)
+      transaction_date: rowTxIso
     })
   }
 
@@ -668,30 +674,14 @@ export async function saveMultiWithdrawalService({
 }
 
 export async function insertBlankRowService({ inventoryTx, user = null }) {
-  const newTx = {
-    material_id: null,
-    quantity_withdrawn: null,
-    ship_id: null,
-    work_order_id: null,
-    contractor_name: '',
-    cost_center: null,
-    weight_total: null,
-    notes: '',
-    transaction_date: new Date().toISOString()
-  }
+  const newTx = { material_id: null, quantity_withdrawn: null, ship_id: null, work_order_id: null, contractor_name: '', cost_center: null, weight_total: null, notes: '', transaction_date: new Date().toISOString() }
   const stampedTx = stampNewRecordWithFolio(newTx, inventoryTx)
   const { data, error } = await inventoryTransactionsRepository.insertBlankRow(newTx)
   if (error) throw new Error(error)
   logRowAction({
-    action: 'ROW_INSERT',
-    entityType: 'inventory_transactions',
-    entityId: data?.id || 'blank-row',
-    entityName: `Fila en blanco #${data?.id || ''}`.trim(),
-    rowData: { count: 1, tx_ids: data?.id ? [data.id] : [], is_blank_row: true },
-    sheetName: 'Pañol · Stock y Movimientos',
-    moduleRoute: '/panol',
-    changeOrigin: 'GRID_BLANK_ROW',
-    user: user?.email
+    action: 'ROW_INSERT', entityType: 'inventory_transactions', entityId: data?.id || 'blank-row',
+    entityName: `Fila en blanco #${data?.id || ''}`.trim(), rowData: { count: 1, tx_ids: data?.id ? [data.id] : [], is_blank_row: true },
+    sheetName: 'Pañol · Stock y Movimientos', moduleRoute: '/panol', changeOrigin: 'GRID_BLANK_ROW', user: user?.email
   })
   return { ...data, _rowSeq: stampedTx._rowSeq }
 }

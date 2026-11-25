@@ -242,21 +242,26 @@ export function getSecurityFactorBadge(factor) {
   return { label: `${Math.round((f - 1) * 100)}% (${f})`, style: 'bg-rose-950 text-rose-300 border-rose-600 font-bold' }
 }
 
-// Columnas para la grilla de retiros (useSpreadsheetGrid)
-export const SPREADSHEET_COLUMNS_PANOL = [
-  { key: 'transaction_date', label: 'Fecha', readOnly: false },
-  { key: 'ship_id', label: 'Barco / Destino', readOnly: false },
-  { key: 'work_order_id', label: 'Orden de Trabajo (OT)', readOnly: false },
-  { key: 'material_id', label: 'Material Insumo', readOnly: false },
-  { key: 'quantity_withdrawn', label: 'Cant.', isNumeric: true, type: 'number', allowFormula: true, readOnly: false },
-  { key: 'weight_total', label: 'Peso (kg)', isNumeric: true, readOnly: false },
-  { key: 'contractor_name', label: 'Operario / Contratista', readOnly: false },
-  { key: 'cost_center', label: 'Centro de Costo', readOnly: false },
-  { key: 'voucher_number', label: 'Nº Remito', readOnly: false },
-  { key: 'notes', label: 'Observaciones', readOnly: false }
-]
+import {
+  getPanolMovimientosColumns,
+  getPanolPasteFields,
+  resolvePanolTxCost,
+  isPanolWithdrawalUnvalued,
+  calculatePanolTotalsWithCost
+} from './panolCostHelpers.js'
 
-// Columnas para la grilla de materiales (materialsGrid) — Solo Admin edita catálogo/stock mín/control/% seg
+export {
+  getPanolMovimientosColumns,
+  getPanolPasteFields,
+  resolvePanolTxCost,
+  isPanolWithdrawalUnvalued,
+  calculatePanolTotalsWithCost
+}
+
+// Columnas para la grilla de retiros (useSpreadsheetGrid)
+export const SPREADSHEET_COLUMNS_PANOL = getPanolMovimientosColumns(true)
+
+// Columnas para la grilla de materiales (materialsGrid) — Solo Admin edita catálogo/precios/stock mín/control/% seg
 export const getMaterialsColumns = (isAdmin) => [
   { key: 'name', label: 'Material / Insumo', readOnly: !isAdmin },
   { key: 'rubro', label: 'Rubro Técnico', readOnly: !isAdmin },
@@ -266,52 +271,24 @@ export const getMaterialsColumns = (isAdmin) => [
   { key: 'current_stock', label: 'Stock Actual', isNumeric: true, readOnly: true },
   { key: 'minimum_stock', label: 'Stock Mínimo', isNumeric: true, readOnly: !isAdmin },
   { key: 'requires_stock_control', label: 'Lleva Stock Físico', readOnly: !isAdmin },
-  { key: 'security_factor', label: '% Seg. Naval', readOnly: !isAdmin }
+  ...(isAdmin ? [{ key: 'cost_ars', label: 'Precio AR$', isNumeric: true, readOnly: false }] : []),
+  { key: 'security_factor', label: '% Seg. Naval', readOnly: !isAdmin },
+  ...(isAdmin ? [{ key: 'cost_usd', label: 'Costo US$', isNumeric: true, readOnly: false }] : [])
 ]
 
 export const getMaterialsPasteFields = (isAdmin) => (isAdmin ? MATERIALS_PASTE_FIELDS : [])
 
 // Campos permitidos para pegado y clonación de filas
-export const PANOL_PASTE_FIELDS = [
-  'ship_id',
-  'work_order_id',
-  'material_id',
-  'quantity_withdrawn',
-  'weight_total',
-  'contractor_name',
-  'worker_name',
-  'worker_id',
-  'cost_center',
-  'voucher_number',
-  'notes'
-]
+export const PANOL_PASTE_FIELDS = getPanolPasteFields(true)
 
 export const MATERIALS_CLONE_FIELDS = [
-  'name',
-  'category',
-  'rubro',
-  'unit_measure',
-  'weight_kg',
-  'minimum_stock',
-  'requires_stock_control',
-  'security_factor',
-  'location_bin',
-  'description',
-  'notes'
+  'name', 'category', 'rubro', 'unit_measure', 'weight_kg', 'cost_ars', 'cost_usd',
+  'minimum_stock', 'requires_stock_control', 'security_factor', 'location_bin', 'description', 'notes'
 ]
 
 export const MATERIALS_PASTE_FIELDS = [
-  'name',
-  'category',
-  'rubro',
-  'unit_measure',
-  'weight_kg',
-  'minimum_stock',
-  'requires_stock_control',
-  'security_factor',
-  'location_bin',
-  'description',
-  'notes'
+  'name', 'category', 'rubro', 'unit_measure', 'weight_kg', 'cost_ars', 'cost_usd',
+  'minimum_stock', 'requires_stock_control', 'security_factor', 'location_bin', 'description', 'notes'
 ]
 
 import { isDateInFilterPeriod, filterPanolTransactions, filterPanolMaterials } from './panolFilterHelpers.js'

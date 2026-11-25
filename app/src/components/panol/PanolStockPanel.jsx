@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import {
   Flame,
   Shield,
@@ -34,11 +34,7 @@ export default function PanolStockPanel({
   setTraceSupplierFilter: propSetTraceSupplierFilter,
   traceMaterialFilter: propTraceMaterialFilter,
   setTraceMaterialFilter: propSetTraceMaterialFilter,
-  isAdmin,
-  user,
-  criticalMaterialsCount,
-  stockControlledCount,
-  onClearFilters,
+  isAdmin, user, macroVariables = [], pricingPolicy = null, criticalMaterialsCount, stockControlledCount, onClearFilters,
   onOpenEditMaterialModal = null,
   onOpenStockAdjustModal,
   onOpenConsumption6MModal = null,
@@ -382,10 +378,8 @@ export default function PanolStockPanel({
       activeKpiFilter={activeKpiFilter}
       filterCategory={filterCategory}
       filterStockOnly={filterStockOnly}
-      isAdmin={isAdmin}
-      user={user}
-      criticalMaterialsCount={criticalMaterialsCount}
-      stockControlledCount={stockControlledCount}
+      isAdmin={isAdmin} user={user} macroVariables={macroVariables} pricingPolicy={pricingPolicy}
+      criticalMaterialsCount={criticalMaterialsCount} stockControlledCount={stockControlledCount}
       onClearFilters={onClearFilters}
       onOpenEditMaterialModal={onOpenEditMaterialModal}
       onOpenStockAdjustModal={onOpenStockAdjustModal}

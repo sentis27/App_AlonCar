@@ -5,9 +5,10 @@ import { MATERIAL_CATEGORIES } from '../../lib/panolConstants'
 import { buildMergedRubrosCatalog, fetchActiveDollarRateService } from '../../lib/panolCatalogService'
 import { PANOL_MATERIAL_STEP_HELP, HIGH_VALUE_MATERIAL_USD_THRESHOLD } from '../../lib/businessHelpRegistry'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import CanonicalPriceHelpBadge from '../canonical/CanonicalPriceHelpBadge.jsx'
 
 export default function MaterialCatalogFormModal({
-  material = null, rubros = [], materials = [], isAdmin = false, onOpenRubrosManager = null, onClose, onSave
+  material = null, rubros = [], materials = [], isAdmin = false, pricingPolicy = null, onOpenRubrosManager = null, onClose, onSave
 }) {
   const isEditMode = Boolean(material?.id)
   const mergedRubros = useMemo(() => buildMergedRubrosCatalog(rubros, materials), [rubros, materials])
@@ -169,46 +170,51 @@ export default function MaterialCatalogFormModal({
             </div>
           </CanonicalStepperStep>
 
-          <CanonicalStepperStep
-            step={2}
-            helpEntry={PANOL_MATERIAL_STEP_HELP[2]}
-            title="PRECIO Y % SEGURIDAD"
-            isActive={isHighValueOver4k && securityFactor !== 1.02}
-            headerRight={
-              <span className="px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 font-mono font-bold text-[11px]">
-                Dólar ref: $ {dollarRate.toLocaleString('es-AR')}
-              </span>
-            }
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div>
-                <label className="block text-slate-400 font-semibold text-[11px] mb-1">Precio Base AR$</label>
-                <input type="number" min="0" step="any" disabled={catalogDisabled} value={costArs} onChange={(e) => setCostArs(e.target.value)} className={`w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold text-xs ${inputCls}`} />
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-slate-400 font-semibold text-[11px] mb-1">
-                  <span>% Seguridad</span>{!isAdmin && <Lock className="w-3 h-3 text-amber-400" />}
-                </label>
-                <select disabled={!isAdmin} value={securityFactor} onChange={(e) => setSecurityFactor(Number(e.target.value))} className={`w-full px-2.5 py-1.5 rounded-lg border font-bold text-xs ${!isAdmin ? inputCls : 'bg-emerald-950/60 border-emerald-500/60 text-emerald-300 focus:outline-none focus:border-emerald-400'}`}>
-                  {SECURITY_FACTORS.map((sf) => <option key={sf.value} value={sf.value} className="bg-slate-950 text-white">{Math.round((sf.value - 1) * 100)}%</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-slate-400 font-semibold text-[11px] mb-1">Costo US$ (Fórmula)</label>
-                <div className="w-full px-2.5 py-1.5 rounded-lg bg-cyan-950/50 border border-cyan-500/50 text-cyan-200 font-mono font-black text-xs text-right">
-                  US$ {computedCostUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {isAdmin && (
+            <CanonicalStepperStep
+              step={2}
+              helpEntry={PANOL_MATERIAL_STEP_HELP[2]}
+              title="PRECIO Y % SEGURIDAD"
+              isActive={isHighValueOver4k && securityFactor !== 1.02}
+              headerRight={
+                <span className="px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 font-mono font-bold text-[11px]">
+                  Dólar ref: $ {dollarRate.toLocaleString('es-AR')}
+                </span>
+              }
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="flex items-center gap-1 text-slate-400 font-semibold text-[11px] mb-1">
+                    <span>Precio Base AR$</span>
+                    <CanonicalPriceHelpBadge isAdmin={isAdmin} pricingPolicy={pricingPolicy} dollarRate={dollarRate} size="xs" />
+                  </label>
+                  <input type="number" min="0" step="any" disabled={catalogDisabled} value={costArs} onChange={(e) => setCostArs(e.target.value)} className={`w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold text-xs ${inputCls}`} />
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-slate-400 font-semibold text-[11px] mb-1">
+                    <span>% Seguridad</span>
+                  </label>
+                  <select value={securityFactor} onChange={(e) => setSecurityFactor(Number(e.target.value))} className="w-full px-2.5 py-1.5 rounded-lg border font-bold text-xs bg-emerald-950/60 border-emerald-500/60 text-emerald-300 focus:outline-none focus:border-emerald-400">
+                    {SECURITY_FACTORS.map((sf) => <option key={sf.value} value={sf.value} className="bg-slate-950 text-white">{Math.round((sf.value - 1) * 100)}%</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-semibold text-[11px] mb-1">Costo US$ (Fórmula)</label>
+                  <div className="w-full px-2.5 py-1.5 rounded-lg bg-cyan-950/50 border border-cyan-500/50 text-cyan-200 font-mono font-black text-xs text-right">
+                    US$ {computedCostUsd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
                 </div>
               </div>
-            </div>
-            {isHighValueOver4k && securityFactor !== 1.02 && isAdmin && (
-              <div className="px-2.5 py-1 rounded-lg bg-amber-950/50 border border-amber-500/50 text-amber-200 text-[10px] flex items-center justify-between gap-2">
-                <span>⚠️ Supera <strong>US$ 4.000</strong>: se recomienda usar <strong>2%</strong> de seguridad.</span>
-                <button type="button" onClick={() => setSecurityFactor(1.02)} className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-black cursor-pointer shrink-0">Aplicar 2%</button>
-              </div>
-            )}
-          </CanonicalStepperStep>
+              {isHighValueOver4k && securityFactor !== 1.02 && (
+                <div className="px-2.5 py-1 rounded-lg bg-amber-950/50 border border-amber-500/50 text-amber-200 text-[10px] flex items-center justify-between gap-2">
+                  <span>⚠️ Supera <strong>US$ 4.000</strong>: se recomienda usar <strong>2%</strong> de seguridad.</span>
+                  <button type="button" onClick={() => setSecurityFactor(1.02)} className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-black cursor-pointer shrink-0">Aplicar 2%</button>
+                </div>
+              )}
+            </CanonicalStepperStep>
+          )}
 
-          <CanonicalStepperStep step={3} helpEntry={PANOL_MATERIAL_STEP_HELP[3]} title="UNIDAD DE MEDIDA">
+          <CanonicalStepperStep step={isAdmin ? 3 : 2} helpEntry={PANOL_MATERIAL_STEP_HELP[3]} title="UNIDAD DE MEDIDA">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-slate-400 font-semibold text-[11px] mb-1">Unidad de Medida Oficial</label>
@@ -223,7 +229,7 @@ export default function MaterialCatalogFormModal({
             </div>
           </CanonicalStepperStep>
 
-          <CanonicalStepperStep step={4} helpEntry={PANOL_MATERIAL_STEP_HELP[4]} title="CONTROL DE STOCK" isLast={true}>
+          <CanonicalStepperStep step={isAdmin ? 4 : 3} helpEntry={PANOL_MATERIAL_STEP_HELP[4]} title="CONTROL DE STOCK" isLast={true}>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
               <label className={`px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center gap-2 ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'}`}>
                 <input type="checkbox" disabled={!isAdmin} checked={requiresStockControl} onChange={(e) => setRequiresStockControl(e.target.checked)} className="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-700" />

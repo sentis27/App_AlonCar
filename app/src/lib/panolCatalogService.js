@@ -10,6 +10,8 @@ import { normalizeUnitMeasure, computeMaterialCostUsd } from './unitMeasureUtils
 import { getDollarRateForDate } from './comprasPedidosHelpers.js'
 import { MATERIAL_CATEGORIES } from './panolConstants.js'
 import { getTodayArIso } from './dateTimeCanonical.js'
+import { buildInlineMaterialPricePatch } from './materialPricingPolicy.js'
+import { propagateCatalogPriceUpdateToTransactions } from '../services/materialPricingService.js'
 import { materialsRepository, materialRubrosRepository } from '../repositories/materialsRepository.js'
 import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
 import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
@@ -25,22 +27,15 @@ export async function fetchActiveDollarRateService() {
       const rate = getDollarRateForDate(todayStr, mvList)
       if (rate > 0) return rate
     }
-    const { data: rcList } = await rateCardsRepository.findAll({
-      select: 'dollar_rate',
-      orderBy: [{ column: 'year', ascending: false }, { column: 'month', ascending: false }],
-      limit: 1
-    })
+    const { data: rcList } = await rateCardsRepository.findAll({ select: 'dollar_rate', orderBy: [{ column: 'year', ascending: false }, { column: 'month', ascending: false }], limit: 1 })
     const rcRate = Number(rcList?.[0]?.dollar_rate)
     if (Number.isFinite(rcRate) && rcRate > 0) return rcRate
-  } catch {
-    // fallback seguro
-  }
+  } catch { /* fallback seguro */ }
   return 1500
 }
 
 export function isPanolAdminRole(profile) {
-  const role = String(profile?.role || '').trim().toLowerCase()
-  return ['admin', 'administrador', 'gerencia', 'supervisor'].includes(role)
+  return ['admin', 'administrador', 'gerencia', 'supervisor'].includes(String(profile?.role || '').trim().toLowerCase())
 }
 
 export function buildMergedRubrosCatalog(rubros = [], materials = []) {
@@ -53,19 +48,10 @@ export function buildMergedRubrosCatalog(rubros = [], materials = []) {
   for (const r of rubros) {
     const name = String(r?.name || '').trim().toUpperCase()
     if (!name) continue
-    byKey.set(name, {
-      id: r.id,
-      name,
-      category: r.category || 'MATERIALES',
-      is_active: r.is_active !== false,
-      inDb: true,
-      materialsCount: countMap.get(name) || 0
-    })
+    byKey.set(name, { id: r.id, name, category: r.category || 'MATERIALES', is_active: r.is_active !== false, inDb: true, materialsCount: countMap.get(name) || 0 })
   }
   for (const [matRubro, count] of countMap.entries()) {
-    if (!byKey.has(matRubro)) {
-      byKey.set(matRubro, { id: null, name: matRubro, category: 'MATERIALES', is_active: true, inDb: false, materialsCount: count })
-    }
+    if (!byKey.has(matRubro)) byKey.set(matRubro, { id: null, name: matRubro, category: 'MATERIALES', is_active: true, inDb: false, materialsCount: count })
   }
   return Array.from(byKey.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'))
 }
@@ -74,22 +60,17 @@ export async function uploadMaterialImageService({ materialName, imageFile }) {
   if (!imageFile) return null
   const ext = String(imageFile.name || 'jpg').split('.').pop() || 'jpg'
   const safeName = String(materialName || 'material').trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
-  const storagePath = `catalogo_materiales/${Date.now()}_${safeName}.${ext}`
-  const { data, error } = await purchaseDocumentsRepository.uploadToStorage(storagePath, imageFile)
+  const { data, error } = await purchaseDocumentsRepository.uploadToStorage(`catalogo_materiales/${Date.now()}_${safeName}.${ext}`, imageFile)
   if (error) throw new Error(error)
   return data?.publicUrl || null
 }
 
 async function syncOpenPurchaseOrdersUnit(materialId, unitMeasure) {
   if (!materialId || !unitMeasure) return
-  await purchaseOrdersRepository.updateWhere(
-    { filters: { material_id: materialId }, inFilters: { status: OPEN_PO_STATUSES } },
-    { unit_measure: unitMeasure, updated_at: new Date().toISOString() },
-    { select: null }
-  )
+  await purchaseOrdersRepository.updateWhere({ filters: { material_id: materialId }, inFilters: { status: OPEN_PO_STATUSES } }, { unit_measure: unitMeasure, updated_at: new Date().toISOString() }, { select: null })
 }
 
-export async function saveInlineCatalogFieldService({ matId, field, value, materials = [], isAdmin, user }) {
+export async function saveInlineCatalogFieldService({ matId, field, value, materials = [], isAdmin, user, dollarRate = null, macroVariables = null, pricingPolicy = null }) {
   const mat = materials.find((m) => m.id === matId)
   if (!mat) throw new Error('Material no encontrado en el catálogo.')
   if (!isAdmin && field !== 'current_stock' && field !== 'image_url') {
@@ -97,11 +78,9 @@ export async function saveInlineCatalogFieldService({ matId, field, value, mater
   }
 
   let parsedValue = value
-  if (['weight_kg', 'current_stock', 'minimum_stock', 'security_factor'].includes(field)) {
+  if (['weight_kg', 'current_stock', 'minimum_stock', 'security_factor', 'cost_ars', 'cost_usd'].includes(field)) {
     const num = Number(value)
-    if (!Number.isFinite(num) || (field !== 'current_stock' && num < 0)) {
-      throw new Error('Ingresá un valor numérico válido mayor o igual a 0.')
-    }
+    if (!Number.isFinite(num) || (field !== 'current_stock' && num < 0)) throw new Error('Ingresá un valor numérico válido mayor o igual a 0.')
     parsedValue = num
   } else if (field === 'requires_stock_control') {
     parsedValue = Boolean(value)
@@ -115,17 +94,36 @@ export async function saveInlineCatalogFieldService({ matId, field, value, mater
     parsedValue = normalizeUnitMeasure(value, mat.name)
   }
 
-  const updates = { [field]: parsedValue }
+  const isPriceField = field === 'cost_ars' || field === 'cost_usd' || (field === 'security_factor' && Number(mat.cost_ars || 0) > 0)
+  let updates = { [field]: parsedValue }
+  let highValueWarning = false
+  if (isPriceField) {
+    const fx = Number(dollarRate) > 0 ? Number(dollarRate) : await fetchActiveDollarRateService()
+    const built = buildInlineMaterialPricePatch({ field, parsedValue, material: mat, dollarRate: fx, policy: pricingPolicy })
+    updates = built.patch
+    highValueWarning = built.highValueWarning
+  }
+
   const { error } = await materialsRepository.updateById(matId, updates, { select: null })
   if (error) throw new Error(error)
   if (field === 'unit_measure') await syncOpenPurchaseOrdersUnit(matId, parsedValue)
+  const propagation = isPriceField
+    ? await propagateCatalogPriceUpdateToTransactions({
+        materialId: matId,
+        costArs: updates.cost_ars ?? mat.cost_ars ?? 0,
+        securityFactor: updates.security_factor ?? mat.security_factor ?? 1.06,
+        costUsdOverride: updates.cost_usd ?? mat.cost_usd ?? 0,
+        macroVariables,
+        policy: pricingPolicy
+      })
+    : null
 
   logCellChange({
     entityType: 'materials', entityId: matId, entityName: mat.name || matId,
     field, fieldLabel: field, oldValue: mat[field] ?? null, newValue: parsedValue,
     sheetName: 'Pañol · Catálogo Maestro', moduleRoute: '/panol', changeOrigin: 'INLINE_CELL', user: user?.email
   })
-  return updates
+  return { ...updates, _propagation: propagation, _highValueWarning: highValueWarning }
 }
 
 export async function updateCatalogMaterialService({ material, formData, imageFile = null, existingMaterials = [], isAdmin, user }) {
@@ -173,8 +171,9 @@ export async function updateCatalogMaterialService({ material, formData, imageFi
 
   const { data, error } = await materialsRepository.updateById(material.id, updates, { select: '*' })
   if (error) throw new Error(error)
-  if (normalizeUnitMeasure(material.unit_measure, material.name) !== normalizedUnit) {
-    await syncOpenPurchaseOrdersUnit(material.id, normalizedUnit)
+  if (normalizeUnitMeasure(material.unit_measure, material.name) !== normalizedUnit) await syncOpenPurchaseOrdersUnit(material.id, normalizedUnit)
+  if (priceChanged || Number(material.cost_usd || 0) !== costUsd) {
+    await propagateCatalogPriceUpdateToTransactions({ materialId: material.id, costArs, securityFactor: secFactor, costUsdOverride: costUsd })
   }
 
   logRowAction({

@@ -202,8 +202,9 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(pickerSrc).toContain('ArrowDown')
   })
 
-  it('FL-004: PanolCatalogGrid conserva todas las columnas canónicas de Catálogo & Stock', () => {
+  it('FL-004: PanolCatalogGrid conserva todas las columnas canónicas de Catálogo & Stock + Precios y (?) solo Admin', () => {
     const src = readRepoFile('app/src/components/panol/PanolCatalogGrid.jsx')
+    const modalSrc = readRepoFile('app/src/components/panol/MaterialCatalogFormModal.jsx')
     const requiredHeaders = [
       'Material / Insumo',
       'Rubro Técnico',
@@ -213,12 +214,19 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
       'Stock Actual',
       'Stock Mín.',
       'Lleva Stock',
+      'Precio AR$',
       '% Seg. Naval',
+      'Costo US$',
       'Acciones',
     ]
     for (const header of requiredHeaders) {
       expect(src).toContain(header)
     }
+    expect(src).toContain('CanonicalPriceHelpBadge')
+    expect(src).toContain('{isAdmin && <CatalogPriceArsCell')
+    expect(src).toContain('{isAdmin && <CatalogPriceUsdCell')
+    expect(modalSrc).toContain('{isAdmin && (')
+    expect(modalSrc).toContain('CanonicalPriceHelpBadge')
   })
 
   it('FL-005: BatchOrderWhatsAppModal + emitWhatsAppOrdersService actualizan estado a PEDIDO y auditan', () => {
@@ -281,15 +289,23 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(pageSrc).toContain('{ replace: true }')
   })
 
-  it('FL-011: PanolMovimientosPanel muestra Columna A de Stock del material con semáforo y colSpan=13 (incluye Nº Remito)', () => {
+  it('FL-011: PanolMovimientosPanel muestra Stock, orden Fecha->Barco->OT->Contratista->Material->Cant->Peso, Costo/Centro solo Admin, colSpan dinámico y filtro Sin Valor', () => {
     expect(STATUS_BY_ID.get('FL-011')).toBe('blindado')
     const movSrc = readRepoFile('app/src/components/panol/PanolMovimientosPanel.jsx')
+    const toolbarSrc = readRepoFile('app/src/components/panol/PanolToolbar.jsx')
     expect(movSrc).toMatch(/<th[^>]*>[^<]*Stock/i)
     expect(movSrc).toContain('Nº Remito ✎')
-    expect(movSrc).toContain('colSpan={13}')
+    expect(movSrc).toContain('totalColSpan = isAdmin ? 14 : 12')
+    expect(movSrc).toContain('colSpan={totalColSpan}')
     expect(movSrc).toContain('requires_stock_control')
     expect(movSrc).toContain('formatUnitMeasureShort')
     expect(movSrc).toContain("'S/C'")
+    expect(movSrc).toContain('{isAdmin && <th')
+    expect(movSrc).toContain('Costo US$')
+    expect(movSrc).toContain('Centro de Costo ✎')
+    expect(movSrc.indexOf('Contratista / Grupo ✎')).toBeGreaterThan(movSrc.indexOf('Orden de Trabajo (OT) ✎'))
+    expect(movSrc.indexOf('Material Insumo ✎')).toBeGreaterThan(movSrc.indexOf('Contratista / Grupo ✎'))
+    expect(toolbarSrc).toContain('Sin Valor ($0)')
   })
 
   it('FL-012: Planilla Pañol usa CanonicalMaterialPicker (sin UUID/datalist) y Canasta usa tooltip flotante de OT', () => {

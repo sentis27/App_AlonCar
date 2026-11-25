@@ -26,11 +26,12 @@ export function isThirdPartyZeroCost(service) {
  */
 export function isPanolTxZeroCost(tx, mat = null) {
   if (!tx || tx.is_deletion_requested || tx.isDeletionRequested) return false
+  if (!mat && !tx.material_id && Number(tx.quantity_withdrawn || 0) <= 0) return false
   const rawCat = normKey(mat?.category || tx.category)
   const movementType = normKey(tx.movement_type || tx.movementType)
   if (rawCat === 'ELEM.SEGURIDAD' || movementType === 'ENTREGA_EPP') return false
 
-  const unitUsd = Number(tx.unit_cost_usd_snapshot ?? tx.unitUsd ?? mat?.cost_usd) || 0
+  const unitUsd = Number(tx.unit_cost_usd_snapshot) || Number(tx.unitUsd) || Number(mat?.cost_usd) || 0
   return unitUsd <= 0
 }
 

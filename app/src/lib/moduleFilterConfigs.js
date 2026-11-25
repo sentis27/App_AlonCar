@@ -85,14 +85,9 @@ export const MODULE_FILTER_CONFIGS = {
   },
   panol_planillas: {
     defaults: {
-      searchQuery: '',
-      filterPeriod: 'TODOS',
-      filterCategory: 'TODAS',
-      filterShip: 'TODOS',
-      filterOt: 'TODAS',
-      filterContractor: 'TODOS',
-      activeKpiFilter: null,
-      onlyWithShipFilter: false
+      searchQuery: '', filterPeriod: 'TODOS', filterCategory: 'TODAS', filterShip: 'TODOS',
+      filterOt: 'TODAS', filterContractor: 'TODOS', filterMaterialQuick: '', onlyZeroCost: false,
+      activeKpiFilter: null, onlyWithShipFilter: false
     },
     buildSummary: (f, { ships = [], workOrders = [] } = {}) => {
       const lines = []
@@ -102,6 +97,8 @@ export const MODULE_FILTER_CONFIGS = {
       if (f.filterOt && f.filterOt !== 'TODAS') lines.push(`OT: ${resolveOtFilterLabel(workOrders, f.filterOt)}`)
       if (f.filterContractor && f.filterContractor !== 'TODOS') lines.push(`Contratista: ${f.filterContractor}`)
       if (f.filterCategory && f.filterCategory !== 'TODAS') lines.push(`Categoría: ${f.filterCategory}`)
+      if (f.filterMaterialQuick) lines.push(`Material: ${f.filterMaterialQuick}`)
+      if (f.onlyZeroCost) lines.push('Sin Valor ($0)')
       if (f.activeKpiFilter) lines.push(`Radar KPI: ${f.activeKpiFilter}`)
       return lines
     }

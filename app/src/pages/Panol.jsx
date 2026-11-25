@@ -14,14 +14,14 @@ import PanolCostBasketModal from '../components/panol/PanolCostBasketModal'
 import { fetchPanolData } from '../lib/panolService'
 import { isPanolAdminRole } from '../lib/panolCatalogService'
 import {
-  calculateGasStats, calculatePanolKpis, calculatePanolTotals,
+  calculateGasStats, calculatePanolKpis, calculatePanolTotalsWithCost,
   formatWorkOrderTooltip, filterPanolTransactions, filterPanolMaterials
 } from '../lib/panolConstants'
 import { filterEligiblePersonnel, getContractorEnabledWos, getEnabledWorkersAndContractors } from '../lib/allocationEngine'
 import { exportPlateCutsReport } from '../lib/plateCutsExport'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
-const PANOL_REALTIME_TABLES = ['materials', 'inventory_transactions', 'gas_cylinder_movements', 'compliance_alerts', 'ships', 'work_orders', 'work_items', 'workers', 'suppliers', 'material_rubros']
+const PANOL_REALTIME_TABLES = ['materials', 'inventory_transactions', 'gas_cylinder_movements', 'compliance_alerts', 'ships', 'work_orders', 'work_items', 'workers', 'suppliers', 'material_rubros', 'macro_variables', 'system_settings']
 
 export default function Panol() {
   const navigate = useNavigate()
@@ -41,6 +41,8 @@ export default function Panol() {
   const [workers, setWorkers] = useState([])
   const [workItems, setWorkItems] = useState([])
   const [pendingAlerts, setPendingAlerts] = useState([])
+  const [macroVariables, setMacroVariables] = useState([])
+  const [pricingPolicy, setPricingPolicy] = useState(null)
 
   const searchInputRef = useRef(null)
   const [activeGridHistory, setActiveGridHistory] = useState(null)
@@ -91,6 +93,7 @@ export default function Panol() {
       setMaterials(d.materials); setInventoryTx(d.inventoryTx); setGasMovements(d.gasMovements)
       setRubros(d.rubros); setSuppliers(d.suppliers); setShips(d.ships); setWorkOrders(d.workOrders)
       setWorkers(d.workers); setWorkItems(d.workItems); setPendingAlerts(d.pendingAlerts)
+      setMacroVariables(d.macroVariables || []); setPricingPolicy(d.pricingPolicy || null)
     } catch (err) {
       showFeedback('error', 'Error cargando datos de Pañol: ' + err.message)
     } finally {
@@ -130,43 +133,34 @@ export default function Panol() {
 
   const filteredTransactions = useMemo(
     () => filterPanolTransactions(inventoryTx, {
-      activeKpiFilter: planillasFilters.activeKpiFilter,
-      onlyWithShip: Boolean(planillasFilters.onlyWithShipFilter),
-      filterPeriod: planillasFilters.filterPeriod,
-      filterShip: planillasFilters.filterShip,
-      filterOt: planillasFilters.filterOt,
-      filterContractor: planillasFilters.filterContractor,
-      filterCategory: planillasFilters.filterCategory,
-      filterMaterialQuick: planillasFilters.filterMaterialQuick || '',
-      searchQuery: planillasFilters.searchQuery,
-      materials, ships, workOrders
+      activeKpiFilter: planillasFilters.activeKpiFilter, onlyWithShip: Boolean(planillasFilters.onlyWithShipFilter),
+      onlyZeroCost: isAdmin && Boolean(planillasFilters.onlyZeroCost), filterPeriod: planillasFilters.filterPeriod,
+      filterShip: planillasFilters.filterShip, filterOt: planillasFilters.filterOt, filterContractor: planillasFilters.filterContractor,
+      filterCategory: planillasFilters.filterCategory, filterMaterialQuick: planillasFilters.filterMaterialQuick || '',
+      searchQuery: planillasFilters.searchQuery, materials, ships, workOrders, macroVariables, pricingPolicy
     }),
-    [inventoryTx, planillasFilters, materials, ships, workOrders]
+    [inventoryTx, planillasFilters, materials, ships, workOrders, macroVariables, pricingPolicy, isAdmin]
   )
 
   const handleExportPanolPlateCuts = useCallback(() => {
     const matMap = new Map(materials.map((m) => [m.id, m]))
     const shipMap = new Map(ships.map((s) => [s.id, s]))
     const woMap = new Map(workOrders.map((w) => [w.id, w]))
-    const activeShipName = planillasFilters.filterShip && planillasFilters.filterShip !== 'TODOS'
-      ? (shipMap.get(planillasFilters.filterShip)?.name || 'buque')
-      : 'flota'
+    const activeShipName = planillasFilters.filterShip && planillasFilters.filterShip !== 'TODOS' ? (shipMap.get(planillasFilters.filterShip)?.name || 'buque') : 'flota'
     const enriched = filteredTransactions.map((tx) => {
-      const mat = matMap.get(tx.material_id)
-      const wo = woMap.get(tx.work_order_id)
+      const mat = matMap.get(tx.material_id); const wo = woMap.get(tx.work_order_id)
       return {
-        ...tx,
-        shipName: shipMap.get(tx.ship_id)?.name || 'SIN BUQUE',
+        ...tx, shipName: shipMap.get(tx.ship_id)?.name || 'SIN BUQUE',
         otLabel: wo ? `${wo.ot_number || ''} · ${wo.title || ''}`.trim() : 'Sin OT',
-        materialName: mat?.name || 'Chapa / Material',
-        unitMeasure: mat?.unit_measure || 'm²',
+        materialName: mat?.name || 'Chapa / Material', unitMeasure: mat?.unit_measure || 'm²',
         workerName: tx.worker_name || tx.contractor_name || ''
       }
     })
     exportPlateCutsReport({ rows: enriched, shipName: activeShipName })
   }, [filteredTransactions, materials, ships, workOrders, planillasFilters.filterShip])
 
-  const panolTotals = useMemo(() => calculatePanolTotals(filteredTransactions), [filteredTransactions])
+  const panolTotals = useMemo(() => calculatePanolTotalsWithCost(filteredTransactions, materials, { macroVariables, policy: pricingPolicy }), [filteredTransactions, materials, macroVariables, pricingPolicy])
+  const totalUnvaluedCount = useMemo(() => calculatePanolTotalsWithCost(inventoryTx, materials, { macroVariables, policy: pricingPolicy }).unvaluedCount, [inventoryTx, materials, macroVariables, pricingPolicy])
   const clearAllPanolFilters = useCallback(() => {
     clearActiveTabFilters()
     if (searchParams.get('kpi') || searchParams.get('con_barco')) setSearchParams({ tab: safeTab }, { replace: true })
@@ -231,6 +225,9 @@ export default function Panol() {
           filterPeriod={activeFilters.filterPeriod ?? 'TODOS'} setFilterPeriod={(v) => setActiveFilter('filterPeriod', v)}
           filterCategory={filterCategory} setFilterCategory={(v) => setActiveFilter('filterCategory', v)}
           filterMaterialQuick={activeFilters.filterMaterialQuick ?? ''} setFilterMaterialQuick={(v) => setActiveFilter('filterMaterialQuick', v)}
+          onlyZeroCost={Boolean(activeFilters.onlyZeroCost)} setOnlyZeroCost={(v) => setActiveFilter('onlyZeroCost', v)}
+          unvaluedCount={totalUnvaluedCount} activeKpiFilter={activeKpiFilter}
+          onClearZeroCostKpi={() => { setTabFilter('planillas', 'activeKpiFilter', null); setTabFilter('planillas', 'onlyWithShipFilter', false); if (searchParams.get('kpi') || searchParams.get('con_barco')) setSearchParams({ tab: safeTab }, { replace: true }) }}
           onExportPlateCuts={handleExportPanolPlateCuts}
           filterShip={activeFilters.filterShip ?? 'TODOS'} setFilterShip={(v) => setActiveFilter('filterShip', v)}
           filterOt={activeFilters.filterOt ?? 'TODAS'} setFilterOt={(v) => setActiveFilter('filterOt', v)}
@@ -247,11 +244,12 @@ export default function Panol() {
             materials={materials} setMaterials={setMaterials} ships={ships} workOrders={workOrders} workItems={workItems}
             astilleroWorkers={astilleroWorkers} contractorGroups={contractorGroups} availableGroups={availableGroups}
             pendingAlerts={pendingAlerts} isAdmin={isAdmin} searchQuery={searchQuery} hasActivePanolFilter={hasActivePanolFilter}
-            panolTotals={panolTotals} user={user} profile={profile}
+            panolTotals={panolTotals} user={user} profile={profile} macroVariables={macroVariables} pricingPolicy={pricingPolicy}
             getEnabledWorkersAndContractors={getEnabledPersonnel} getEnabledWosForShipAndContractor={getEnabledWos}
             formatWorkOrderTooltip={(wo, ship) => formatWorkOrderTooltip(wo, ship, workItems, workOrders)}
             onClearAllFilters={clearAllPanolFilters}
             onOpenWithdrawalModal={(tx) => { setEditingWithdrawalRow(tx); setShowWithdrawalModal(true) }}
+            onOpenEditMaterialModal={isAdmin ? (mat) => setMaterialFormModal({ isOpen: true, material: mat }) : null}
             onOpenQuickPurchaseModal={(payload) => setQuickPurchaseModal({ isOpen: true, urgency: 'SIN_APURO', ...payload })}
             onOpenRequestOtModal={({ txId, shipId, targetWorkerOrContractor }) => setRequestOtModal({ isOpen: true, txId, shipId, targetWorkerOrContractor, reason: '' })}
             onOpenWorkerPermissionModal={() => setWorkerPermissionModal({ isOpen: true, workerId: '', reason: '' })}
@@ -267,7 +265,7 @@ export default function Panol() {
             searchQuery={searchQuery} activeKpiFilter={activeKpiFilter} filterCategory={filterCategory} filterStockOnly={!isAdmin ? true : filterStockOnly}
             traceSupplierFilter={gasesFilters.traceSupplierFilter} setTraceSupplierFilter={(v) => setTabFilter('gases', 'traceSupplierFilter', v)}
             traceMaterialFilter={gasesFilters.traceMaterialFilter} setTraceMaterialFilter={(v) => setTabFilter('gases', 'traceMaterialFilter', v)}
-            isAdmin={isAdmin} user={user} criticalMaterialsCount={kpiStats.criticalCount}
+            isAdmin={isAdmin} user={user} macroVariables={macroVariables} pricingPolicy={pricingPolicy} criticalMaterialsCount={kpiStats.criticalCount}
             stockControlledCount={materials.filter((m) => m.requires_stock_control).length} onClearFilters={clearAllPanolFilters}
             onOpenEditMaterialModal={(mat) => setMaterialFormModal({ isOpen: true, material: mat })}
             onOpenStockAdjustModal={(mat) => setShowStockAdjustModal({ isOpen: true, material: mat })}
@@ -299,9 +297,9 @@ export default function Panol() {
         materials={materials} setMaterials={setMaterials} inventoryTx={inventoryTx} setInventoryTx={setInventoryTx} gasMovements={gasMovements} setGasMovements={setGasMovements} gasStats={gasStats}
         ships={ships} workOrders={workOrders} workItems={workItems} astilleroWorkers={astilleroWorkers} contractorGroups={contractorGroups} unauthorizedWorkers={unauthorizedWorkers}
         getEnabledWorkersAndContractors={getEnabledPersonnel} pendingAlerts={pendingAlerts} setPendingAlerts={setPendingAlerts}
-        suppliers={suppliers} rubros={rubros} workers={workers} isAdmin={isAdmin} user={user} showFeedback={showFeedback} onRefreshData={loadData} navigate={navigate}
+        suppliers={suppliers} rubros={rubros} workers={workers} macroVariables={macroVariables} pricingPolicy={pricingPolicy} isAdmin={isAdmin} user={user} showFeedback={showFeedback} onRefreshData={loadData} navigate={navigate}
       />
-      {showCostBasketModal && <PanolCostBasketModal isOpen onClose={() => setShowCostBasketModal(false)} workers={workers} ships={ships} workOrders={workOrders} workItems={workItems} inventoryTx={inventoryTx} materials={materials} suppliers={suppliers} gasStats={gasStats} gasMovements={gasMovements} astilleroWorkers={astilleroWorkers} user={user} onRefreshData={loadData} showFeedback={showFeedback} />}
+      {showCostBasketModal && <PanolCostBasketModal isOpen onClose={() => setShowCostBasketModal(false)} workers={workers} ships={ships} workOrders={workOrders} workItems={workItems} inventoryTx={inventoryTx} materials={materials} suppliers={suppliers} gasStats={gasStats} gasMovements={gasMovements} astilleroWorkers={astilleroWorkers} macroVariables={macroVariables} pricingPolicy={pricingPolicy} user={user} onRefreshData={loadData} showFeedback={showFeedback} />}
     </div>
   )
 }

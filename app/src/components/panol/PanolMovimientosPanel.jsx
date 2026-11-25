@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   CheckSquare,
   Square,
@@ -21,13 +21,19 @@ import ContractorPickerModal from '../ContractorPickerModal'
 import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
+import PanolMovimientoCostCell from './PanolMovimientoCostCell'
 import {
   describeFormula,
   getStoredCellFormula,
   getEditableCellInitialValue,
   formatFormulaNumericDisplay
 } from '../../lib/formulaEngine'
-import { SPREADSHEET_COLUMNS_PANOL, PANOL_PASTE_FIELDS } from '../../lib/panolConstants'
+import {
+  getPanolMovimientosColumns,
+  getPanolPasteFields,
+  resolvePanolTxCost
+} from '../../lib/panolCostHelpers'
+import { formatUsd } from '../../lib/drydockCatalogConstants'
 import { formatUnitMeasureShort } from '../../lib/unitMeasureUtils'
 import { getLocalDateKey, formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
 import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
@@ -74,6 +80,9 @@ export default function PanolMovimientosPanel({
   setInventoryTx,
   gasMovements = [],
   setGasMovements = null,
+  macroVariables = [],
+  pricingPolicy = null,
+  onOpenEditMaterialModal = null,
   onHistoryChange = null
 }) {
   const [selectedTxIds, setSelectedTxIds] = useState(new Set())
@@ -156,7 +165,7 @@ export default function PanolMovimientosPanel({
           timestamp: Date.now()
         })
       }
-      const updates = await saveInlineTxService({ txId, field, value, tx, materials, user })
+      const updates = await saveInlineTxService({ txId, field, value, tx, materials, user, macroVariables, pricingPolicy })
       setInventoryTx((prev) => prev.map((t) => (t.id === txId ? { ...t, ...updates } : t)))
       showFeedback('success', 'Dato actualizado correctamente en la planilla.')
     } catch (err) {
@@ -227,11 +236,25 @@ export default function PanolMovimientosPanel({
     }
   }
 
+  const materialById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials])
+  const movimientosColumns = useMemo(
+    () =>
+      getPanolMovimientosColumns(isAdmin, {
+        getCostTotalUsd: (row) =>
+          resolvePanolTxCost(row, materialById.get(row?.material_id) || null, {
+            macroVariables,
+            policy: pricingPolicy
+          }).totalUsd
+      }),
+    [isAdmin, materialById, macroVariables, pricingPolicy]
+  )
+  const totalColSpan = isAdmin ? 14 : 12
+
   useEffect(() => {
     onPasteRowRef.current = buildPasteRowHandler({
       table: 'inventory_transactions',
       entityType: 'inventory',
-      fields: PANOL_PASTE_FIELDS,
+      fields: getPanolPasteFields(isAdmin),
       grid,
       setList: setInventoryTx,
       nameOf: (r) => r.id,
@@ -242,7 +265,7 @@ export default function PanolMovimientosPanel({
 
   const grid = useSpreadsheetGrid({
     rows: filteredTransactions,
-    columns: SPREADSHEET_COLUMNS_PANOL,
+    columns: movimientosColumns,
     getRowId: (r) => r.id,
     storageKey: 'aloncar_panol_grid',
     showFeedback: (type, text) => showFeedback(type, text),
@@ -308,7 +331,7 @@ export default function PanolMovimientosPanel({
   }, [onHistoryChange, grid.canUndo, grid.canRedo, gridUndoCount, gridRedoCount, grid.undo, grid.redo])
 
   function getSpreadsheetCellProps(rowIndex, colKey) {
-    const colIdx = SPREADSHEET_COLUMNS_PANOL.findIndex((c) => c.key === colKey)
+    const colIdx = movimientosColumns.findIndex((c) => c.key === colKey)
     if (colIdx === -1) return { className: '', renderHandle: false, domProps: {} }
 
     const isActive = grid.isCellActive(rowIndex, colIdx)
@@ -341,6 +364,37 @@ export default function PanolMovimientosPanel({
     }
   }
 
+  const renderFillHandle = (cp) =>
+    cp.renderHandle ? (
+      <div
+        onMouseDown={grid.handleFillHandleMouseDown}
+        onDoubleClick={grid.handleFillHandleDoubleClick}
+        className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
+      />
+    ) : null
+
+  const exportColumns = useMemo(
+    () => [
+      { key: 'transaction_date', label: 'Fecha', formatter: (v) => formatDateAr(getLocalDateKey(v), { fallback: '' }) },
+      { key: 'ship_id', label: 'Barco', formatter: (v) => ships.find((s) => s.id === v)?.name || 'Astillero' },
+      { key: 'work_order_id', label: 'OT', formatter: (v) => { const w = workOrders.find((x) => x.id === v); return w ? `${w.ot_number || ''} ${w.title || ''}`.trim() : 'Sin OT' } },
+      { key: 'contractor_name', label: 'Contratista', formatter: (_v, row) => row.worker_name || row.contractor_name || '' },
+      { key: 'material_id', label: 'Material', formatter: (v) => materialById.get(v)?.name || '' },
+      { key: 'quantity_withdrawn', label: 'Cantidad' },
+      { key: 'weight_total', label: 'Peso (kg)' },
+      ...(isAdmin
+        ? [
+            { key: 'cost_unit_usd', label: 'P. Unit US$', formatter: (_v, row) => resolvePanolTxCost(row, materialById.get(row.material_id) || null, { macroVariables, policy: pricingPolicy }).unitUsd },
+            { key: 'cost_total_usd', label: 'Costo Total US$', formatter: (_v, row) => resolvePanolTxCost(row, materialById.get(row.material_id) || null, { macroVariables, policy: pricingPolicy }).totalUsd },
+            { key: 'cost_center', label: 'Centro de Costo' }
+          ]
+        : []),
+      { key: 'voucher_number', label: 'Nº Remito' },
+      { key: 'notes', label: 'Observaciones' }
+    ],
+    [isAdmin, ships, workOrders, materialById, macroVariables, pricingPolicy]
+  )
+
   return (
     <div className="alon-zone-grid font-sans">
       <GridRibbon
@@ -351,6 +405,7 @@ export default function PanolMovimientosPanel({
         totalRows={filteredTransactions.length}
         entityName="filas"
         exportRows={filteredTransactions}
+        exportColumns={exportColumns}
         exportFilename={`panol_retiros_${getTodayArIso()}`}
       />
 
@@ -388,11 +443,12 @@ export default function PanolMovimientosPanel({
               <th className="py-2 px-1.5">Fecha ✎</th>
               <th className="py-2 px-1.5">Barco / Destino ✎</th>
               <th className="py-2 px-1.5">Orden de Trabajo (OT) ✎</th>
+              <th className="py-2 px-1.5">Contratista / Grupo ✎</th>
               <th className="py-2 px-1.5">Material Insumo ✎</th>
               <th className="py-2 px-1.5 text-right">Cant. ✎</th>
               <th className="py-2 px-1.5 text-right">Peso (kg) ✎</th>
-              <th className="py-2 px-1.5">Contratista / Grupo ✎</th>
-              <th className="py-2 px-1.5">Centro de Costo ✎</th>
+              {isAdmin && <th className="py-2 px-1.5 text-right whitespace-nowrap" title="Costo total del retiro en US$ (y unitario debajo) según precio congelado por quincena">Costo US$</th>}
+              {isAdmin && <th className="py-2 px-1.5 text-center whitespace-nowrap">Centro de Costo ✎</th>}
               <th className="py-2 px-1.5 whitespace-nowrap">Nº Remito ✎</th>
               <th className="py-2 px-1.5">Observaciones ✎</th>
               <th className="py-2 px-1.5 text-center">Acciones</th>
@@ -402,14 +458,14 @@ export default function PanolMovimientosPanel({
           <tbody className="divide-y divide-slate-800/60 font-sans">
             {loading ? (
               <tr>
-                <td colSpan={13} className="py-12 text-center text-slate-500 text-xs">
+                <td colSpan={totalColSpan} className="py-12 text-center text-slate-500 text-xs">
                   <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin mx-auto mb-2" />
                   <span>Cargando planilla de retiros de Pañol...</span>
                 </td>
               </tr>
             ) : filteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan={13} className="py-12 text-center text-slate-500 text-xs">
+                <td colSpan={totalColSpan} className="py-12 text-center text-slate-500 text-xs">
                   No se encontraron retiros con los filtros seleccionados.
                 </td>
               </tr>
@@ -639,7 +695,34 @@ export default function PanolMovimientosPanel({
                       )
                     })()}
 
-                    {/* 5. Material Insumo */}
+                    {/* 5. Operario / Contratista (tras OT) */}
+                    {(() => {
+                      const cp = getSpreadsheetCellProps(rowIndex, 'contractor_name')
+                      const currentVal = tx.worker_name || tx.contractor_name || ''
+                      return (
+                        <td
+                          {...cp.domProps}
+                          onDoubleClick={() => {
+                            const effShip = ships.find((s) => s.id === tx.ship_id)
+                            const effWo = workOrders.find((w) => w.id === tx.work_order_id)
+                            setContractorPickerModal({
+                              isOpen: true, txId: tx.id, currentValue: currentVal,
+                              shipId: tx.ship_id || '', shipName: effShip?.name || 'Astillero',
+                              workOrderId: tx.work_order_id || '',
+                              workOrderTitle: effWo ? (effWo.ot_number ? `#${effWo.ot_number} ${effWo.title}` : effWo.title) : '',
+                              isOtBlank: !tx.work_order_id
+                            })
+                          }}
+                          className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-bold text-cyan-300 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                          title="Doble clic para cambiar Operario o Contratista"
+                        >
+                          <HighlightText text={currentVal || 'Sin asignar'} query={searchQuery} />
+                          {renderFillHandle(cp)}
+                        </td>
+                      )
+                    })()}
+
+                    {/* 6. Material Insumo */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'material_id')
                       return (
@@ -663,30 +746,20 @@ export default function PanolMovimientosPanel({
                             <div className="flex items-center gap-1.5">
                               {mat?.image_url && (
                                 <img
-                                  src={mat.image_url}
-                                  alt=""
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    onPreviewImage(mat.image_url)
-                                  }}
+                                  src={mat.image_url} alt=""
+                                  onClick={(e) => { e.stopPropagation(); onPreviewImage(mat.image_url) }}
                                   className="w-4 h-4 rounded object-cover shrink-0 cursor-zoom-in border border-slate-700"
                                 />
                               )}
                               <HighlightText text={mat?.name || 'Insumo sin asignar'} query={searchQuery} />
                             </div>
                           )}
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
 
-                    {/* 6. Cantidad */}
+                    {/* 7. Cantidad */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'quantity_withdrawn')
                       const qtyFormula = getStoredCellFormula(tx, 'quantity_withdrawn')
@@ -694,52 +767,30 @@ export default function PanolMovimientosPanel({
                       return (
                         <td
                           {...cp.domProps}
-                          onDoubleClick={() =>
-                            setInlineEdit({
-                              id: tx.id,
-                              field: 'quantity_withdrawn',
-                              value: getEditableCellInitialValue(tx, 'quantity_withdrawn', tx.quantity_withdrawn ?? 1)
-                            })
-                          }
+                          onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'quantity_withdrawn', value: getEditableCellInitialValue(tx, 'quantity_withdrawn', tx.quantity_withdrawn ?? 1) })}
                           className={`py-1.5 px-1.5 text-right font-mono font-bold cursor-pointer whitespace-nowrap ${cp.className} ${isDeletionReq ? 'line-through' : 'text-emerald-400'}`}
                           title={formulaMeta?.tooltipText || 'Doble clic para editar cantidad (acepta fórmulas =1*0.5 o +42+45)'}
                         >
                           <FormulaCellCornerMark formula={qtyFormula} />
                           {inlineEdit.id === tx.id && inlineEdit.field === 'quantity_withdrawn' ? (
                             <FormulaNumericInput
-                              variant="cell"
-                              autoFocus
-                              maxDecimals={4}
-                              emptyValue={0}
-                              unitSuffix={mat?.unit_measure || 'un.'}
-                              value={inlineEdit.value}
+                              variant="cell" autoFocus maxDecimals={4} emptyValue={0}
+                              unitSuffix={mat?.unit_measure || 'un.'} value={inlineEdit.value}
                               onChange={(val) => setInlineEdit({ ...inlineEdit, value: val })}
-                              onCommit={(rawVal) => {
-                                handleSaveInlineTx(tx.id, 'quantity_withdrawn', rawVal)
-                                setInlineEdit({ id: null, field: null, value: '' })
-                              }}
+                              onCommit={(rawVal) => { handleSaveInlineTx(tx.id, 'quantity_withdrawn', rawVal); setInlineEdit({ id: null, field: null, value: '' }) }}
                               onCancel={() => setInlineEdit({ id: null, field: null, value: '' })}
                               onInvalid={(errMsg) => showFeedback('error', errMsg)}
                               className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none w-24 text-right"
                             />
                           ) : (
-                            <span>
-                              {formatFormulaNumericDisplay(tx.quantity_withdrawn, { maxDecimals: 3 })}{' '}
-                              {mat?.unit_measure || 'un.'}
-                            </span>
+                            <span>{formatFormulaNumericDisplay(tx.quantity_withdrawn, { maxDecimals: 3 })} {mat?.unit_measure || 'un.'}</span>
                           )}
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
 
-                    {/* 7. Peso (kg) */}
+                    {/* 8. Peso (kg) */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'weight_total')
                       const w = Number(tx.weight_total) || 0
@@ -752,21 +803,11 @@ export default function PanolMovimientosPanel({
                         >
                           {inlineEdit.id === tx.id && inlineEdit.field === 'weight_total' ? (
                             <input
-                              type="number"
-                              autoFocus
-                              step="any"
-                              min="0"
-                              value={inlineEdit.value}
+                              type="number" autoFocus step="any" min="0" value={inlineEdit.value}
                               onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onBlur={() => {
-                                handleSaveInlineTx(tx.id, 'weight_total', inlineEdit.value)
-                                setInlineEdit({ id: null, field: null, value: '' })
-                              }}
+                              onBlur={() => { handleSaveInlineTx(tx.id, 'weight_total', inlineEdit.value); setInlineEdit({ id: null, field: null, value: '' }) }}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSaveInlineTx(tx.id, 'weight_total', inlineEdit.value)
-                                  setInlineEdit({ id: null, field: null, value: '' })
-                                }
+                                if (e.key === 'Enter') { handleSaveInlineTx(tx.id, 'weight_total', inlineEdit.value); setInlineEdit({ id: null, field: null, value: '' }) }
                                 if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
                               }}
                               className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none w-16 text-right"
@@ -774,91 +815,42 @@ export default function PanolMovimientosPanel({
                           ) : (
                             <span>{w > 0 ? `${w.toFixed(2)} kg` : '—'}</span>
                           )}
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
 
-                    {/* 8. Operario / Contratista */}
-                    {(() => {
-                      const cp = getSpreadsheetCellProps(rowIndex, 'contractor_name')
-                      const currentVal = tx.worker_name || tx.contractor_name || ''
-
+                    {/* 9. Costo US$ (Solo Administrador) */}
+                    {isAdmin && (() => {
+                      const cp = getSpreadsheetCellProps(rowIndex, 'cost_total_usd')
                       return (
-                        <td
-                          {...cp.domProps}
-                          onDoubleClick={() => {
-                            const effShip = ships.find((s) => s.id === tx.ship_id)
-                            const effWo = workOrders.find((w) => w.id === tx.work_order_id)
-                            setContractorPickerModal({
-                              isOpen: true,
-                              txId: tx.id,
-                              currentValue: currentVal,
-                              shipId: tx.ship_id || '',
-                              shipName: effShip?.name || 'Astillero',
-                              workOrderId: tx.work_order_id || '',
-                              workOrderTitle: effWo ? (effWo.ot_number ? `#${effWo.ot_number} ${effWo.title}` : effWo.title) : '',
-                              isOtBlank: !tx.work_order_id
-                            })
-                          }}
-                          className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-bold text-cyan-300 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
-                          title="Doble clic para cambiar Operario o Contratista"
-                        >
-                          <HighlightText text={currentVal || 'Sin asignar'} query={searchQuery} />
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
-                        </td>
+                        <PanolMovimientoCostCell
+                          tx={tx} mat={mat} macroVariables={macroVariables} pricingPolicy={pricingPolicy}
+                          cp={cp} isDeletionReq={isDeletionReq} onOpenEditMaterial={onOpenEditMaterialModal}
+                          fillHandleNode={renderFillHandle(cp)}
+                        />
                       )
                     })()}
 
-                    {/* 9. Centro de Costo */}
-                    {(() => {
+                    {/* 10. Centro de Costo (Solo Administrador — Oculto al resto) */}
+                    {isAdmin && (() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'cost_center')
                       const isCliente = tx.cost_center === 'CLIENTE'
                       return (
                         <td
                           {...cp.domProps}
-                          onDoubleClick={() => {
-                            if (isAdmin) {
-                              handleSaveInlineTx(tx.id, 'cost_center', isCliente ? 'CONTRATISTA' : 'CLIENTE')
-                            } else {
-                              showFeedback('error', 'Solo el Administrador puede modificar el Centro de Costo.')
-                            }
-                          }}
+                          onDoubleClick={() => handleSaveInlineTx(tx.id, 'cost_center', isCliente ? 'CONTRATISTA' : 'CLIENTE')}
                           className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer text-center ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
-                          title={isAdmin ? 'Doble clic para alternar CLIENTE / CONTRATISTA' : 'Centro de Costo deducido'}
+                          title="Doble clic para alternar CLIENTE / CONTRATISTA"
                         >
                           {tx.cost_center ? (
-                            <span
-                              className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
-                                isCliente
-                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
-                                  : 'bg-amber-950 text-amber-300 border-amber-800'
-                              }`}
-                            >
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${isCliente ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-amber-950 text-amber-300 border-amber-800'}`}>
                               {tx.cost_center}
                             </span>
                           ) : (
                             <span className="text-slate-500 italic text-[10px]">—</span>
                           )}
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
@@ -1065,7 +1057,8 @@ export default function PanolMovimientosPanel({
         selectionStats={grid.selectionStats}
         globalAggregates={[
           { label: 'Σ CANT', value: panolTotals.totalQty.toLocaleString('es-AR') },
-          { label: 'Σ PESO', value: `${panolTotals.totalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg` }
+          { label: 'Σ PESO', value: `${panolTotals.totalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg` },
+          ...(isAdmin ? [{ label: 'Σ COSTO US$', value: formatUsd(panolTotals.totalUsd || 0), highlight: true }] : [])
         ]}
       />
 
