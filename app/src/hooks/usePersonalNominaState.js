@@ -1,10 +1,12 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from './useModuleFilterMemory'
 import {
   DEFAULT_ORG_ROLES,
   KNOWN_CONTRACTORS,
   KNOWN_TALLERES,
+  buildNominaSearchCorpusMap,
+  buildNominaContractMap,
   computeAvailableGroups,
   computeUniqueTrades,
   computeNominaKpiStats,
@@ -136,16 +138,21 @@ export function usePersonalNominaState({
     hasActiveFilters
   })
 
+  const deferredSearchTerm = useDeferredValue(searchTerm)
+  const searchCorpusMap = useMemo(() => buildNominaSearchCorpusMap(workers), [workers])
+  const contractMap = useMemo(() => buildNominaContractMap(workers), [workers])
+
   const filteredWorkers = useMemo(
     () => filterNominaWorkers(workers, {
-      searchTerm,
+      searchTerm: deferredSearchTerm,
       filterCenter,
       filterStatus,
       filterGroup,
       filterForemanOnly,
-      kpiFilter
+      kpiFilter,
+      searchCorpusMap
     }),
-    [workers, searchTerm, filterCenter, filterStatus, filterGroup, filterForemanOnly, kpiFilter]
+    [workers, deferredSearchTerm, filterCenter, filterStatus, filterGroup, filterForemanOnly, kpiFilter, searchCorpusMap]
   )
 
   const groupedSummary = useMemo(() => computeGroupedSummary(workers), [workers])
@@ -210,7 +217,7 @@ export function usePersonalNominaState({
     isRolesModalOpen, setIsRolesModalOpen,
     rolesFormData, setRolesFormData,
     savingRoles, setSavingRoles,
-    searchTerm, setSearchTerm,
+    searchTerm, setSearchTerm, deferredSearchTerm, contractMap,
     filterCenter, setFilterCenter,
     filterStatus, setFilterStatus,
     filterGroup, setFilterGroup,

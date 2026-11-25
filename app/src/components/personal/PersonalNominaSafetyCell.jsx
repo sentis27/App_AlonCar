@@ -2,14 +2,20 @@ import { SAFETY_ITEMS_OPTIONS, SAFETY_ITEMS_HELP_TEXT } from '../../lib/workCost
 
 export default function PersonalNominaSafetyCell({
   w,
-  getCellClass,
-  isEditingCell,
-  inlineCellEdit,
+  rowIndex,
+  cellClassName,
+  isEditing,
+  editingValue,
+  showFillHandle = false,
+  gridActions,
   setInlineCellEdit,
   commitInlineWorkerEdit
 }) {
   return (
     <td
+      onClick={(e) => gridActions?.onCellClick(rowIndex, 6, e)}
+      onMouseDown={(e) => gridActions?.onCellMouseDown(rowIndex, 6, e)}
+      onMouseEnter={() => gridActions?.onCellMouseEnter(rowIndex, 6)}
       onDoubleClick={(e) => {
         e.stopPropagation()
         if (w.admin_center === 'ASTILLERO') return
@@ -20,12 +26,12 @@ export default function PersonalNominaSafetyCell({
           ? 'Personal propio de Astillero: siempre ASTILLERO (solo costo de referencia).'
           : `Doble clic para definir si descuenta EPP (CONTRATISTA) o es excepción de zona gris (ASTILLERO).\n${SAFETY_ITEMS_HELP_TEXT}`
       }
-      className={getCellClass(6, 'py-2 px-1.5')}
+      className={cellClassName}
     >
-      {isEditingCell('safety_items') ? (
+      {isEditing ? (
         <select
           autoFocus
-          value={inlineCellEdit.value}
+          value={editingValue}
           onChange={(e) => setInlineCellEdit((prev) => ({ ...prev, value: e.target.value }))}
           onBlur={() => commitInlineWorkerEdit()}
           onKeyDown={(e) => {
@@ -49,6 +55,13 @@ export default function PersonalNominaSafetyCell({
             ? 'ASTILLERO (Z.Gris)'
             : (w.safety_items || 'CONTRATISTA')}
         </span>
+      )}
+      {showFillHandle && (
+        <div
+          onMouseDown={gridActions?.onFillHandleMouseDown}
+          onDoubleClick={gridActions?.onFillHandleDoubleClick}
+          className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+        />
       )}
     </td>
   )

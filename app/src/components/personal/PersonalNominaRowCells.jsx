@@ -2,6 +2,7 @@ import { Phone } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import {
   ASTILLERO_BASE_CATEGORIES,
+  formatArsRate,
   getCategoryBadgeStyle,
   getRubroBadgeColor
 } from '../../lib/personalNominaHelpers'
@@ -12,10 +13,11 @@ export default function PersonalNominaRowCells({
   dollarRate,
   searchTerm,
   uniqueTrades,
-  nominaGrid,
+  gridActions,
   getCellClass,
-  isEditingCell,
-  inlineCellEdit,
+  fillHandleColIndex,
+  editingColKey,
+  editingValue,
   setInlineCellEdit,
   commitInlineWorkerEdit,
   onOpenAddTradeModal
@@ -25,9 +27,9 @@ export default function PersonalNominaRowCells({
     : (w.hourly_rate_usd || 0)
 
   const cellProps = (colIdx, colKey, initVal, title, baseClass) => ({
-    onClick: (e) => nominaGrid.handleCellClick(rowIndex, colIdx, e),
-    onMouseDown: (e) => nominaGrid.handleCellMouseDown(rowIndex, colIdx, e),
-    onMouseEnter: () => nominaGrid.handleCellMouseEnter(rowIndex, colIdx),
+    onClick: (e) => gridActions.onCellClick(rowIndex, colIdx, e),
+    onMouseDown: (e) => gridActions.onCellMouseDown(rowIndex, colIdx, e),
+    onMouseEnter: () => gridActions.onCellMouseEnter(rowIndex, colIdx),
     onDoubleClick: (e) => {
       e.stopPropagation()
       setInlineCellEdit({ rowId: w.id, colKey, value: initVal })
@@ -37,11 +39,11 @@ export default function PersonalNominaRowCells({
   })
 
   const renderFillHandle = (colIdx) =>
-    nominaGrid.shouldRenderFillHandle(rowIndex, colIdx) ? (
+    fillHandleColIndex === colIdx ? (
       <div
-        onMouseDown={nominaGrid.handleFillHandleMouseDown}
-        onDoubleClick={nominaGrid.handleFillHandleDoubleClick}
-        className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
+        onMouseDown={gridActions.onFillHandleMouseDown}
+        onDoubleClick={gridActions.onFillHandleDoubleClick}
+        className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 cursor-crosshair z-30"
       />
     ) : null
 
@@ -55,11 +57,11 @@ export default function PersonalNominaRowCells({
     <>
       {/* Col 1: Nombre y Apellido */}
       <td {...cellProps(0, 'name', w.name || '', 'Doble clic para editar nombre', 'py-2 px-2')}>
-        {isEditingCell('name') ? (
+        {editingColKey === 'name' ? (
           <input
             type="text"
             autoFocus
-            value={inlineCellEdit.value}
+            value={editingValue}
             onChange={(e) => setInlineCellEdit((prev) => ({ ...prev, value: e.target.value }))}
             onBlur={() => commitInlineWorkerEdit()}
             onKeyDown={inlineKeyDown}
@@ -88,11 +90,11 @@ export default function PersonalNominaRowCells({
 
       {/* Col 2: Categoría */}
       <td {...cellProps(1, 'category', w.category || '', 'Doble clic para editar categoría', 'py-2 px-1.5 text-center')}>
-        {isEditingCell('category') ? (
+        {editingColKey === 'category' ? (
           w.admin_center === 'ASTILLERO' ? (
             <select
               autoFocus
-              value={inlineCellEdit.value}
+              value={editingValue}
               onChange={(e) => setInlineCellEdit((prev) => ({ ...prev, value: e.target.value }))}
               onBlur={() => commitInlineWorkerEdit()}
               onKeyDown={inlineKeyDown}
@@ -107,7 +109,7 @@ export default function PersonalNominaRowCells({
               type="text"
               list="nomina-categories-list"
               autoFocus
-              value={inlineCellEdit.value}
+              value={editingValue}
               onChange={(e) => setInlineCellEdit((prev) => ({ ...prev, value: e.target.value }))}
               onBlur={() => commitInlineWorkerEdit()}
               onKeyDown={inlineKeyDown}
@@ -126,10 +128,10 @@ export default function PersonalNominaRowCells({
 
       {/* Col 3: Rubro */}
       <td {...cellProps(2, 'trade', w.trade || '', 'Doble clic para seleccionar o agregar rubro', 'py-2 px-1.5')}>
-        {isEditingCell('trade') ? (
+        {editingColKey === 'trade' ? (
           <select
             autoFocus
-            value={inlineCellEdit.value}
+            value={editingValue}
             onChange={(e) => {
               const val = e.target.value
               if (val === '__ADD_NEW_TRADE__') {
@@ -177,20 +179,20 @@ export default function PersonalNominaRowCells({
 
       {/* Col 4: AR$/Hora */}
       <td {...cellProps(3, 'hourly_rate_ars', w.hourly_rate_ars ?? 0, 'Doble clic para editar tarifa AR$/Hora', 'py-2 px-2 text-right font-mono font-bold text-white')}>
-        {isEditingCell('hourly_rate_ars') ? (
+        {editingColKey === 'hourly_rate_ars' ? (
           <input
             type="number"
             step="50"
             min="0"
             autoFocus
-            value={inlineCellEdit.value}
+            value={editingValue}
             onChange={(e) => setInlineCellEdit((prev) => ({ ...prev, value: e.target.value }))}
             onBlur={() => commitInlineWorkerEdit()}
             onKeyDown={inlineKeyDown}
             className="w-24 bg-slate-950 border border-emerald-400 rounded px-2 py-0.5 text-right text-xs text-white font-mono focus:outline-none"
           />
         ) : w.hourly_rate_ars > 0 ? (
-          <span>$<HighlightText text={parseFloat(w.hourly_rate_ars).toLocaleString('es-AR')} query={searchTerm} /></span>
+          <span>$<HighlightText text={formatArsRate(w.hourly_rate_ars)} query={searchTerm} /></span>
         ) : (
           <span className="text-slate-600">-</span>
         )}
@@ -204,12 +206,12 @@ export default function PersonalNominaRowCells({
 
       {/* Col 5: Grupo de Trabajo */}
       <td {...cellProps(4, 'work_group', w.work_group || '', 'Doble clic para editar Grupo de Trabajo', 'py-2 px-2')}>
-        {isEditingCell('work_group') ? (
+        {editingColKey === 'work_group' ? (
           <input
             type="text"
             list="nomina-groups-list"
             autoFocus
-            value={inlineCellEdit.value}
+            value={editingValue}
             onChange={(e) => setInlineCellEdit((prev) => ({ ...prev, value: e.target.value }))}
             onBlur={() => commitInlineWorkerEdit()}
             onKeyDown={inlineKeyDown}
@@ -225,10 +227,10 @@ export default function PersonalNominaRowCells({
 
       {/* Col 6: Centro Admin */}
       <td {...cellProps(5, 'admin_center', w.admin_center || 'ASTILLERO', 'Doble clic para cambiar Centro Administrativo', 'py-2 px-1.5')}>
-        {isEditingCell('admin_center') ? (
+        {editingColKey === 'admin_center' ? (
           <select
             autoFocus
-            value={inlineCellEdit.value}
+            value={editingValue}
             onChange={(e) => setInlineCellEdit((prev) => ({ ...prev, value: e.target.value }))}
             onBlur={() => commitInlineWorkerEdit()}
             onKeyDown={inlineKeyDown}

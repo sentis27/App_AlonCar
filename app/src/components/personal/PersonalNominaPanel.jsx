@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { Plus, Trash2, X, Building2, Settings } from 'lucide-react'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
@@ -30,7 +31,7 @@ export default function PersonalNominaPanel({
     setTargetWorkerForNewTrade,
     orgRoles, isRolesModalOpen, setIsRolesModalOpen,
     rolesFormData, setRolesFormData, savingRoles,
-    searchTerm, setSearchTerm,
+    searchTerm, setSearchTerm, deferredSearchTerm, contractMap,
     filterCenter, setFilterCenter,
     filterStatus, setFilterStatus,
     filterGroup, setFilterGroup,
@@ -64,11 +65,13 @@ export default function PersonalNominaPanel({
     handleAddTradeSubmit
   } = actions
 
-  const openAddTradeModal = (workerTarget = null) => {
+  const openAddTradeModal = useCallback((workerTarget = null) => {
     setTargetWorkerForNewTrade(workerTarget)
     setNewTradeInput('')
     setIsAddTradeModalOpen(true)
-  }
+  }, [setTargetWorkerForNewTrade, setNewTradeInput, setIsAddTradeModalOpen])
+
+  const filterResetKey = `${deferredSearchTerm}|${filterCenter}|${filterStatus}|${filterGroup}|${filterForemanOnly ? 1 : 0}|${kpiFilter || ''}`
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
@@ -174,7 +177,9 @@ export default function PersonalNominaPanel({
           nominaGrid={nominaGrid}
           filteredWorkers={filteredWorkers}
           dollarRate={dollarRate}
-          searchTerm={searchTerm}
+          searchTerm={deferredSearchTerm}
+          filterResetKey={filterResetKey}
+          contractMap={contractMap}
           uniqueTrades={uniqueTrades}
           inlineCellEdit={inlineCellEdit}
           setInlineCellEdit={setInlineCellEdit}

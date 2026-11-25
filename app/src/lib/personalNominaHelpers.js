@@ -3,16 +3,36 @@
 // Sin dependencias de React ni Supabase: 100% testeable en Node.
 // ==============================================================================
 
-import { matchesUniversalSearch } from './searchEngine.js'
+import { matchesUniversalSearch, buildUniversalSearchCorpus } from './searchEngine.js'
 import { computeContractExpiration } from './workCostRules.js'
 
-export const ASTILLERO_BASE_CATEGORIES = [
-  'AYUDANTE',
-  'OFICIAL',
-  '1/2 OFICIAL',
-  'APRENDIZ',
-  'OFICIAL BLACK'
-]
+const ARS_RATE_FORMATTER = new Intl.NumberFormat('es-AR')
+
+export const formatArsRate = (value) => {
+  const num = parseFloat(value)
+  return Number.isFinite(num) ? ARS_RATE_FORMATTER.format(num) : '0'
+}
+
+export function buildNominaSearchCorpusMap(workers = []) {
+  const map = new Map()
+  for (const w of workers) {
+    if (w?.id != null) map.set(w.id, buildUniversalSearchCorpus(w))
+  }
+  return map
+}
+
+export function buildNominaContractMap(workers = []) {
+  const map = new Map()
+  const now = new Date()
+  for (const w of workers) {
+    if (w?.admin_center === 'ASTILLERO') {
+      map.set(w.id, computeContractExpiration(w.contract_type, w.contract_start_date, now))
+    }
+  }
+  return map
+}
+
+export const ASTILLERO_BASE_CATEGORIES = ['AYUDANTE', 'OFICIAL', '1/2 OFICIAL', 'APRENDIZ', 'OFICIAL BLACK']
 
 export const BASE_NOMINA_TRADES = [
   'CALDERERIA', 'CARPINTERIA', 'COBRERIA', 'ELECTRICIDAD', 'FIBRA VIDRIO',
@@ -136,10 +156,15 @@ export function filterNominaWorkers(workers = [], {
   filterStatus = 'todos',
   filterGroup = 'todos',
   filterForemanOnly = false,
-  kpiFilter = null
+  kpiFilter = null,
+  searchCorpusMap = null
 } = {}) {
+  const hasSearch = Boolean(searchTerm && searchTerm.trim())
   return workers.filter((w) => {
-    if (searchTerm && !matchesUniversalSearch(w, searchTerm)) return false
+    if (hasSearch) {
+      const target = searchCorpusMap?.get(w.id) ?? w
+      if (!matchesUniversalSearch(target, searchTerm)) return false
+    }
     if (filterCenter !== 'todos' && w.admin_center !== filterCenter) return false
     if (filterStatus !== 'todos' && w.status !== filterStatus) return false
     if (filterGroup !== 'todos' && w.work_group !== filterGroup) return false

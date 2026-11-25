@@ -1,10 +1,13 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
+import RouteErrorBoundary from './canonical/RouteErrorBoundary'
 import { Menu } from 'lucide-react'
 
 export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const location = useLocation()
+  const routeResetKey = `${location.pathname}${location.search}`
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
@@ -38,7 +41,9 @@ export default function Layout() {
 
         {/* Área de contenido con scroll suave y aprovechamiento total del ancho */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5">
-          <Outlet />
+          <RouteErrorBoundary resetKey={routeResetKey}>
+            <Outlet />
+          </RouteErrorBoundary>
         </main>
       </div>
     </div>

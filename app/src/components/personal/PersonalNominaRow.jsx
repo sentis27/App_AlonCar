@@ -1,21 +1,67 @@
+import { memo } from 'react'
 import { Pencil, Trash2, Square, CheckSquare, CopyPlus } from 'lucide-react'
 import { computeContractExpiration } from '../../lib/workCostRules'
 import { formatDateAr, formatDayMonthAr } from '../../lib/dateTimeCanonical'
 import PersonalNominaRowCells from './PersonalNominaRowCells'
 import PersonalNominaSafetyCell from './PersonalNominaSafetyCell'
 
-export default function PersonalNominaRow({
+const PERMISSION_DEFS = [
+  {
+    key: 'P',
+    field: 'can_withdraw_materials',
+    activeCls: 'bg-emerald-950 text-emerald-400 border border-emerald-600 hover:bg-emerald-900 shadow-sm',
+    idleCls: 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through',
+    sizeCls: 'w-5',
+    titleOn: 'Habilitado para retirar de Pañol (P). Clic para deshabilitar.',
+    titleOff: 'Deshabilitado para Pañol (P). Clic para habilitar.'
+  },
+  {
+    key: 'H',
+    field: 'can_impute_hours',
+    activeCls: 'bg-cyan-950 text-cyan-400 border border-cyan-600 hover:bg-cyan-900 shadow-sm',
+    idleCls: 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through',
+    sizeCls: 'w-5',
+    titleOn: 'Habilitado para imputar Horas (H). Clic para deshabilitar.',
+    titleOff: 'Deshabilitado para Horas (H). Clic para habilitar.'
+  },
+  {
+    key: '3ros',
+    field: 'can_charge_third_party',
+    activeCls: 'bg-purple-950 text-purple-300 border border-purple-500 hover:bg-purple-900 shadow-sm',
+    idleCls: 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through',
+    sizeCls: 'px-1.5',
+    titleOn: 'Habilitado para Terceros / Presupuestos (3ros). Clic para deshabilitar.',
+    titleOff: 'Deshabilitado para Terceros (3ros). Clic para habilitar.'
+  },
+  {
+    key: 'JO',
+    field: 'is_foreman',
+    activeCls: 'bg-amber-950 text-amber-300 border border-amber-500 hover:bg-amber-900 shadow-sm',
+    idleCls: 'bg-slate-900 text-slate-600 border border-slate-800 hover:bg-slate-800 hover:text-slate-400',
+    sizeCls: 'px-1 text-[9px]',
+    titleOn: 'Jefe de Obra habilitado en Órdenes de Trabajo (JO). Clic para desmarcar.',
+    titleOff: 'Marcar como Jefe de Obra (JO) para Órdenes de Trabajo.'
+  }
+]
+
+const PersonalNominaRow = memo(function PersonalNominaRow({
   w,
   rowIndex,
   dollarRate,
   searchTerm,
   uniqueTrades,
-  nominaGrid,
-  inlineCellEdit,
+  contractExp,
+  isRowSelected,
+  activeColIndex,
+  selStartCol,
+  selEndCol,
+  fillColIndex,
+  fillHandleColIndex,
+  editingColKey,
+  editingValue,
+  gridActions,
   setInlineCellEdit,
   commitInlineWorkerEdit,
-  contextMenuTarget,
-  setContextMenuTarget,
   onOpenAddTradeModal,
   onToggleStatus,
   onTogglePermission,
@@ -24,12 +70,11 @@ export default function PersonalNominaRow({
   onDelete
 }) {
   const isActivo = w.status === 'ACTIVO'
-  const isRowSelected = nominaGrid.isRowSelected(w.id)
 
   const getCellClass = (colIdx, baseClass = '') => {
-    const active = nominaGrid.isCellActive(rowIndex, colIdx)
-    const fill = nominaGrid.isCellInFillPreview(rowIndex, colIdx)
-    const sel = nominaGrid.isCellSelected(rowIndex, colIdx)
+    const active = activeColIndex === colIdx
+    const fill = fillColIndex === colIdx
+    const sel = selStartCol !== -1 && colIdx >= selStartCol && colIdx <= selEndCol
     return `${baseClass} relative cursor-cell ${
       active ? 'ring-2 ring-inset ring-emerald-400 bg-emerald-950/30' :
       fill ? 'bg-emerald-500/20 ring-1 ring-inset ring-emerald-400/60' :
@@ -37,12 +82,9 @@ export default function PersonalNominaRow({
     }`
   }
 
-  const isEditingCell = (colKey) =>
-    Boolean(inlineCellEdit && inlineCellEdit.rowId === w.id && inlineCellEdit.colKey === colKey)
-
-  const contractBadge = () => {
+  const renderContractBadge = () => {
     if (w.admin_center !== 'ASTILLERO') return <span className="text-slate-600">—</span>
-    const exp = computeContractExpiration(w.contract_type, w.contract_start_date)
+    const exp = contractExp || computeContractExpiration(w.contract_type, w.contract_start_date)
     if (!exp.hasContract) return <span className="text-slate-500 italic">Sin definir</span>
     if (exp.isPermanent) {
       return (
@@ -73,24 +115,7 @@ export default function PersonalNominaRow({
 
   return (
     <tr
-      onContextMenu={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        if (nominaGrid.activeCell?.rowIndex !== rowIndex) {
-          nominaGrid.setActiveCell({ rowIndex, colIndex: nominaGrid.activeCell?.colIndex ?? 0 })
-          nominaGrid.setSelectionRange?.(null)
-        }
-        setContextMenuTarget({
-          row: w,
-          rowIndex,
-          x: e.clientX,
-          y: e.clientY,
-          isRowHeader: false,
-          entityType: 'workers',
-          recordId: w.id,
-          recordLabel: w.name
-        })
-      }}
+      onContextMenu={(e) => gridActions.onContextMenuRow(w, rowIndex, e, false)}
       className={`group transition-colors select-none ${
         isRowSelected
           ? 'bg-cyan-950/35 hover:bg-cyan-950/45 text-cyan-200'
@@ -104,30 +129,14 @@ export default function PersonalNominaRow({
         <div className="flex flex-col items-center justify-center gap-0.5">
           <button
             type="button"
-            onClick={() => nominaGrid.toggleSelectRow(w.id)}
+            onClick={() => gridActions.onToggleSelectRow(w.id)}
             className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
           >
             {isRowSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
           </button>
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setContextMenuTarget(
-                contextMenuTarget?.recordId === w.id
-                  ? null
-                  : {
-                      row: w,
-                      rowIndex,
-                      x: e.clientX,
-                      y: e.clientY,
-                      isRowHeader: true,
-                      entityType: 'workers',
-                      recordId: w.id,
-                      recordLabel: w.name
-                    }
-              )
-            }}
+            onClick={(e) => gridActions.onContextMenuRow(w, rowIndex, e, true)}
             className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded transition-all cursor-pointer hover:bg-cyan-950/90 hover:text-cyan-300 hover:ring-1 hover:ring-cyan-500/60 ${
               isRowSelected ? 'text-cyan-300' : 'text-slate-500 group-hover:text-cyan-400'
             }`}
@@ -144,17 +153,18 @@ export default function PersonalNominaRow({
         dollarRate={dollarRate}
         searchTerm={searchTerm}
         uniqueTrades={uniqueTrades}
-        nominaGrid={nominaGrid}
+        gridActions={gridActions}
         getCellClass={getCellClass}
-        isEditingCell={isEditingCell}
-        inlineCellEdit={inlineCellEdit}
+        fillHandleColIndex={fillHandleColIndex}
+        editingColKey={editingColKey}
+        editingValue={editingValue}
         setInlineCellEdit={setInlineCellEdit}
         commitInlineWorkerEdit={commitInlineWorkerEdit}
         onOpenAddTradeModal={onOpenAddTradeModal}
       />
 
       {/* Contrato */}
-      <td className="py-2 px-1.5 text-[10px]">{contractBadge()}</td>
+      <td className="py-2 px-1.5 text-[10px]">{renderContractBadge()}</td>
 
       {/* Estado */}
       <td className="py-2 px-1.5 text-center">
@@ -205,9 +215,12 @@ export default function PersonalNominaRow({
       {/* Elem. Seg. */}
       <PersonalNominaSafetyCell
         w={w}
-        getCellClass={getCellClass}
-        isEditingCell={isEditingCell}
-        inlineCellEdit={inlineCellEdit}
+        rowIndex={rowIndex}
+        cellClassName={getCellClass(6, 'py-2 px-1.5')}
+        isEditing={editingColKey === 'safety_items'}
+        editingValue={editingColKey === 'safety_items' ? editingValue : ''}
+        showFillHandle={fillHandleColIndex === 6}
+        gridActions={gridActions}
         setInlineCellEdit={setInlineCellEdit}
         commitInlineWorkerEdit={commitInlineWorkerEdit}
       />
@@ -215,22 +228,20 @@ export default function PersonalNominaRow({
       {/* Permisos */}
       <td className="py-2 px-1.5 text-center">
         <div className="flex items-center justify-center gap-1">
-          {[
-            { key: 'P', active: w.can_withdraw_materials, activeCls: 'bg-emerald-950 text-emerald-400 border border-emerald-600 hover:bg-emerald-900 shadow-sm', idleCls: 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through', sizeCls: 'w-5', titleOn: 'Habilitado para retirar de Pañol (P). Clic para deshabilitar.', titleOff: 'Deshabilitado para Pañol (P). Clic para habilitar.' },
-            { key: 'H', active: w.can_impute_hours, activeCls: 'bg-cyan-950 text-cyan-400 border border-cyan-600 hover:bg-cyan-900 shadow-sm', idleCls: 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through', sizeCls: 'w-5', titleOn: 'Habilitado para imputar Horas (H). Clic para deshabilitar.', titleOff: 'Deshabilitado para Horas (H). Clic para habilitar.' },
-            { key: '3ros', active: w.can_charge_third_party, activeCls: 'bg-purple-950 text-purple-300 border border-purple-500 hover:bg-purple-900 shadow-sm', idleCls: 'bg-slate-900 text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400 line-through', sizeCls: 'px-1.5', titleOn: 'Habilitado para Terceros / Presupuestos (3ros). Clic para deshabilitar.', titleOff: 'Deshabilitado para Terceros (3ros). Clic para habilitar.' },
-            { key: 'JO', active: w.is_foreman, activeCls: 'bg-amber-950 text-amber-300 border border-amber-500 hover:bg-amber-900 shadow-sm', idleCls: 'bg-slate-900 text-slate-600 border border-slate-800 hover:bg-slate-800 hover:text-slate-400', sizeCls: 'px-1 text-[9px]', titleOn: 'Jefe de Obra habilitado en Órdenes de Trabajo (JO). Clic para desmarcar.', titleOff: 'Marcar como Jefe de Obra (JO) para Órdenes de Trabajo.' }
-          ].map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              onClick={() => onTogglePermission(w, p.key)}
-              className={`${p.sizeCls} h-5 rounded flex items-center justify-center text-[10px] font-black transition-all cursor-pointer ${p.active ? p.activeCls : p.idleCls}`}
-              title={p.active ? p.titleOn : p.titleOff}
-            >
-              {p.key}
-            </button>
-          ))}
+          {PERMISSION_DEFS.map((p) => {
+            const active = Boolean(w[p.field])
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => onTogglePermission(w, p.key)}
+                className={`${p.sizeCls} h-5 rounded flex items-center justify-center text-[10px] font-black transition-all cursor-pointer ${active ? p.activeCls : p.idleCls}`}
+                title={active ? p.titleOn : p.titleOff}
+              >
+                {p.key}
+              </button>
+            )
+          })}
         </div>
       </td>
 
@@ -265,4 +276,6 @@ export default function PersonalNominaRow({
       </td>
     </tr>
   )
-}
+})
+
+export default PersonalNominaRow
