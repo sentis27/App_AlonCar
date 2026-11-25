@@ -6,6 +6,57 @@
 import { matchesUniversalSearch } from './searchEngine.js'
 import { formatUsd, formatKg } from './drydockCatalogConstants.js'
 import { matchesMaterialQuickType } from './filterThemeConstants.js'
+import { compareIsoDatesDesc } from './dateTimeCanonical.js'
+import { getModuleFilterConfig } from './moduleFilterConfigs.js'
+
+export const EQUIPMENT_KPI_LABELS = {
+  GRUA_GRANDE: 'Grúa Grande',
+  GRUA_CHICA: 'Grúa Chica',
+  PALA: 'Pala'
+}
+
+/**
+ * Comparador canónico por Orden de Trabajo (OT) para las 3 Hojas Solo Lectura (Zona 5):
+ * 1. Filas con OT asignada primero; filas Sin OT al final.
+ * 2. Orden natural por número de OT (`OT-1`, `OT-2`, ..., `OT-9`, `OT-10`).
+ * 3. Agrupación continua por título / ID de OT.
+ * 4. Desempate por fecha ISO real descendente (`FL-024`) e ID determinístico.
+ */
+export function compareResumenRowsByWorkOrder(a = {}, b = {}) {
+  const aHasOt = Boolean(a?.workOrderId)
+  const bHasOt = Boolean(b?.workOrderId)
+  if (aHasOt !== bHasOt) return aHasOt ? -1 : 1
+
+  if (aHasOt && bHasOt) {
+    const aNum = String(a?.otNumber || '').trim()
+    const bNum = String(b?.otNumber || '').trim()
+    const numCmp = aNum.localeCompare(bNum, 'es', { numeric: true, sensitivity: 'base' })
+    if (numCmp !== 0) return numCmp
+
+    const titleCmp = String(a?.otTitle || '').localeCompare(String(b?.otTitle || ''), 'es', { sensitivity: 'base' })
+    if (titleCmp !== 0) return titleCmp
+
+    const idCmp = String(a?.workOrderId || '').localeCompare(String(b?.workOrderId || ''))
+    if (idCmp !== 0) return idCmp
+  }
+
+  const dateCmp = compareIsoDatesDesc(a?.date, b?.date)
+  if (dateCmp !== 0) return dateCmp
+
+  return String(a?.id || '').localeCompare(String(b?.id || ''))
+}
+
+/**
+ * Resuelve los filtros limpios de lanzamiento cuando el usuario hace clic en un
+ * botón-atajo del Resumen principal (`mode === 'SUMMARY_SHORTCUT'`).
+ */
+export function buildCleanSheetShortcutFilters(moduleKey, kpi = 'ALL') {
+  const { defaults = {} } = getModuleFilterConfig(moduleKey)
+  return {
+    ...defaults,
+    kpiFilter: kpi || 'ALL'
+  }
+}
 
 export function scopeResumenRows(rows = [], { shipId = null, costScope = 'GENERAL', activeOtId = null } = {}) {
   return rows.filter((r) => {
@@ -81,7 +132,7 @@ export function filterResumenMaterialRows(scopedBaseRows = [], {
     if (onlyKgPositive && Number(row.weightKg) <= 0) return false
     if (searchQuery && !matchesUniversalSearch(row, searchQuery)) return false
     return true
-  })
+  }).sort(compareResumenRowsByWorkOrder)
 }
 
 export function computeHorasKpis(scopedBaseRows = []) {
@@ -127,7 +178,7 @@ export function filterResumenLaborRows(scopedBaseRows = [], {
     if (rubroFilter !== 'ALL' && String(row.rubro || '').trim() !== rubroFilter) return false
     if (searchQuery && !matchesUniversalSearch(row, searchQuery)) return false
     return true
-  })
+  }).sort(compareResumenRowsByWorkOrder)
 }
 
 export function computeTercerosKpis(scopedBaseRows = []) {
@@ -166,5 +217,5 @@ export function filterResumenThirdPartyRows(scopedBaseRows = [], {
     if (voucherFilter !== 'ALL' && row.voucherType !== voucherFilter) return false
     if (searchQuery && !matchesUniversalSearch(row, searchQuery)) return false
     return true
-  })
+  }).sort(compareResumenRowsByWorkOrder)
 }

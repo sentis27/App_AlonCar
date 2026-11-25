@@ -155,14 +155,12 @@ export async function fetchManagerialData() {
     laborLogsRepository.listLaborLogs({
       select: 'id, ship_id, work_order_id, work_item_id, worker_id, worker_name, worker_type, rubro, work_type, cost_center, hours_worked, hours_normal, hours_extra_50, hours_extra_100, approval_status, review_reason, notes, date_logged, created_at',
       orderBy: [{ column: 'date_logged', ascending: false }],
-      limit: 4000,
     }),
     rateCardsRepository.listRateCards({
       select: 'id, period, year, month, quincena, admin_center, entity_name, rate_oficial_ars, rate_oficial_usd, has_ayudante, rate_ayudante_ars, rate_ayudante_usd, dollar_rate',
     }),
     inventoryTransactionsRepository.listTransactions({
       select: 'id, material_id, work_order_id, work_item_id, ship_id, worker_id, worker_name, contractor_name, movement_type, quantity_withdrawn, unit_cost_ars_snapshot, unit_cost_usd_snapshot, weight_total, cost_center, voucher_number, notes, transaction_date, created_at, cell_formulas, is_deletion_requested',
-      limit: 3000,
     }),
     materialsRepository.listMaterials({
       select: 'id, name, category, rubro, cost_ars, cost_usd, weight_kg, current_stock, minimum_stock, unit_measure, requires_stock_control',
@@ -171,7 +169,6 @@ export async function fetchManagerialData() {
     purchaseOrdersRepository.listOrders({
       select: 'id, ship_id, work_order_id, charge_type, status, material_id, material_name_raw, quantity, received_quantity, unit_measure, supplier_quoted_price, system_unit_price, currency, order_date, delivery_date, created_at, cell_formulas, invoice_number, remito_number, requested_by_name, observations',
       orderBy: [{ column: 'order_date', ascending: false }],
-      limit: 2000,
     }),
     thirdPartyServicesRepository.listServices({
       select: 'id, ship_id, work_order_id, work_item_id, contractor_name, trade, voucher_type, voucher_number, invoice_number, supplier_remito_number, budget_number, internal_remito_number, amount_ars, usd_rate, amount_usd, cell_formulas, service_date, entry_date, voucher_date, direct_observations, specific_observations, is_active, audit_status, created_at',
@@ -321,6 +318,7 @@ export function enrichMaterialMovements({
       id: `tx_${tx.id}`,
       rawId: tx.id,
       sourceType: 'PANOL_TX',
+      sourceLabel: 'PAÑOL',
       date: txDateIso,
       dateDisplay: formatDateAr(txDateIso, { fallback: '' }),
       createdAt: txCreatedIso,
@@ -330,6 +328,7 @@ export function enrichMaterialMovements({
       workOrderId: tx.work_order_id || null,
       otNumber: resolvedWo?.ot_number || 'Sin OT',
       otTitle: resolvedWo?.title || '',
+      otDescription: resolvedWo?.description || '',
       otLabel: formatOtAnalysisLabel({
         id: tx.work_order_id || 'SIN_OT',
         otNumber: resolvedWo?.ot_number || 'Sin OT',
@@ -366,7 +365,9 @@ export function enrichMaterialMovements({
       notes: tx.notes || '',
       isDeletionRequested: Boolean(tx.is_deletion_requested),
       hasMissingOt: !tx.work_order_id,
-      hasZeroPrice: isPanolTxZeroCost({ ...tx, unitUsd, category: logicalCategory }, mat),
+      hasZeroPrice:
+        !classification.referenceOnly &&
+        (isPanolTxZeroCost({ ...tx, unitUsd, category: logicalCategory }, mat) || Number(classification.shipDirectUsd || 0) <= 0),
       classification
     })
   }
@@ -403,6 +404,7 @@ export function enrichMaterialMovements({
       id: `po_${po.id}`,
       rawId: po.id,
       sourceType: 'COMPRA_DIRECTA',
+      sourceLabel: 'OC DIRECTA',
       date: dateStr,
       dateDisplay: formatDateAr(dateStr, { fallback: '' }),
       createdAt: poCreatedIso,
@@ -412,6 +414,7 @@ export function enrichMaterialMovements({
       workOrderId: po.work_order_id || null,
       otNumber: resolvedWo?.ot_number || 'Sin OT',
       otTitle: resolvedWo?.title || '',
+      otDescription: resolvedWo?.description || '',
       otLabel: formatOtAnalysisLabel({
         id: po.work_order_id || 'SIN_OT',
         otNumber: resolvedWo?.ot_number || 'Sin OT',
@@ -441,7 +444,7 @@ export function enrichMaterialMovements({
       notes: po.observations || `OC Directa (${po.status})`,
       isDeletionRequested: false,
       hasMissingOt: !po.work_order_id,
-      hasZeroPrice: isDirectPurchaseZeroCost(po) || unitUsd <= 0,
+      hasZeroPrice: isDirectPurchaseZeroCost(po) || unitUsd <= 0 || totalUsd <= 0,
       classification: { bucket: 'COMPRA_DIRECTA_OBRA' }
     })
   }
@@ -649,6 +652,7 @@ export function enrichLaborLogs({
         workOrderId: log.work_order_id || null,
         otNumber: resolvedWo?.ot_number || 'Sin OT',
         otTitle: resolvedWo?.title || '',
+        otDescription: resolvedWo?.description || '',
         otLabel: formatOtAnalysisLabel({
           id: log.work_order_id || 'SIN_OT',
           otNumber: resolvedWo?.ot_number || 'Sin OT',
@@ -734,6 +738,7 @@ export function enrichThirdPartyServices({
         workOrderId: s.work_order_id || null,
         otNumber: resolvedWo?.ot_number || 'Sin OT',
         otTitle: resolvedWo?.title || '',
+        otDescription: resolvedWo?.description || '',
         otLabel: formatOtAnalysisLabel({
           id: s.work_order_id || 'SIN_OT',
           otNumber: resolvedWo?.ot_number || 'Sin OT',
@@ -1061,6 +1066,9 @@ export function computeShipManagerialSummary({
     craneHours,
     zeroCostAlerts,
     hoverSummaries,
+    scopedMaterialRows: shipMats,
+    scopedLaborRows: shipLabor,
+    scopedThirdPartyRows: shipTps,
     filteredCounts: {
       materials: shipMats.length,
       labor: shipLabor.length,

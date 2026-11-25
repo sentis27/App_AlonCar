@@ -1,15 +1,20 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import { useReadOnlySheetSelection } from '../../hooks/grid/useReadOnlySheetSelection'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import KpiRadar from '../KpiRadar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import HighlightText from '../HighlightText'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
 import { formatDateAr, formatDayMonthAr } from '../../lib/dateTimeCanonical'
 import {
   scopeResumenRows,
   extractUniqueSortedOptions,
   computeMaterialesKpis,
-  filterResumenMaterialRows
+  filterResumenMaterialRows,
+  buildCleanSheetShortcutFilters
 } from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
 import ResumenHojaMaterialesToolbar from './ResumenHojaMaterialesToolbar'
@@ -18,6 +23,19 @@ import { formatFormulaNumericDisplay } from '../../lib/formulaEngine'
 import { matchesMaterialQuickType } from '../../lib/filterThemeConstants'
 import { Scissors } from 'lucide-react'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+
+const MATERIALES_SELECTION_COLUMNS = [
+  { key: 'date', label: 'Fecha', isNumeric: false, getValue: (r) => formatDateAr(r.date, { fallback: '' }) },
+  { key: 'sourceLabel', label: 'Origen', isNumeric: false, getValue: (r) => (r.sourceType === 'COMPRA_DIRECTA' ? 'OC DIRECTA' : 'PAÑOL') },
+  { key: 'otLabel', label: 'O.T', isNumeric: false, getValue: (r) => r.otLabel || r.otNumber || '' },
+  { key: 'workerName', label: 'Solicitante', isNumeric: false, getValue: (r) => r.workerName || '' },
+  { key: 'materialName', label: 'Material / Insumo', isNumeric: false, getValue: (r) => r.materialName || '' },
+  { key: 'qty', label: 'Cant.', isNumeric: true, formatType: 'number', getValue: (r) => Number(r.qty) || 0 },
+  { key: 'weightKg', label: 'KG', isNumeric: true, formatType: 'kg', getValue: (r) => (Number(r.weightKg) > 0 ? Number(r.weightKg) : null) },
+  { key: 'unitUsd', label: 'P.Unit US$', isNumeric: true, formatType: 'usd', getValue: (r) => Number(r.unitUsd) || 0 },
+  { key: 'shipDirectUsd', label: 'Total Obra US$', isNumeric: true, formatType: 'usd', getValue: (r) => Number(r.shipDirectUsd) || 0 },
+  { key: 'notes', label: 'Comp. / Notas', isNumeric: false, getValue: (r) => r.voucherNumber || r.notes || '' }
+]
 
 /**
  * Hoja Solo Lectura: MATERIALES (MATERIALES GENERAL / MATERIALES POR O.T).
@@ -28,6 +46,7 @@ export default function ResumenHojaMaterialesPanel({
   otRows = [],
   activeOtId,
   costScope = 'GENERAL',
+  launchIntent = null,
   initialKpiFilter = 'ALL',
   materialRows = [],
   onSelectSheet,
@@ -35,11 +54,23 @@ export default function ResumenHojaMaterialesPanel({
   onBackToSummary
 }) {
   const { user, profile } = useAuth()
-  const initialFilters = useMemo(
-    () => resolveInitialModuleFilters(user, profile, 'resumen_materiales', initialKpiFilter && initialKpiFilter !== 'ALL' ? { kpiFilter: initialKpiFilter } : {}),
+  const isSummaryShortcut = launchIntent?.mode === 'SUMMARY_SHORTCUT'
+  const effectiveShortcutKpi = isSummaryShortcut
+    ? (launchIntent?.kpi || 'ALL')
+    : (initialKpiFilter && initialKpiFilter !== 'ALL' ? initialKpiFilter : null)
+
+  const initialFilters = useMemo(() => {
+    if (isSummaryShortcut) {
+      return buildCleanSheetShortcutFilters('resumen_materiales', launchIntent?.kpi || 'ALL')
+    }
+    return resolveInitialModuleFilters(
+      user,
+      profile,
+      'resumen_materiales',
+      effectiveShortcutKpi ? { kpiFilter: effectiveShortcutKpi } : {}
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
+  }, [])
 
   const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery)
   const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
@@ -50,13 +81,33 @@ export default function ResumenHojaMaterialesPanel({
   const [materialQuick, setMaterialQuick] = useState(initialFilters.materialQuick)
   const [onlyKgPositive, setOnlyKgPositive] = useState(Boolean(initialFilters.onlyKgPositive))
 
+  const lastHandledLaunchSeqRef = useRef(launchIntent?.seq || 0)
   useEffect(() => {
-    if (initialKpiFilter && initialKpiFilter !== 'ALL') {
-      setKpiFilter(initialKpiFilter)
+    if (launchIntent?.mode === 'SUMMARY_SHORTCUT' && launchIntent?.seq && launchIntent.seq !== lastHandledLaunchSeqRef.current) {
+      lastHandledLaunchSeqRef.current = launchIntent.seq
+      const clean = buildCleanSheetShortcutFilters('resumen_materiales', launchIntent.kpi || 'ALL')
+      setSearchQuery(clean.searchQuery)
+      setKpiFilter(clean.kpiFilter)
+      setOtFilter(clean.otFilter)
+      setContractorFilter(clean.contractorFilter)
+      setShowMateriales(clean.showMateriales !== false)
+      setShowConsumibles(clean.showConsumibles !== false)
+      setMaterialQuick(clean.materialQuick)
+      setOnlyKgPositive(Boolean(clean.onlyKgPositive))
     }
-  }, [initialKpiFilter])
+  }, [launchIntent])
 
   const shipId = ship?.id || null
+  const prevShipIdRef = useRef(shipId)
+  useEffect(() => {
+    if (prevShipIdRef.current && shipId && prevShipIdRef.current !== shipId) {
+      if (otFilter !== 'ALL' && otFilter !== 'SIN_OT' && !otRows.some((o) => String(o.id) === String(otFilter))) {
+        setOtFilter('ALL')
+      }
+    }
+    prevShipIdRef.current = shipId
+  }, [shipId, otRows, otFilter])
+
   const otRowMap = useMemo(() => new Map(otRows.map((o) => [o.id, o])), [otRows])
   const scopedBaseRows = useMemo(
     () => scopeResumenRows(materialRows, { shipId, costScope, activeOtId }),
@@ -73,6 +124,13 @@ export default function ResumenHojaMaterialesPanel({
     }),
     [scopedBaseRows, kpiFilter, costScope, otFilter, contractorFilter, showMateriales, showConsumibles, materialQuick, onlyKgPositive, searchQuery]
   )
+  const sheetSelection = useReadOnlySheetSelection({ rows: filteredRows, columns: MATERIALES_SELECTION_COLUMNS, getRowId: (r) => r.id })
+  const { visibleItems: visibleRows, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredRows,
+    activeIndex: sheetSelection.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: sheetSelection.containerRef,
+    resetKey: `${shipId}|${costScope}|${activeOtId || ''}|${kpiFilter}|${otFilter}|${contractorFilter}|${showMateriales}|${showConsumibles}|${materialQuick}|${onlyKgPositive}|${searchQuery}`
+  })
   const summaryStats = useMemo(
     () => filteredRows.reduce((acc, r) => ({
       directUsd: acc.directUsd + (r.shipDirectUsd || 0),
@@ -164,7 +222,7 @@ export default function ResumenHojaMaterialesPanel({
       <div className="alon-zone-grid overflow-hidden bg-slate-900/75">
         <ReadOnlyGridRibbon
           badgeText={`👁️ MATERIALES · ${costScope === 'OT' ? 'POR O.T' : 'GENERAL'} (SOLO LECTURA)`}
-          hintText="Vista de consulta protegida · Para corregir precios o asignaciones utilizá Pañol o Compras."
+          hintText="Ordenado por O.T. · Arrastrá sobre cualquier columna para sumar valores o contar filas (Esc limpia)."
           totalRows={filteredRows.length}
           entityName="movimientos"
           exportRows={filteredRows}
@@ -210,7 +268,12 @@ export default function ResumenHojaMaterialesPanel({
           ]}
         />
 
-        <div className="overflow-x-auto max-h-[54vh]">
+        <div
+          ref={sheetSelection.containerRef}
+          tabIndex={0}
+          onKeyDown={sheetSelection.handleKeyDown}
+          className="overflow-x-auto max-h-[54vh] focus:outline-none"
+        >
           <table className="w-full text-xs text-left border-collapse">
             <thead className="alon-grid-thead sticky top-0 z-10 text-[10px] uppercase tracking-wider text-slate-300">
               <tr>
@@ -235,64 +298,89 @@ export default function ResumenHojaMaterialesPanel({
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((r, idx) => (
-                  <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
-                    <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                    <td
-                      className="px-2.5 py-1.5 whitespace-nowrap font-mono text-slate-300"
-                      title={r.createdAt ? `Fecha reporte: ${formatDateAr(r.date)} · Fecha carga: ${formatDateAr(r.createdAt)}` : undefined}
-                    >
-                      <div>{formatDateAr(r.date)}</div>
-                      {r.createdAt && r.date && r.createdAt !== r.date && (
-                        <div className="text-[9.5px] text-slate-500">Carga: {formatDayMonthAr(r.createdAt)}</div>
-                      )}
-                    </td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap">
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          r.sourceType === 'COMPRA_DIRECTA'
-                            ? 'bg-violet-500/20 text-violet-300'
-                            : 'bg-cyan-500/15 text-cyan-300'
-                        }`}
+                <>
+                {visibleRows.map((r, idx) => {
+                  const cpDate = sheetSelection.getCellProps(idx, 'date')
+                  const cpSource = sheetSelection.getCellProps(idx, 'sourceLabel')
+                  const cpOt = sheetSelection.getCellProps(idx, 'otLabel')
+                  const cpWorker = sheetSelection.getCellProps(idx, 'workerName')
+                  const cpMaterial = sheetSelection.getCellProps(idx, 'materialName')
+                  const cpQty = sheetSelection.getCellProps(idx, 'qty')
+                  const cpKg = sheetSelection.getCellProps(idx, 'weightKg')
+                  const cpUnit = sheetSelection.getCellProps(idx, 'unitUsd')
+                  const cpTotal = sheetSelection.getCellProps(idx, 'shipDirectUsd')
+                  const cpNotes = sheetSelection.getCellProps(idx, 'notes')
+                  const notesText = r.voucherNumber || r.notes || ''
+
+                  return (
+                    <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
+                      <td className="px-2.5 py-1.5 text-center font-mono text-slate-500 select-none">{idx + 1}</td>
+                      <td
+                        {...cpDate.domProps}
+                        className={`px-2.5 py-1.5 whitespace-nowrap font-mono text-slate-300 ${cpDate.className}`}
+                        title={r.createdAt ? `Fecha reporte: ${formatDateAr(r.date)} · Fecha carga: ${formatDateAr(r.createdAt)}` : undefined}
                       >
-                        {r.sourceType === 'COMPRA_DIRECTA' ? 'OC DIRECTA' : 'PAÑOL'}
-                      </span>
-                    </td>
-                    <td className="px-2.5 py-1.5 max-w-[205px]">
-                      <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
-                    </td>
-                    <td className="px-2.5 py-1.5 text-slate-300 truncate max-w-[145px]" title={r.workerName}>{r.workerName}</td>
-                    <td className="px-2.5 py-1.5 font-medium text-white max-w-[240px] truncate" title={r.materialName}>
-                      {r.materialName}
-                    </td>
-                    <td
-                      className="px-2.5 py-1.5 text-right tabular-nums whitespace-nowrap"
-                      title={r.qtyFormula ? `Fórmula cargada: ${r.qtyFormula}` : undefined}
-                    >
-                      <div>
-                        {formatFormulaNumericDisplay(r.qty, { maxDecimals: 3 })}{' '}
-                        <span className="text-slate-500">{r.unitMeasure}</span>
-                      </div>
-                      {r.cutDimensionsLabel && (
-                        <div className="text-[10px] font-mono text-cyan-300 font-semibold">
-                          {r.cutDimensionsLabel}
+                        <div>{formatDateAr(r.date)}</div>
+                        {r.createdAt && r.date && r.createdAt !== r.date && (
+                          <div className="text-[9.5px] text-slate-500">Carga: {formatDayMonthAr(r.createdAt)}</div>
+                        )}
+                      </td>
+                      <td {...cpSource.domProps} className={`px-2.5 py-1.5 whitespace-nowrap ${cpSource.className}`}>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            r.sourceType === 'COMPRA_DIRECTA'
+                              ? 'bg-violet-500/20 text-violet-300'
+                              : 'bg-cyan-500/15 text-cyan-300'
+                          }`}
+                        >
+                          {r.sourceType === 'COMPRA_DIRECTA' ? 'OC DIRECTA' : 'PAÑOL'}
+                        </span>
+                      </td>
+                      <td {...cpOt.domProps} className={`px-2.5 py-1.5 max-w-[205px] ${cpOt.className}`}>
+                        <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} searchQuery={searchQuery} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
+                      </td>
+                      <td {...cpWorker.domProps} className={`px-2.5 py-1.5 text-slate-300 truncate max-w-[145px] ${cpWorker.className}`} title={r.workerName}>
+                        <HighlightText text={r.workerName} query={searchQuery} />
+                      </td>
+                      <td {...cpMaterial.domProps} className={`px-2.5 py-1.5 font-medium text-white max-w-[240px] truncate ${cpMaterial.className}`} title={r.materialName}>
+                        <HighlightText text={r.materialName} query={searchQuery} />
+                      </td>
+                      <td
+                        {...cpQty.domProps}
+                        className={`px-2.5 py-1.5 text-right tabular-nums whitespace-nowrap ${cpQty.className}`}
+                        title={r.qtyFormula ? `Fórmula cargada: ${r.qtyFormula}` : undefined}
+                      >
+                        <div>
+                          {formatFormulaNumericDisplay(r.qty, { maxDecimals: 3 })}{' '}
+                          <span className="text-slate-500">{r.unitMeasure}</span>
                         </div>
-                      )}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums text-purple-200">
-                      {r.weightKg > 0 ? formatKg(r.weightKg, 1) : '—'}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums text-slate-300">
-                      {formatUsd(r.unitUsd)}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums font-bold text-emerald-300">
-                      {formatUsd(r.shipDirectUsd)}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-slate-400 truncate max-w-[180px]" title={r.notes}>
-                      {r.voucherNumber || r.notes || '—'}
-                    </td>
-                  </tr>
-                ))
+                        {r.cutDimensionsLabel && (
+                          <div className="text-[10px] font-mono text-cyan-300 font-semibold">
+                            {r.cutDimensionsLabel}
+                          </div>
+                        )}
+                      </td>
+                      <td {...cpKg.domProps} className={`px-2.5 py-1.5 text-right tabular-nums text-purple-200 ${cpKg.className}`}>
+                        {r.weightKg > 0 ? formatKg(r.weightKg, 1) : '—'}
+                      </td>
+                      <td {...cpUnit.domProps} className={`px-2.5 py-1.5 text-right tabular-nums text-slate-300 ${cpUnit.className}`}>
+                        {formatUsd(r.unitUsd)}
+                      </td>
+                      <td {...cpTotal.domProps} className={`px-2.5 py-1.5 text-right tabular-nums font-bold text-emerald-300 ${cpTotal.className}`}>
+                        {formatUsd(r.shipDirectUsd)}
+                      </td>
+                      <td {...cpNotes.domProps} className={`px-2.5 py-1.5 text-slate-400 truncate max-w-[180px] ${cpNotes.className}`} title={r.notes}>
+                        {notesText ? <HighlightText text={notesText} query={searchQuery} /> : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+                <CanonicalProgressiveTableFooter
+                  visibleCount={visibleCount} totalCount={filteredRows.length} hasMore={hasMore}
+                  remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
+                  sentinelRef={sentinelRef} colSpan={11} entityLabel="movimientos"
+                />
+                </>
               )}
             </tbody>
           </table>
@@ -306,6 +394,8 @@ export default function ResumenHojaMaterialesPanel({
           entityName="movimientos"
           hasActiveFilter={hasFilters}
           onClearFilters={handleClearFilters}
+          selectionStats={sheetSelection.selectionStats}
+          onClearSelection={sheetSelection.clearSelection}
           globalAggregates={[
             { label: 'TOTAL OBRA (Mat+Cons)', value: formatUsd(summaryStats.directUsd), highlight: true },
             { label: 'PESO ACUMULADO', value: formatKg(summaryStats.weightKg, 1) },

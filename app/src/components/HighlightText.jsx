@@ -14,9 +14,9 @@ export default function HighlightText({ text, query, className = '' }) {
   const strText = String(text)
   if (!query || !query.trim()) return <span className={className}>{strText}</span>
 
-  const tokens = query
+  const tokens = String(query)
     .trim()
-    .split(/\s+/)
+    .split(/[\s+]+/)
     .map((t) => t.trim())
     .filter((t) => t.length > 0)
 

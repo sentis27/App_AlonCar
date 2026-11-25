@@ -19,7 +19,7 @@ export default function ResumenGerencial() {
   const [resumenSubView, setResumenSubView] = useState('RESUMEN')
   const [activeCostSheet, setActiveCostSheet] = useState('materiales')
   const [costSheetScope, setCostSheetScope] = useState('GENERAL')
-  const [costSheetInitialKpi, setCostSheetInitialKpi] = useState('ALL')
+  const [costSheetLaunch, setCostSheetLaunch] = useState({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
   const [billingJumpTarget, setBillingJumpTarget] = useState(null)
 
   const actorName = profile?.full_name || user?.email || 'Dirección'
@@ -27,12 +27,12 @@ export default function ResumenGerencial() {
 
   useEffect(() => {
     setResumenSubView('RESUMEN')
-    setCostSheetInitialKpi('ALL')
+    setCostSheetLaunch({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
   }, [activeTab, resetSubViewSignal])
 
   const switchTab = (tabId) => {
     setResumenSubView('RESUMEN')
-    setCostSheetInitialKpi('ALL')
+    setCostSheetLaunch({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
     setActiveTab(tabId, { preserveParams: false })
   }
 
@@ -100,7 +100,7 @@ export default function ResumenGerencial() {
               onOpenCostSheet={(sheetId, nextScope, initialKpi = 'ALL') => {
                 setActiveCostSheet(sheetId)
                 setCostSheetScope(nextScope)
-                setCostSheetInitialKpi(initialKpi)
+                setCostSheetLaunch({ mode: 'SUMMARY_SHORTCUT', kpi: initialKpi || 'ALL', seq: Date.now() })
                 setResumenSubView('SHEET')
               }}
             />
@@ -146,15 +146,15 @@ export default function ResumenGerencial() {
               otRows={state.shipSummary?.otRows || []}
               activeOtId={state.shipSummary?.activeOt?.id}
               costScope={costSheetScope}
-              initialKpiFilter={costSheetInitialKpi}
-              materialRows={state.materialRows}
+              launchIntent={costSheetLaunch}
+              materialRows={state.shipSummary?.scopedMaterialRows ?? state.materialRows}
               onSelectSheet={(nextSheet) => {
-                setCostSheetInitialKpi('ALL')
+                setCostSheetLaunch({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
                 setActiveCostSheet(nextSheet)
               }}
               onChangeCostScope={setCostSheetScope}
               onBackToSummary={() => {
-                setCostSheetInitialKpi('ALL')
+                setCostSheetLaunch({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
                 setResumenSubView('RESUMEN')
               }}
             />
@@ -166,15 +166,15 @@ export default function ResumenGerencial() {
               otRows={state.shipSummary?.otRows || []}
               activeOtId={state.shipSummary?.activeOt?.id}
               costScope={costSheetScope}
-              initialKpiFilter={costSheetInitialKpi}
-              laborRows={state.laborRows}
+              launchIntent={costSheetLaunch}
+              laborRows={state.shipSummary?.scopedLaborRows ?? state.laborRows}
               onSelectSheet={(nextSheet) => {
-                setCostSheetInitialKpi('ALL')
+                setCostSheetLaunch({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
                 setActiveCostSheet(nextSheet)
               }}
               onChangeCostScope={setCostSheetScope}
               onBackToSummary={() => {
-                setCostSheetInitialKpi('ALL')
+                setCostSheetLaunch({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
                 setResumenSubView('RESUMEN')
               }}
             />
@@ -186,15 +186,15 @@ export default function ResumenGerencial() {
               otRows={state.shipSummary?.otRows || []}
               activeOtId={state.shipSummary?.activeOt?.id}
               costScope={costSheetScope}
-              initialKpiFilter={costSheetInitialKpi}
-              thirdPartyRows={state.thirdPartyRows}
+              launchIntent={costSheetLaunch}
+              thirdPartyRows={state.shipSummary?.scopedThirdPartyRows ?? state.thirdPartyRows}
               onSelectSheet={(nextSheet) => {
-                setCostSheetInitialKpi('ALL')
+                setCostSheetLaunch({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
                 setActiveCostSheet(nextSheet)
               }}
               onChangeCostScope={setCostSheetScope}
               onBackToSummary={() => {
-                setCostSheetInitialKpi('ALL')
+                setCostSheetLaunch({ mode: 'TAB_SWITCH', kpi: null, seq: 0 })
                 setResumenSubView('RESUMEN')
               }}
             />

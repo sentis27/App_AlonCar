@@ -1,9 +1,14 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useRef } from 'react'
+import { HelpCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
+import { useReadOnlySheetSelection } from '../../hooks/grid/useReadOnlySheetSelection'
+import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import KpiRadar from '../KpiRadar'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
+import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import GridStatusBarBottom from '../GridStatusBarBottom'
+import HighlightText from '../HighlightText'
 import { formatUsd, formatArs } from '../../lib/drydockCatalogConstants'
 import { formatDateAr } from '../../lib/dateTimeCanonical'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
@@ -11,10 +16,22 @@ import {
   scopeResumenRows,
   extractUniqueSortedOptions,
   computeTercerosKpis,
-  filterResumenThirdPartyRows
+  filterResumenThirdPartyRows,
+  buildCleanSheetShortcutFilters
 } from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+
+const TERCEROS_SELECTION_COLUMNS = [
+  { key: 'date', label: 'Fecha', isNumeric: false, getValue: (r) => formatDateAr(r.date, { fallback: '' }) },
+  { key: 'otLabel', label: 'O.T', isNumeric: false, getValue: (r) => r.otLabel || r.otNumber || '' },
+  { key: 'contractorName', label: 'Contratista / Taller', isNumeric: false, getValue: (r) => r.contractorName || '' },
+  { key: 'rubro', label: 'Rubro', isNumeric: false, getValue: (r) => r.rubro || '' },
+  { key: 'amountArs', label: 'Importe ARS', isNumeric: true, formatType: 'ars', getValue: (r) => (Number(r.amountArs) > 0 ? Number(r.amountArs) : null) },
+  { key: 'amountUsd', label: 'Total US$', isNumeric: true, formatType: 'usd', getValue: (r) => Number(r.amountUsd) || 0 },
+  { key: 'observations', label: 'Observaciones', isNumeric: false, getValue: (r) => r.observations || '' },
+  { key: 'usdRate', label: 'TC', isNumeric: false, getValue: (r) => (r.usdRate ? String(r.usdRate) : '') }
+]
 
 /**
  * Hoja Solo Lectura: TERCEROS (TERCEROS GENERAL / TERCEROS POR O.T).
@@ -24,6 +41,7 @@ export default function ResumenHojaTercerosPanel({
   otRows = [],
   activeOtId,
   costScope = 'GENERAL',
+  launchIntent = null,
   initialKpiFilter = 'ALL',
   thirdPartyRows = [],
   onSelectSheet,
@@ -31,11 +49,23 @@ export default function ResumenHojaTercerosPanel({
   onBackToSummary
 }) {
   const { user, profile } = useAuth()
-  const initialFilters = useMemo(
-    () => resolveInitialModuleFilters(user, profile, 'resumen_terceros', initialKpiFilter && initialKpiFilter !== 'ALL' ? { kpiFilter: initialKpiFilter } : {}),
+  const isSummaryShortcut = launchIntent?.mode === 'SUMMARY_SHORTCUT'
+  const effectiveShortcutKpi = isSummaryShortcut
+    ? (launchIntent?.kpi || 'ALL')
+    : (initialKpiFilter && initialKpiFilter !== 'ALL' ? initialKpiFilter : null)
+
+  const initialFilters = useMemo(() => {
+    if (isSummaryShortcut) {
+      return buildCleanSheetShortcutFilters('resumen_terceros', launchIntent?.kpi || 'ALL')
+    }
+    return resolveInitialModuleFilters(
+      user,
+      profile,
+      'resumen_terceros',
+      effectiveShortcutKpi ? { kpiFilter: effectiveShortcutKpi } : {}
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
+  }, [])
 
   const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery)
   const [kpiFilter, setKpiFilter] = useState(initialFilters.kpiFilter)
@@ -43,13 +73,30 @@ export default function ResumenHojaTercerosPanel({
   const [contractorFilter, setContractorFilter] = useState(initialFilters.contractorFilter)
   const [voucherFilter, setVoucherFilter] = useState(initialFilters.voucherFilter)
 
+  const lastHandledLaunchSeqRef = useRef(launchIntent?.seq || 0)
   useEffect(() => {
-    if (initialKpiFilter && initialKpiFilter !== 'ALL') {
-      setKpiFilter(initialKpiFilter)
+    if (launchIntent?.mode === 'SUMMARY_SHORTCUT' && launchIntent?.seq && launchIntent.seq !== lastHandledLaunchSeqRef.current) {
+      lastHandledLaunchSeqRef.current = launchIntent.seq
+      const clean = buildCleanSheetShortcutFilters('resumen_terceros', launchIntent.kpi || 'ALL')
+      setSearchQuery(clean.searchQuery)
+      setKpiFilter(clean.kpiFilter)
+      setOtFilter(clean.otFilter)
+      setContractorFilter(clean.contractorFilter)
+      setVoucherFilter(clean.voucherFilter)
     }
-  }, [initialKpiFilter])
+  }, [launchIntent])
 
   const shipId = ship?.id || null
+  const prevShipIdRef = useRef(shipId)
+  useEffect(() => {
+    if (prevShipIdRef.current && shipId && prevShipIdRef.current !== shipId) {
+      if (otFilter !== 'ALL' && otFilter !== 'SIN_OT' && !otRows.some((o) => String(o.id) === String(otFilter))) {
+        setOtFilter('ALL')
+      }
+    }
+    prevShipIdRef.current = shipId
+  }, [shipId, otRows, otFilter])
+
   const otRowMap = useMemo(() => new Map(otRows.map((o) => [o.id, o])), [otRows])
   const scopedBaseRows = useMemo(
     () => scopeResumenRows(thirdPartyRows, { shipId, costScope, activeOtId }),
@@ -68,6 +115,13 @@ export default function ResumenHojaTercerosPanel({
     () => filterResumenThirdPartyRows(scopedBaseRows, { kpiFilter, costScope, otFilter, contractorFilter, voucherFilter, searchQuery }),
     [scopedBaseRows, kpiFilter, costScope, otFilter, contractorFilter, voucherFilter, searchQuery]
   )
+  const sheetSelection = useReadOnlySheetSelection({ rows: filteredRows, columns: TERCEROS_SELECTION_COLUMNS, getRowId: (r) => r.id })
+  const { visibleItems: visibleRows, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
+    items: filteredRows,
+    activeIndex: sheetSelection.activeCell?.rowIndex ?? -1,
+    scrollContainerRef: sheetSelection.containerRef,
+    resetKey: `${shipId}|${costScope}|${activeOtId || ''}|${kpiFilter}|${otFilter}|${contractorFilter}|${voucherFilter}|${searchQuery}`
+  })
   const summaryStats = useMemo(
     () => filteredRows.reduce((acc, r) => ({
       totalUsd: acc.totalUsd + (r.amountUsd || 0),
@@ -182,7 +236,7 @@ export default function ResumenHojaTercerosPanel({
       <div className="alon-zone-grid overflow-hidden bg-slate-900/75">
         <ReadOnlyGridRibbon
           badgeText={`👁️ TERCEROS · ${costScope === 'OT' ? 'POR O.T' : 'GENERAL'} (SOLO LECTURA)`}
-          hintText="Vista de consulta protegida · Para editar importes o estados ingresá a Terceros y Talleres."
+          hintText="Ordenado por O.T. · Arrastrá sobre Importe ARS o Total US$ para sumar, o sobre texto para contar."
           totalRows={filteredRows.length}
           entityName="comprobantes"
           exportRows={filteredRows}
@@ -195,13 +249,18 @@ export default function ResumenHojaTercerosPanel({
             { key: 'voucherType', label: 'Comprobante' },
             { key: 'voucherNumber', label: 'Nro Comp.' },
             { key: 'amountArs', label: 'Importe ARS' },
-            { key: 'usdRate', label: 'TC' },
             { key: 'amountUsd', label: 'Total US$' },
-            { key: 'observations', label: 'Observaciones' }
+            { key: 'observations', label: 'Observaciones' },
+            { key: 'usdRate', label: 'TC (Tipo de Cambio)' }
           ]}
         />
 
-        <div className="overflow-x-auto max-h-[54vh]">
+        <div
+          ref={sheetSelection.containerRef}
+          tabIndex={0}
+          onKeyDown={sheetSelection.handleKeyDown}
+          className="overflow-x-auto max-h-[54vh] focus:outline-none"
+        >
           <table className="w-full text-xs text-left border-collapse">
             <thead className="alon-grid-thead sticky top-0 z-10 text-[10px] uppercase tracking-wider text-slate-300">
               <tr>
@@ -211,9 +270,17 @@ export default function ResumenHojaTercerosPanel({
                 <th className="px-2.5 py-2">Contratista / Taller</th>
                 <th className="px-2.5 py-2">Rubro</th>
                 <th className="px-2.5 py-2 text-right">Importe ARS</th>
-                <th className="px-2.5 py-2 text-right">TC</th>
                 <th className="px-2.5 py-2 text-right">Total US$</th>
                 <th className="px-2.5 py-2">Observaciones</th>
+                <th
+                  className="px-2.5 py-2 text-right"
+                  title="Tipo de cambio aplicado (cotización AR$ / US$ utilizada para convertir el importe a dólares)"
+                >
+                  <span className="inline-flex items-center justify-end gap-1 cursor-help">
+                    <span>TC</span>
+                    <HelpCircle className="w-3 h-3 text-cyan-400" />
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
@@ -224,29 +291,57 @@ export default function ResumenHojaTercerosPanel({
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((r, idx) => (
-                  <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
-                    <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono">{formatDateAr(r.date)}</td>
-                    <td className="px-2.5 py-1.5 max-w-[205px]">
-                      <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
-                    </td>
-                    <td className="px-2.5 py-1.5 font-medium text-white truncate max-w-[190px]">
-                      {r.contractorName}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-slate-400">{r.rubro}</td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums text-slate-300">
-                      {r.amountArs > 0 ? formatArs(r.amountArs, 0) : '—'}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums text-slate-400">{r.usdRate}</td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums font-bold text-emerald-300">
-                      {formatUsd(r.amountUsd)}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-slate-400 truncate max-w-[200px]" title={r.observations}>
-                      {r.observations || '—'}
-                    </td>
-                  </tr>
-                ))
+                <>
+                {visibleRows.map((r, idx) => {
+                  const cpDate = sheetSelection.getCellProps(idx, 'date')
+                  const cpOt = sheetSelection.getCellProps(idx, 'otLabel')
+                  const cpContractor = sheetSelection.getCellProps(idx, 'contractorName')
+                  const cpRubro = sheetSelection.getCellProps(idx, 'rubro')
+                  const cpArs = sheetSelection.getCellProps(idx, 'amountArs')
+                  const cpUsd = sheetSelection.getCellProps(idx, 'amountUsd')
+                  const cpObs = sheetSelection.getCellProps(idx, 'observations')
+                  const cpTc = sheetSelection.getCellProps(idx, 'usdRate')
+
+                  return (
+                    <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
+                      <td className="px-2.5 py-1.5 text-center font-mono text-slate-500 select-none">{idx + 1}</td>
+                      <td {...cpDate.domProps} className={`px-2.5 py-1.5 whitespace-nowrap font-mono ${cpDate.className}`}>
+                        {formatDateAr(r.date)}
+                      </td>
+                      <td {...cpOt.domProps} className={`px-2.5 py-1.5 max-w-[205px] ${cpOt.className}`}>
+                        <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} searchQuery={searchQuery} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
+                      </td>
+                      <td {...cpContractor.domProps} className={`px-2.5 py-1.5 font-medium text-white truncate max-w-[190px] ${cpContractor.className}`} title={r.contractorName}>
+                        <HighlightText text={r.contractorName} query={searchQuery} />
+                      </td>
+                      <td {...cpRubro.domProps} className={`px-2.5 py-1.5 text-slate-400 ${cpRubro.className}`}>
+                        <HighlightText text={r.rubro} query={searchQuery} />
+                      </td>
+                      <td {...cpArs.domProps} className={`px-2.5 py-1.5 text-right tabular-nums text-slate-300 ${cpArs.className}`}>
+                        {r.amountArs > 0 ? formatArs(r.amountArs, 0) : '—'}
+                      </td>
+                      <td {...cpUsd.domProps} className={`px-2.5 py-1.5 text-right tabular-nums font-bold text-emerald-300 ${cpUsd.className}`}>
+                        {formatUsd(r.amountUsd)}
+                      </td>
+                      <td {...cpObs.domProps} className={`px-2.5 py-1.5 text-slate-400 truncate max-w-[200px] ${cpObs.className}`} title={r.observations}>
+                        {r.observations ? <HighlightText text={r.observations} query={searchQuery} /> : '—'}
+                      </td>
+                      <td
+                        {...cpTc.domProps}
+                        className={`px-2.5 py-1.5 text-right tabular-nums text-slate-400 ${cpTc.className}`}
+                        title={r.usdRate ? `Tipo de cambio aplicado: $${Number(r.usdRate).toLocaleString('es-AR')} ARS por US$` : 'Tipo de cambio'}
+                      >
+                        {r.usdRate}
+                      </td>
+                    </tr>
+                  )
+                })}
+                <CanonicalProgressiveTableFooter
+                  visibleCount={visibleCount} totalCount={filteredRows.length} hasMore={hasMore}
+                  remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
+                  sentinelRef={sentinelRef} colSpan={9} entityLabel="comprobantes"
+                />
+                </>
               )}
             </tbody>
           </table>
@@ -259,6 +354,8 @@ export default function ResumenHojaTercerosPanel({
           entityName="comprobantes"
           hasActiveFilter={hasFilters}
           onClearFilters={handleClearFilters}
+          selectionStats={sheetSelection.selectionStats}
+          onClearSelection={sheetSelection.clearSelection}
           globalAggregates={[
             { label: 'TOTAL TERCEROS US$', value: formatUsd(summaryStats.totalUsd), highlight: true },
             { label: 'ACUMULADO ARS', value: formatArs(summaryStats.totalArs, 0) }

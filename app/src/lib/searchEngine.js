@@ -188,15 +188,28 @@ export function buildUniversalSearchCorpus(record, options = {}) {
 }
 
 /**
+ * Tokeniza una consulta del Buscador Omnicanal (Crawler).
+ * Admite espacios y `+` como combinadores AND (`Tano +`, `Tano + chapa`, `Tano+chapa`),
+ * ignorando signos `+` sueltos o al final mientras el usuario escribe el siguiente término.
+ */
+export function tokenizeUniversalSearchQuery(query) {
+  if (!query || !String(query).trim()) return []
+  const q = normalizeSearchText(query)
+  return q
+    .split(/[\s+]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+}
+
+/**
  * Predicado rápido para evaluar coincidencia omnicanal.
  * Admite que 'record' sea un objeto de registro O un string (corpus precomputado).
- * Admite búsqueda multi-término (todas las palabras deben coincidir)
- * y variantes de coma/punto para números y monedas.
+ * Admite búsqueda multi-término con espacio o `+` (todas las palabras deben coincidir),
+ * variantes de coma/punto para números y `x`/`×` para dimensiones de cortes.
  */
 export function matchesUniversalSearch(record, query, options = {}) {
-  if (!query || !query.trim()) return true
-  const q = normalizeSearchText(query)
-  const tokens = q.split(/\s+/).filter(Boolean)
+  if (!query || !String(query).trim()) return true
+  const tokens = tokenizeUniversalSearchQuery(query)
   if (tokens.length === 0) return true
 
   // Soporte polimórfico: si record ya es un string, lo usamos normalizado; si es objeto, construimos el corpus
@@ -206,11 +219,17 @@ export function matchesUniversalSearch(record, query, options = {}) {
 
   return tokens.every((token) => {
     if (corpus.includes(token)) return true
-    if (token.includes(',')) {
-      if (corpus.includes(token.replace(/,/g, '.'))) return true
+    const variants = new Set()
+    if (token.includes(',')) variants.add(token.replace(/,/g, '.'))
+    if (token.includes('.')) variants.add(token.replace(/\./g, ','))
+    if (/\d[x×]\d/i.test(token)) {
+      variants.add(token.replace(/x/gi, '×'))
+      variants.add(token.replace(/×/g, 'x'))
+      variants.add(token.replace(/x/gi, '×').replace(/,/g, '.'))
+      variants.add(token.replace(/x/gi, '×').replace(/\./g, ','))
     }
-    if (token.includes('.')) {
-      if (corpus.includes(token.replace(/\./g, ','))) return true
+    for (const v of variants) {
+      if (corpus.includes(v)) return true
     }
     return false
   })

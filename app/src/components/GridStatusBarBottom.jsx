@@ -19,13 +19,33 @@ import { AlertTriangle, X, Hash } from 'lucide-react'
  *      * Botón "✕ Salir" para deseleccionar.
  *    - Si no hay selección manual: Proyecta las sumatorias y promedios globales del filtro activo (Σ Cant, Σ AR$, Σ US$, Ø).
  */
+function formatSelectionMetric(val, formatType) {
+  if (typeof val !== 'number' || !Number.isFinite(val)) return String(val ?? '')
+  if (formatType === 'usd') {
+    return `US$ ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+  if (formatType === 'ars') {
+    return `AR$ ${val.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  }
+  if (formatType === 'kg') {
+    return `${val.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg`
+  }
+  if (formatType === 'hours') {
+    return `${val.toLocaleString('es-AR', { maximumFractionDigits: 1 })} hs`
+  }
+  if (formatType === 'number' || formatType === 'mixed') {
+    return val.toLocaleString('es-AR', { maximumFractionDigits: 3 })
+  }
+  return `$${val.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+}
+
 export default function GridStatusBarBottom({
   filteredCount = 0,
   totalCount = 0,
   entityName = 'registros',
   hasActiveFilter = false,
   onClearFilters,
-  selectionStats = null, // { count, numericCount, sum, avg, min, max }
+  selectionStats = null, // { count, totalCells, rowCount, colCount, numericCount, sum, avg, min, max, formatType }
   onClearSelection = null,
   customSelection = null, // { count, label, onClear }
   globalAggregates = [], // [{ label: 'Σ Cant', value: '120' }, { label: 'Σ AR$', value: '$50.000', highlight: true }, ...]
@@ -33,8 +53,9 @@ export default function GridStatusBarBottom({
   children = null,
   isFixed = true
 }) {
-  const hasRangeSelection = Boolean(selectionStats && selectionStats.count > 0)
+  const hasRangeSelection = Boolean(selectionStats && ((selectionStats.totalCells || 0) > 1 || selectionStats.count > 0))
   const isNumericSelection = hasRangeSelection && (selectionStats.numericCount > 0)
+  const selectedCellsBadgeCount = selectionStats?.totalCells || selectionStats?.count || 0
 
   const containerClasses = isFixed
     ? "fixed bottom-4 left-4 right-4 md:left-64 z-40 bg-slate-900/98 border-2 border-cyan-400 shadow-2xl shadow-cyan-500/30 rounded-2xl px-4 py-2.5 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-200 font-mono select-none"
@@ -103,7 +124,7 @@ export default function GridStatusBarBottom({
           <div className="flex flex-wrap items-center gap-2 font-mono">
             <div className="flex items-center gap-1.5 bg-emerald-950/90 border border-emerald-500/90 px-2.5 py-1 rounded-lg text-emerald-300 font-black text-xs shadow-md">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span>SELECCIÓN ({selectionStats.count} celdas)</span>
+              <span>SELECCIÓN ({selectedCellsBadgeCount} celdas)</span>
             </div>
 
             {isNumericSelection ? (
@@ -111,25 +132,26 @@ export default function GridStatusBarBottom({
                 <div className="flex items-baseline gap-1 bg-slate-950 px-2.5 py-1 rounded-lg border border-cyan-500/60 shadow">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Σ SUMA:</span>
                   <span className="text-sm font-extrabold text-cyan-300">
-                    ${typeof selectionStats.sum === 'number'
-                      ? selectionStats.sum.toLocaleString('es-AR', { maximumFractionDigits: 2 })
-                      : selectionStats.sum}
+                    {formatSelectionMetric(selectionStats.sum, selectionStats.formatType)}
                   </span>
                 </div>
 
                 <div className="flex items-baseline gap-1 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-700">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Ø PROM:</span>
                   <span className="text-xs font-bold text-white">
-                    ${typeof selectionStats.avg === 'number'
-                      ? selectionStats.avg.toLocaleString('es-AR', { maximumFractionDigits: 2 })
-                      : selectionStats.avg}
+                    {formatSelectionMetric(selectionStats.avg, selectionStats.formatType)}
                   </span>
                 </div>
 
                 <div className="flex items-baseline gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-[11px] text-slate-300">
-                  <span>MÍN: <strong className="text-slate-100">${selectionStats.min?.toLocaleString('es-AR')}</strong></span>
+                  <span>MÍN: <strong className="text-slate-100">{formatSelectionMetric(selectionStats.min, selectionStats.formatType)}</strong></span>
                   <span className="mx-1 text-slate-600">·</span>
-                  <span>MÁX: <strong className="text-slate-100">${selectionStats.max?.toLocaleString('es-AR')}</strong></span>
+                  <span>MÁX: <strong className="text-slate-100">{formatSelectionMetric(selectionStats.max, selectionStats.formatType)}</strong></span>
+                </div>
+
+                <div className="flex items-baseline gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-[11px] text-slate-300">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">RECUENTO:</span>
+                  <strong className="text-cyan-200">{selectionStats.count}</strong>
                 </div>
               </>
             ) : (
@@ -138,7 +160,8 @@ export default function GridStatusBarBottom({
                 <Hash className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span className="text-[10px] uppercase font-bold text-slate-400">RECUENTO:</span>
                 <span className="text-xs font-bold text-cyan-300">
-                  {selectionStats.count} celdas seleccionadas
+                  {selectionStats.count} {selectionStats.count === 1 ? 'dato' : 'datos'}
+                  {selectionStats.rowCount > 1 && selectionStats.colCount > 1 ? ` (${selectionStats.rowCount} filas)` : ''}
                 </span>
               </div>
             )}
