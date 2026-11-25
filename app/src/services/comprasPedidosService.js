@@ -203,6 +203,13 @@ export async function silentUpdatePedidoService(orderId, payload) {
   if (error) throw new Error(error)
 }
 
+export async function fetchMaterialStockService(materialId) {
+  if (!materialId) return null
+  const { data, error } = await materialsRepository.findById(materialId, { select: 'id, current_stock' })
+  if (error) return null
+  return data ? { id: data.id, current_stock: Number(data.current_stock) || 0 } : null
+}
+
 export async function incrementMaterialStockService(materialId, newStock) {
   const { error } = await materialsRepository.updateStock(materialId, newStock)
   if (error) throw new Error(error)

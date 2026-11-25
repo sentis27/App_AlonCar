@@ -246,6 +246,7 @@ import {
   getPanolMovimientosColumns,
   getPanolPasteFields,
   resolvePanolTxCost,
+  resolvePanolTxWeight,
   isPanolWithdrawalUnvalued,
   calculatePanolTotalsWithCost
 } from './panolCostHelpers.js'
@@ -254,6 +255,7 @@ export {
   getPanolMovimientosColumns,
   getPanolPasteFields,
   resolvePanolTxCost,
+  resolvePanolTxWeight,
   isPanolWithdrawalUnvalued,
   calculatePanolTotalsWithCost
 }

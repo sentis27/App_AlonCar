@@ -33,6 +33,12 @@ export function createMaterialsRepository({ client = defaultClient } = {}) {
     async updateStock(materialId, currentStock) {
       return base.updateById(materialId, { current_stock: currentStock }, { select: null })
     },
+
+    async findStocksByIds(ids = []) {
+      const cleanIds = Array.from(new Set((ids || []).filter(Boolean)))
+      if (cleanIds.length === 0) return { data: [], error: null }
+      return base.findAll({ select: 'id, current_stock', inFilters: { id: cleanIds } })
+    },
   }
 }
 

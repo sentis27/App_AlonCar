@@ -70,6 +70,19 @@ export function resolvePanolTxCost(
 }
 
 /**
+ * Resuelve el peso efectivo (kg) de un retiro de Pañol con paridad 100% frente a Resumen Gerencial:
+ * Si `tx.weight_total > 0` lo respeta; de lo contrario calcula `cantidad × mat.weight_kg` desde el Catálogo.
+ */
+export function resolvePanolTxWeight(tx, mat = null) {
+  const stored = Number(tx?.weight_total) || 0
+  if (stored > 0) return Number(stored.toFixed(2))
+  const qty = Number(tx?.quantity_withdrawn) || 0
+  const unitKg = Number(mat?.weight_kg) || 0
+  if (qty <= 0 || unitKg <= 0) return 0
+  return Number((qty * unitKg).toFixed(2))
+}
+
+/**
  * Predicado de filtro "Sin Valor ($0)" en Planilla de Retiros:
  * Incluye cualquier retiro con material asignado cuyo costo efectivo sea <= 0
  * (incluyendo EPP `ELEM.SEGURIDAD`), excluyendo filas en blanco sin material y bajas solicitadas.
@@ -92,7 +105,7 @@ export function calculatePanolTotalsWithCost(filteredTransactions = [], material
   for (const tx of filteredTransactions || []) {
     const mat = matMap.get(tx.material_id) || null
     totalQty += Number(tx.quantity_withdrawn) || 0
-    totalKg += Number(tx.weight_total) || 0
+    totalKg += resolvePanolTxWeight(tx, mat)
     const cost = resolvePanolTxCost(tx, mat, opts)
     totalUsd += cost.totalUsd
     if (isPanolWithdrawalUnvalued(tx, mat, opts)) unvaluedCount++
@@ -100,7 +113,7 @@ export function calculatePanolTotalsWithCost(filteredTransactions = [], material
 
   return {
     totalQty,
-    totalKg,
+    totalKg: Number(totalKg.toFixed(2)),
     totalUsd: Number(totalUsd.toFixed(2)),
     unvaluedCount
   }
@@ -111,7 +124,10 @@ export function calculatePanolTotalsWithCost(filteredTransactions = [], material
  * Orden confirmado: Fecha -> Barco -> OT -> Contratista -> Material -> Cant. -> Peso
  * + (solo Admin) Costo US$ y Centro de Costo + Nº Remito -> Observaciones.
  */
-export function getPanolMovimientosColumns(isAdmin = false, { getCostTotalUsd = null } = {}) {
+export function getPanolMovimientosColumns(
+  isAdmin = false,
+  { getCostTotalUsd = null, getWeightTotalKg = null, showCostCenter = true } = {}
+) {
   const baseStart = [
     { key: 'transaction_date', label: 'Fecha', readOnly: false },
     { key: 'ship_id', label: 'Barco / Destino', readOnly: false },
@@ -119,7 +135,13 @@ export function getPanolMovimientosColumns(isAdmin = false, { getCostTotalUsd = 
     { key: 'contractor_name', label: 'Contratista / Grupo', readOnly: false },
     { key: 'material_id', label: 'Material Insumo', readOnly: false },
     { key: 'quantity_withdrawn', label: 'Cant.', isNumeric: true, type: 'number', allowFormula: true, readOnly: false },
-    { key: 'weight_total', label: 'Peso (kg)', isNumeric: true, readOnly: false }
+    {
+      key: 'weight_total',
+      label: 'Peso (kg)',
+      isNumeric: true,
+      readOnly: !isAdmin,
+      ...(typeof getWeightTotalKg === 'function' ? { getValue: getWeightTotalKg } : {})
+    }
   ]
 
   const adminCols = isAdmin
@@ -131,7 +153,7 @@ export function getPanolMovimientosColumns(isAdmin = false, { getCostTotalUsd = 
           readOnly: true,
           ...(typeof getCostTotalUsd === 'function' ? { getValue: getCostTotalUsd } : {})
         },
-        { key: 'cost_center', label: 'Centro de Costo', readOnly: false }
+        ...(showCostCenter ? [{ key: 'cost_center', label: 'Centro de Costo', readOnly: false }] : [])
       ]
     : []
 
@@ -152,10 +174,9 @@ export function getPanolPasteFields(isAdmin = false) {
     'worker_id',
     'material_id',
     'quantity_withdrawn',
-    'weight_total',
     'voucher_number',
     'notes'
   ]
-  if (isAdmin) fields.push('cost_center')
+  if (isAdmin) fields.push('weight_total', 'cost_center')
   return fields
 }

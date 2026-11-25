@@ -29,11 +29,55 @@ export async function fetchMaterial6MonthTransactionsService(materialId, referen
   return data || []
 }
 
+export function computeMaterialVitality({ currentStock = 0, virtualQty = 0, monthlyAverage = 0 }) {
+  const physicalStock = Number(currentStock) || 0
+  const pendingVirtual = Math.max(0, Number(virtualQty) || 0)
+  const monthly = Math.max(0, Number(monthlyAverage) || 0)
+  const dailyAverage = monthly > 0 ? monthly / 30 : 0
+
+  const calcCoverage = (stockVal) => {
+    if (dailyAverage <= 0) {
+      return {
+        days: null,
+        months: null,
+        status: stockVal < 0 ? 'NEGATIVO' : 'SIN_CONSUMO',
+        label: stockVal < 0 ? 'Stock negativo' : 'Sin consumo 6M'
+      }
+    }
+    if (stockVal <= 0) {
+      return {
+        days: 0,
+        months: 0,
+        status: stockVal < 0 ? 'NEGATIVO' : 'AGOTADO',
+        label: '0 días (Agotado)'
+      }
+    }
+    const days = Math.round(stockVal / dailyAverage)
+    const months = Number((stockVal / monthly).toFixed(1))
+    const status = days <= 15 ? 'CRITICO' : days <= 45 ? 'ALERTA' : 'SALUDABLE'
+    const dayUnit = days === 1 ? 'día' : 'días'
+    return {
+      days,
+      months,
+      status,
+      label: days >= 60 ? `${days} ${dayUnit} (~${months} meses)` : `${days} ${dayUnit}`
+    }
+  }
+
+  return {
+    dailyAverage: Number(dailyAverage.toFixed(3)),
+    physical: calcCoverage(physicalStock),
+    withVirtual: calcCoverage(Number((physicalStock + pendingVirtual).toFixed(3))),
+    hasVirtual: pendingVirtual > 0
+  }
+}
+
 export function computeMaterial6MonthConsumption({
   material,
   transactions = [],
   workOrders = [],
   ships = [],
+  virtualQty = 0,
   referenceDate = new Date()
 }) {
   const woMap = new Map((workOrders || []).map((w) => [String(w.id), w]))
@@ -112,12 +156,18 @@ export function computeMaterial6MonthConsumption({
 
   const grandTotal = Math.round(months.reduce((acc, m) => acc + m.quantity, 0) * 100) / 100
   const totalWithdrawals = months.reduce((acc, m) => acc + m.withdrawalsCount, 0)
+  const monthlyAverage = Math.round((grandTotal / 6) * 100) / 100
   return {
     unitShort: formatUnitMeasureShort(material?.unit_measure),
     unitCanonical: normalizeUnitMeasure(material?.unit_measure, material?.name),
     months,
     grandTotal,
-    monthlyAverage: Math.round((grandTotal / 6) * 100) / 100,
-    totalWithdrawals
+    monthlyAverage,
+    totalWithdrawals,
+    vitality: computeMaterialVitality({
+      currentStock: material?.current_stock,
+      virtualQty,
+      monthlyAverage
+    })
   }
 }

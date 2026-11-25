@@ -6,7 +6,6 @@
 
 import { auditService } from '../lib/auditService.js'
 import { purchaseOrdersRepository, purchaseDocumentsRepository } from '../repositories/purchaseOrdersRepository.js'
-import { materialsRepository } from '../repositories/materialsRepository.js'
 
 const SHEET_PEDIDOS = 'Compras · Pedidos'
 const SHEET_DOCS = 'Compras · Documentos'
@@ -118,14 +117,6 @@ export async function registerPartialDeliveryService({ order, receivedQty, missi
     status: receivedStatus,
     observations: `${order.observations ? `${order.observations} | ` : ''}Recepción parcial (${receivedQty}/${originalQty}) s/Remito ${cleanRemito}. ${notes}`.trim(),
     updated_at: new Date().toISOString(),
-  }
-
-  if (order.charge_type === 'VIA_PANOL' && order.material_id) {
-    const { data: matData } = await materialsRepository.findById(order.material_id, { select: 'current_stock' })
-    if (matData) {
-      const newStock = (matData.current_stock || 0) + Number(receivedQty)
-      await materialsRepository.updateStock(order.material_id, newStock)
-    }
   }
 
   const { data: updatedOriginal, error: errOrig } = await purchaseOrdersRepository.updateById(order.id, originalUpdates, { select: '*' })

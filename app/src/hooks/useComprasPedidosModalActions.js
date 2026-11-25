@@ -4,7 +4,7 @@ import {
   updatePedidoFieldService,
   updatePedidoFieldsWithAuditService,
   silentUpdatePedidoService,
-  incrementMaterialStockService,
+  fetchMaterialStockService,
   batchUpdatePedidosService,
   reconcilePedidosBatchService
 } from '../services/comprasPedidosService'
@@ -12,7 +12,6 @@ import {
 export function useComprasPedidosModalActions({
   purchaseOrders,
   setPurchaseOrders,
-  materials,
   setMaterials,
   ships,
   suppliers,
@@ -128,23 +127,21 @@ export function useComprasPedidosModalActions({
         showFeedbackMsg('success', 'Marcado como "SE COMPRA?". Abriendo panel de alerta gerencial...')
         return
       }
-      if (newStatus === 'RECIBIDO' && order.charge_type === 'VIA_PANOL' && order.material_id) {
-        const mat = materials.find((m) => m.id === order.material_id)
-        if (mat) {
-          const newStock = (mat.current_stock || 0) + Number(order.quantity)
-          await incrementMaterialStockService(mat.id, newStock)
-          setMaterials((prev) => prev.map((m) => (m.id === mat.id ? { ...m, current_stock: newStock } : m)))
-        }
-      }
       pushUndoAction({ colKey: 'status', colLabel: 'Estado', actionLabel: 'Cambio de estado', previousValues: { [orderId]: order.status }, newValue: newStatus, timestamp: Date.now() })
       await updatePedidoFieldService({ orderId, field: 'status', newValue: newStatus, oldValue: order.status, entityName: order.material_name_raw, fieldLabel: 'Estado' })
       setPurchaseOrders((prev) => prev.map((p) => (p.id === orderId ? { ...p, status: newStatus, updated_at: new Date().toISOString() } : p)))
+      if (order.material_id && (newStatus === 'RECIBIDO' || order.status === 'RECIBIDO')) {
+        const freshMat = await fetchMaterialStockService(order.material_id)
+        if (freshMat) {
+          setMaterials((prev) => prev.map((m) => (m.id === freshMat.id ? { ...m, current_stock: freshMat.current_stock } : m)))
+        }
+      }
       showFeedbackMsg('success', `Estado actualizado a "${newStatus}"`)
     } catch (err) {
       console.error('Error cambiando estado:', err)
       showFeedbackMsg('error', 'Error al actualizar estado: ' + err.message)
     }
-  }, [purchaseOrders, materials, setMaterials, setPartialDeliveryOrder, setShowPartialModal, setPurchaseOrders, setSeCompraAlertOrder, setShowSeCompraModal, pushUndoAction, showFeedbackMsg])
+  }, [purchaseOrders, setMaterials, setPartialDeliveryOrder, setShowPartialModal, setPurchaseOrders, setSeCompraAlertOrder, setShowSeCompraModal, pushUndoAction, showFeedbackMsg])
 
   const handleBatchStatusApply = useCallback(async () => {
     if (selectedOrderIds.size === 0) return

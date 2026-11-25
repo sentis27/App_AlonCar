@@ -15,7 +15,10 @@ import { ShipSchema, ShipStaySchema, OwnerSchema, ShipDocumentSchema, ContactSch
 import { PurchaseOrderSchema, SupplierSchema, PurchaseDocumentSchema } from './purchases.schema.js'
 import { ThirdPartyServiceSchema, ThirdPartyVoucherHistorySchema } from './thirdParty.schema.js'
 import { WorkItemSchema } from './workItems.schema.js'
-import { MaterialSchema, InventoryTransactionSchema, GasCylinderMovementSchema, MaterialRubroSchema } from './panol.schema.js'
+import {
+  MaterialSchema, InventoryTransactionSchema, GasCylinderMovementSchema, MaterialRubroSchema,
+  StockAdjustmentSchema, StockAuditSchema, STOCK_ADJUSTMENT_REASONS, MATERIAL_CONDITIONS,
+} from './panol.schema.js'
 import { DataRequirementSchema, ComplianceAlertSchema, WorkerPermissionRequestSchema } from './complianceAlerts.schema.js'
 import { AuditLogSchema } from './auditLogs.schema.js'
 import { ProfileSchema, PROFILE_ROLES } from './profiles.schema.js'
@@ -221,6 +224,10 @@ export {
   InventoryTransactionSchema,
   GasCylinderMovementSchema,
   MaterialRubroSchema,
+  StockAdjustmentSchema,
+  StockAuditSchema,
+  STOCK_ADJUSTMENT_REASONS,
+  MATERIAL_CONDITIONS,
   DataRequirementSchema,
   ComplianceAlertSchema,
   WorkerPermissionRequestSchema,

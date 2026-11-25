@@ -12,6 +12,7 @@ import { isGasMaterial, stripGasTagFromNotes, findLinkedGasMovement } from './pa
 import { buildTransactionTimestampIso, formatLocalTimeHHMM } from './panolBasketsEngine.js'
 import { buildArTimestampIso, getTodayArIso, toArIsoDate } from './dateTimeCanonical.js'
 import { normalizeUnitMeasure } from './comprasConstants.js'
+import { computeFortnightFromDate } from './comprasPedidosHelpers.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog } from './workerIdentity.js'
 import { computeFortnightUnitSnapshot, getFortnightPeriodKey, compareFortnightKeys } from './materialPricingPolicy.js'
@@ -27,7 +28,15 @@ import { workItemsRepository } from '../repositories/workItemsRepository.js'
 import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
 import { dataRequirementsRepository, complianceAlertsRepository, workerPermissionRequestsRepository } from '../repositories/complianceAlertsRepository.js'
 import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
+import { stockAdjustmentsRepository } from '../repositories/stockAdjustmentsRepository.js'
+import { stockAuditsRepository } from '../repositories/stockAuditsRepository.js'
 import { buildDateRangeOption, DEFAULT_HISTORY_RANGE } from './gridPerformanceHelpers.js'
+import {
+  freezePendingPanolStockDaysService,
+  fetchStockFreezeConfigService,
+  createStockAdjustmentService,
+  createStockRecountAdjustmentService
+} from './stockControlService.js'
 
 let _hasGasTxLinkCache = null
 
@@ -154,8 +163,9 @@ export async function ensurePanolRequirementId(code) {
 }
 
 export async function fetchPanolData({ historyRange = DEFAULT_HISTORY_RANGE } = {}) {
+  await freezePendingPanolStockDaysService()
   const txDateRange = buildDateRangeOption('transaction_date', historyRange, { asTimestamp: true })
-  const [matRes, invRes, gasRes, rubrosRes, supRes, shipsRes, woRes, workersRes, workItemsRes, alertsRes, macroRes, policyRes] =
+  const [matRes, invRes, gasRes, rubrosRes, supRes, shipsRes, woRes, workersRes, workItemsRes, alertsRes, macroRes, policyRes, freezeCfg, adjRes, auditsRes, viaPanolPoRes] =
     await Promise.all([
       materialsRepository.listMaterials(),
       inventoryTransactionsRepository.listTransactions({ dateRange: txDateRange }),
@@ -168,14 +178,22 @@ export async function fetchPanolData({ historyRange = DEFAULT_HISTORY_RANGE } = 
       workItemsRepository.listCanonicalWorkItems(),
       complianceAlertsRepository.listPending(),
       macroVariablesRepository.listMacroVariables(),
-      fetchMaterialPricingPolicyService()
+      fetchMaterialPricingPolicyService(),
+      fetchStockFreezeConfigService(),
+      stockAdjustmentsRepository.listAdjustments(),
+      stockAuditsRepository.listAudits(),
+      purchaseOrdersRepository.listOrders({
+        filters: { charge_type: 'VIA_PANOL' },
+        select: 'id, material_id, charge_type, status, quantity, order_date, urgency, remito_number, invoice_number'
+      })
     ])
   if (workersRes.data) setAllocationWorkersCache(workersRes.data)
   return {
     materials: matRes.data || [], inventoryTx: invRes.data ? assignMonotonicFolios(invRes.data, { dateField: 'transaction_date' }) : [],
     gasMovements: gasRes.data || [], rubros: rubrosRes.data || [], suppliers: supRes.data || [], ships: shipsRes.data || [],
     workOrders: woRes.data || [], workers: workersRes.data || [], workItems: workItemsRes.data || [], pendingAlerts: alertsRes.data || [],
-    macroVariables: macroRes.data || [], pricingPolicy: policyRes?.policy || null
+    macroVariables: macroRes.data || [], pricingPolicy: policyRes?.policy || null, stockFreezeConfig: freezeCfg,
+    stockAdjustments: adjRes.data || [], stockAudits: auditsRes.data || [], viaPanolOrders: viaPanolPoRes.data || []
   }
 }
 
@@ -236,13 +254,16 @@ export async function saveShipAndWorkOrderService({
   return { updates, deassigned }
 }
 
-export async function saveInlineTxService({ txId, field, value, tx, materials, user, macroVariables = [], pricingPolicy = null }) {
+export async function saveInlineTxService({ txId, field, value, tx, materials, user, isAdmin = true, macroVariables = [], pricingPolicy = null }) {
+  if (field === 'weight_total' && !isAdmin) {
+    throw new Error('El peso es solo de referencia para el Pañolero (editable solo por Administrador).')
+  }
   let normalizedVal = field === 'transaction_date' && value
     ? buildTransactionTimestampIso(value, formatLocalTimeHHMM(tx?.transaction_date) || null)
     : field === 'voucher_number'
     ? (String(value ?? '').trim() || null)
     : value
-  const updates = { [field]: normalizedVal }
+  const updates = { [field]: normalizedVal, ...(field === 'contractor_name' ? { worker_name: normalizedVal } : {}) }
   let auditNewValue = field === 'voucher_number' ? normalizedVal : value
 
   if (field === 'quantity_withdrawn') {
@@ -269,6 +290,15 @@ export async function saveInlineTxService({ txId, field, value, tx, materials, u
   const { error } = await inventoryTransactionsRepository.updateById(txId, updates, { select: null })
   if (error) throw new Error(error)
 
+  let _matUpdates = []
+  if (field === 'quantity_withdrawn' || field === 'material_id') {
+    const affectedIds = Array.from(new Set([tx?.material_id, field === 'material_id' ? value : null].filter(Boolean)))
+    if (affectedIds.length > 0) {
+      const { data: stockRows } = await materialsRepository.findStocksByIds(affectedIds)
+      _matUpdates = (stockRows || []).map((r) => ({ id: r.id, newStock: Number(r.current_stock) || 0 }))
+    }
+  }
+
   const oldFormula = field === 'quantity_withdrawn' ? getStoredCellFormula(tx, 'quantity_withdrawn') : null
   const auditOldValue = tx
     ? (oldFormula ? `${tx[field]} (${oldFormula})` : tx[field])
@@ -288,11 +318,24 @@ export async function saveInlineTxService({ txId, field, value, tx, materials, u
     user: user?.email
   })
 
-  return updates
+  return { ...updates, _matUpdates }
 }
 
 export async function saveInlineMaterialService({ matId, field, value, materials, user }) {
-  const parsedValue = ['weight_kg', 'current_stock', 'minimum_stock', 'security_factor'].includes(field)
+  const mat = materials.find((m) => m.id === matId)
+  if (field === 'current_stock') {
+    const targetVal = Number(value)
+    if (!Number.isFinite(targetVal)) throw new Error('Ingresá un valor numérico válido para recuento físico.')
+    const res = await createStockRecountAdjustmentService({
+      material: mat || { id: matId, current_stock: 0 },
+      targetStock: targetVal,
+      notes: 'Ajuste físico desde Catálogo',
+      user
+    })
+    return { current_stock: res.newStock }
+  }
+
+  const parsedValue = ['weight_kg', 'minimum_stock', 'security_factor'].includes(field)
     ? Number(value) || 0
     : field === 'requires_stock_control'
     ? Boolean(value)
@@ -302,19 +345,10 @@ export async function saveInlineMaterialService({ matId, field, value, materials
   const { error } = await materialsRepository.updateById(matId, updates, { select: null })
   if (error) throw new Error(error)
 
-  const mat = materials.find((m) => m.id === matId)
   logCellChange({
-    entityType: 'materials',
-    entityId: matId,
-    entityName: mat?.name || matId,
-    field,
-    fieldLabel: field,
-    oldValue: mat ? mat[field] : null,
-    newValue: parsedValue,
-    sheetName: 'Pañol · Catálogo Maestro',
-    moduleRoute: '/panol',
-    changeOrigin: 'INLINE_CELL',
-    user: user?.email
+    entityType: 'materials', entityId: matId, entityName: mat?.name || matId,
+    field, fieldLabel: field, oldValue: mat ? mat[field] : null, newValue: parsedValue,
+    sheetName: 'Pañol · Catálogo Maestro', moduleRoute: '/panol', changeOrigin: 'INLINE_CELL', user: user?.email
   })
 
   return updates
@@ -366,30 +400,6 @@ export async function saveMultiWithdrawalService({
       })
     }
 
-    // Calcular ajustes de stock si cambió el material o la cantidad respecto a originalTx
-    const matUpdates = []
-    if (originalTx) {
-      const oldMatId = originalTx.material_id
-      const oldQty = Number(originalTx.quantity_withdrawn) || 0
-      if (oldMatId === mat.id) {
-        const diff = qty - oldQty
-        if (Math.abs(diff) > 0.0001) {
-          const prevStock = Number(mat.current_stock) || 0
-          matUpdates.push({ id: mat.id, prevStock, newStock: prevStock - diff })
-        }
-      } else {
-        if (oldMatId) {
-          const oldMat = materials.find((m) => m.id === oldMatId)
-          if (oldMat) {
-            const oldPrevStock = Number(oldMat.current_stock) || 0
-            matUpdates.push({ id: oldMat.id, prevStock: oldPrevStock, newStock: oldPrevStock + oldQty })
-          }
-        }
-        const newPrevStock = Number(mat.current_stock) || 0
-        matUpdates.push({ id: mat.id, prevStock: newPrevStock, newStock: newPrevStock - qty })
-      }
-    }
-
     const finalNotes = rowIsGas ? gasPayload.itemNotes : baseUserNotes
     const txIso = buildTransactionTimestampIso(date, time)
     const shouldRefreshSnap =
@@ -420,10 +430,9 @@ export async function saveMultiWithdrawalService({
     const { error: updErr } = await inventoryTransactionsRepository.updateById(editId, updates, { select: null })
     if (updErr) throw new Error(updErr)
 
-    for (const mUpd of matUpdates) {
-      const { error: stErr } = await materialsRepository.updateStock(mUpd.id, mUpd.newStock)
-      if (stErr) throw new Error(stErr)
-    }
+    const affectedMatIds = Array.from(new Set([originalTx?.material_id, mat.id].filter(Boolean)))
+    const { data: stockRows } = await materialsRepository.findStocksByIds(affectedMatIds)
+    const matUpdates = (stockRows || []).map((r) => ({ id: r.id, newStock: Number(r.current_stock) || 0 }))
 
     let createdGasMovements = []
     let updatedGasMovement = null
@@ -509,7 +518,6 @@ export async function saveMultiWithdrawalService({
 
   // Validación previa Fail-Fast (SKL-015): validar renglones comunes y de Gases antes de persistir
   const txInserts = []
-  const matUpdates = []
   const gasItemsToCreate = []
 
   for (const item of items) {
@@ -545,10 +553,8 @@ export async function saveMultiWithdrawalService({
       gasItemsToCreate.push({ txIndex: txInserts.length, gasRecord: built.gasRecord })
     }
 
-    const prevStock = Number(mat.current_stock) || 0
     const rowTxIso = buildTransactionTimestampIso(date, time)
     const rowSnap = computeFortnightUnitSnapshot({ material: mat, transactionDate: rowTxIso, macroVariables, policy: pricingPolicy })
-    matUpdates.push({ id: mat.id, prevStock, newStock: prevStock - qty })
     txInserts.push({
       material_id: mat.id,
       quantity_withdrawn: qty,
@@ -584,13 +590,9 @@ export async function saveMultiWithdrawalService({
     }
   }
 
-  const appliedStockRollbacks = []
   try {
-    for (const upd of matUpdates) {
-      const { error: stockErr } = await materialsRepository.updateStock(upd.id, upd.newStock)
-      if (stockErr) throw new Error(stockErr)
-      appliedStockRollbacks.push(upd)
-    }
+    const { data: stockRows } = await materialsRepository.findStocksByIds(txInserts.map((t) => t.material_id))
+    const matUpdates = (stockRows || []).map((r) => ({ id: r.id, newStock: Number(r.current_stock) || 0 }))
 
     let createdGasMovements = []
     if (gasItemsToCreate.length > 0) {
@@ -657,9 +659,6 @@ export async function saveMultiWithdrawalService({
 
     return { isEdit: false, createdTxs: createdTxs || [], matUpdates, createdGasMovements }
   } catch (err) {
-    for (const rb of appliedStockRollbacks) {
-      await materialsRepository.updateStock(rb.id, rb.prevStock)
-    }
     await rollbackCreatedTxs()
     throw err
   }
@@ -689,9 +688,17 @@ export async function duplicateTxService({ tx, user }) {
   delete cloned.id
   delete cloned.created_at
   delete cloned._rowSeq
+  delete cloned.stock_snapshot
+  delete cloned.stock_frozen_at
 
   const { data, error } = await inventoryTransactionsRepository.insertOne(cloned)
   if (error) throw new Error(error)
+
+  let _matUpdates = []
+  if (data?.material_id) {
+    const { data: stockRows } = await materialsRepository.findStocksByIds([data.material_id])
+    _matUpdates = (stockRows || []).map((r) => ({ id: r.id, newStock: Number(r.current_stock) || 0 }))
+  }
 
   logRowAction({
     action: 'ROW_DUPLICATE',
@@ -705,7 +712,7 @@ export async function duplicateTxService({ tx, user }) {
     user: user?.email
   })
 
-  return data
+  return { ...data, _matUpdates }
 }
 
 export async function requestDeletionTxService({ tx, userIdentifier }) {
@@ -733,13 +740,7 @@ export async function requestDeletionTxService({ tx, userIdentifier }) {
   })
 }
 
-export async function permanentDeleteTxService({ tx, materials, gasMovements = [], user }) {
-  const mat = materials.find((m) => m.id === tx.material_id)
-  if (mat && Number(tx.quantity_withdrawn)) {
-    const restoredStock = (Number(mat.current_stock) || 0) + (Number(tx.quantity_withdrawn) || 0)
-    await materialsRepository.updateStock(mat.id, restoredStock)
-  }
-
+export async function permanentDeleteTxService({ tx, gasMovements = [], user }) {
   const linkedGas = findLinkedGasMovement(tx, gasMovements)
   if (linkedGas?.id) {
     const { error: gDelErr } = await gasMovementsRepository.deleteById(linkedGas.id)
@@ -748,6 +749,14 @@ export async function permanentDeleteTxService({ tx, materials, gasMovements = [
 
   const { error } = await inventoryTransactionsRepository.deleteById(tx.id)
   if (error) throw new Error(error)
+
+  let updatedMaterial = null
+  if (tx?.material_id) {
+    const { data: stockRows } = await materialsRepository.findStocksByIds([tx.material_id])
+    if (stockRows?.[0]) {
+      updatedMaterial = { id: stockRows[0].id, current_stock: Number(stockRows[0].current_stock) || 0 }
+    }
+  }
 
   logRowAction({
     action: 'ROW_DELETE',
@@ -761,7 +770,7 @@ export async function permanentDeleteTxService({ tx, materials, gasMovements = [
     user: user?.email
   })
 
-  return { deletedGasMovementId: linkedGas?.id || null }
+  return { deletedGasMovementId: linkedGas?.id || null, updatedMaterial }
 }
 
 /**
@@ -880,7 +889,7 @@ export async function createMaterialService({ formData, existingMaterials = [], 
     cost_usd: costUsdNum,
     last_price_update: new Date().toISOString(),
     requires_stock_control: Boolean(formData?.requires_stock_control ?? true),
-    current_stock: currentStockNum,
+    current_stock: 0,
     minimum_stock: minimumStockNum,
     security_factor: secFactorNum,
     ...(formData?.image_url ? { image_url: formData.image_url } : {})
@@ -901,19 +910,32 @@ export async function createMaterialService({ formData, existingMaterials = [], 
     throw new Error(error)
   }
 
+  let finalMaterial = data
+  if (currentStockNum > 0 && data?.id) {
+    const adjRes = await createStockAdjustmentService({
+      materialId: data.id,
+      quantity: currentStockNum,
+      reasonType: 'INITIALIZATION',
+      notes: 'Stock inicial al crear material en Catálogo',
+      material: data,
+      user
+    })
+    finalMaterial = { ...data, current_stock: adjRes.newStock }
+  }
+
   await logRowAction({
     action: 'ROW_INSERT',
     entityType: 'materials',
-    entityId: data.id,
-    entityName: data.name,
-    rowData: data,
+    entityId: finalMaterial.id,
+    entityName: finalMaterial.name,
+    rowData: finalMaterial,
     sheetName: 'Pañol · Catálogo Maestro de Materiales',
     moduleRoute: '/panol',
     changeOrigin: 'MODAL_NEW_MATERIAL',
     user: user?.email
   })
 
-  return data
+  return finalMaterial
 }
 
 /**
@@ -1278,23 +1300,43 @@ export async function fetchPendingPanolAlertsService() {
   return data || []
 }
 
-export async function createDirectPurchaseOrderService({ material, quantity, urgency, ships }) {
-  const astilleroShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO')) || ships[0]
+export async function createDirectPurchaseOrderService({ material, quantity, urgency, ships = [], user = null }) {
+  const VALID_URGENCIES = ['SIN_APURO', 'URGENTE', 'PROXIMA_SALIDA']
+  const safeUrgency = VALID_URGENCIES.includes(urgency) ? urgency : 'SIN_APURO'
+  const orderDate = getTodayArIso()
+  const fortnightPeriod = computeFortnightFromDate(orderDate)
+  const safeQty = Number(quantity) > 0 ? Number(quantity) : 1
+  const astilleroShip = (ships || []).find((s) => (s.name || '').toUpperCase().includes('ASTILLERO')) || ships?.[0] || null
   const workersCatalog = await getWorkersLookupCached()
   const panolWorkerId = resolveWorkerIdFromCatalog('PAÑOL', workersCatalog)
-  const { error } = await purchaseOrdersRepository.insertOne({
+  const payload = {
     material_id: material?.id || null,
     material_name_raw: material?.name || 'Insumo',
-    quantity: quantity ? Number(quantity) : 1,
-    unit_measure: material?.unit_measure || 'unidad',
+    quantity: safeQty,
+    unit_measure: normalizeUnitMeasure(material?.unit_measure, material?.name),
     charge_type: 'VIA_PANOL',
     ship_id: astilleroShip?.id || null,
     requested_by: panolWorkerId,
     requested_by_name: 'PAÑOL',
-    order_date: getTodayArIso(),
+    order_date: orderDate,
+    fortnight_period: fortnightPeriod,
     status: 'PEDIR',
-    urgency,
+    urgency: safeUrgency,
     observations: 'Solicitud directa generada desde Pañol'
-  })
+  }
+  const { data, error } = await purchaseOrdersRepository.insertOne(payload, { select: '*' })
   if (error) throw new Error(error)
+
+  logRowAction({
+    action: 'ROW_INSERT',
+    entityType: 'purchase_orders',
+    entityId: data?.id || 'direct-po',
+    entityName: payload.material_name_raw,
+    rowData: payload,
+    sheetName: 'Pañol · Pedido Directo a Compras',
+    moduleRoute: '/panol',
+    changeOrigin: 'MODAL_QUICK_PURCHASE',
+    user: user?.email || 'Pañol Central'
+  })
+  return data
 }

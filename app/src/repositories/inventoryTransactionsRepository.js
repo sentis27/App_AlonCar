@@ -5,7 +5,7 @@
  */
 import { supabase as defaultClient } from '../lib/supabase.js'
 import { InventoryTransactionSchema } from '../schemas/panol.schema.js'
-import { createBaseRepository } from './_baseRepository.js'
+import { createBaseRepository, handleSupabaseError } from './_baseRepository.js'
 
 export function createInventoryTransactionsRepository({ client = defaultClient } = {}) {
   const base = createBaseRepository({
@@ -65,6 +65,14 @@ export function createInventoryTransactionsRepository({ client = defaultClient }
 
     async reassignByWorkItemId(workItemId, targetWoId) {
       return base.updateWhere({ filters: { work_item_id: workItemId } }, { work_order_id: targetWoId })
+    },
+
+    async freezePendingStockDays(nowIso = null) {
+      if (typeof client?.rpc !== 'function') return { data: null, error: null }
+      const params = nowIso ? { p_now: nowIso } : {}
+      const { data, error } = await client.rpc('freeze_pending_panol_stock_days', params)
+      if (error) return { data: null, error: handleSupabaseError(error) }
+      return { data, error: null }
     },
   }
 }

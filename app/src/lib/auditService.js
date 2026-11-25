@@ -19,6 +19,8 @@ export const AUDIT_ENTITY_CATALOG = {
   purchase_documents: { label: 'Compras · Gestor Documental', route: '/compras', module: 'Compras y Proveedores' },
   inventory: { label: 'Pañol · Stock y Movimientos', route: '/panol', module: 'Pañol y Stock' },
   inventory_transactions: { label: 'Pañol · Movimientos de Stock', route: '/panol', module: 'Pañol y Stock' },
+  stock_adjustments: { label: 'Pañol · Entradas y Ajustes de Stock', route: '/panol', module: 'Pañol y Stock' },
+  stock_audits: { label: 'Pañol · Controles Físicos de Stock', route: '/panol', module: 'Pañol y Stock' },
   materials: { label: 'Pañol · Catálogo Maestro de Materiales', route: '/panol', module: 'Pañol y Stock' },
   gas_cylinders: { label: 'Pañol · Control de Gases Industriales', route: '/panol', module: 'Pañol y Stock' },
   ppe_deliveries: { label: 'Pañol · Entrega de EPP', route: '/panol', module: 'Pañol y Stock' },

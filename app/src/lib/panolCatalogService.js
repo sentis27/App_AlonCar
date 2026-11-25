@@ -11,6 +11,7 @@ import { getDollarRateForDate } from './comprasPedidosHelpers.js'
 import { MATERIAL_CATEGORIES } from './panolConstants.js'
 import { getTodayArIso } from './dateTimeCanonical.js'
 import { buildInlineMaterialPricePatch } from './materialPricingPolicy.js'
+import { createStockRecountAdjustmentService } from './stockControlService.js'
 import { propagateCatalogPriceUpdateToTransactions } from '../services/materialPricingService.js'
 import { materialsRepository, materialRubrosRepository } from '../repositories/materialsRepository.js'
 import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
@@ -94,6 +95,11 @@ export async function saveInlineCatalogFieldService({ matId, field, value, mater
     parsedValue = normalizeUnitMeasure(value, mat.name)
   }
 
+  if (field === 'current_stock') {
+    const res = await createStockRecountAdjustmentService({ material: mat, targetStock: parsedValue, notes: 'Ajuste físico inline en Catálogo', user })
+    return { current_stock: res.newStock, _propagation: null, _highValueWarning: false }
+  }
+
   const isPriceField = field === 'cost_ars' || field === 'cost_usd' || (field === 'security_factor' && Number(mat.cost_ars || 0) > 0)
   let updates = { [field]: parsedValue }
   let highValueWarning = false
@@ -109,12 +115,9 @@ export async function saveInlineCatalogFieldService({ matId, field, value, mater
   if (field === 'unit_measure') await syncOpenPurchaseOrdersUnit(matId, parsedValue)
   const propagation = isPriceField
     ? await propagateCatalogPriceUpdateToTransactions({
-        materialId: matId,
-        costArs: updates.cost_ars ?? mat.cost_ars ?? 0,
+        materialId: matId, costArs: updates.cost_ars ?? mat.cost_ars ?? 0,
         securityFactor: updates.security_factor ?? mat.security_factor ?? 1.06,
-        costUsdOverride: updates.cost_usd ?? mat.cost_usd ?? 0,
-        macroVariables,
-        policy: pricingPolicy
+        costUsdOverride: updates.cost_usd ?? mat.cost_usd ?? 0, macroVariables, policy: pricingPolicy
       })
     : null
 

@@ -41,6 +41,7 @@ export const PurchaseOrderSchema = z
     missing_quantity: z.coerce.number().min(0).nullable().optional(),
     no_catalog_required: z.boolean().optional(),
     delivery_date: z.string().nullable().optional(),
+    received_at: z.string().nullable().optional(),
     freight_transport_name: z.string().nullable().optional(),
     freight_request_date: z.string().nullable().optional(),
     freight_estimated_date: z.string().nullable().optional(),

@@ -52,6 +52,8 @@ export const InventoryTransactionSchema = z
     deletion_requested_at: z.string().nullable().optional(),
     deletion_requested_by: z.string().nullable().optional(),
     deletion_reason: z.string().nullable().optional(),
+    stock_snapshot: z.coerce.number().nullable().optional(),
+    stock_frozen_at: z.string().nullable().optional(),
   })
   .passthrough()
 
@@ -84,6 +86,51 @@ export const MaterialRubroSchema = z
     name: z.string().trim().min(1),
     category: z.string().nullable().optional(),
     is_active: z.boolean().optional(),
+    created_at: z.string().optional(),
+  })
+  .passthrough()
+
+export const STOCK_ADJUSTMENT_REASONS = [
+  'MANUAL_ENTRY',
+  'MANUAL_EXIT',
+  'AUDIT_CORRECTION',
+  'INITIALIZATION',
+  'DAMAGE',
+  'RECOVERY',
+  'OTHER',
+]
+
+export const MATERIAL_CONDITIONS = ['DISPONIBLE', 'EN_CUARENTENA', 'OBSOLETO', 'DANADO']
+
+export const StockAdjustmentSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    date: z.string().min(1).optional(),
+    effective_at: z.string().optional(),
+    material_id: z.string().uuid('material_id debe ser un UUID válido'),
+    quantity: z.coerce.number().refine((v) => Number.isFinite(v) && Math.abs(v) > 0, 'La cantidad del ajuste no puede ser 0'),
+    reason_type: z.enum(STOCK_ADJUSTMENT_REASONS).default('MANUAL_ENTRY'),
+    material_condition: z.enum(MATERIAL_CONDITIONS).default('DISPONIBLE'),
+    unit_cost_usd_snapshot: z.coerce.number().min(0).nullable().optional(),
+    notes: z.string().nullable().optional(),
+    created_by: z.string().nullable().optional(),
+    created_at: z.string().optional(),
+  })
+  .passthrough()
+
+export const StockAuditSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    date: z.string().min(1).optional(),
+    material_id: z.string().uuid('material_id debe ser un UUID válido'),
+    system_quantity: z.coerce.number(),
+    counted_quantity: z.coerce.number(),
+    calculated_delta: z.coerce.number().optional(),
+    status: z.enum(['OK', 'DISCREPANCY']).optional(),
+    adjustment_id: z.string().uuid().nullable().optional(),
+    material_condition: z.enum(MATERIAL_CONDITIONS).default('DISPONIBLE'),
+    notes: z.string().nullable().optional(),
+    audited_by: z.string().nullable().optional(),
     created_at: z.string().optional(),
   })
   .passthrough()
