@@ -11,6 +11,7 @@ import { evaluateFormulaInput, buildCellFormulasPatch, getEditableCellInitialVal
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
 import { COMPRAS_ORDER_STEP_HELP } from '../../lib/businessHelpRegistry.js'
+import { getTodayArIso } from '../../lib/dateTimeCanonical.js'
 
 export default function OrderFormModal({
   order,
@@ -29,7 +30,7 @@ export default function OrderFormModal({
 }) {
   // Encabezado
   const [chargeType, setChargeType] = useState(order?.charge_type || 'VIA_PANOL')
-  const [orderDate, setOrderDate] = useState(order?.order_date || new Date().toISOString().split('T')[0])
+  const [orderDate, setOrderDate] = useState(order?.order_date || getTodayArIso())
   const [shipId, setShipId] = useState(order?.ship_id || '')
   const [workOrderId, setWorkOrderId] = useState(order?.work_order_id || '')
   const [urgency, setUrgency] = useState(order?.urgency || 'SIN_APURO')

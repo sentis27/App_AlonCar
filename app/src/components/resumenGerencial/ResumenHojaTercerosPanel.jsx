@@ -5,6 +5,7 @@ import KpiRadar from '../KpiRadar'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import { formatUsd, formatArs } from '../../lib/drydockCatalogConstants'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import {
   scopeResumenRows,
@@ -189,7 +190,7 @@ export default function ResumenHojaTercerosPanel({
           exportRows={filteredRows}
           exportFilename={`gs004_terceros_${ship?.name || 'buque'}.csv`}
           exportColumns={[
-            { key: 'date', label: 'Fecha' },
+            { key: 'date', label: 'Fecha', formatter: (v) => formatDateAr(v, { fallback: '' }) },
             { key: 'otLabel', label: 'O.T' },
             { key: 'contractorName', label: 'Contratista' },
             { key: 'rubro', label: 'Rubro' },
@@ -211,8 +212,6 @@ export default function ResumenHojaTercerosPanel({
                 <th className="px-2.5 py-2">O.T</th>
                 <th className="px-2.5 py-2">Contratista / Taller</th>
                 <th className="px-2.5 py-2">Rubro</th>
-                <th className="px-2.5 py-2">Comprobante</th>
-                <th className="px-2.5 py-2">N° Comp.</th>
                 <th className="px-2.5 py-2 text-right">Importe ARS</th>
                 <th className="px-2.5 py-2 text-right">TC</th>
                 <th className="px-2.5 py-2 text-right">Total US$</th>
@@ -222,7 +221,7 @@ export default function ResumenHojaTercerosPanel({
             <tbody className="divide-y divide-slate-800/70">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                     No hay comprobantes de terceros para los filtros actuales.
                   </td>
                 </tr>
@@ -230,7 +229,7 @@ export default function ResumenHojaTercerosPanel({
                 filteredRows.map((r, idx) => (
                   <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
                     <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono">{r.date || '—'}</td>
+                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono">{formatDateAr(r.date)}</td>
                     <td className="px-2.5 py-1.5 max-w-[205px]">
                       <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
                     </td>
@@ -238,12 +237,6 @@ export default function ResumenHojaTercerosPanel({
                       {r.contractorName}
                     </td>
                     <td className="px-2.5 py-1.5 text-slate-400">{r.rubro}</td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-200">
-                        {r.voucherType}
-                      </span>
-                    </td>
-                    <td className="px-2.5 py-1.5 font-mono text-slate-300">{r.voucherNumber || '—'}</td>
                     <td className="px-2.5 py-1.5 text-right tabular-nums text-slate-300">
                       {r.amountArs > 0 ? formatArs(r.amountArs, 0) : '—'}
                     </td>

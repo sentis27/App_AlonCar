@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Flame, Check, X, RotateCcw, AlertTriangle, Package } from 'lucide-react'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 
 /**
  * Modal de Devolución Final de cilindros vacíos desde Acciones en Control de Gases.
@@ -24,7 +25,7 @@ export function GasFinalReturnModal({
     return {}
   })
   const [shipId, setShipId] = useState('')
-  const [movementDate, setMovementDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [movementDate, setMovementDate] = useState(() => getTodayArIso())
   const [notes, setNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 

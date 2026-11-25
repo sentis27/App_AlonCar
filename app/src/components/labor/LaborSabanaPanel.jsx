@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 
 export default function LaborSabanaPanel({
   ships = [],
@@ -426,7 +427,7 @@ export default function LaborSabanaPanel({
                             className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
                           />
                         </td>
-                        <td className="py-2 px-3 font-mono text-slate-400">{log.date_logged}</td>
+                        <td className="py-2 px-3 font-mono text-slate-400">{formatDateAr(log.date_logged)}</td>
                         <td className="py-2 px-3 font-bold text-white">{log.worker_name}</td>
                         <td className="py-2 px-2">
                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${

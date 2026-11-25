@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import {
   Building2,
   MapPin,
@@ -660,7 +661,7 @@ export default function ComprasProveedoresPanel({
               }}
               insertRowLabel="+ Nuevo Proveedor"
               exportRows={filteredSuppliers}
-              exportFilename={`padron_proveedores_${new Date().toISOString().split('T')[0]}`}
+              exportFilename={`padron_proveedores_${getTodayArIso()}`}
             />
             <div className="alon-grid-scroll">
               <table className="w-full text-left text-xs border-collapse">

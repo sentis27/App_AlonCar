@@ -4,6 +4,7 @@ import {
   SAFETY_ITEMS_OPTIONS,
   computeContractExpiration
 } from '../../lib/workCostRules'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 
 export default function PersonalWorkerCenterFields({
   formData,
@@ -114,7 +115,7 @@ export default function PersonalWorkerCenterFields({
             {previewExp.isPermanent
               ? 'Planta Permanente (no emite alerta de vencimiento).'
               : previewExp.expiresIso
-              ? `Vence: ${previewExp.expiresIso} (${previewExp.daysRemaining} días restantes)`
+              ? `Vence: ${formatDateAr(previewExp.expiresIso)} (${previewExp.daysRemaining} días restantes)`
               : 'Ingresá fecha de inicio para calcular vencimiento.'}
           </span>
           {previewExp.vacationDays !== null && (

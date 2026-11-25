@@ -17,6 +17,7 @@ import { fetchTercerosData, insertBlankRowService, deleteServiceService, saveInl
 import { getEditableCellInitialValue } from '../lib/formulaEngine.js'
 import { calculateTercerosKpis, calculateTercerosStats, filterTercerosServices, getSpreadsheetColumnsTerceros, buildTercerosMaps, TERCEROS_CLONE_FIELDS, TERCEROS_PASTE_BASE_FIELDS } from '../lib/tercerosConstants.js'
 import { buildPanolRemitoIndex } from '../lib/tercerosRemitoMatcher.js'
+import { getTodayArIso } from '../lib/dateTimeCanonical.js'
 import { AlertTriangle, CheckCircle2, Clock, Wrench } from 'lucide-react'
 
 export default function Terceros() {
@@ -135,7 +136,7 @@ export default function Terceros() {
   const handleDuplicateService = async (srv) => {
     if (!canMutateRows) return showFeedback('error', 'Tu perfil (Dirección) es de solo lectura.')
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTodayArIso()
       await duplicateRecord({ table: 'third_party_services', entityType: 'third_party_services', source: srv, fields: TERCEROS_CLONE_FIELDS, overrides: { entry_date: today, voucher_date: today, service_date: today, audit_status: 'PENDIENTE', created_by: actor, updated_at: new Date().toISOString() }, nameOf: (r) => r.contractor_name || r.id, user: actor })
       showFeedback('success', `Comprobante de ${srv.contractor_name} duplicado.`); await loadData()
     } catch (err) { showFeedback('error', 'Error al duplicar comprobante: ' + err.message) }

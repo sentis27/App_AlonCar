@@ -13,6 +13,7 @@ import { batchRevertPedidosService, batchUpdatePedidosService } from '../service
 import { useComprasPedidosMutations } from './useComprasPedidosMutations'
 import { useComprasPedidosModalActions } from './useComprasPedidosModalActions'
 import { getEditableCellInitialValue } from '../lib/formulaEngine'
+import { getTodayArIso } from '../lib/dateTimeCanonical'
 
 export function useComprasPedidosState(props) {
   const {
@@ -214,7 +215,7 @@ export function useComprasPedidosState(props) {
       return
     }
     if (colKey === 'material_name_raw') { setInlineEdit({ orderId: po.id, field: 'material_name_raw', value: po.material_name_raw || '', materialId: po.material_id || '', obsValue: po.observations || '' }); return }
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayArIso()
     const defaults = {
       charge_type: po.charge_type || 'DIRECT',
       order_date: po.order_date || today,

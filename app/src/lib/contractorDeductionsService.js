@@ -5,6 +5,7 @@
  */
 
 import { classifyWithdrawalCost, computeContractExpiration } from './workCostRules.js'
+import { getTodayArIso } from './dateTimeCanonical.js'
 import { logRowAction } from './auditService.js'
 import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
 import { materialsRepository } from '../repositories/materialsRepository.js'
@@ -318,7 +319,7 @@ export async function resolveContractAlertService({ alertItem, nextContractType,
   const normalizedType = String(nextContractType || '').toUpperCase()
   const patch = {
     contract_type: normalizedType,
-    contract_start_date: nextStartDate || new Date().toISOString().slice(0, 10),
+    contract_start_date: nextStartDate || getTodayArIso(),
   }
 
   const { error: wErr } = await workersRepository.updateById(alertItem.entity_id, patch, { select: null })

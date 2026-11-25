@@ -10,6 +10,7 @@ import { assertNoDuplicateOtTitleInDb, separateWorkItemCompleteService } from '.
 import { syncWorkOrderHeaderStatusService } from './workOrderHeaderSync.js'
 import { normalizeOtTitleKey } from './workOrderUnificationEngine.js'
 import { buildWorkItemPayloadsFromTemplateSelection } from './otAbcCatalogConstants.js'
+import { getTodayArIso, formatDateTimeAr } from './dateTimeCanonical.js'
 export {
   saveOtTemplateCompleteService as saveTemplateService,
   deleteOtTemplateService as deleteTemplateService,
@@ -290,7 +291,7 @@ export async function saveWorkOrderService({
   user,
   getNextOtNumberForShip,
 }) {
-  const todayIso = new Date().toISOString().split('T')[0]
+  const todayIso = getTodayArIso()
   const isBatchMode =
     !editingWorkItem &&
     workForm.ot_mode === 'new' &&
@@ -591,8 +592,8 @@ export async function saveThirdPartyCascadeService(tpCascadeForm, selectedWorkIt
     budget_number: isPrc ? vNum : null,
     invoice_number: !isPrc ? vNum : null,
     amount_ars: parseFloat(tpCascadeForm.amount_ars) || 0,
-    service_date: tpCascadeForm.service_date || new Date().toISOString().split('T')[0],
-    entry_date: tpCascadeForm.service_date || new Date().toISOString().split('T')[0],
+    service_date: tpCascadeForm.service_date || getTodayArIso(),
+    entry_date: tpCascadeForm.service_date || getTodayArIso(),
     direct_observations: selectedWorkItem.description || 'Sin descripción en la OT',
     specific_observations: tpCascadeForm.specific_observations.trim() || null,
     updated_at: new Date().toISOString(),
@@ -651,7 +652,7 @@ export async function deleteWorkItemService(row, user) {
 }
 
 export async function deleteWoService(wo, items = [], foremenList = [], user) {
-  const timestamp = new Date().toLocaleString('es-AR')
+  const timestamp = formatDateTimeAr(new Date())
   const elimNote = `[ELIMINADA] Desestimada por eliminación (${timestamp})`
   const updatedNotes = (wo.notes || '').includes('[ELIMINADA]')
     ? wo.notes
@@ -873,7 +874,7 @@ export async function saveThirdPartyEditService(editingThirdParty, user) {
       specific_observations: editingThirdParty.specific_observations?.trim() || null,
       amount_ars: parseFloat(editingThirdParty.amount_ars) || 0,
       status: editingThirdParty.status || 'PRC',
-      service_date: editingThirdParty.service_date || new Date().toISOString().split('T')[0],
+      service_date: editingThirdParty.service_date || getTodayArIso(),
       voucher_number: editingThirdParty.voucher_number?.trim() || null,
       updated_at: new Date().toISOString(),
     },
@@ -893,7 +894,7 @@ export async function saveThirdPartyEditService(editingThirdParty, user) {
 }
 
 export async function submitAmpliarService(selectedWoDetail, ampliarText, user) {
-  const timestamp = new Date().toLocaleString('es-AR')
+  const timestamp = formatDateTimeAr(new Date())
   const author = user?.email?.split('@')[0] || 'Supervisor'
   const appendedNote = `[${timestamp} - Consulta de ${author} a Jefe de Obra (${selectedWoDetail.foreman_name})]: ${ampliarText.trim()}`
   const newNotes = selectedWoDetail.notes ? `${selectedWoDetail.notes}\n\n${appendedNote}` : appendedNote

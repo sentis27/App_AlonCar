@@ -6,10 +6,11 @@
  */
 import { exportToSpreadsheet } from './exportEngine.js'
 import { describeFormula, formatFormulaNumericDisplay } from './formulaEngine.js'
+import { formatDateAr, getTodayArIso } from './dateTimeCanonical.js'
 
 function cleanDateOnly(val) {
   if (!val) return ''
-  return String(val).slice(0, 10)
+  return formatDateAr(val, { fallback: '' })
 }
 
 export function buildPlateCutsReportRows(rows = [], { fallbackShipName = '' } = {}) {
@@ -76,7 +77,7 @@ export function exportPlateCutsReport({ rows = [], shipName = 'buque' } = {}) {
     .trim()
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
     .toLowerCase()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getTodayArIso()
 
   exportToSpreadsheet({
     filename: `reporte_parches_chapa_${safeShip}_${today}.csv`,

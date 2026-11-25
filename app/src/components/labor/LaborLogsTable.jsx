@@ -3,6 +3,7 @@ import GridRibbon from '../GridRibbon.jsx'
 import GridContextMenu from '../GridContextMenu.jsx'
 import GridStatusBarBottom from '../GridStatusBarBottom.jsx'
 import LaborLogsTableRow from './LaborLogsTableRow.jsx'
+import { getTodayArIso } from '../../lib/dateTimeCanonical.js'
 
 export default function LaborLogsTable({
   ships = [],
@@ -62,7 +63,7 @@ export default function LaborLogsTable({
         totalRows={filteredLogs.length}
         entityName="imputaciones"
         exportRows={filteredLogs}
-        exportFilename={`horas_imputaciones_${new Date().toISOString().split('T')[0]}`}
+        exportFilename={`horas_imputaciones_${getTodayArIso()}`}
       />
 
       {filteredLogs.length === 0 ? (

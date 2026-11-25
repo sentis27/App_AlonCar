@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { normalizeText } from '../../lib/allocationEngine'
 import { isGasMaterial } from '../../lib/panolConstants'
+import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 import { PANOL_QUICK_PURCHASE_STEP_HELP, PANOL_GAS_CONTRACTOR_STEP_HELP } from '../../lib/businessHelpRegistry'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
 import { MaterialAutocompleteInput } from './MaterialAutocompleteInput.jsx'
@@ -53,7 +54,7 @@ export function QuickPurchaseModal({ material, initialQuantity, initialUrgency =
   const [quantity, setQuantity] = useState(initialQuantity || '')
   const [urgency, setUrgency] = useState(initialUrgency || 'SIN_APURO')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const today = new Date().toISOString().split('T')[0]
+  const today = formatDateAr(getTodayArIso())
 
   const handleSubmit = async (e) => {
     e.preventDefault()

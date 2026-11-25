@@ -116,6 +116,9 @@ const REQUIRED_CANONICAL_ZONE3_SURFACES = [
 
 const RAW_ZONE3_TOOLBAR_RE = /className\s*=\s*["'{`][^"'`}]*\balon-zone-toolbar\b/
 
+const RAW_UTC_TODAY_RE = /\bnew\s+Date\(\)\.toISOString\(\)\.(?:split\(['"]T['"]\)\[0\]|slice\(\s*0\s*,\s*10\s*\))/
+const RAW_UNANCHORED_DATE_LOCALE_RE = /\bnew\s+Date\([^)]*\)\.toLocale(?:Date|Time)?String\(/
+
 const WORK_ITEMS_CUSTOM_SELECT_RE = /workItemsRepository\.listWorkItems\(\s*\{[\s\S]*?select:\s*['"]([^'"]+)['"]/g
 
 export function checkCanonicalComponentsUsage(rootDir, appDir) {
@@ -136,6 +139,14 @@ export function checkCanonicalComponentsUsage(rootDir, appDir) {
       if (rel.startsWith('app/src/components/canonical/')) continue
 
       const content = fs.readFileSync(full, 'utf8')
+      if (rel !== 'app/src/lib/dateTimeCanonical.js') {
+        if (RAW_UTC_TODAY_RE.test(content)) {
+          errors.push(`Prohibido usar new Date().toISOString().split('T')[0]/slice(0,10) (bug UTC-3 tras 21:00 ART); usar getTodayArIso() de dateTimeCanonical.js (FL-024): ${rel}`)
+        }
+        if (RAW_UNANCHORED_DATE_LOCALE_RE.test(content)) {
+          errors.push(`Prohibido usar new Date().toLocale*String() sin huso Argentina; usar formatDateAr/formatDateTimeAr/formatTimeAr de dateTimeCanonical.js (FL-024): ${rel}`)
+        }
+      }
       if (RAW_ZONE3_TOOLBAR_RE.test(content)) {
         errors.push(`Prohibido escribir alon-zone-toolbar artesanal fuera de CanonicalZone3Toolbar: ${rel} (FL-023)`)
       }

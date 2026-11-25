@@ -57,6 +57,7 @@ import {
 } from './resumenCostHoverHelpers.js'
 import { buildRemitoRowsFromOtCatalog } from './otAbcRemitoAdapter.js'
 import { computeOtUnvaluedBreakdown, extractWoBillingMeta } from './billingSheetMath.js'
+import { toArIsoDate, formatDateAr, compareIsoDatesDesc } from './dateTimeCanonical.js'
 
 export const RESUMEN_REALTIME_TABLES = [
   'ships', 'ship_stays', 'owners', 'work_orders', 'work_items', 'ot_templates', 'labor_logs',
@@ -311,14 +312,17 @@ export function enrichMaterialMovements({
 
     const qtyFormula = getStoredCellFormula(tx, 'quantity_withdrawn')
     const formulaMeta = describeFormula(qtyFormula)
+    const txDateIso = toArIsoDate(tx.transaction_date)
+    const txCreatedIso = toArIsoDate(tx.created_at) || txDateIso
 
     rows.push({
       id: `tx_${tx.id}`,
       rawId: tx.id,
       sourceType: 'PANOL_TX',
-      date: tx.transaction_date ? String(tx.transaction_date).slice(0, 10) : '',
-      createdAt: tx.created_at ? String(tx.created_at).slice(0, 10) : (tx.transaction_date ? String(tx.transaction_date).slice(0, 10) : ''),
-      year: extractYear(tx.transaction_date),
+      date: txDateIso,
+      dateDisplay: formatDateAr(txDateIso, { fallback: '' }),
+      createdAt: txCreatedIso,
+      year: extractYear(txDateIso),
       shipId: resolvedShipId,
       shipName: resolvedShip?.name || 'SIN BUQUE',
       workOrderId: tx.work_order_id || null,
@@ -380,7 +384,8 @@ export function enrichMaterialMovements({
     const qty = Number(po.received_quantity || po.quantity || 0)
     const unitPriceRaw = Number(po.supplier_quoted_price || po.system_unit_price || 0)
     const poDate = po.delivery_date || po.order_date || po.created_at
-    const dateStr = poDate ? String(poDate).slice(0, 10) : ''
+    const dateStr = toArIsoDate(poDate)
+    const poCreatedIso = toArIsoDate(po.created_at) || dateStr
     const tc = getDollarRateForDate(dateStr, macroVariables) || defaultDollarRate || 1500
     const isUsd = normKey(po.currency) === 'USD'
     const unitUsd = isUsd ? unitPriceRaw : tc > 0 ? unitPriceRaw / tc : 0
@@ -397,8 +402,9 @@ export function enrichMaterialMovements({
       rawId: po.id,
       sourceType: 'COMPRA_DIRECTA',
       date: dateStr,
-      createdAt: po.created_at ? String(po.created_at).slice(0, 10) : dateStr,
-      year: extractYear(poDate),
+      dateDisplay: formatDateAr(dateStr, { fallback: '' }),
+      createdAt: poCreatedIso,
+      year: extractYear(dateStr),
       shipId: resolvedShipId,
       shipName: resolvedShip?.name || 'SIN BUQUE',
       workOrderId: po.work_order_id || null,
@@ -438,7 +444,7 @@ export function enrichMaterialMovements({
     })
   }
 
-  return rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  return rows.sort((a, b) => compareIsoDatesDesc(a.date, b.date))
 }
 
 /**
@@ -542,9 +548,12 @@ export function enrichLaborLogs({
     const resolvedShipId = log.ship_id || resolvedWo?.ship_id || null
     const resolvedShip = resolvedShipId ? shipMap.get(resolvedShipId) || null : null
 
-    const hNorm = Number(log.hours_normal ?? log.hours_worked ?? 0) || 0
+    let hNorm = Number(log.hours_normal ?? log.hours_worked ?? 0) || 0
     const h50 = Number(log.hours_extra_50 || 0) || 0
     const h100 = Number(log.hours_extra_100 || 0) || 0
+    if (hNorm === 0 && h50 === 0 && h100 === 0 && Number(log.hours_worked) > 0) {
+      hNorm = Number(log.hours_worked) || 0
+    }
     const hoursPhysical = round2(Number(log.hours_worked) || hNorm + h50 + h100)
 
     const isContractor =
@@ -553,9 +562,15 @@ export function enrichLaborLogs({
       normKey(worker?.admin_center) === 'CONTRATISTA' ||
       normKey(worker?.admin_center) === 'TALLER'
 
+    const mult50 = isContractor ? 1.0 : 1.5
+    const mult100 = isContractor ? 1.0 : 2.0
+    const hoursExtra50Equiv = round2(h50 * mult50)
+    const hoursExtra100Equiv = round2(h100 * mult100)
+    const hoursExtraPhysical = round2(h50 + h100)
+    const hoursExtraEquiv = round2(hoursExtra50Equiv + hoursExtra100Equiv)
     const hoursEquiv = isContractor
       ? hoursPhysical
-      : round2(hNorm + h50 * 1.5 + h100 * 2.0)
+      : round2(hNorm + hoursExtraEquiv)
 
     const rawLogWt = normKey(log.work_type)
     const wiWt = normKey(resolvedWi?.work_type)
@@ -601,10 +616,13 @@ export function enrichLaborLogs({
       notes
     })
 
+    const logDateIso = toArIsoDate(log.date_logged)
+
     return {
       id: log.id,
-      date: log.date_logged ? String(log.date_logged).slice(0, 10) : '',
-      year: extractYear(log.date_logged),
+      date: logDateIso,
+      dateDisplay: formatDateAr(logDateIso, { fallback: '' }),
+      year: extractYear(logDateIso),
       shipId: resolvedShipId,
       shipName: resolvedShip?.name || 'SIN BUQUE',
       workOrderId: log.work_order_id || null,
@@ -618,6 +636,7 @@ export function enrichLaborLogs({
       }),
       workerName,
       contractorGroup,
+      isContractor,
       workerType: isContractor ? 'Contratista' : 'Astillero',
       workerCategory,
       workerTrade,
@@ -630,6 +649,10 @@ export function enrichLaborLogs({
       hoursNormal: round2(hNorm),
       hours50: round2(h50),
       hours100: round2(h100),
+      hoursExtraPhysical,
+      hoursExtra50Equiv,
+      hoursExtra100Equiv,
+      hoursExtraEquiv,
       hoursPhysical,
       hoursEquiv,
       hourlyRateUsd: rateUsd,
@@ -644,7 +667,7 @@ export function enrichLaborLogs({
       hasMissingPrc: isPresupuesto && !prcNumber,
       notes
     }
-  })
+  }).sort((a, b) => compareIsoDatesDesc(a.date, b.date))
 }
 
 /**
@@ -666,7 +689,7 @@ export function enrichThirdPartyServices({
       const resolvedWo = s.work_order_id ? woMap.get(s.work_order_id) || null : null
       const resolvedShipId = s.ship_id || resolvedWo?.ship_id || null
       const resolvedShip = resolvedShipId ? shipMap.get(resolvedShipId) || null : null
-      const dateStr = String(s.service_date || s.entry_date || s.created_at || '').slice(0, 10)
+      const dateStr = toArIsoDate(s.service_date || s.entry_date || s.created_at)
       const ars = Number(s.amount_ars) || 0
       const rate = Number(s.usd_rate) || getDollarRateForDate(dateStr, macroVariables) || defaultDollarRate || 1500
       const usd =
@@ -679,6 +702,7 @@ export function enrichThirdPartyServices({
       return {
         id: s.id,
         date: dateStr,
+        dateDisplay: formatDateAr(dateStr, { fallback: '' }),
         year: extractYear(dateStr),
         shipId: resolvedShipId,
         shipName: resolvedShip?.name || 'SIN BUQUE',
@@ -706,6 +730,7 @@ export function enrichThirdPartyServices({
         hasZeroCost: isThirdPartyZeroCost({ amount_ars: ars, amount_usd: usd, is_active: s.is_active })
       }
     })
+    .sort((a, b) => compareIsoDatesDesc(a.date, b.date))
 }
 
 function isHistoricalOrderStatus(status) {

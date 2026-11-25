@@ -17,6 +17,7 @@ import {
   ArrowRight
 } from 'lucide-react'
 import { AUDIT_ACTION_LABELS, AUDIT_ENTITY_CATALOG, getHistoryForEntity } from '../lib/auditService'
+import { formatDateTimeAr } from '../lib/dateTimeCanonical'
 
 /**
  * GridContextMenu
@@ -288,14 +289,7 @@ export default function GridContextMenu({
                 <div className="space-y-2">
                   {auditLogs.map((log) => {
                     const dateFormatted = log.created_at
-                      ? new Date(log.created_at).toLocaleString('es-AR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
-                        })
+                      ? formatDateTimeAr(log.created_at, { includeSeconds: true })
                       : '—'
 
                     const actionMeta = AUDIT_ACTION_LABELS[log.action] || {

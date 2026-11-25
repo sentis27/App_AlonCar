@@ -6,6 +6,7 @@
 
 import { matchesUniversalSearch } from './searchEngine.js'
 import { assignMonotonicFolios } from './monotonicFolioEngine.js'
+import { formatDateAr, getTodayArIso } from './dateTimeCanonical.js'
 
 // Grupos del Catálogo de Trabajos (OT.ABC)
 export const GRUPOS_CATALOGO = ['Renovación', 'Intermedia', 'Ambas']
@@ -147,14 +148,9 @@ export const WO_GRID_COLUMNS = [
   { key: 'status', label: 'Estado del Trabajo' }
 ]
 
-// Formatear fecha YYYY-MM-DD a DD/MM/AA o DD/MM/AAAA
+// Formatear fecha YYYY-MM-DD a DD/MM/AA o DD/MM/AAAA (delegado al motor canónico FL-024)
 export function formatShortDate(isoStr, fullYear = false) {
-  if (!isoStr) return '—'
-  const clean = String(isoStr).split('T')[0]
-  const parts = clean.split('-')
-  if (parts.length !== 3) return clean
-  const [y, m, d] = parts
-  return fullYear ? `${d}/${m}/${y}` : `${d}/${m}/${y.slice(-2)}`
+  return formatDateAr(isoStr, { fallback: '—', shortYear: !fullYear })
 }
 
 // Determina si un trabajo u OT fue desestimado por eliminación (sin borrar el registro físico para no alterar el consecutivo)
@@ -291,7 +287,7 @@ export function computeOtMetricsAndDates(workOrders = [], laborLogs = [], invent
   workOrders.forEach(wo => {
     const createdIso = wo.created_at
       ? String(wo.created_at).split('T')[0]
-      : (wo.start_date || new Date().toISOString().split('T')[0])
+      : (wo.start_date || getTodayArIso())
 
     map[wo.id] = {
       totalHours: 0,

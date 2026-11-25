@@ -17,6 +17,7 @@ import {
   deletePurchaseDocumentService
 } from '../../services/comprasOcrSettingsService'
 import { useAuth } from '../../context/AuthContext'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import { extractTextFromPdf } from '../../lib/pdfTextExtractor'
@@ -288,7 +289,7 @@ export function DocActionModal({ doc, onClose, onSuccess }) {
         <div className="space-y-4 text-xs">
           <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
             <p className="font-bold text-white truncate">{doc.original_filename}</p>
-            <p className="text-[10px] text-slate-500 font-mono mt-0.5">Fecha: {new Date(doc.created_at).toLocaleDateString('es-AR')}</p>
+            <p className="text-[10px] text-slate-500 font-mono mt-0.5">Fecha: {formatDateAr(doc.created_at)}</p>
           </div>
 
           <form onSubmit={handleUpdateMetadata} className="space-y-3">
@@ -537,7 +538,7 @@ export default function ComprasOcrPanel({
                     <td className="py-2 px-3 text-slate-300">{d.description || '—'}</td>
                     <td className="py-2 px-3 text-slate-400">{d.category || 'General'}</td>
                     <td className="py-2 px-3 text-slate-400 font-mono text-[10px]">
-                      {d.created_at ? new Date(d.created_at).toLocaleDateString('es-AR') : '—'}
+                      {d.created_at ? formatDateAr(d.created_at) : '—'}
                     </td>
                     <td className="py-2 px-3 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1.5">
@@ -590,7 +591,7 @@ export default function ComprasOcrPanel({
 
               <div className="mt-3 pt-2 border-t border-slate-800 flex items-center justify-between">
                 <span className="text-[10px] text-slate-500 font-mono">
-                  {d.created_at ? new Date(d.created_at).toLocaleDateString('es-AR') : '—'}
+                  {d.created_at ? formatDateAr(d.created_at) : '—'}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <a

@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import {
   Wrench,
   Search,
@@ -240,9 +241,9 @@ export function TercerosModalsContainer({
     invoice_number: '',
     internal_remito_number: '',
     supplier_remito_number: '',
-    voucher_date: new Date().toISOString().split('T')[0],
-    entry_date: new Date().toISOString().split('T')[0],
-    service_date: new Date().toISOString().split('T')[0],
+    voucher_date: getTodayArIso(),
+    entry_date: getTodayArIso(),
+    service_date: getTodayArIso(),
     amount_ars: '',
     usd_rate: 1500,
     amount_usd: 0,
@@ -294,7 +295,7 @@ export function TercerosModalsContainer({
         audit_status: editingService.audit_status || 'PENDIENTE'
       })
     } else {
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTodayArIso()
       const defaultShipId = ships.length > 0 ? ships[0].id : ''
       const { usd_rate, amount_usd } = computeEntryDateOrAmountChange(today, 0, macroVariables)
 
@@ -384,7 +385,7 @@ export function TercerosModalsContainer({
   const [evolutionForm, setEvolutionForm] = useState({
     target_voucher_type: 'FCR',
     new_voucher_number: '',
-    voucher_date: new Date().toISOString().split('T')[0],
+    voucher_date: getTodayArIso(),
     final_amount_ars: '',
     evolution_notes: ''
   })
@@ -395,7 +396,7 @@ export function TercerosModalsContainer({
       setEvolutionForm({
         target_voucher_type: 'FCR',
         new_voucher_number: '',
-        voucher_date: new Date().toISOString().split('T')[0],
+        voucher_date: getTodayArIso(),
         final_amount_ars: getEditableCellInitialValue(evolvingService, 'amount_ars', evolvingService.amount_ars !== null ? evolvingService.amount_ars : ''),
         evolution_notes: `Evolución de ${evolvingService.voucher_type} a Factura oficial respaldatoria.`
       })

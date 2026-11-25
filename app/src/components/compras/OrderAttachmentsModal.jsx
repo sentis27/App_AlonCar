@@ -4,6 +4,7 @@ import { extractTextFromPdf } from '../../lib/pdfTextExtractor'
 import { DOC_TYPE_OPTIONS, getDocTypeBadge } from '../../lib/comprasAuxHelpers'
 import { uploadPurchaseAttachmentsService } from '../../services/comprasAuxService'
 import { DocActionModal } from './ComprasOcrPanel'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 
 export function OrderAttachmentsModal({ order, documents, suppliers, ships, onClose, onDocAdded, onDocUpdated, onDocDeleted }) {
   const lineDocs = documents.filter((d) => d.purchase_order_id === order.id)
@@ -105,7 +106,7 @@ export function OrderAttachmentsModal({ order, documents, suppliers, ships, onCl
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                          {doc.description || 'Sin notas'} • {(doc.file_size_bytes / 1024).toFixed(1)} KB • {new Date(doc.created_at).toLocaleDateString('es-AR')}
+                          {doc.description || 'Sin notas'} • {(doc.file_size_bytes / 1024).toFixed(1)} KB • {formatDateAr(doc.created_at)}
                         </p>
                       </div>
                     </div>

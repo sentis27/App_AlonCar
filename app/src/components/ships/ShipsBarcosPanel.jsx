@@ -18,6 +18,7 @@ import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/
 import ShipsBarcosToolbar from './ShipsBarcosToolbar'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import GridContextMenu from '../GridContextMenu'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
 import { duplicateRecord, buildPasteRowHandler } from '../../lib/gridRowActions'
@@ -394,7 +395,7 @@ export default function ShipsBarcosPanel({
             totalRows={filteredShips.length}
             entityName="buques"
             exportRows={filteredShips}
-            exportFilename={`barcos_flota_${new Date().toISOString().split('T')[0]}`}
+            exportFilename={`barcos_flota_${getTodayArIso()}`}
           />
 
           <div className="alon-grid-scroll">

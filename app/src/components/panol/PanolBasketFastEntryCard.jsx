@@ -8,6 +8,7 @@ import FormulaNumericInput from '../canonical/FormulaNumericInput'
 import { evaluateFormulaInput, describeFormula, formatFormulaNumericDisplay } from '../../lib/formulaEngine'
 import { isGasMaterial } from '../../lib/panolConstants'
 import { formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 
 const createEmptyItem = () => ({
   material_id: '', quantity: 1, customCostCenter: 'CLIENTE', notes: '',
@@ -260,7 +261,7 @@ export default function PanolBasketFastEntryCard({
             <ul className="space-y-1 pt-1 border-t border-slate-800/70 max-h-36 overflow-y-auto">
               {basket.previousItems.map((it) => (
                 <li key={it.id} className="text-[10px] flex items-start justify-between gap-2 px-2 py-1 rounded bg-slate-900/40 text-slate-400">
-                  <span className="truncate"><strong className="font-mono text-slate-500 mr-1.5">{it.dateKey} {it.timeLabel}</strong>{it.materialName}</span>
+                  <span className="truncate"><strong className="font-mono text-slate-500 mr-1.5">{formatDateAr(it.dateKey)} {it.timeLabel}</strong>{it.materialName}</span>
                   <span className="font-mono shrink-0">{it.quantity} {it.unitMeasure}</span>
                 </li>
               ))}

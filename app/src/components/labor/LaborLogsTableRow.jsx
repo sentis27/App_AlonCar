@@ -2,6 +2,7 @@ import React from 'react'
 import HighlightText from '../HighlightText.jsx'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
 import { cleanShipName } from '../../lib/laborConstants.js'
+import { formatDateAr } from '../../lib/dateTimeCanonical.js'
 import { TIPOS_DE_TRABAJO } from '../../lib/workOrdersConstants.js'
 import { normalizeLaborWorkType, getWorkTypeBadgeMeta } from '../../lib/laborCargaGridHelpers.js'
 import LaborInlineCell from './LaborInlineCell.jsx'
@@ -115,7 +116,7 @@ export default function LaborLogsTableRow({
         onFillHandleMouseDown={onFillHandleMouseDown}
         onFillHandleDoubleClick={onFillHandleDoubleClick}
       >
-        <span><HighlightText text={log.date_logged} query={filterWorker} /></span>
+        <span><HighlightText text={formatDateAr(log.date_logged)} query={filterWorker} /></span>
       </LaborInlineCell>
 
       <LaborInlineCell

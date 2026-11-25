@@ -24,6 +24,7 @@ import {
   AUDIT_ENTITY_CATALOG,
   AUDIT_ACTION_LABELS
 } from '../lib/auditService'
+import { formatDateTimeAr, getTodayArIso } from '../lib/dateTimeCanonical'
 import { exportToSpreadsheet } from '../lib/exportEngine'
 import HighlightText from './HighlightText'
 import { matchesUniversalSearch } from '../lib/searchEngine'
@@ -120,7 +121,7 @@ export default function AdminAuditLedger() {
       const d = typeof l.details === 'object' && l.details !== null ? l.details : {}
       const sheetName = d.sheet_name || AUDIT_ENTITY_CATALOG[l.entity_type]?.label || l.entity_type
       return {
-        fecha: l.created_at ? new Date(l.created_at).toLocaleString('es-AR') : '',
+        fecha: l.created_at ? formatDateTimeAr(l.created_at, { includeSeconds: true, fallback: '' }) : '',
         usuario: l.performed_by || 'Sistema',
         planilla: sheetName,
         accion: AUDIT_ACTION_LABELS[l.action]?.label || l.action,
@@ -133,7 +134,7 @@ export default function AdminAuditLedger() {
     })
 
     exportToSpreadsheet({
-      filename: `libro_auditoria_aloncar_${new Date().toISOString().slice(0, 10)}.csv`,
+      filename: `libro_auditoria_aloncar_${getTodayArIso()}.csv`,
       rows,
       columns
     })
@@ -415,14 +416,7 @@ export default function AdminAuditLedger() {
                     const hasFieldDiff = d.field || d.old_value !== undefined || d.new_value !== undefined
 
                     const formattedDate = log.created_at
-                      ? new Date(log.created_at).toLocaleString('es-AR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
-                        })
+                      ? formatDateTimeAr(log.created_at, { includeSeconds: true, shortYear: true })
                       : '—'
 
                     return (
@@ -524,7 +518,7 @@ export default function AdminAuditLedger() {
                     </h3>
                   </div>
                   <p className="text-xs text-slate-400 mt-1">
-                    Planilla: <strong className="text-cyan-300">{AUDIT_ENTITY_CATALOG[selectedLogDetail.entity_type]?.label || selectedLogDetail.entity_type}</strong> • Por: <span className="text-white font-semibold">{selectedLogDetail.performed_by || 'Sistema'}</span> • {new Date(selectedLogDetail.created_at).toLocaleString('es-AR')}
+                    Planilla: <strong className="text-cyan-300">{AUDIT_ENTITY_CATALOG[selectedLogDetail.entity_type]?.label || selectedLogDetail.entity_type}</strong> • Por: <span className="text-white font-semibold">{selectedLogDetail.performed_by || 'Sistema'}</span> • {formatDateTimeAr(selectedLogDetail.created_at, { includeSeconds: true })}
                   </p>
                 </div>
                 <button

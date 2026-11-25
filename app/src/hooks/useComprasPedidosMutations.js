@@ -3,6 +3,7 @@ import { deduceUnitMeasure, normalizeUnitMeasure } from '../lib/comprasConstants
 import { normalizeText } from '../lib/allocationEngine'
 import { evaluateFormulaInput, buildCellFormulasPatch, getEditableCellInitialValue } from '../lib/formulaEngine'
 import { computeFortnightFromDate, getNextUrgency } from '../lib/comprasPedidosHelpers'
+import { getTodayArIso } from '../lib/dateTimeCanonical'
 import {
   computeAdjacentCreatedAt,
   buildBlankOrderPayload,
@@ -142,7 +143,7 @@ export function useComprasPedidosMutations({
   }, [saveInlineEdit])
 
   const handleAddNewBlankOrder = useCallback(async () => {
-    const todayStr = new Date().toISOString().split('T')[0]
+    const todayStr = getTodayArIso()
     const astShip = ships.find((s) => (s.name || '').toUpperCase().includes('ASTILLERO'))
     const payload = buildBlankOrderPayload({
       todayStr,
@@ -164,7 +165,7 @@ export function useComprasPedidosMutations({
 
   const handleInsertOrderContext = useCallback(async (referenceOrder, rowIndex, position = 'below') => {
     if (!referenceOrder) return
-    const refDate = referenceOrder.order_date || new Date().toISOString().split('T')[0]
+    const refDate = referenceOrder.order_date || getTodayArIso()
     const payload = buildAdjacentOrderPayload(referenceOrder, {
       refDate,
       fortnight: referenceOrder.fortnight_period || getFortnight(refDate),
@@ -190,7 +191,7 @@ export function useComprasPedidosMutations({
   }, [filteredOrders, getFortnight, setPurchaseOrders, registerInsertUndo, showFeedbackMsg, setInlineEdit])
 
   const handleDuplicateOrder = useCallback(async (order) => {
-    const todayStr = new Date().toISOString().split('T')[0]
+    const todayStr = getTodayArIso()
     const payload = buildDuplicateOrderPayload(order, { todayStr, fortnight: getFortnight(todayStr) })
     try {
       const data = await insertPedidoService({ payload, auditAction: 'ROW_DUPLICATE', entityName: order.material_name_raw, details: { sourceOrderId: order.id } })

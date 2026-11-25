@@ -7,6 +7,7 @@
 import { matchesUniversalSearch } from './searchEngine.js'
 import { isThirdPartyZeroCost } from './zeroCostAlertsRules.js'
 import { evaluateFormulaInput } from './formulaEngine.js'
+import { formatDateAr } from './dateTimeCanonical.js'
 
 // Tipos de Comprobante y Reglas de Negocio (DEC-017)
 export const VOUCHER_TYPES = [
@@ -82,16 +83,10 @@ export const TERCEROS_PASTE_BASE_FIELDS = [
   'direct_observations', 'specific_observations'
 ]
 
-// Formateador estándar de fecha dd/mm/aaaa
+// Formateador estándar de fecha dd/mm/aaaa (delegado al motor canónico FL-024)
 export function formatDate(dateStr) {
   if (!dateStr) return '-'
-  const clean = String(dateStr).split('T')[0]
-  const parts = clean.split('-')
-  if (parts.length === 3) {
-    const [y, m, d] = parts
-    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`
-  }
-  return dateStr
+  return formatDateAr(dateStr, { fallback: '-' })
 }
 
 // Obtener tipo de cambio oficial congelado por fecha de carga

@@ -10,6 +10,7 @@ import { LABOR_CLOCK_BOARD_STEP_HELP } from '../../lib/businessHelpRegistry.js'
 import { CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
 import LaborFacialClockWorkspace from './LaborFacialClockWorkspace.jsx'
 import LaborClockAssignSheet from './LaborClockAssignSheet.jsx'
+import { getTodayArIso } from '../../lib/dateTimeCanonical.js'
 
 const STORAGE_PREFIX = 'aloncar_facial_clock_v1_'
 const FOLDER_PATH_KEY = 'aloncar_facial_clock_folder_label'
@@ -27,7 +28,7 @@ export default function LaborFacialClockModal({
   setStatusMessage,
   user
 }) {
-  const [dateLogged, setDateLogged] = useState(() => new Date().toISOString().split('T')[0])
+  const [dateLogged, setDateLogged] = useState(() => getTodayArIso())
   const [folderLabel, setFolderLabel] = useState(() => localStorage.getItem(FOLDER_PATH_KEY) || 'C:\\RelojFacial\\reportes')
   const [attendees, setAttendees] = useState([])
   const [closingRecords, setClosingRecords] = useState([])

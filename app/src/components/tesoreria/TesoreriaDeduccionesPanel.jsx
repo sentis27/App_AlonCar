@@ -7,6 +7,7 @@ import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import HighlightText from '../HighlightText'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 
 /**
  * Panel analítico de Extracción de Descuentos a Contratistas (Gallina / METRICAS_ANALISIS)
@@ -395,7 +396,7 @@ export default function TesoreriaDeduccionesPanel({
                   (subView === 'exentos' ? filteredExempt : filteredDetails).map((r, idx) => (
                     <tr key={r.id || idx} className="hover:bg-slate-800/40">
                       <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
-                      <td className="py-2 px-3 font-mono text-slate-300">{r.date}</td>
+                      <td className="py-2 px-3 font-mono text-slate-300">{formatDateAr(r.date)}</td>
                       <td className="py-2 px-3 font-bold text-white">
                         <HighlightText text={r.contractorLabel} query={searchTerm} />
                       </td>

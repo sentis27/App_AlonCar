@@ -8,6 +8,7 @@
 import { auditService } from './auditService.js'
 import { syncWorkOrderHeaderStatusService } from './workOrderHeaderSync.js'
 import { normalizeOtTitleKey, resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
+import { getTodayArIso, formatDateTimeAr } from './dateTimeCanonical.js'
 import {
   fetchWorkOrderTransferSummaryService,
   assertNoDuplicateOtTitleInDb,
@@ -169,7 +170,7 @@ export async function separateWorkItemCompleteService({
   const shipId = sourceWo?.ship_id
   let targetWoId = separateForm.target_existing_wo_id
   let targetWoLabel = ''
-  const timestamp = new Date().toLocaleString('es-AR')
+  const timestamp = formatDateTimeAr(new Date())
   const author = user?.email?.split('@')[0] || 'Supervisor'
 
   if (separateForm.mode === 'new_ot') {
@@ -191,7 +192,7 @@ export async function separateWorkItemCompleteService({
       foreman_name: separatingRow.foreman_name || sourceWo?.foreman_name,
       contractor_name: (separatingRow.contractors || []).join(', ') || null,
       is_tabulated: separateForm.ot_creation_type === 'tabulada',
-      start_date: new Date().toISOString().split('T')[0],
+      start_date: getTodayArIso(),
       notes: originNote,
     })
     if (createWoErr) throw new Error(createWoErr)

@@ -51,6 +51,14 @@ import {
   CLEAR_FILTER_BTN_CLASS,
   resolveGridHistoryControl,
 } from '../../src/lib/filterThemeConstants.js'
+import {
+  getTodayArIso,
+  formatDateAr,
+  formatDateTimeAr,
+  buildArTimestampIso,
+} from '../../src/lib/dateTimeCanonical.js'
+import { matchesUniversalSearch } from '../../src/lib/searchEngine.js'
+import { enrichLaborLogs } from '../../src/lib/managerialSummaryService.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '../..')
@@ -107,6 +115,7 @@ const COVERED_CONTRACT_IDS = new Set([
   'FL-021',
   'FL-022',
   'FL-023',
+  'FL-024',
 ])
 
 describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', () => {
@@ -798,5 +807,73 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(comprasPageSrc).toContain('Mandados')
     expect(comprasPageSrc.trimEnd().split(/\r?\n/).length).toBeLessThanOrEqual(250)
     expect(readRepoFile('app/src/components/compras/ComprasPedidosToolbar.jsx')).not.toContain('onOpenMandados')
+  })
+
+  it('FL-024: blinda Fecha DD/MM/AAAA, Hora Argentina UTC-3 en todo el ERP y depuración de Hojas Resumen Gerencial', () => {
+    expect(STATUS_BY_ID.get('FL-024')).toBe('blindado')
+
+    // 1. Motor canónico UTC-3 (sin desfasaje después de las 21:00 ART)
+    const lateAr = new Date('2026-11-24T01:30:00.000Z') // 23/11/2026 22:30 ART
+    expect(getTodayArIso(lateAr)).toBe('2026-11-23')
+    expect(formatDateAr(lateAr)).toBe('23/11/2026')
+    expect(formatDateTimeAr(lateAr)).toBe('23/11/2026 22:30')
+    expect(buildArTimestampIso('2026-11-23', '22:30')).toBe('2026-11-24T01:30:00.000Z')
+
+    // 2. HTML en es-AR y buscador universal compatible con DD/MM/AAAA
+    expect(readRepoFile('app/index.html')).toContain('lang="es-AR"')
+    expect(matchesUniversalSearch({ date_logged: '2026-11-23', worker_name: 'JUAN' }, '23/11/2026')).toBe(true)
+
+    // 3. Candado anti-regresión activo en antiRegressionChecks.mjs
+    const guardSrc = readRepoFile('app/scripts/lib/antiRegressionChecks.mjs')
+    expect(guardSrc).toContain('RAW_UTC_TODAY_RE')
+    expect(guardSrc).toContain('RAW_UNANCHORED_DATE_LOCALE_RE')
+
+    // 4. Conversión de Horas Extra en enrichLaborLogs (4 al 50% × 1.5 + 2 al 100% × 2.0 = 10 hs conv.)
+    const enriched = enrichLaborLogs({
+      laborLogs: [{
+        id: 'l1',
+        date_logged: '2026-11-20',
+        worker_name: 'OPERARIO ASTILLERO',
+        worker_type: 'Astillero',
+        hours_normal: 9,
+        hours_extra_50: 4,
+        hours_extra_100: 2,
+        hours_worked: 15,
+        work_type: 'HORA',
+      }],
+      workers: [{ id: 'w1', name: 'OPERARIO ASTILLERO', admin_center: 'ASTILLERO', category: 'OFICIAL', hourly_rate_usd: 10 }],
+    })
+    expect(enriched[0].hoursNormal).toBe(9)
+    expect(enriched[0].hoursExtraPhysical).toBe(6)
+    expect(enriched[0].hoursExtra50Equiv).toBe(6)
+    expect(enriched[0].hoursExtra100Equiv).toBe(4)
+    expect(enriched[0].hoursExtraEquiv).toBe(10)
+    expect(enriched[0].hoursEquiv).toBe(19)
+    expect(enriched[0].costUsd).toBe(190)
+
+    // 5. Hojas de Resumen Gerencial: columnas visuales depuradas + CSV completo preservado
+    const horasSrc = readRepoFile('app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx')
+    expect(horasSrc).toContain('OvertimeBreakdownCell')
+    expect(horasSrc).toContain('Hs Extra')
+    expect(horasSrc).not.toContain('<th className="px-2.5 py-2">Centro</th>')
+    expect(horasSrc).not.toContain('<th className="px-2.5 py-2">Fuente</th>')
+    expect(horasSrc).not.toContain('<th className="px-2.5 py-2">Estado</th>')
+    expect(horasSrc).toContain("{ key: 'workerType', label: 'Centro' }")
+    expect(horasSrc).toContain("{ key: 'approvalStatus', label: 'Estado' }")
+
+    const matSrc = readRepoFile('app/src/components/resumenGerencial/ResumenHojaMaterialesPanel.jsx')
+    expect(matSrc).toContain('<th className="px-2.5 py-2">Origen</th>')
+    expect(matSrc).not.toContain('<th className="px-2.5 py-2">Rubro</th>')
+    expect(matSrc).not.toContain('<th className="px-2.5 py-2">Clasificación</th>')
+    expect(matSrc).not.toContain('<th className="px-2.5 py-2 text-right">Ref. EPP*</th>')
+    expect(matSrc.indexOf('<th className="px-2.5 py-2">O.T</th>')).toBeLessThan(matSrc.indexOf('<th className="px-2.5 py-2">Solicitante</th>'))
+    expect(matSrc.indexOf('<th className="px-2.5 py-2">Solicitante</th>')).toBeLessThan(matSrc.indexOf('<th className="px-2.5 py-2">Material / Insumo</th>'))
+    expect(matSrc).toContain("{ key: 'referenceUsd', label: 'Ref EPP US$' }")
+
+    const tercSrc = readRepoFile('app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx')
+    expect(tercSrc).not.toContain('<th className="px-2.5 py-2">Comprobante</th>')
+    expect(tercSrc).not.toContain('<th className="px-2.5 py-2">N° Comp.</th>')
+    expect(tercSrc).toContain("{ key: 'voucherType', label: 'Comprobante' }")
+    expect(tercSrc).toContain("{ key: 'voucherNumber', label: 'Nro Comp.' }")
   })
 })

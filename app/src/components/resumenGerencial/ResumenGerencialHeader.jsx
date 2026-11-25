@@ -8,6 +8,7 @@ import {
   DollarSign
 } from 'lucide-react'
 import { RESUMEN_GERENCIAL_TABS, formatUsd } from '../../lib/drydockCatalogConstants'
+import { formatTimeAr } from '../../lib/dateTimeCanonical'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
 import CanonicalActiveSubmoduleBadge from '../canonical/CanonicalActiveSubmoduleBadge'
 
@@ -58,7 +59,7 @@ export default function ResumenGerencialHeader({
   }
 
   const formattedSyncTime = lastSyncAt
-    ? lastSyncAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    ? formatTimeAr(lastSyncAt, { includeSeconds: true, fallback: null })
     : null
 
   return (

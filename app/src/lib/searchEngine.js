@@ -6,6 +6,8 @@
  * hijas vinculadas (Fletes, Comprobantes, Documentos PDF/JPG adjuntos indexados, Notas técnicas, Dimensiones y Tarifas).
  */
 
+import { formatDateAr } from './dateTimeCanonical.js'
+
 export function normalizeSearchText(str) {
   return (str || '')
     .toString()
@@ -80,6 +82,11 @@ export function buildUniversalSearchCorpus(record, options = {}) {
         if (/[0-9]+[.,][0-9]+/.test(trimmed)) {
           parts.push(trimmed.replace(',', '.'))
           parts.push(trimmed.replace('.', ','))
+        }
+        // Si es fecha ISO o timestamp, indexar también en formato argentino DD/MM/AAAA (FL-024)
+        if (/^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$/.test(trimmed)) {
+          const arDate = formatDateAr(trimmed, { fallback: '' })
+          if (arDate) parts.push(arDate)
         }
         // Si la clave o el valor alude a un archivo/adjunto/pdf/jpg
         if (/pdf|jpg|jpeg|png|adjunto|comprobante|remito|factura/i.test(key) || /\.(pdf|jpg|jpeg|png)$/i.test(trimmed)) {

@@ -5,6 +5,7 @@ import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/Formula
 import { describeFormula, getStoredCellFormula, formatFormulaNumericDisplay } from '../../lib/formulaEngine'
 import { InlineSupplierPicker } from './ComprasAuxModals'
 import { STATUS_OPTIONS, getSearchMatchMap } from '../../lib/comprasConstants'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 import { FillHandle, MaterialDisplayCell, MaterialInlineEditor, PedidoStatusSelect, RowClickNumMenu } from './ComprasRowCells'
 
 export default function ComprasPedidoRow({
@@ -92,7 +93,7 @@ export default function ComprasPedidoRow({
       <td {...cpDate.domProps} onDoubleClick={() => activateComprasCell(po, 'order_date')} className={`py-1.5 px-1.5 whitespace-nowrap font-mono cursor-pointer ${cpDate.className}`} title="Doble clic para editar fecha">
         {inlineEdit.orderId === po.id && inlineEdit.field === 'order_date' ? (
           <input type="date" autoFocus value={inlineEdit.value} onChange={(e) => { const v = e.target.value; setInlineEdit({ ...inlineEdit, value: v }); if (v) saveInlineEdit(po.id, 'order_date', v) }} onKeyDown={(e) => { if (e.key === 'Enter' && inlineEdit.value) saveInlineEdit(po.id, 'order_date', inlineEdit.value); if (e.key === 'Escape') clearInline() }} onBlur={() => { if (inlineEdit.value) saveInlineEdit(po.id, 'order_date', inlineEdit.value); else clearInline() }} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none cursor-pointer" />
-        ) : (<><div className="text-slate-200 text-[11px]">{po.order_date}</div><div className="text-[9px] text-slate-500">{po.fortnight_period}</div></>)}
+        ) : (<><div className="text-slate-200 text-[11px]">{formatDateAr(po.order_date)}</div><div className="text-[9px] text-slate-500">{po.fortnight_period}</div></>)}
         {cpDate.renderHandle && <FillHandle grid={grid} />}
       </td>
 
@@ -242,7 +243,7 @@ export default function ComprasPedidoRow({
       <td {...cpDeliv.domProps} onDoubleClick={() => activateComprasCell(po, 'delivery_date')} className={`py-1.5 px-1.5 text-center whitespace-nowrap font-mono cursor-pointer ${cpDeliv.className}`} title="Doble clic para cargar Fecha de Entrega">
         {inlineEdit.orderId === po.id && inlineEdit.field === 'delivery_date' ? (
           <input type="date" autoFocus value={inlineEdit.value} onChange={(e) => { const v = e.target.value; setInlineEdit({ ...inlineEdit, value: v }); if (v) saveInlineEdit(po.id, 'delivery_date', v) }} onKeyDown={(e) => { if (e.key === 'Enter') saveInlineEdit(po.id, 'delivery_date', inlineEdit.value || null); if (e.key === 'Escape') clearInline() }} onBlur={() => saveInlineEdit(po.id, 'delivery_date', inlineEdit.value || null)} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] text-white focus:outline-none cursor-pointer" />
-        ) : po.delivery_date ? <span className="text-emerald-300 font-semibold text-[10px] bg-emerald-950/50 border border-emerald-800/50 px-1.5 py-0.5 rounded">{po.delivery_date}</span> : <span className="text-slate-600 hover:text-slate-400 text-[10px]">—</span>}
+        ) : po.delivery_date ? <span className="text-emerald-300 font-semibold text-[10px] bg-emerald-950/50 border border-emerald-800/50 px-1.5 py-0.5 rounded">{formatDateAr(po.delivery_date)}</span> : <span className="text-slate-600 hover:text-slate-400 text-[10px]">—</span>}
         {cpDeliv.renderHandle && <FillHandle grid={grid} />}
       </td>
 

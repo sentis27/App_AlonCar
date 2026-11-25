@@ -30,6 +30,7 @@ import {
 import { SPREADSHEET_COLUMNS_PANOL, PANOL_PASTE_FIELDS } from '../../lib/panolConstants'
 import { formatUnitMeasureShort } from '../../lib/unitMeasureUtils'
 import { getLocalDateKey, formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
+import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 import { evaluateAllocationState } from '../../lib/allocationEngine'
 import {
   saveShipAndWorkOrderService,
@@ -350,7 +351,7 @@ export default function PanolMovimientosPanel({
         totalRows={filteredTransactions.length}
         entityName="filas"
         exportRows={filteredTransactions}
-        exportFilename={`panol_retiros_${new Date().toISOString().split('T')[0]}`}
+        exportFilename={`panol_retiros_${getTodayArIso()}`}
       />
 
       <datalist id="panol-contractors-datalist">
@@ -505,7 +506,7 @@ export default function PanolMovimientosPanel({
                               className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] font-mono text-white focus:outline-none"
                             />
                           ) : (
-                            <span><HighlightText text={dateVal || '—'} query={searchQuery} /></span>
+                            <span><HighlightText text={formatDateAr(dateVal)} query={searchQuery} /></span>
                           )}
                           {cp.renderHandle && (
                             <div

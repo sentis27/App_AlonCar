@@ -3,6 +3,7 @@ import { workersRepository } from '../repositories/workersRepository.js'
 import { shipsRepository } from '../repositories/shipsRepository.js'
 import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { workItemsRepository } from '../repositories/workItemsRepository.js'
+import { getTodayArIso } from './dateTimeCanonical.js'
 import {
   OFFICIAL_RUBROS_CATALOG,
   normalizeText,
@@ -191,7 +192,7 @@ export async function tabulateCrewMessage(
 
   // Registrar en Bitácora de Auditoría
   const logEntry = await recordAiProcessingLog({
-    fecha_reportada: dateLogged || new Date().toISOString().split('T')[0],
+    fecha_reportada: dateLogged || getTodayArIso(),
     usuario_emisor: userEmail || 'Operador Web',
     mensaje_literal: rawMessage,
     canal_detectado: parsedPayload.canal_detectado || 'astillero_general',

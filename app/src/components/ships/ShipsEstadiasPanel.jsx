@@ -18,6 +18,7 @@ import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
 import { duplicateRecord, buildPasteRowHandler } from '../../lib/gridRowActions'
+import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import HighlightText from '../HighlightText'
 import {
@@ -288,7 +289,7 @@ export default function ShipsEstadiasPanel({
 
   // Cierre rápido de estadía a la fecha actual
   const handleCloseStayQuick = async (stay) => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayArIso()
     try {
       await closeStayQuickService({ stay, today, user: resolveShipsAuditUser(user, activeRolePerspective) })
       showFeedback('success', `Cierre de estadía registrado al día ${today}.`)
@@ -418,7 +419,7 @@ export default function ShipsEstadiasPanel({
             totalRows={filteredStays.length}
             entityName="estadías"
             exportRows={filteredStays}
-            exportFilename={`barcos_estadias_${new Date().toISOString().split('T')[0]}`}
+            exportFilename={`barcos_estadias_${getTodayArIso()}`}
           />
 
           <div className="alon-grid-scroll">
@@ -597,7 +598,7 @@ export default function ShipsEstadiasPanel({
                             />
                           ) : (
                             <span className="font-mono text-slate-300">
-                              <HighlightText text={stay.start_date || '—'} query={searchTerm} />
+                              <HighlightText text={formatDateAr(stay.start_date)} query={searchTerm} />
                             </span>
                           )}
                           {renderFillHandle(cpStart)}
@@ -627,7 +628,7 @@ export default function ShipsEstadiasPanel({
                             </span>
                           ) : (
                             <span className="font-mono text-slate-300">
-                              <HighlightText text={stay.end_date} query={searchTerm} />
+                              <HighlightText text={formatDateAr(stay.end_date)} query={searchTerm} />
                             </span>
                           )}
                           {renderFillHandle(cpEnd)}
@@ -725,7 +726,7 @@ export default function ShipsEstadiasPanel({
                         <HighlightText text={cleanShipName(stay.ships?.name || 'Buque S/D')} query={searchTerm} />
                       </h4>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {stay.start_date} &rarr; {stay.end_date || 'En curso'}
+                        {formatDateAr(stay.start_date)} &rarr; {stay.end_date ? formatDateAr(stay.end_date) : 'En curso'}
                       </div>
                     </div>
 

@@ -18,6 +18,7 @@ import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
 import { duplicateRecord, buildPasteRowHandler } from '../../lib/gridRowActions'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import HighlightText from '../HighlightText'
 import {
@@ -321,7 +322,7 @@ export default function ShipsArmadoresPanel({
             totalRows={filteredOwners.length}
             entityName="armadores"
             exportRows={filteredOwners}
-            exportFilename={`barcos_armadores_${new Date().toISOString().split('T')[0]}`}
+            exportFilename={`barcos_armadores_${getTodayArIso()}`}
           />
 
           <div className="alon-grid-scroll">

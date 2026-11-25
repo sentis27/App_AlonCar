@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Calendar, CheckCircle2, ArrowUpRight, AlertTriangle, Shield, Info } from 'lucide-react'
 import { CONTRACT_TYPES, SAFETY_ITEMS_HELP_TEXT } from '../../lib/workCostRules.js'
 import { resolveContractAlertService } from '../../lib/contractorDeductionsService.js'
+import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical.js'
 
 /**
  * Bandeja compartida de Contratos de Personal Astillero próximos a vencerse (<= 7 días)
@@ -22,7 +23,7 @@ export default function MariaJoseContractAlertsCard({
   const handleConfirmRenewal = async (al) => {
     const draft = drafts[al.id] || {}
     const nextType = draft.contract_type || 'PERMANENTE'
-    const nextStart = draft.contract_start_date || new Date().toISOString().slice(0, 10)
+    const nextStart = draft.contract_start_date || getTodayArIso()
 
     try {
       setResolvingId(al.id)
@@ -131,7 +132,7 @@ export default function MariaJoseContractAlertsCard({
                       {al.workers?.name || 'Operario Astillero'}
                     </span>
                     <span className="text-[10px] font-mono text-slate-500">
-                      {al.workers?.contract_type || 'Contrato'} · Inicio: {al.workers?.contract_start_date || '—'}
+                      {al.workers?.contract_type || 'Contrato'} · Inicio: {formatDateAr(al.workers?.contract_start_date)}
                     </span>
                   </div>
                   <div className="text-xs font-semibold text-white">{al.alert_message}</div>
@@ -152,7 +153,7 @@ export default function MariaJoseContractAlertsCard({
                   </select>
                   <input
                     type="date"
-                    value={draft.contract_start_date || new Date().toISOString().slice(0, 10)}
+                    value={draft.contract_start_date || getTodayArIso()}
                     onChange={(e) => setDrafts((prev) => ({
                       ...prev,
                       [al.id]: { ...prev[al.id], contract_start_date: e.target.value }

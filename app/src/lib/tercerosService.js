@@ -9,6 +9,7 @@ import { evaluateFormulaInput, buildCellFormulasPatch, getStoredCellFormula } fr
 import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolioEngine.js'
 import { setAllocationWorkersCache } from './allocationEngine.js'
 import { getDollarRateForDate } from './tercerosConstants.js'
+import { getTodayArIso } from './dateTimeCanonical.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { resolveWorkerIdFromCatalog } from './workerIdentity.js'
 import {
@@ -183,7 +184,7 @@ export async function deleteServiceService({ service, actor = 'MARIA JOSE' }) {
 }
 
 export async function insertBlankRowService({ services = [], macroVariables = [], actor = 'MARIA JOSE' }) {
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = getTodayArIso()
   const rate = getDollarRateForDate(todayStr, macroVariables) || 1500
   const newService = {
     service_date: todayStr,

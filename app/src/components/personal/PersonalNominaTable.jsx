@@ -2,6 +2,7 @@ import { Square, CheckSquare, HelpCircle } from 'lucide-react'
 import GridRibbon from '../GridRibbon'
 import PersonalNominaRow from './PersonalNominaRow'
 import { SAFETY_ITEMS_HELP_TEXT } from '../../lib/workCostRules'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 
 export default function PersonalNominaTable({
   nominaGrid,
@@ -37,7 +38,7 @@ export default function PersonalNominaTable({
         totalRows={filteredWorkers.length}
         entityName="operarios"
         exportRows={filteredWorkers}
-        exportFilename={`personal_padron_${new Date().toISOString().split('T')[0]}`}
+        exportFilename={`personal_padron_${getTodayArIso()}`}
       />
 
       <div className="alon-grid-scroll">

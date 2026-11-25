@@ -1,5 +1,6 @@
 import { Pencil, Trash2, Square, CheckSquare, CopyPlus } from 'lucide-react'
 import { computeContractExpiration } from '../../lib/workCostRules'
+import { formatDateAr, formatDayMonthAr } from '../../lib/dateTimeCanonical'
 import PersonalNominaRowCells from './PersonalNominaRowCells'
 import PersonalNominaSafetyCell from './PersonalNominaSafetyCell'
 
@@ -51,7 +52,7 @@ export default function PersonalNominaRow({
       )
     }
     return (
-      <div className="space-y-0.5" title={exp.expiresIso ? `Inicio: ${w.contract_start_date || '—'} · Vence: ${exp.expiresIso}` : 'Falta fecha de inicio'}>
+      <div className="space-y-0.5" title={exp.expiresIso ? `Inicio: ${formatDateAr(w.contract_start_date)} · Vence: ${formatDateAr(exp.expiresIso)}` : 'Falta fecha de inicio'}>
         <span className={`px-1.5 py-0.5 rounded font-bold border inline-block ${
           exp.isExpired
             ? 'bg-rose-950 text-rose-300 border-rose-600'
@@ -63,7 +64,7 @@ export default function PersonalNominaRow({
         </span>
         {exp.expiresIso && (
           <div className={`text-[9px] font-mono ${exp.needsAttention ? 'text-orange-300 font-bold' : 'text-slate-400'}`}>
-            {exp.isExpired ? 'VENCIDO' : `${exp.daysRemaining}d`} · {exp.expiresIso.slice(5)}
+            {exp.isExpired ? 'VENCIDO' : `${exp.daysRemaining}d`} · {formatDayMonthAr(exp.expiresIso)}
           </div>
         )}
       </div>

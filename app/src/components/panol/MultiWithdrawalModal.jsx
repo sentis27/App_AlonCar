@@ -9,6 +9,7 @@ import {
 } from '../../lib/panolConstants'
 import { PANOL_WITHDRAWAL_STEP_HELP } from '../../lib/businessHelpRegistry'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import { toArIsoDate, getTodayArIso } from '../../lib/dateTimeCanonical.js'
 import MultiWithdrawalDestinationStep from './MultiWithdrawalDestinationStep.jsx'
 import MultiWithdrawalItemsStep from './MultiWithdrawalItemsStep.jsx'
 
@@ -46,8 +47,8 @@ export default function MultiWithdrawalModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [date, setDate] = useState(
     editingRow?.transaction_date
-      ? String(editingRow.transaction_date).split('T')[0]
-      : new Date().toISOString().split('T')[0]
+      ? toArIsoDate(editingRow.transaction_date)
+      : getTodayArIso()
   )
   const [voucherNumber, setVoucherNumber] = useState(editingRow?.voucher_number || '')
   const [notes, setNotes] = useState(() => (editingRow ? stripGasTagFromNotes(editingRow.notes || '') : ''))

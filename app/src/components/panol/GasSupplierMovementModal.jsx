@@ -3,6 +3,7 @@ import { Truck, Plus, Trash2, Check, ArrowDownLeft, ArrowUpRight, Sparkles } fro
 import { GAS_SUPPLIER_OPERATION_TYPES } from '../../lib/panolConstants'
 import { PANOL_GAS_SUPPLIER_STEP_HELP } from '../../lib/businessHelpRegistry'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import { getTodayArIso } from '../../lib/dateTimeCanonical.js'
 
 function createLine(operationType = 'DEVOLUCION_PROVEEDOR', defaultMaterialId = '') {
   const defaultCond = operationType === 'DEVOLUCION_PROVEEDOR' ? 'VACIO' : 'LLENO'
@@ -36,7 +37,7 @@ export function GasSupplierMovementModal({
   )
 
   const [supplierId, setSupplierId] = useState(() => initialSupplierId || suppliers?.[0]?.id || '')
-  const [movementDate, setMovementDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [movementDate, setMovementDate] = useState(() => getTodayArIso())
   const [remitoNumber, setRemitoNumber] = useState('')
   const [generalNotes, setGeneralNotes] = useState('')
   const [lines, setLines] = useState(() => [createLine('DEVOLUCION_PROVEEDOR', sortedGasMaterials[0]?.id || '')])

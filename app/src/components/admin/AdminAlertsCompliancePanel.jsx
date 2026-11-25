@@ -14,6 +14,7 @@ import {
 } from '../../services/adminGovernanceService.js'
 import MariaJoseBudgetAlertsCard from '../workOrders/MariaJoseBudgetAlertsCard.jsx'
 import MariaJoseContractAlertsCard from '../personal/MariaJoseContractAlertsCard.jsx'
+import { formatDateAr } from '../../lib/dateTimeCanonical.js'
 
 export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
   const { profile, user } = useAuth()
@@ -233,7 +234,7 @@ export default function AdminAlertsCompliancePanel({ onSummaryChange }) {
                   return (
                     <tr key={alert.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px] whitespace-nowrap">
-                        {alert.created_at ? new Date(alert.created_at).toLocaleDateString('es-AR') : '—'}
+                        {alert.created_at ? formatDateAr(alert.created_at) : '—'}
                       </td>
                       <td className="py-2.5 px-3">
                         {isOtReq && (

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { formatDateTimeAr } from '../../lib/dateTimeCanonical'
 
 export function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
   const isDetailMode = target?.mode === 'detail'
@@ -62,7 +63,7 @@ export function ReconcileModal({ target, purchaseOrders, onClose, onSuccess }) {
             </p>
             {target.reconciledAt && (
               <p className="text-[11px] text-slate-400">
-                Fecha: {new Date(target.reconciledAt).toLocaleString('es-AR')}
+                Fecha: {formatDateTimeAr(target.reconciledAt)}
                 {target.reconciledBy ? ` • Por: ${target.reconciledBy}` : ''}
               </p>
             )}

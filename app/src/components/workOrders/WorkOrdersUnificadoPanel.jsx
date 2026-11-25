@@ -15,6 +15,7 @@ import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
 import HighlightText from '../HighlightText'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import {
   ESTADOS_TRABAJO,
   TIPOS_DE_TRABAJO,
@@ -72,7 +73,7 @@ export default function WorkOrdersUnificadoPanel({
         totalRows={filteredRows.length}
         entityName="trabajos"
         exportRows={filteredRows}
-        exportFilename={`ordenes_trabajo_${new Date().toISOString().split('T')[0]}`}
+        exportFilename={`ordenes_trabajo_${getTodayArIso()}`}
       />
 
       <div className="alon-grid-scroll">

@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../../context/AuthContext.jsx'
 import { assignMonotonicFolios } from '../../lib/monotonicFolioEngine.js'
 import { saveMacroVariables } from '../../lib/macroVariablesService.js'
+import { formatDateTimeAr } from '../../lib/dateTimeCanonical.js'
 import {
   loadAdminMacroBoardDataService,
   quickSaveAdminMacroMonthService,
@@ -606,9 +607,7 @@ export default function AdminMacroPanel() {
                   const monthName = MONTH_NAMES[item.month - 1]
                   const q1Key = `${item.year}-${String(item.month).padStart(2, '0')}-1Q`
                   const q2Key = `${item.year}-${String(item.month).padStart(2, '0')}-2Q`
-                  const updatedDate = item.updated_at ? new Date(item.updated_at).toLocaleDateString('es-AR', {
-                    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                  }) : '--'
+                  const updatedDate = item.updated_at ? formatDateTimeAr(item.updated_at) : '--'
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">

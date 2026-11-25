@@ -197,14 +197,14 @@ export function findLinkedGasMovement(tx, gasMovements = []) {
   )
   if (direct) return direct
 
-  const txDay = String(tx.transaction_date || '').split('T')[0]
+  const txDay = getLocalDateKey(tx.transaction_date)
   const txContractor = normalizeText(tx.worker_name || tx.contractor_name)
   const txQty = Math.round(Number(tx.quantity_withdrawn) || 0)
 
   const candidates = gasMovements.filter((g) => {
     if (!['PRIMERA_ENTREGA', 'RECAMBIO_1X1'].includes(g.operation_type)) return false
     if (String(g.material_id || '') !== String(tx.material_id || '')) return false
-    const gDay = String(g.movement_date || g.created_at || '').split('T')[0]
+    const gDay = getLocalDateKey(g.movement_date || g.created_at)
     if (txDay && gDay && txDay !== gDay) return false
     if (txQty > 0 && Number(g.quantity) !== txQty) return false
     if (txContractor && normalizeText(g.contractor_name) !== txContractor) return false
@@ -701,7 +701,7 @@ export function buildGasTraceabilityRows(
         condition_code: cond,
         condition_display: conditionDisplay,
         patio_impact: patioImpact,
-        date_only: String(m.movement_date || m.created_at || '').split('T')[0],
+        date_only: getLocalDateKey(m.movement_date || m.created_at),
         is_linked_to_panol_tx: Boolean(m.inventory_transaction_id)
       }
     })

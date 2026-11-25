@@ -4,6 +4,7 @@ import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/
 import KpiRadar from '../KpiRadar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
+import { formatDateAr, formatDayMonthAr } from '../../lib/dateTimeCanonical'
 import {
   scopeResumenRows,
   extractUniqueSortedOptions,
@@ -191,10 +192,11 @@ export default function ResumenHojaMaterialesPanel({
             )
           }
           exportColumns={[
-            { key: 'date', label: 'Fecha Reporte' },
-            { key: 'createdAt', label: 'Fecha Carga' },
+            { key: 'date', label: 'Fecha Reporte', formatter: (v) => formatDateAr(v, { fallback: '' }) },
+            { key: 'createdAt', label: 'Fecha Carga', formatter: (v) => formatDateAr(v, { fallback: '' }) },
             { key: 'sourceType', label: 'Origen' },
             { key: 'otLabel', label: 'O.T' },
+            { key: 'workerName', label: 'Solicitante' },
             { key: 'materialName', label: 'Material' },
             { key: 'rubro', label: 'Rubro' },
             { key: 'category', label: 'Clasificación' },
@@ -206,7 +208,6 @@ export default function ResumenHojaMaterialesPanel({
             { key: 'unitUsd', label: 'P.Unit US$' },
             { key: 'shipDirectUsd', label: 'Total Obra US$' },
             { key: 'referenceUsd', label: 'Ref EPP US$' },
-            { key: 'workerName', label: 'Solicitante' },
             { key: 'notes', label: 'Ubicación / Notas' }
           ]}
         />
@@ -219,22 +220,19 @@ export default function ResumenHojaMaterialesPanel({
                 <th className="px-2.5 py-2">Fecha</th>
                 <th className="px-2.5 py-2">Origen</th>
                 <th className="px-2.5 py-2">O.T</th>
+                <th className="px-2.5 py-2">Solicitante</th>
                 <th className="px-2.5 py-2">Material / Insumo</th>
-                <th className="px-2.5 py-2">Rubro</th>
-                <th className="px-2.5 py-2">Clasificación</th>
                 <th className="px-2.5 py-2 text-right">Cant.</th>
                 <th className="px-2.5 py-2 text-right">KG</th>
                 <th className="px-2.5 py-2 text-right">P.Unit US$</th>
                 <th className="px-2.5 py-2 text-right">Total Obra US$</th>
-                <th className="px-2.5 py-2 text-right">Ref. EPP*</th>
-                <th className="px-2.5 py-2">Solicitante</th>
                 <th className="px-2.5 py-2">Comp. / Notas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
                     No se encontraron movimientos de materiales con los filtros aplicados.
                   </td>
                 </tr>
@@ -244,11 +242,11 @@ export default function ResumenHojaMaterialesPanel({
                     <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
                     <td
                       className="px-2.5 py-1.5 whitespace-nowrap font-mono text-slate-300"
-                      title={r.createdAt ? `Fecha reporte: ${r.date || '—'} · Fecha carga: ${r.createdAt}` : undefined}
+                      title={r.createdAt ? `Fecha reporte: ${formatDateAr(r.date)} · Fecha carga: ${formatDateAr(r.createdAt)}` : undefined}
                     >
-                      <div>{r.date || '—'}</div>
+                      <div>{formatDateAr(r.date)}</div>
                       {r.createdAt && r.date && r.createdAt !== r.date && (
-                        <div className="text-[9.5px] text-slate-500">Carga: {r.createdAt.slice(5)}</div>
+                        <div className="text-[9.5px] text-slate-500">Carga: {formatDayMonthAr(r.createdAt)}</div>
                       )}
                     </td>
                     <td className="px-2.5 py-1.5 whitespace-nowrap">
@@ -265,22 +263,9 @@ export default function ResumenHojaMaterialesPanel({
                     <td className="px-2.5 py-1.5 max-w-[205px]">
                       <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
                     </td>
-                    <td className="px-2.5 py-1.5 font-medium text-white max-w-[220px] truncate" title={r.materialName}>
+                    <td className="px-2.5 py-1.5 text-slate-300 truncate max-w-[145px]" title={r.workerName}>{r.workerName}</td>
+                    <td className="px-2.5 py-1.5 font-medium text-white max-w-[240px] truncate" title={r.materialName}>
                       {r.materialName}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-slate-400">{r.rubro}</td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap">
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          r.isSafetyReference
-                            ? 'bg-amber-500/20 text-amber-300'
-                            : r.category === 'CONSUMIBLES'
-                              ? 'bg-sky-500/20 text-sky-300'
-                              : 'bg-emerald-500/15 text-emerald-300'
-                        }`}
-                      >
-                        {r.isSafetyReference ? 'EPP (REF)' : r.category}
-                      </span>
                     </td>
                     <td
                       className="px-2.5 py-1.5 text-right tabular-nums whitespace-nowrap"
@@ -305,10 +290,6 @@ export default function ResumenHojaMaterialesPanel({
                     <td className="px-2.5 py-1.5 text-right tabular-nums font-bold text-emerald-300">
                       {formatUsd(r.shipDirectUsd)}
                     </td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums text-amber-300 italic">
-                      {r.referenceUsd > 0 ? formatUsd(r.referenceUsd) : '—'}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-slate-300 truncate max-w-[140px]">{r.workerName}</td>
                     <td className="px-2.5 py-1.5 text-slate-400 truncate max-w-[180px]" title={r.notes}>
                       {r.voucherNumber || r.notes || '—'}
                     </td>

@@ -18,6 +18,7 @@ import {
   Combine
 } from 'lucide-react'
 import { WORK_ORDER_STEP_HELP } from '../../lib/businessHelpRegistry.js'
+import { getTodayArIso, toArIsoDate } from '../../lib/dateTimeCanonical.js'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
 import WorkOrderSeparateModal from './WorkOrderSeparateModal.jsx'
 import OtCatalogModal from './OtCatalogModal.jsx'
@@ -112,7 +113,7 @@ export function WorkOrdersModalsContainer({
     selected_template_id: '',
     ot_number: 'OT-1',
     ot_title: '',
-    created_date: new Date().toISOString().split('T')[0],
+    created_date: getTodayArIso(),
     description: '',
     status: 'En ejecución',
     foreman_name: '',
@@ -154,7 +155,7 @@ export function WorkOrdersModalsContainer({
         selected_template_id: '',
         ot_number: row.wo?.ot_number || 'OT-1',
         ot_title: (row.wo?.title || '').toUpperCase(),
-        created_date: row.wo?.created_at ? String(row.wo.created_at).split('T')[0] : new Date().toISOString().split('T')[0],
+        created_date: row.wo?.created_at ? toArIsoDate(row.wo.created_at) : getTodayArIso(),
         description: row.description || '',
         status: row.status || 'En ejecución',
         foreman_name: row.foreman_name || foremenList[0] || 'ALE CAMADELLI',
@@ -189,7 +190,7 @@ export function WorkOrdersModalsContainer({
         selected_template_id: firstTpl?.template_id || '',
         ot_number: getNextOtNumberForShip(workOrders, defaultShipId),
         ot_title: firstTpl ? String(firstTpl.ot_title || '').toUpperCase() : '',
-        created_date: new Date().toISOString().split('T')[0],
+        created_date: getTodayArIso(),
         description: firstTpl?.description || '',
         status: 'En ejecución',
         foreman_name: preselectedWo?.foreman_name || foremenList[0] || 'ALE CAMADELLI',
@@ -314,7 +315,7 @@ export function WorkOrdersModalsContainer({
     ship_id: '',
     contractor_name: '',
     work_item_id: '',
-    service_date: new Date().toISOString().split('T')[0],
+    service_date: getTodayArIso(),
     status: 'PRC',
     voucher_number: '',
     amount_ars: 0,

@@ -14,6 +14,7 @@ import {
   getEnabledContractorsForShipWithExpand,
   resolveSelectedWorkerForRow
 } from '../lib/laborWorkerCatalog.js'
+import { getTodayArIso } from '../lib/dateTimeCanonical.js'
 
 export function useLaborCargaCrewState({
   ships = [],
@@ -25,7 +26,7 @@ export function useLaborCargaCrewState({
   const [selectedContractorGroup, setSelectedContractorGroup] = useState('ASTILLERO')
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState('')
   const [selectedWorkItemId, setSelectedWorkItemId] = useState('')
-  const [dateLogged, setDateLogged] = useState(() => new Date().toISOString().split('T')[0])
+  const [dateLogged, setDateLogged] = useState(() => getTodayArIso())
   const [workType, setWorkType] = useState('HORA')
   const [openRubroEmergencyIds, setOpenRubroEmergencyIds] = useState(() => new Set())
   const [isHeaderContractorsExpanded, setIsHeaderContractorsExpanded] = useState(false)

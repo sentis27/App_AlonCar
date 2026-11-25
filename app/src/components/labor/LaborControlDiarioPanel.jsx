@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import {
   Calendar,
   UserCheck,
@@ -297,7 +298,7 @@ export default function LaborControlDiarioPanel({
               />
               <button
                 type="button"
-                onClick={() => setAuditDate(new Date().toISOString().split('T')[0])}
+                onClick={() => setAuditDate(getTodayArIso())}
                 className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 rounded-lg border border-slate-700 cursor-pointer"
               >
                 Ir a Hoy

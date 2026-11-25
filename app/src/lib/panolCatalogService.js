@@ -9,6 +9,7 @@ import { normalizeText } from './allocationEngine.js'
 import { normalizeUnitMeasure, computeMaterialCostUsd } from './unitMeasureUtils.js'
 import { getDollarRateForDate } from './comprasPedidosHelpers.js'
 import { MATERIAL_CATEGORIES } from './panolConstants.js'
+import { getTodayArIso } from './dateTimeCanonical.js'
 import { materialsRepository, materialRubrosRepository } from '../repositories/materialsRepository.js'
 import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
 import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
@@ -17,7 +18,7 @@ import { purchaseDocumentsRepository, purchaseOrdersRepository } from '../reposi
 const OPEN_PO_STATUSES = ['PEDIR', 'COTIZAR', 'COTIZA.SOLICITUD', 'COTIZACION', 'COTIZA.APROBADA', 'SE COMPRA?']
 
 export async function fetchActiveDollarRateService() {
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = getTodayArIso()
   try {
     const { data: mvList } = await macroVariablesRepository.listMacroVariables()
     if (Array.isArray(mvList) && mvList.length > 0) {

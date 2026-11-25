@@ -11,6 +11,7 @@ import { describeFormula, getStoredCellFormula, getEditableCellInitialValue } fr
 import GridRibbon from '../GridRibbon'
 import GridContextMenu from '../GridContextMenu'
 import GridStatusBarBottom from '../GridStatusBarBottom'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import {
   Ship,
   Square,
@@ -102,7 +103,7 @@ export default function TercerosFilasPanel({
         totalRows={filteredServices.length}
         entityName="comprobantes"
         exportRows={filteredServices}
-        exportFilename={`terceros_${new Date().toISOString().split('T')[0]}`}
+        exportFilename={`terceros_${getTodayArIso()}`}
       />
 
       <datalist id="terceros-contractors-datalist">

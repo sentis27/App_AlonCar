@@ -14,6 +14,7 @@ import { resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import CanonicalActiveSubmoduleBadge from '../components/canonical/CanonicalActiveSubmoduleBadge'
 import { cleanLocation, computeShipOtMetrics, PREDEFINED_VESSEL_TYPES, cleanShipName } from '../lib/shipsConstants'
+import { getTodayArIso } from '../lib/dateTimeCanonical'
 import {
   fetchShipsModuleData,
   toggleShipActiveService,
@@ -104,7 +105,7 @@ export default function Ships() {
   const handleOpenNewShip = () => setModalShip({ isOpen: true, ship: { name: '', owner_id: '', current_location: 'VARADERO', vessel_type: 'Pesquero', eslora_mts: '', manga_mts: '', puntal_mts: '', superficie_casco_m2: '', notes: '', technical_specs: {} }, isCustomVesselType: false, customVesselTypeVal: '' })
   const handleOpenEditShip = (ship) => setModalShip({ isOpen: true, ship: { ...ship }, isCustomVesselType: !PREDEFINED_VESSEL_TYPES.includes(ship.vessel_type || 'Pesquero'), customVesselTypeVal: ship.vessel_type || '' })
   const handleOpenShip360 = (ship) => { setSelectedShip360(ship); setSubTab360(activeRolePerspective === 'maria_jose' ? 'armador' : 'tecnica') }
-  const handleOpenNewStay = (shipId = '') => setModalStay({ isOpen: true, stay: { ship_id: shipId || (ships[0]?.id || ''), location: 'VARADERO', start_date: new Date().toISOString().split('T')[0], end_date: '', notes: '' }, defaultShipId: shipId })
+  const handleOpenNewStay = (shipId = '') => setModalStay({ isOpen: true, stay: { ship_id: shipId || (ships[0]?.id || ''), location: 'VARADERO', start_date: getTodayArIso(), end_date: '', notes: '' }, defaultShipId: shipId })
   const handleOpenEditStay = (stay) => setModalStay({ isOpen: true, stay: { ...stay }, defaultShipId: stay.ship_id })
   const handleOpenNewOwner = () => setModalOwner({ isOpen: true, owner: { name: '', armador_name: '', armador_phone: '', email_principal: '', email_secundario: '', cuit: '', notes: '' } })
   const handleOpenEditOwner = (owner) => setModalOwner({ isOpen: true, owner: { ...owner } })

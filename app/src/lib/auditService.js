@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { REDACTED, isSecretKey, redactSecrets } from './security/piiMask.js'
 import { auditLogsRepository } from '../repositories/auditLogsRepository.js'
+import { getTodayArIso, toArIsoDate } from './dateTimeCanonical.js'
 
 /**
  * Diccionario Canónico de Módulos y Submódulos Auditables (Padrón 2.A)
@@ -357,7 +358,7 @@ export async function getGlobalAuditLedger({
 export function computeAuditMetrics(logs = []) {
   const totalEvents = logs.length
   const now = new Date()
-  const todayStr = now.toISOString().slice(0, 10)
+  const todayStr = getTodayArIso(now)
 
   let todayCount = 0
   const bySheet = {}
@@ -366,7 +367,7 @@ export function computeAuditMetrics(logs = []) {
   const recordEditFrequency = {} // Para detectar registros re-editados múltiples veces (posibles errores/correcciones)
 
   logs.forEach((log) => {
-    const createdDate = log.created_at ? log.created_at.slice(0, 10) : ''
+    const createdDate = log.created_at ? toArIsoDate(log.created_at) : ''
     if (createdDate === todayStr) todayCount++
 
     const eType = log.entity_type || 'otros'

@@ -1,5 +1,6 @@
 import { Building2, CheckCircle2, MessageSquare, XCircle } from 'lucide-react'
 import GridStatusBarBottom from '../GridStatusBarBottom'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 
 export default function ComprasPedidosStatusBar({
   filteredCount,
@@ -97,7 +98,7 @@ export default function ComprasPedidosStatusBar({
                       selectedIds: Array.from(selectedOrderIds),
                       supplierId: firstRow?.supplier_id || null,
                       orderId: firstRow?.id || null,
-                      orderDate: firstRow?.order_date || new Date().toISOString().split('T')[0],
+                      orderDate: firstRow?.order_date || getTodayArIso(),
                       supplierName: sup?.name || 'Filas Seleccionadas',
                       existingInvoice: firstRow?.invoice_number || ''
                     })

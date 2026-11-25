@@ -7,6 +7,7 @@
 import { normalizeText } from './allocationEngine.js'
 import { getStoredCellFormula } from './formulaEngine.js'
 import { deduplicateWorkOrdersWithScope, formatWorkOrderTooltipCanonical } from './workOrdersConstants.js'
+import { toArIsoDate, formatTimeAr, buildArTimestampIso } from './dateTimeCanonical.js'
 
 export const BASKET_SHIP_THEMES = [
   { border: 'border-cyan-500/50', bg: 'bg-cyan-950/25', title: 'text-cyan-300', dot: 'bg-cyan-400' },
@@ -17,35 +18,15 @@ export const BASKET_SHIP_THEMES = [
 ]
 
 export function getLocalDateKey(input = new Date()) {
-  if (!input) return ''
-  if (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.trim())) return input.trim()
-  const d = input instanceof Date ? input : new Date(input)
-  if (Number.isNaN(d.getTime())) return ''
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return toArIsoDate(input)
 }
 
 export function formatLocalTimeHHMM(input) {
-  if (!input || (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.trim()))) return ''
-  const d = input instanceof Date ? input : new Date(input)
-  if (Number.isNaN(d.getTime())) return ''
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return formatTimeAr(input, { fallback: '' })
 }
 
 export function buildTransactionTimestampIso(dateStr, timeStr = null) {
-  if (!dateStr) return new Date().toISOString()
-  const cleanDate = String(dateStr).trim().split('T')[0]
-  const match = cleanDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) return new Date().toISOString()
-  const [, y, m, d] = match.map(Number)
-  if (timeStr && /^\d{1,2}:\d{2}$/.test(String(timeStr).trim())) {
-    const [hh, mm] = String(timeStr).trim().split(':').map(Number)
-    return new Date(y, m - 1, d, hh, mm, 0).toISOString()
-  }
-  if (cleanDate === getLocalDateKey(new Date())) return new Date().toISOString()
-  return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+  return buildArTimestampIso(dateStr, timeStr)
 }
 
 export function makeBasketKey(contractorName, shipId, workOrderId = null) {

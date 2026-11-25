@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import {
   FileSpreadsheet,
   Building2,
@@ -1493,7 +1494,7 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
             totalRows={filteredRateCards.length}
             entityName="tarifas"
             exportRows={filteredRateCards}
-            exportFilename={`personal_tarifas_${new Date().toISOString().split('T')[0]}`}
+            exportFilename={`personal_tarifas_${getTodayArIso()}`}
           />
           <div className="alon-grid-scroll">
             <table className="w-full text-left text-xs text-slate-300">

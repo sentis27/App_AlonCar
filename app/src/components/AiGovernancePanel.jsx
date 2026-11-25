@@ -10,6 +10,7 @@ import {
   loadAiSandboxCatalogs,
   tabulateCrewMessage
 } from '../lib/aiLaborEngine'
+import { getTodayArIso, formatDateTimeAr } from '../lib/dateTimeCanonical'
 
 const SAMPLE =
   'Luciano Tritón reguillas cuvierta protección de bacha y colocación de parrilla andres y diego soldadura parches trancalin don Antonio 9hr franco y enzo higinio subir portones y matafuego vuoso 2hr 2hr maniobra para prueba navegación  5 hr en don Antonio bodega sacar porurietano y comentando'
@@ -94,7 +95,7 @@ export default function AiGovernancePanel() {
         ships,
         workOrders,
         workItems,
-        dateLogged: new Date().toISOString().slice(0, 10),
+        dateLogged: getTodayArIso(),
         userEmail: 'Administrador (sandbox)'
       })
       setSandboxResult(result)
@@ -345,7 +346,7 @@ export default function AiGovernancePanel() {
                 {logs.map((l, i) => (
                   <tr key={l.id || i} className="border-t border-slate-800">
                     <td className="p-1.5">
-                      {new Date(l.fecha_procesamiento || l.created_at).toLocaleString('es-AR')}
+                      {formatDateTimeAr(l.fecha_procesamiento || l.created_at)}
                     </td>
                     <td className="p-1.5">{l.usuario_emisor}</td>
                     <td className="p-1.5">{l.engine_used}</td>

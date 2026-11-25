@@ -10,6 +10,7 @@ import { assignMonotonicFolios, stampNewRecordWithFolio } from './monotonicFolio
 import { normalizeText, setAllocationWorkersCache } from './allocationEngine.js'
 import { isGasMaterial, stripGasTagFromNotes, findLinkedGasMovement } from './panolConstants.js'
 import { buildTransactionTimestampIso, formatLocalTimeHHMM } from './panolBasketsEngine.js'
+import { buildArTimestampIso, getTodayArIso, toArIsoDate } from './dateTimeCanonical.js'
 import { normalizeUnitMeasure } from './comprasConstants.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog } from './workerIdentity.js'
@@ -818,7 +819,7 @@ export async function registerGasFinalReturnService({
       throw new Error('Falta identificar la marca / proveedor del tubo devuelto.')
     }
     return {
-      movement_date: movementDate ? new Date(`${movementDate}T12:00:00`).toISOString() : new Date().toISOString(),
+      movement_date: movementDate ? buildArTimestampIso(movementDate) : new Date().toISOString(),
       operation_type: 'DEVOLUCION_FINAL',
       material_id: r.materialId,
       ship_id: shipId || null,
@@ -1048,7 +1049,7 @@ export async function saveSupplierGasBatchService({
     const isIngress = opType === 'SALDO_INICIAL_PATIO' || opType === 'INGRESO_PROVEEDOR'
 
     return {
-      movement_date: movementDate ? new Date(`${movementDate}T12:00:00`).toISOString() : new Date().toISOString(),
+      movement_date: movementDate ? buildArTimestampIso(movementDate) : new Date().toISOString(),
       operation_type: opType,
       material_id: mat.id,
       ship_id: null,
@@ -1152,11 +1153,11 @@ export async function updateGasMovementInlineService({ movementId, field, value,
     }
     parsedValue = intQty
   } else if (field === 'movement_date') {
-    const cleanDate = String(value || '').trim().split('T')[0]
+    const cleanDate = toArIsoDate(value)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
       throw new Error('Formato de fecha inválido.')
     }
-    parsedValue = new Date(`${cleanDate}T12:00:00`).toISOString()
+    parsedValue = buildArTimestampIso(cleanDate)
   } else if (field === 'remito_number') {
     parsedValue = String(value || '').trim().toUpperCase() || null
   } else if (field === 'cylinder_condition') {
@@ -1308,7 +1309,7 @@ export async function createDirectPurchaseOrderService({ material, quantity, urg
     ship_id: astilleroShip?.id || null,
     requested_by: panolWorkerId,
     requested_by_name: 'PAÑOL',
-    order_date: new Date().toISOString().split('T')[0],
+    order_date: getTodayArIso(),
     status: 'PEDIR',
     urgency,
     observations: 'Solicitud directa generada desde Pañol'

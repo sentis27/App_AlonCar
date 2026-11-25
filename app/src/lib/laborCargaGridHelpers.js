@@ -7,6 +7,7 @@ import { matchesUniversalSearch } from './searchEngine.js'
 import { cleanShipName, buildLocalRelationsForLog } from './laborConstants.js'
 import { normalizeText } from './tradesCatalog.js'
 import { TIPOS_DE_TRABAJO } from './workOrdersConstants.js'
+import { getTodayArIso } from './dateTimeCanonical.js'
 
 const VALID_LABOR_WORK_TYPES = new Set(TIPOS_DE_TRABAJO.map(t => t.value))
 
@@ -231,7 +232,7 @@ export function prepareInlineLogPatch(targetLog, field, newValue, { eligibleCata
   return { shouldSkip: false, cleanedVal, extraPayload }
 }
 
-export function buildBlankLaborLogPayload(todayStr = new Date().toISOString().split('T')[0]) {
+export function buildBlankLaborLogPayload(todayStr = getTodayArIso()) {
   return {
     date_logged: todayStr,
     ship_id: null,

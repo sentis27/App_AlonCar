@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Lightbulb, Phone, RefreshCw, Zap, AlertCircle } from 'lucide-react'
 import { STANDARD_TRADES } from '../../lib/comprasConstants'
 import { computeMaterialSupplierHistory, computeTradeSuppliers } from '../../lib/comprasAuxHelpers'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 
 function SupplierSuggestionCard({ entry, mode, selectedTrade, applyingId, onApply }) {
   return (
@@ -104,7 +105,7 @@ export function SupplierHelperModal({ order, purchaseOrders, suppliers, onClose,
 
   async function handleFastLoad(entry) {
     setApplyingId(entry.supplier.id)
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayArIso()
     const updates = {
       supplier_id: entry.supplier.id,
       order_date: order.order_date || today,

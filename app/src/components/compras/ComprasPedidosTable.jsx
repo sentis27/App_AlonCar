@@ -2,6 +2,7 @@ import { CheckSquare, Square } from 'lucide-react'
 import GridRibbon from '../GridRibbon'
 import GridContextMenu from '../GridContextMenu'
 import ComprasPedidoRow from './ComprasPedidoRow'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 
 export default function ComprasPedidosTable({
   filteredOrders,
@@ -55,7 +56,7 @@ export default function ComprasPedidosTable({
         totalRows={filteredOrders.length}
         entityName="pedidos"
         exportRows={filteredOrders}
-        exportFilename={`compras_pedidos_${new Date().toISOString().split('T')[0]}`}
+        exportFilename={`compras_pedidos_${getTodayArIso()}`}
       />
 
       <div tabIndex={0} onKeyDown={grid.handleKeyDown} ref={grid.gridContainerRef} className="alon-grid-scroll">

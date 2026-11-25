@@ -10,6 +10,7 @@ import HighlightText from '../HighlightText'
 import { GAS_TRACEABILITY_COLUMNS, GAS_OPERATION_META, buildGasTraceabilityRows } from '../../lib/panolConstants'
 import { updateGasMovementInlineService, deleteGasMovementService } from '../../lib/panolService'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
+import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 
 /**
  * Grilla canónica de Trazabilidad Cronológica de Cilindros de Gas (Control de Gases).
@@ -262,7 +263,7 @@ export default function GasTraceabilityGrid({
   const exportRowsFormatted = useMemo(
     () =>
       filteredRows.map((r) => ({
-        fecha: r.date_only,
+        fecha: formatDateAr(r.date_only, { fallback: '' }),
         operacion: r.opMeta?.label || r.operation_type,
         remito: r.remito_number || '',
         gas: r.gas_name,
@@ -384,7 +385,7 @@ export default function GasTraceabilityGrid({
         entityName="movimientos"
         exportRows={exportRowsFormatted}
         exportColumns={exportColumns}
-        exportFilename={`trazabilidad_gases_${new Date().toISOString().split('T')[0]}`}
+        exportFilename={`trazabilidad_gases_${getTodayArIso()}`}
         extraActions={
           onOpenSupplierModal && (
             <button
@@ -540,7 +541,7 @@ export default function GasTraceabilityGrid({
                           className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none"
                         />
                       ) : (
-                        <span>{row.date_only}</span>
+                        <span>{formatDateAr(row.date_only)}</span>
                       )}
                     </td>
 

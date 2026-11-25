@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Truck } from 'lucide-react'
+import { getTodayArIso } from '../../lib/dateTimeCanonical'
 
 function openNativePicker(e) {
   if (typeof e.currentTarget.showPicker === 'function') {
@@ -8,7 +9,7 @@ function openNativePicker(e) {
 }
 
 export function FreightModal({ order, onClose, onSuccess }) {
-  const todayIso = new Date().toISOString().split('T')[0]
+  const todayIso = getTodayArIso()
   const [transportName, setTransportName] = useState(order?.freight_transport_name || '')
   const [requestDate, setRequestDate] = useState(order?.freight_request_date || todayIso)
   const [estimatedDate, setEstimatedDate] = useState(order?.freight_estimated_date || '')

@@ -1,10 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react'
+import { HelpCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import KpiRadar from '../KpiRadar'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import { formatUsd } from '../../lib/drydockCatalogConstants'
+import { formatDateAr } from '../../lib/dateTimeCanonical'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import {
   scopeResumenRows,
@@ -14,6 +16,7 @@ import {
 } from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import OvertimeBreakdownCell from './OvertimeBreakdownCell'
 
 /**
  * Hoja Solo Lectura: HORAS (HORAS GENERALES / HORAS POR O.T).
@@ -72,9 +75,9 @@ export default function ResumenHojaHorasPanel({
   const summaryStats = useMemo(
     () => filteredRows.reduce((acc, r) => ({
       hoursPhysical: acc.hoursPhysical + (r.hoursPhysical || 0),
-      hoursEquiv: acc.hoursEquiv + (r.hoursEquiv || 0),
+      hoursExtraEquiv: acc.hoursExtraEquiv + (r.hoursExtraEquiv || 0),
       totalUsd: acc.totalUsd + (r.costUsd || 0)
-    }), { hoursPhysical: 0, hoursEquiv: 0, totalUsd: 0 }),
+    }), { hoursPhysical: 0, hoursExtraEquiv: 0, totalUsd: 0 }),
     [filteredRows]
   )
 
@@ -191,15 +194,20 @@ export default function ResumenHojaHorasPanel({
           exportRows={filteredRows}
           exportFilename={`gs004_horas_${ship?.name || 'buque'}.csv`}
           exportColumns={[
-            { key: 'date', label: 'Fecha' },
+            { key: 'date', label: 'Fecha', formatter: (v) => formatDateAr(v, { fallback: '' }) },
             { key: 'otLabel', label: 'O.T' },
             { key: 'workerName', label: 'Operario' },
             { key: 'workerType', label: 'Centro' },
             { key: 'rubro', label: 'Oficio' },
             { key: 'workType', label: 'Modalidad' },
+            { key: 'hoursNormal', label: 'Hs Normales' },
+            { key: 'hours50', label: 'Hs Extra 50%' },
+            { key: 'hours100', label: 'Hs Extra 100%' },
+            { key: 'hoursExtraEquiv', label: 'Hs Extra (Conv. Normal)' },
             { key: 'hoursPhysical', label: 'Hs Físicas' },
-            { key: 'hoursEquiv', label: 'Hs Equiv' },
+            { key: 'hoursEquiv', label: 'Hs Equiv Total' },
             { key: 'hourlyRateUsd', label: 'Tarifa US$/h' },
+            { key: 'rateSource', label: 'Fuente Tarifa' },
             { key: 'costUsd', label: 'Costo US$' },
             { key: 'approvalStatus', label: 'Estado' },
             { key: 'notes', label: 'Notas' }
@@ -214,22 +222,27 @@ export default function ResumenHojaHorasPanel({
                 <th className="px-2.5 py-2">Fecha</th>
                 <th className="px-2.5 py-2">O.T</th>
                 <th className="px-2.5 py-2">Operario / Contratista</th>
-                <th className="px-2.5 py-2">Centro</th>
                 <th className="px-2.5 py-2">Oficio / Rubro</th>
                 <th className="px-2.5 py-2">Modalidad</th>
-                <th className="px-2.5 py-2 text-right">Hs Fís.</th>
-                <th className="px-2.5 py-2 text-right">Hs Equiv.</th>
+                <th className="px-2.5 py-2 text-right">Hs Norm.</th>
+                <th
+                  className="px-2.5 py-2 text-right"
+                  title="Suma de horas extra convertidas a su valor de referencia en horas normales (50% × 1,5 y 100% × 2,0 en Astillero). Acercá el mouse a cada valor para ver el desglose."
+                >
+                  <span className="inline-flex items-center justify-end gap-1 cursor-help">
+                    <span>Hs Extra</span>
+                    <HelpCircle className="w-3 h-3 text-amber-400" />
+                  </span>
+                </th>
                 <th className="px-2.5 py-2 text-right">Tarifa US$</th>
-                <th className="px-2.5 py-2">Fuente</th>
                 <th className="px-2.5 py-2 text-right">Costo US$</th>
-                <th className="px-2.5 py-2">Estado</th>
                 <th className="px-2.5 py-2">Notas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
                     No hay partes horarios registrados para los filtros actuales.
                   </td>
                 </tr>
@@ -237,23 +250,12 @@ export default function ResumenHojaHorasPanel({
                 filteredRows.map((r, idx) => (
                   <tr key={r.id} className="hover:bg-slate-800/45 text-slate-200 transition-colors">
                     <td className="px-2.5 py-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono">{r.date || '—'}</td>
+                    <td className="px-2.5 py-1.5 whitespace-nowrap font-mono">{formatDateAr(r.date)}</td>
                     <td className="px-2.5 py-1.5 max-w-[205px]">
                       <CanonicalOtBadge wo={otRowMap.get(r.workOrderId)?.wo || null} ship={ship} otNumber={r.otNumber} otTitle={r.otTitle} tooltipOverride={otRowMap.get(r.workOrderId)?.canonicalTooltip || ''} variant="compact" className="font-mono text-cyan-300 font-semibold" />
                     </td>
                     <td className="px-2.5 py-1.5 font-medium text-white truncate max-w-[180px]">
                       {r.workerName}
-                    </td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap">
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          r.workerType === 'Contratista'
-                            ? 'bg-violet-500/20 text-violet-300'
-                            : 'bg-sky-500/15 text-sky-300'
-                        }`}
-                      >
-                        {r.workerType}
-                      </span>
                     </td>
                     <td className="px-2.5 py-1.5 text-slate-400">{r.rubro}</td>
                     <td className="px-2.5 py-1.5 whitespace-nowrap">
@@ -265,23 +267,18 @@ export default function ResumenHojaHorasPanel({
                         <span className="text-slate-300">{r.workType}</span>
                       )}
                     </td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums">{r.hoursPhysical}</td>
-                    <td className="px-2.5 py-1.5 text-right tabular-nums text-cyan-200">{r.hoursEquiv}</td>
+                    <td
+                      className="px-2.5 py-1.5 text-right tabular-nums"
+                      title={r.hoursExtraPhysical > 0 ? `Hs físicas totales en obra: ${r.hoursPhysical} hs (${r.hoursNormal} norm. + ${r.hoursExtraPhysical} extra)` : undefined}
+                    >
+                      {r.hoursNormal}
+                    </td>
+                    <td className="px-2.5 py-1.5 text-right">
+                      <OvertimeBreakdownCell row={r} />
+                    </td>
                     <td className="px-2.5 py-1.5 text-right tabular-nums">{formatUsd(r.hourlyRateUsd)}</td>
-                    <td className="px-2.5 py-1.5 text-[10px] font-mono text-slate-400">{r.rateSource}</td>
                     <td className="px-2.5 py-1.5 text-right tabular-nums font-bold text-emerald-300">
                       {formatUsd(r.costUsd)}
-                    </td>
-                    <td className="px-2.5 py-1.5 whitespace-nowrap">
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          r.isPendingR
-                            ? 'bg-amber-500/20 text-amber-300'
-                            : 'bg-emerald-500/15 text-emerald-300'
-                        }`}
-                      >
-                        {r.approvalStatus}
-                      </span>
                     </td>
                     <td className="px-2.5 py-1.5 text-slate-400 truncate max-w-[180px]" title={r.notes}>
                       {r.notes || '—'}
@@ -303,7 +300,7 @@ export default function ResumenHojaHorasPanel({
           globalAggregates={[
             { label: 'TOTAL HORAS US$', value: formatUsd(summaryStats.totalUsd), highlight: true },
             { label: 'HORAS FÍSICAS', value: `${summaryStats.hoursPhysical.toFixed(1)} hs` },
-            { label: 'HORAS EQUIVALENTES', value: `${summaryStats.hoursEquiv.toFixed(1)} hs` }
+            { label: 'HORAS EXTRA (CONV.)', value: `${summaryStats.hoursExtraEquiv.toFixed(1)} hs` }
           ]}
         />
       </div>

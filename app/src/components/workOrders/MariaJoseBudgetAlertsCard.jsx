@@ -4,6 +4,7 @@ import { FileSpreadsheet, CheckCircle2, ArrowUpRight, AlertTriangle } from 'luci
 import { extractBudgetDigits } from '../../lib/workOrdersConstants.js'
 import { resolvePendingBudgetAlertService } from '../../lib/workOrdersService.js'
 import { resolveShipRemitoBudgetAlertService } from '../../lib/billingWorkflowService.js'
+import { formatDateAr } from '../../lib/dateTimeCanonical.js'
 
 /**
  * Bandeja compartida de Alertas de Presupuestos para María José (Facturación):
@@ -149,7 +150,7 @@ export default function MariaJoseBudgetAlertsCard({
                     {al.ships?.name || 'Buque'}
                   </span>
                   <span className="text-[10px] font-mono text-slate-500">
-                    {al.created_at ? new Date(al.created_at).toLocaleDateString('es-AR') : 'Hoy'}
+                    {al.created_at ? formatDateAr(al.created_at) : 'Hoy'}
                   </span>
                 </div>
                 <div className="text-xs font-semibold text-white truncate" title={al.alert_message}>
@@ -193,7 +194,7 @@ export default function MariaJoseBudgetAlertsCard({
                     {al.ships?.name || 'Buque / Astillero'}
                   </span>
                   <span className="text-[10px] font-mono text-slate-500">
-                    {al.created_at ? new Date(al.created_at).toLocaleDateString('es-AR') : 'Hoy'}
+                    {al.created_at ? formatDateAr(al.created_at) : 'Hoy'}
                   </span>
                 </div>
                 <div className="text-xs font-semibold text-white truncate" title={al.alert_message}>

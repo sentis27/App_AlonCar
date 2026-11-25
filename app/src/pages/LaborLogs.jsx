@@ -17,6 +17,7 @@ import { LaborModalsContainer } from '../components/labor/LaborModals'
 import LaborSharedDatalists from '../components/labor/LaborSharedDatalists'
 import { buildQuincenaWorkersList } from '../lib/laborWorkerCatalog'
 import { buildQuincenaDays, FALLBACK_SHIPS, FALLBACK_WOS } from '../lib/laborConstants'
+import { getTodayArIso } from '../lib/dateTimeCanonical'
 
 const LABOR_REALTIME_TABLES = ['labor_logs', 'ships', 'ship_stays', 'work_orders', 'work_items', 'workers', 'rate_cards']
 
@@ -69,7 +70,7 @@ export default function LaborLogs() {
 
   const [dailyFilterType, setDailyFilterType] = useState('todos')
   const [selectedLogIds, setSelectedLogIds] = useState(new Set())
-  const [auditDate, setAuditDate] = useState(() => initialControlFilters.auditDate || new Date().toISOString().split('T')[0])
+  const [auditDate, setAuditDate] = useState(() => initialControlFilters.auditDate || getTodayArIso())
 
   const [editingLog, setEditingLog] = useState(null)
   const [quickLogWorker, setQuickLogWorker] = useState(null)
@@ -77,10 +78,10 @@ export default function LaborLogs() {
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [shipPickerModal, setShipPickerModal] = useState({ isOpen: false, logId: null, currentShipId: '', currentWorkOrderId: '', workerName: '' })
 
-  const currentDate = new Date()
-  const [selectedYear, setSelectedYear] = useState(String(currentDate.getFullYear()))
-  const [selectedMonth, setSelectedMonth] = useState(() => initialSabanaFilters.selectedMonth || String(currentDate.getMonth() + 1))
-  const [selectedQuincena, setSelectedQuincena] = useState(() => initialSabanaFilters.selectedQuincena || (currentDate.getDate() <= 15 ? '1' : '2'))
+  const [todayY, todayM, todayD] = getTodayArIso().split('-').map(Number)
+  const [selectedYear, setSelectedYear] = useState(String(todayY))
+  const [selectedMonth, setSelectedMonth] = useState(() => initialSabanaFilters.selectedMonth || String(todayM))
+  const [selectedQuincena, setSelectedQuincena] = useState(() => initialSabanaFilters.selectedQuincena || (todayD <= 15 ? '1' : '2'))
   const [sabanaSearch, setSabanaSearch] = useState(() => initialSabanaFilters.sabanaSearch || '')
   const [selectedQuincenaWorker, setSelectedQuincenaWorker] = useState(null)
 
