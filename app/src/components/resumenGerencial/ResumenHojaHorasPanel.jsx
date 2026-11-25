@@ -18,7 +18,7 @@ import {
   computeHorasKpis,
   filterResumenLaborRows,
   buildCleanSheetShortcutFilters,
-  EQUIPMENT_KPI_LABELS
+  resolveHorasShortcutBadge
 } from '../../lib/resumenHojaFilters'
 import { CostSheetHeaderBar, ReadOnlyGridRibbon } from './CostSheetChrome'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
@@ -127,7 +127,7 @@ export default function ResumenHojaHorasPanel({
     scrollContainerRef: sheetSelection.containerRef,
     resetKey: `${shipId}|${costScope}|${activeOtId || ''}|${kpiFilter}|${otFilter}|${workerFilter}|${rubroFilter}|${searchQuery}`
   })
-  const activeEquipmentLabel = EQUIPMENT_KPI_LABELS[kpiFilter] || null
+  const shortcutBadge = resolveHorasShortcutBadge(kpiFilter)
   const summaryStats = useMemo(
     () => filteredRows.reduce((acc, r) => ({
       hoursPhysical: acc.hoursPhysical + (r.hoursPhysical || 0),
@@ -178,7 +178,7 @@ export default function ResumenHojaHorasPanel({
       <div className="alon-zone-kpis p-3 bg-slate-900/70">
         <KpiRadar
           title="⏱️ RADAR DE MANO DE OBRA, RECARGOS Y PRESUPUESTO ($0) (SOLO LECTURA)"
-          subtitle="Clic en cualquier tarjeta para aislar estado o modalidad · Modalidad CONTROL excluida"
+          subtitle="Clic en cualquier tarjeta para aislar rubro, estado o modalidad · Modalidad CONTROL excluida"
           cards={kpiCards}
           activeFilterId={kpiFilter === 'ALL' ? null : kpiFilter}
           onCardClick={(id) => setKpiFilter((prev) => (prev === id ? 'ALL' : id))}
@@ -238,14 +238,14 @@ export default function ResumenHojaHorasPanel({
               ))}
             </select>
 
-            {activeEquipmentLabel && (
+            {shortcutBadge && (
               <button
                 type="button"
                 onClick={() => setKpiFilter('ALL')}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/70 text-amber-200 cursor-pointer transition-colors"
-                title="Filtro de maquinaria activo desde Resumen · Clic para quitar"
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border cursor-pointer transition-colors ${shortcutBadge.tone === 'emerald' ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-400/70 text-emerald-200' : 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400/70 text-amber-200'}`}
+                title={shortcutBadge.title}
               >
-                <span>Maquinaria: {activeEquipmentLabel}</span>
+                <span>{shortcutBadge.label}</span>
                 <X className="w-3 h-3" />
               </button>
             )}

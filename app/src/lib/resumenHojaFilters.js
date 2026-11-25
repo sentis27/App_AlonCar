@@ -8,11 +8,57 @@ import { formatUsd, formatKg } from './drydockCatalogConstants.js'
 import { matchesMaterialQuickType } from './filterThemeConstants.js'
 import { compareIsoDatesDesc } from './dateTimeCanonical.js'
 import { getModuleFilterConfig } from './moduleFilterConfigs.js'
+import { normalizeText } from './tradesCatalog.js'
 
 export const EQUIPMENT_KPI_LABELS = {
   GRUA_GRANDE: 'Grúa Grande',
   GRUA_CHICA: 'Grúa Chica',
   PALA: 'Pala'
+}
+
+export function resolveHorasShortcutBadge(kpiFilter = 'ALL') {
+  const equip = EQUIPMENT_KPI_LABELS[kpiFilter]
+  if (equip) return { label: `Maquinaria: ${equip}`, tone: 'amber', title: 'Filtro de maquinaria activo desde Resumen · Clic para quitar' }
+  if (kpiFilter === 'APPROVED') return { label: 'Estado: Horas Aprobadas', tone: 'emerald', title: 'Filtro de horas aprobadas activo desde Resumen · Clic para quitar' }
+  return null
+}
+
+const RUBRO_KPI_PREDICATES = {
+  RUBRO_CALDERERIA: (norm) => norm.includes('CALDER'),
+  RUBRO_RASCHINAJE: (norm) => norm.includes('RASCHIN'),
+  RUBRO_MECANICA: (norm) => norm.includes('MECAN'),
+  RUBRO_TORNERIA: (norm) => norm.includes('TORN'),
+  RUBRO_PINTURA: (norm) => norm.includes('PINT'),
+  RUBRO_ELECTRICIDAD: (norm) => norm.includes('ELECTRIC')
+}
+
+const HORAS_RUBRO_KPIS = [
+  { id: 'RUBRO_CALDERERIA', label: 'Calderería', colorTheme: 'blue' },
+  { id: 'RUBRO_RASCHINAJE', label: 'Raschinaje', colorTheme: 'cyan' },
+  { id: 'RUBRO_MECANICA', label: 'Mecánica', colorTheme: 'emerald' }
+]
+
+const TERCEROS_RUBRO_KPIS = [
+  { id: 'RUBRO_TORNERIA', label: 'Tornería', colorTheme: 'blue' },
+  { id: 'RUBRO_PINTURA', label: 'Pintura', colorTheme: 'cyan' },
+  { id: 'RUBRO_ELECTRICIDAD', label: 'Electricidad', colorTheme: 'purple' }
+]
+
+/**
+ * Compara el rubro normalizado de una fila contra una tarjeta KPI de rubro (`RUBRO_*`).
+ */
+export function matchesResumenRubroKpi(rubroValue = '', kpiId = '') {
+  const predicate = RUBRO_KPI_PREDICATES[kpiId]
+  if (!predicate) return false
+  const norm = normalizeText(rubroValue)
+  return Boolean(norm && predicate(norm))
+}
+
+function buildRubroKpiCards(rows, definitions, mapMetrics) {
+  return definitions.map(({ id, label, colorTheme }) => {
+    const matched = rows.filter((r) => matchesResumenRubroKpi(r.rubro, id))
+    return { id, label, colorTheme, ...mapMetrics(matched) }
+  })
 }
 
 /**
@@ -86,18 +132,19 @@ function matchesOtFilter(row, costScope, otFilter) {
 
 export function computeMaterialesKpis(scopedBaseRows = []) {
   const matsDirect = scopedBaseRows.filter((r) => r.category === 'MATERIALES')
+  const directPurchases = scopedBaseRows.filter((r) => r.sourceType === 'COMPRA_DIRECTA')
   const consumables = scopedBaseRows.filter((r) => r.category === 'CONSUMIBLES')
   const eppRef = scopedBaseRows.filter((r) => r.isSafetyReference)
   const withKg = scopedBaseRows.filter((r) => Number(r.weightKg) > 0)
   const missingOt = scopedBaseRows.filter((r) => r.hasMissingOt)
   const zeroPrice = scopedBaseRows.filter((r) => r.hasZeroPrice && !r.isDeletionRequested)
 
-  const sumUsd = (arr, key = 'shipDirectUsd') =>
-    arr.reduce((acc, item) => acc + (Number(item[key]) || 0), 0)
+  const sumUsd = (arr, key = 'shipDirectUsd') => arr.reduce((acc, item) => acc + (Number(item[key]) || 0), 0)
   const sumKg = withKg.reduce((acc, item) => acc + (Number(item.weightKg) || 0), 0)
 
   return [
-    { id: 'MATERIALES', label: 'Materiales Directos', count: formatUsd(sumUsd(matsDirect), 0), subtext: `${matsDirect.length} movs. cargados`, colorTheme: 'blue' },
+    { id: 'MATERIALES', label: 'Materiales de Obra', count: formatUsd(sumUsd(matsDirect), 0), subtext: `${matsDirect.length} movs. cargados`, colorTheme: 'blue' },
+    { id: 'COMPRA_DIRECTA', label: 'Compras Directas', count: formatUsd(sumUsd(directPurchases), 0), subtext: `${directPurchases.length} OC directas`, colorTheme: 'fuchsia' },
     { id: 'CONSUMIBLES', label: 'Consumibles Obra', count: formatUsd(sumUsd(consumables), 0), subtext: `${consumables.length} consumibles imputados`, colorTheme: 'cyan' },
     { id: 'EPP_REF', label: 'Elem. Seguridad (Ref.)', count: formatUsd(sumUsd(eppRef, 'referenceUsd'), 0), subtext: `${eppRef.length} retiros EPP · No suman`, colorTheme: 'amber' },
     { id: 'PESO_KG', label: 'Peso Total Instalado', count: formatKg(sumKg, 1), subtext: `${withKg.length} ítems con pesaje`, colorTheme: 'purple' },
@@ -106,19 +153,14 @@ export function computeMaterialesKpis(scopedBaseRows = []) {
   ]
 }
 
-export function filterResumenMaterialRows(scopedBaseRows = [], {
-  kpiFilter = 'ALL',
-  costScope = 'GENERAL',
-  otFilter = 'ALL',
-  contractorFilter = 'ALL',
-  showMateriales = true,
-  showConsumibles = true,
-  materialQuick = '',
-  onlyKgPositive = false,
-  searchQuery = ''
-} = {}) {
+export function filterResumenMaterialRows(scopedBaseRows = [], filters = {}) {
+  const {
+    kpiFilter = 'ALL', costScope = 'GENERAL', otFilter = 'ALL', contractorFilter = 'ALL',
+    showMateriales = true, showConsumibles = true, materialQuick = '', onlyKgPositive = false, searchQuery = ''
+  } = filters
   return scopedBaseRows.filter((row) => {
     if (kpiFilter === 'MATERIALES' && row.category !== 'MATERIALES') return false
+    if (kpiFilter === 'COMPRA_DIRECTA' && row.sourceType !== 'COMPRA_DIRECTA') return false
     if (kpiFilter === 'CONSUMIBLES' && row.category !== 'CONSUMIBLES') return false
     if (kpiFilter === 'EPP_REF' && !row.isSafetyReference) return false
     if (kpiFilter === 'PESO_KG' && Number(row.weightKg) <= 0) return false
@@ -139,39 +181,32 @@ export function computeHorasKpis(scopedBaseRows = []) {
   const validRows = scopedBaseRows.filter(
     (r) => r && !r.isControl && String(r.workType || '').trim().toUpperCase() !== 'CONTROL'
   )
-  const approved = validRows.filter((r) => !r.isPendingR && !r.isPresupuesto)
   const pendingR = validRows.filter((r) => r.isPendingR && !r.isCorrectedRR && !r.isPresupuesto)
-  const correctedRR = validRows.filter((r) => r.isCorrectedRR)
   const missingOt = validRows.filter((r) => r.hasMissingOt)
   const budgetDec013 = validRows.filter((r) => r.isPresupuesto)
-
   const sumHrs = (arr) => arr.reduce((acc, r) => acc + (r.hoursPhysical || 0), 0)
   const sumCost = (arr, field = 'costUsd') => arr.reduce((acc, r) => acc + (r[field] || 0), 0)
 
   return [
-    { id: 'APPROVED', label: 'Horas Aprobadas (S)', count: formatUsd(sumCost(approved, 'approvedUsd'), 0), subtext: `${sumHrs(approved).toFixed(1)} hs físicas (${approved.length} partes)`, colorTheme: 'emerald' },
+    ...buildRubroKpiCards(validRows, HORAS_RUBRO_KPIS, (rows) => ({
+      count: `${sumHrs(rows).toFixed(1)} hs`,
+      subtext: `${formatUsd(sumCost(rows, 'costUsd'), 0)} · ${rows.length} partes`
+    })),
     { id: 'PENDING_R', label: 'Pendientes Revisión ("R")', count: formatUsd(sumCost(pendingR, 'pendingRUsd'), 0), subtext: `${sumHrs(pendingR).toFixed(1)} hs en revisión`, colorTheme: 'amber' },
-    { id: 'CORRECTED_RR', label: 'Corregidas ("RR")', count: correctedRR.length, subtext: `${sumHrs(correctedRR).toFixed(1)} hs corregidas`, colorTheme: 'cyan' },
     { id: 'SIN_OT', label: 'Sin OT Asignada', count: missingOt.length, subtext: 'Partes pendientes de vincular OT', colorTheme: 'rose' },
     { id: 'DEC_013', label: 'Horas Presupuesto ($0)', count: `${sumHrs(budgetDec013).toFixed(1)} hs`, subtext: `${budgetDec013.length} partes · Costo US$ 0 (en Terceros)`, colorTheme: 'purple' }
   ]
 }
 
-export function filterResumenLaborRows(scopedBaseRows = [], {
-  kpiFilter = 'ALL',
-  costScope = 'GENERAL',
-  otFilter = 'ALL',
-  workerFilter = 'ALL',
-  rubroFilter = 'ALL',
-  searchQuery = ''
-} = {}) {
+export function filterResumenLaborRows(scopedBaseRows = [], filters = {}) {
+  const { kpiFilter = 'ALL', costScope = 'GENERAL', otFilter = 'ALL', workerFilter = 'ALL', rubroFilter = 'ALL', searchQuery = '' } = filters
   return scopedBaseRows.filter((row) => {
     if (!row || row.isControl || String(row.workType || '').trim().toUpperCase() === 'CONTROL') return false
     if (kpiFilter === 'APPROVED' && (row.isPendingR || row.isPresupuesto)) return false
     if (kpiFilter === 'PENDING_R' && !(row.isPendingR && !row.isCorrectedRR && !row.isPresupuesto)) return false
-    if (kpiFilter === 'CORRECTED_RR' && !row.isCorrectedRR) return false
     if (kpiFilter === 'SIN_OT' && !row.hasMissingOt) return false
     if (kpiFilter === 'DEC_013' && !row.isPresupuesto) return false
+    if (String(kpiFilter || '').startsWith('RUBRO_') && !matchesResumenRubroKpi(row.rubro, kpiFilter)) return false
     if (['GRUA_GRANDE', 'GRUA_CHICA', 'PALA'].includes(kpiFilter) && row.equipmentType !== kpiFilter) return false
     if (!matchesOtFilter(row, costScope, otFilter)) return false
     if (workerFilter !== 'ALL' && String(row.workerName || '').trim() !== workerFilter) return false
@@ -184,34 +219,24 @@ export function filterResumenLaborRows(scopedBaseRows = [], {
 export function computeTercerosKpis(scopedBaseRows = []) {
   const missingOt = scopedBaseRows.filter((r) => r.hasMissingOt)
   const zeroCost = scopedBaseRows.filter((r) => r.hasZeroCost)
-  const rpf = scopedBaseRows.filter((r) => r.voucherType === 'RPF')
-  const fcr = scopedBaseRows.filter((r) => r.voucherType === 'FCR')
-  const prcRmo = scopedBaseRows.filter((r) => r.voucherType === 'PRC' || r.voucherType === 'RMO')
   const sumUsd = (arr) => arr.reduce((acc, item) => acc + (item.amountUsd || 0), 0)
 
   return [
-    { id: 'FCR', label: 'FCR Facturados', count: formatUsd(sumUsd(fcr), 0), subtext: `${fcr.length} facturas rendidas`, colorTheme: 'emerald' },
-    { id: 'PRC_RMO', label: 'PRC / RMO Vigentes', count: formatUsd(sumUsd(prcRmo), 0), subtext: `${prcRmo.length} comprobantes en obra`, colorTheme: 'cyan' },
-    { id: 'RPF', label: 'RPF Pdte. Factura', count: formatUsd(sumUsd(rpf), 0), subtext: `${rpf.length} remitos sin facturar`, colorTheme: 'purple' },
+    ...buildRubroKpiCards(scopedBaseRows, TERCEROS_RUBRO_KPIS, (rows) => ({
+      count: formatUsd(sumUsd(rows), 0),
+      subtext: `${rows.length} comprobantes`
+    })),
     { id: 'SIN_OT', label: 'Falta Cargar OT', count: missingOt.length, subtext: 'Servicios sin OT asignada', colorTheme: 'rose' },
     { id: 'SIN_COSTO', label: 'Sin Costo ($0)', count: zeroCost.length, subtext: 'Pendientes de cotización', colorTheme: 'amber' }
   ]
 }
 
-export function filterResumenThirdPartyRows(scopedBaseRows = [], {
-  kpiFilter = 'ALL',
-  costScope = 'GENERAL',
-  otFilter = 'ALL',
-  contractorFilter = 'ALL',
-  voucherFilter = 'ALL',
-  searchQuery = ''
-} = {}) {
+export function filterResumenThirdPartyRows(scopedBaseRows = [], filters = {}) {
+  const { kpiFilter = 'ALL', costScope = 'GENERAL', otFilter = 'ALL', contractorFilter = 'ALL', voucherFilter = 'ALL', searchQuery = '' } = filters
   return scopedBaseRows.filter((row) => {
-    if (kpiFilter === 'FCR' && row.voucherType !== 'FCR') return false
-    if (kpiFilter === 'PRC_RMO' && !['PRC', 'RMO'].includes(row.voucherType)) return false
-    if (kpiFilter === 'RPF' && row.voucherType !== 'RPF') return false
     if (kpiFilter === 'SIN_OT' && !row.hasMissingOt) return false
     if (kpiFilter === 'SIN_COSTO' && !row.hasZeroCost) return false
+    if (String(kpiFilter || '').startsWith('RUBRO_') && !matchesResumenRubroKpi(row.rubro, kpiFilter)) return false
     if (!matchesOtFilter(row, costScope, otFilter)) return false
     if (contractorFilter !== 'ALL' && String(row.contractorName || '').trim() !== contractorFilter) return false
     if (voucherFilter !== 'ALL' && row.voucherType !== voucherFilter) return false
