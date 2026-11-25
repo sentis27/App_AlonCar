@@ -1,6 +1,8 @@
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import CanonicalHistoryRangeSelect from '../canonical/CanonicalHistoryRangeSelect'
 import { Package, Lock, Scissors, AlertTriangle } from 'lucide-react'
+import { STOCK_REASON_LABELS } from '../../lib/stockControlService'
+import { buildMergedRubrosCatalog } from '../../lib/panolCatalogService'
 import {
   getFilterPillClass,
   getFilterSelectClass,
@@ -8,47 +10,21 @@ import {
 } from '../../lib/filterThemeConstants'
 
 export default function PanolToolbar({
-  searchQuery,
-  setSearchQuery,
-  searchInputRef,
-  filterPeriod,
-  setFilterPeriod,
-  filterCategory,
-  setFilterCategory,
-  filterMaterialQuick = '',
-  setFilterMaterialQuick,
-  onlyZeroCost = false,
-  setOnlyZeroCost,
-  unvaluedCount = 0,
-  activeKpiFilter = null,
-  onClearZeroCostKpi = null,
-  onExportPlateCuts,
-  filterShip,
-  setFilterShip,
-  filterOt = 'TODAS',
-  setFilterOt,
-  filterContractor = 'TODOS',
-  setFilterContractor,
-  filterStockOnly,
-  setFilterStockOnly,
-  isAdmin = true,
-  activeTab,
-  ships = [],
-  workOrders = [],
-  workItems = [],
-  contractorOptions = [],
-  hasActiveFilters = false,
-  onClearAllFilters,
-  gridHistory = null,
-  viewsController,
-  historyRange = '90d',
-  setHistoryRange,
-  loading = false
+  searchQuery, setSearchQuery, searchInputRef, filterPeriod, setFilterPeriod, filterCategory, setFilterCategory,
+  filterReason = 'TODOS', setFilterReason = null, filterDirection = 'TODOS', setFilterDirection = null,
+  filterRubro = 'TODOS', setFilterRubro = null, filterAuditStatus = 'TODOS', setFilterAuditStatus = null,
+  rubros = [], materials = [], filterMaterialQuick = '', setFilterMaterialQuick, onlyZeroCost = false, setOnlyZeroCost,
+  unvaluedCount = 0, activeKpiFilter = null, onClearZeroCostKpi = null, onExportPlateCuts,
+  filterShip, setFilterShip, filterOt = 'TODAS', setFilterOt, filterContractor = 'TODOS', setFilterContractor,
+  filterStockOnly, setFilterStockOnly, isAdmin = true, activeTab, ships = [], workOrders = [], workItems = [],
+  contractorOptions = [], hasActiveFilters = false, onClearAllFilters, gridHistory = null, viewsController,
+  historyRange = '90d', setHistoryRange, loading = false
 }) {
   const otOptions = resolveOtFilterOptions(workOrders, workItems, filterShip)
+  const rubroOptions = activeTab === 'control_stock' ? buildMergedRubrosCatalog(rubros, materials) : []
 
   const filtersNode =
-    activeTab === 'planillas' || activeTab === 'catalogo' ? (
+    activeTab === 'planillas' || activeTab === 'catalogo' || activeTab === 'entradas' || activeTab === 'control_stock' ? (
       <>
         {activeTab === 'planillas' && (
           <>
@@ -124,7 +100,7 @@ export default function PanolToolbar({
         )}
 
         {/* 5. Categoría (Azul Cielo) */}
-        {activeTab !== 'gases' && (
+        {(activeTab === 'planillas' || activeTab === 'catalogo') && (
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
@@ -137,6 +113,66 @@ export default function PanolToolbar({
             <option value="ELEM.SEGURIDAD" className="bg-slate-900">ELEM.SEGURIDAD</option>
             <option value="GASES" className="bg-slate-900">GASES</option>
           </select>
+        )}
+
+        {activeTab === 'entradas' && (
+          <>
+            {setFilterReason && (
+              <select
+                value={filterReason}
+                onChange={(e) => setFilterReason(e.target.value)}
+                className={getFilterSelectClass('category', filterReason !== 'TODOS')}
+                title="Filtrar por Motivo de Entrada / Ajuste"
+              >
+                <option value="TODOS" className="bg-slate-900">Todos los Motivos</option>
+                {Object.entries(STOCK_REASON_LABELS).map(([k, lbl]) => (
+                  <option key={k} value={k} className="bg-slate-900">{lbl}</option>
+                ))}
+              </select>
+            )}
+            {setFilterDirection && (
+              <select
+                value={filterDirection}
+                onChange={(e) => setFilterDirection(e.target.value)}
+                className={getFilterSelectClass('period', filterDirection !== 'TODOS')}
+                title="Filtrar por Dirección del Movimiento"
+              >
+                <option value="TODOS" className="bg-slate-900">Entradas y Salidas</option>
+                <option value="ENTRADAS" className="bg-slate-900">Solo Entradas (+)</option>
+                <option value="SALIDAS" className="bg-slate-900">Solo Salidas (−)</option>
+              </select>
+            )}
+          </>
+        )}
+
+        {activeTab === 'control_stock' && (
+          <>
+            {setFilterRubro && (
+              <select
+                value={filterRubro}
+                onChange={(e) => setFilterRubro(e.target.value)}
+                className={getFilterSelectClass('category', filterRubro !== 'TODOS')}
+                title="Filtrar por Rubro Técnico"
+              >
+                <option value="TODOS" className="bg-slate-900">Todos los Rubros</option>
+                {rubroOptions.map((r) => (
+                  <option key={r.name} value={r.name} className="bg-slate-900">{r.name}</option>
+                ))}
+              </select>
+            )}
+            {setFilterAuditStatus && (
+              <select
+                value={filterAuditStatus}
+                onChange={(e) => setFilterAuditStatus(e.target.value)}
+                className={getFilterSelectClass('period', filterAuditStatus !== 'TODOS')}
+                title="Filtrar por Resultado de Control"
+              >
+                <option value="TODOS" className="bg-slate-900">Todos los Resultados</option>
+                <option value="OK" className="bg-slate-900">✅ Solo Datos Correctos</option>
+                <option value="DISCREPANCY" className="bg-slate-900">⚠️ Solo Con Error / Dif.</option>
+              </select>
+            )}
+          </>
         )}
 
         {/* 5b. Píldora rápida Chapa + Reporte de Parches + Sin Valor $0 (solo en Planilla de Retiros) */}

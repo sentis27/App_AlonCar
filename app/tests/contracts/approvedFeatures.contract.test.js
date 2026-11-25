@@ -636,10 +636,10 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
   })
 
   it('FL-021: blinda el Menú Lateral Acordeón 3 Capas y Zona 1 limpia (sin pestañas ni selectores manuales de Terminal/Rol)', () => {
-    // Capa 1: Catálogo maestro con 11 módulos y 30 submódulos con permissionKey único
+    // Capa 1: Catálogo maestro con 11 módulos y 32 submódulos con permissionKey único
     expect(NAVIGATION_MODULES.length).toBe(11)
     const allChildren = NAVIGATION_MODULES.flatMap((m) => m.children || [])
-    expect(allChildren.length).toBe(30)
+    expect(allChildren.length).toBe(32)
     const permKeys = [
       ...NAVIGATION_MODULES.map((m) => m.permissionKey),
       ...allChildren.map((c) => c.permissionKey),

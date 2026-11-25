@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckSquare, Square, ShoppingCart, Edit3, Layers, Scale, Lightbulb, Lock, Camera } from 'lucide-react'
+import { CheckSquare, Square, ShoppingCart, Edit3, Layers, Scale, Lightbulb, Lock, Camera, History } from 'lucide-react'
 import { useSpreadsheetGrid } from '../../hooks/useSpreadsheetGrid'
 import { useGridContextMenu } from '../../hooks/useGridContextMenu'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
@@ -20,7 +20,7 @@ import { getTodayArIso } from '../../lib/dateTimeCanonical'
 export default function PanolCatalogGrid({
   filteredMaterials, materials, rubros = [], searchQuery, activeKpiFilter, filterCategory, filterStockOnly,
   isAdmin, user, macroVariables = [], pricingPolicy = null, criticalMaterialsCount, stockControlledCount, onClearFilters, onOpenEditMaterialModal,
-  onOpenStockAdjustModal, onOpenConsumption6MModal, onPreviewImage, showFeedback, fetchData, setMaterials,
+  onOpenStockAdjustModal, onOpenConsumption6MModal, onOpenKardexModal = null, virtualStockMap = null, onPreviewImage, showFeedback, fetchData, setMaterials,
   onHistoryChange = null
 }) {
   const navigate = useNavigate()
@@ -148,6 +148,7 @@ export default function PanolCatalogGrid({
               <th className="py-2 px-1.5 text-center">Unidad {isAdmin ? '✎' : ''}</th>
               <th className="py-2 px-1.5 text-right">Peso (kg) {isAdmin ? '✎' : ''}</th>
               <th className="py-2 px-1.5 text-right">Stock Actual</th>
+              <th className="py-2 px-1.5 text-right whitespace-nowrap" title="Pedidos emitidos a Compras en tránsito hacia Pañol (PEDIDO / INCOMPLETO)">Stock Virtual</th>
               <th className="py-2 px-1.5 text-right">Stock Mín. {isAdmin ? '✎' : '🔒'}</th>
               <th className="py-2 px-1.5 text-center">Lleva Stock {isAdmin ? '✎' : '🔒'}</th>
               {isAdmin && (
@@ -166,7 +167,9 @@ export default function PanolCatalogGrid({
           <tbody className="divide-y divide-slate-800/60 font-sans">
             {visibleMaterials.map((mat, idx) => {
               const isSelected = materialsGrid.selectedRowIds.has(mat.id)
-              const isCritical = (Number(mat.current_stock) || 0) <= (Number(mat.minimum_stock) || 0) && mat.requires_stock_control
+              const stockNum = Number(mat.current_stock) || 0
+              const isCritical = stockNum <= (Number(mat.minimum_stock) || 0) && mat.requires_stock_control
+              const vInfo = virtualStockMap?.get(String(mat.id)) || null
               const badge = getSecurityFactorBadge(mat.security_factor)
               const unitShort = formatUnitMeasureShort(mat.unit_measure)
 
@@ -231,7 +234,19 @@ export default function PanolCatalogGrid({
                   </td>
 
                   <td className="py-1.5 px-1.5 text-right font-mono font-bold whitespace-nowrap">
-                    <span className={isCritical ? 'text-rose-400' : 'text-emerald-400'}>{mat.current_stock} {unitShort}</span>
+                    <button type="button" onClick={() => onOpenKardexModal?.(mat)} title="Clic para ver Kárdex cronológico del material" className={`inline-flex items-center gap-1 hover:underline cursor-pointer ${isCritical ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {stockNum < 0 && <span className="px-1 rounded bg-rose-500/20 border border-rose-500/50 text-[8px] font-black text-rose-300">NEGATIVO</span>}
+                      {stockNum >= 0 && isCritical && <span className="px-1 rounded bg-amber-500/20 border border-amber-500/50 text-[8px] font-black text-amber-300">FALTA</span>}
+                      <span>{mat.current_stock} {unitShort}</span>
+                    </button>
+                  </td>
+                  <td className="py-1.5 px-1.5 text-right font-mono whitespace-nowrap" title={vInfo ? `${vInfo.pendingOrdersCount} pedido(s) en tránsito en Compras · Clic para ver Kárdex` : 'Sin pedidos en tránsito en Compras'}>
+                    {vInfo?.virtualQty > 0 ? (
+                      <button type="button" onClick={() => onOpenKardexModal?.(mat)} className="inline-flex items-center gap-1 text-cyan-300 font-bold hover:underline cursor-pointer">
+                        <span>+{vInfo.virtualQty} {unitShort}</span>
+                        <span className="text-[9px] text-cyan-400/80">({vInfo.pendingOrdersCount} ped.)</span>
+                      </button>
+                    ) : <span className="text-slate-600">—</span>}
                   </td>
 
                   <td onDoubleClick={() => { if (isAdmin) setInlineEdit({ id: mat.id, field: 'minimum_stock', value: String(mat.minimum_stock || 0) }); else showFeedback('error', 'Solo el Administrador puede modificar el stock mínimo.') }} className={`py-1.5 px-1.5 text-right font-mono text-slate-400 ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`} title={isAdmin ? 'Doble clic para editar stock mínimo (Solo Admin)' : '🔒 Solo editable por Administrador'}>
@@ -263,6 +278,7 @@ export default function PanolCatalogGrid({
                       <button type="button" onClick={() => navigate(`/compras?nuevo=true&materialId=${mat.id}&materialName=${encodeURIComponent(mat.name)}`)} className="w-7 h-7 rounded-lg bg-cyan-950/90 hover:bg-cyan-500 border border-cyan-500/60 text-cyan-300 hover:text-slate-950 flex items-center justify-center cursor-pointer transition-colors" title="Reponer en Compras"><ShoppingCart className="w-3.5 h-3.5" /></button>
                       <button type="button" onClick={() => onOpenEditMaterialModal?.(mat)} className="w-7 h-7 rounded-lg bg-sky-950/90 hover:bg-sky-500 border border-sky-500/60 text-sky-300 hover:text-slate-950 flex items-center justify-center cursor-pointer transition-colors" title={isAdmin ? 'Editar Material (Rubro, Categoría, Unidad, Foto, Mínimos, % Seg.)' : 'Ver Ficha y Cargar Foto'}><Edit3 className="w-3.5 h-3.5" /></button>
                       <button type="button" onClick={() => onOpenStockAdjustModal(mat)} className="w-7 h-7 rounded-lg bg-emerald-950/90 hover:bg-emerald-500 border border-emerald-500/60 text-emerald-300 hover:text-slate-950 flex items-center justify-center cursor-pointer transition-colors" title="Ajustar Stock Físico"><Scale className="w-3.5 h-3.5" /></button>
+                      <button type="button" onClick={() => onOpenKardexModal?.(mat)} className="w-7 h-7 rounded-lg bg-slate-800/90 hover:bg-cyan-500 border border-slate-600 text-slate-300 hover:text-slate-950 flex items-center justify-center cursor-pointer transition-colors" title="Ver Kárdex cronológico de movimientos"><History className="w-3.5 h-3.5" /></button>
                       <button type="button" onClick={() => onOpenConsumption6MModal?.(mat)} className="w-7 h-7 rounded-lg bg-amber-950/90 hover:bg-amber-400 border border-amber-500/70 text-amber-300 hover:text-slate-950 flex items-center justify-center cursor-pointer transition-colors" title="💡 Consumo Inteligente: Últimos 6 meses y OTs únicas"><Lightbulb className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
@@ -272,7 +288,7 @@ export default function PanolCatalogGrid({
             <CanonicalProgressiveTableFooter
               visibleCount={visibleCount} totalCount={filteredMaterials.length} hasMore={hasMore}
               remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
-              sentinelRef={sentinelRef} colSpan={isAdmin ? 13 : 11} entityLabel="materiales"
+              sentinelRef={sentinelRef} colSpan={isAdmin ? 14 : 12} entityLabel="materiales"
             />
           </tbody>
         </table>
@@ -287,6 +303,7 @@ export default function PanolCatalogGrid({
             { id: 'reponer-material', label: '🛒 Reponer en Compras', icon: ShoppingCart, iconClass: 'text-cyan-400', hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-cyan-300', visible: true, onClick: () => navigate(`/compras?nuevo=true&materialId=${menuTarget.row.id}&materialName=${encodeURIComponent(menuTarget.row.name)}`) },
             { id: 'editar-material', label: isAdmin ? '✏️ Editar Material' : '📷 Ver Ficha / Subir Foto', icon: Edit3, iconClass: 'text-sky-400', hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-sky-300', visible: true, onClick: () => onOpenEditMaterialModal?.(menuTarget.row) },
             { id: 'ajustar-stock', label: '⚖️ Ajustar Stock Físico', icon: Scale, iconClass: 'text-emerald-400', hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-emerald-300', visible: true, onClick: () => onOpenStockAdjustModal(menuTarget.row) },
+            { id: 'ver-kardex', label: '📋 Ver Kárdex Cronológico', icon: History, iconClass: 'text-cyan-300', hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-cyan-300', visible: Boolean(onOpenKardexModal), onClick: () => onOpenKardexModal?.(menuTarget.row) },
             { id: 'consumo-6m', label: '💡 Consumo Últimos 6 Meses', icon: Lightbulb, iconClass: 'text-amber-400', hoverClass: 'hover:bg-slate-800 text-slate-300 hover:text-amber-300', visible: true, onClick: () => onOpenConsumption6MModal?.(menuTarget.row) }
           ]}
           entityType="materials" recordId={menuTarget.recordId} recordLabel={menuTarget.recordLabel}

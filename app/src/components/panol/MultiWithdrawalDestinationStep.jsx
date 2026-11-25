@@ -1,6 +1,7 @@
 import { AlertTriangle, Plus, UserPlus } from 'lucide-react'
 import { getContractorEnabledWos, normalizeText } from '../../lib/allocationEngine'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
+import PanolContractorSelect from './PanolContractorSelect.jsx'
 
 /**
  * Paso 1 del Stepper Vertical de Retiro Multi-Material:
@@ -30,10 +31,6 @@ export default function MultiWithdrawalDestinationStep({
   }
 
   const handleContractorChange = (val) => {
-    if (val === '__EXPANDIR_CONTRATISTAS__') return setIsExpandedContractors(true)
-    if (val === '__CONTRAER_CONTRATISTAS__') return setIsExpandedContractors(false)
-    if (val === '__SOLICITAR_APERTURA_OT__') return onRequestOt?.(shipId, contractorGroup || '')
-    if (val === '__SOLICITAR_HABILITACION_OPERARIO__') return onRequestWorkerPermission?.()
     setContractorGroup(val)
     if (!val) return setWorkOrderId('')
     if (shipId) {
@@ -43,7 +40,10 @@ export default function MultiWithdrawalDestinationStep({
         setWorkOrderId('')
       } else {
         setIsOtEmpty(false)
-        if (workOrderId && !wosForWorker.some((w) => String(w.id) === String(workOrderId))) setWorkOrderId('')
+        const keepsWo = wosForWorker.some(
+          (w) => String(w.id) === String(workOrderId) || (w._allWoIds || []).some((id) => String(id) === String(workOrderId))
+        )
+        if (workOrderId && !keepsWo) setWorkOrderId('')
       }
     }
   }
@@ -59,11 +59,6 @@ export default function MultiWithdrawalDestinationStep({
       if (!isValid) setContractorGroup('')
     }
   }
-
-  const missingCurrentContractor =
-    contractorGroup &&
-    !enabled.astilleroWorkers.some((w) => normalizeText(w.name) === normalizeText(contractorGroup)) &&
-    !enabled.contractorGroups.some((g) => normalizeText(g) === normalizeText(contractorGroup))
 
   return (
     <div className="flex-1 min-w-0 space-y-2.5 pb-2">
@@ -96,65 +91,21 @@ export default function MultiWithdrawalDestinationStep({
               <UserPlus className="w-3 h-3" /><span>Solicitar Alta</span>
             </button>
           </div>
-          <select
-            value={contractorGroup} onChange={(e) => handleContractorChange(e.target.value)} required
-            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-cyan-400 font-black text-xs focus:outline-none focus:border-cyan-400"
-          >
-            <option value="">
-              {shipId && !isExpandedContractors
-                ? `-- Habilitados en Barco (${enabled.astilleroWorkers.length + enabled.contractorGroups.length}) --`
-                : '-- Seleccionar Operario / Contratista --'}
-            </option>
-            {shipId && !isExpandedContractors && enabled.astilleroWorkers.length === 0 && enabled.contractorGroups.length === 0 && (
-              <option value="" disabled className="text-amber-400 bg-slate-950">
-                ⚠️ Sin contratistas con OT activa en este barco (usá 🔓 Expandir)
-              </option>
-            )}
-            {missingCurrentContractor && <option value={contractorGroup}>{contractorGroup} (Actual)</option>}
-            {enabled.astilleroWorkers.length > 0 && (
-              <optgroup label={isExpandedContractors ? `⭐ Personal Astillero Completo (${enabled.astilleroWorkers.length})` : `⭐ Personal Astillero Habilitado (${enabled.astilleroWorkers.length})`}>
-                {enabled.astilleroWorkers.map((w) => {
-                  const hasShipOt = !shipId || shipEnabledAstSet.has(normalizeText(w.name))
-                  return (
-                    <option key={`m_ast_${w.id || w.name}`} value={w.name}>
-                      {w.name}{isExpandedContractors && !hasShipOt ? ' (Sin OT en barco)' : ''}
-                    </option>
-                  )
-                })}
-              </optgroup>
-            )}
-            {enabled.contractorGroups.length > 0 && (
-              <optgroup label={isExpandedContractors ? `🏗️ Todos los Contratistas (${enabled.contractorGroups.length})` : `🏗️ Contratistas Habilitados en Barco (${enabled.contractorGroups.length})`}>
-                {enabled.contractorGroups.map((grp) => {
-                  const hasShipOt = !shipId || shipEnabledCntSet.has(normalizeText(grp))
-                  return (
-                    <option key={`m_cnt_${grp}`} value={grp}>
-                      {grp}{isExpandedContractors && !hasShipOt ? ' (Sin OT en barco)' : ''}
-                    </option>
-                  )
-                })}
-              </optgroup>
-            )}
-            {shipId && !isExpandedContractors && (
-              <option value="__EXPANDIR_CONTRATISTAS__" className="text-amber-300 font-bold bg-slate-950">
-                🔓 Expandir (Ver totalidad de operarios y contratistas)...
-              </option>
-            )}
-            {shipId && isExpandedContractors && (
-              <option value="__CONTRAER_CONTRATISTAS__" className="text-sky-300 font-bold bg-slate-950">
-                🔒 Contraer (Solo habilitados del barco)
-              </option>
-            )}
-            <option
-              value="__SOLICITAR_APERTURA_OT__" disabled={allocState.isOtRequestPending}
-              className={allocState.isOtRequestPending ? 'text-slate-500 bg-slate-950' : 'text-rose-400 font-bold bg-slate-950'}
-            >
-              {allocState.isOtRequestPending ? 'Solicitud de OT enviada (1)' : '➕ Solicitar Apertura de OT a Admin...'}
-            </option>
-            <option value="__SOLICITAR_HABILITACION_OPERARIO__" className="text-cyan-400 font-bold bg-slate-950">
-              ➕ Solicitar Habilitación de Operario a Admin...
-            </option>
-          </select>
+          <PanolContractorSelect
+            value={contractorGroup}
+            enabled={enabled}
+            isExpanded={isExpandedContractors}
+            hasScope={Boolean(shipId)}
+            scopeLabel="Barco"
+            enabledAstSet={shipEnabledAstSet}
+            enabledCntSet={shipEnabledCntSet}
+            isOtRequestPending={allocState.isOtRequestPending}
+            required
+            onChange={handleContractorChange}
+            onToggleExpand={setIsExpandedContractors}
+            onRequestOt={() => onRequestOt?.(shipId, contractorGroup || '')}
+            onRequestWorkerPermission={() => onRequestWorkerPermission?.()}
+          />
         </div>
 
         <div>

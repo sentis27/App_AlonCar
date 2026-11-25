@@ -28,6 +28,7 @@ import {
   ShieldAlert,
   Brain,
   History,
+  ArrowDownUp,
 } from 'lucide-react'
 
 const NAV_ICONS = {
@@ -59,6 +60,7 @@ const NAV_ICONS = {
   ShieldAlert,
   Brain,
   History,
+  ArrowDownUp,
 }
 
 function NavIcon({ iconKey, className = 'w-4 h-4 shrink-0' }) {

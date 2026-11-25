@@ -21,7 +21,7 @@ export default function PanolMovimientoCostCell({
     return (
       <td
         {...cp.domProps}
-        className={`py-1.5 px-1.5 text-right font-mono text-slate-600 whitespace-nowrap ${cp.className}`}
+        className={`py-1 px-1 text-right font-mono text-slate-600 whitespace-nowrap ${cp.className}`}
         title="Sin material asignado"
       >
         —
@@ -49,7 +49,7 @@ export default function PanolMovimientoCostCell({
       onDoubleClick={() => {
         if (mat && onOpenEditMaterial) onOpenEditMaterial(mat)
       }}
-      className={`py-1.5 px-1.5 text-right font-mono whitespace-nowrap ${mat && onOpenEditMaterial ? 'cursor-pointer' : ''} ${cp.className} ${isDeletionReq ? 'line-through opacity-75' : ''}`}
+      className={`py-1 px-1 text-right font-mono whitespace-nowrap ${mat && onOpenEditMaterial ? 'cursor-pointer' : ''} ${cp.className} ${isDeletionReq ? 'line-through opacity-75' : ''}`}
       title={tooltip}
     >
       {cost.isZeroCost ? (

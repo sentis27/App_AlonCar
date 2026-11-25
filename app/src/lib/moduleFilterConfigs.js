@@ -103,6 +103,14 @@ export const MODULE_FILTER_CONFIGS = {
       return lines
     }
   },
+  panol_entradas: {
+    defaults: { searchQuery: '', filterReason: 'TODOS', filterDirection: 'TODOS', activeKpiFilter: null },
+    labelMap: { searchQuery: 'Búsqueda', filterReason: 'Motivo', filterDirection: 'Tipo', activeKpiFilter: 'Radar KPI' }
+  },
+  panol_control_stock: {
+    defaults: { searchQuery: '', filterRubro: 'TODOS', filterAuditStatus: 'TODOS', activeKpiFilter: null },
+    labelMap: { searchQuery: 'Búsqueda', filterRubro: 'Rubro', filterAuditStatus: 'Resultado', activeKpiFilter: 'Radar KPI' }
+  },
   panol_gases: {
     defaults: { searchQuery: '', traceSupplierFilter: 'TODOS', traceMaterialFilter: 'TODOS', activeKpiFilter: null },
     buildSummary: (f, { suppliers = [], materials = [] } = {}) => {

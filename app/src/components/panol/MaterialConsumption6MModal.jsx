@@ -11,6 +11,7 @@ export default function MaterialConsumption6MModal({
   inventoryTx = [],
   workOrders = [],
   ships = [],
+  virtualStockInfo = null,
   onReponer = null,
   onClose
 }) {
@@ -40,10 +41,11 @@ export default function MaterialConsumption6MModal({
     return () => { active = false }
   }, [material?.id])
 
+  const virtualQty = Number(virtualStockInfo?.virtualQty) || 0
   const effectiveTx = remoteTx ?? inventoryTx
   const summary = useMemo(
-    () => computeMaterial6MonthConsumption({ material, transactions: effectiveTx, workOrders, ships }),
-    [material, effectiveTx, workOrders, ships]
+    () => computeMaterial6MonthConsumption({ material, transactions: effectiveTx, workOrders, ships, virtualQty }),
+    [material, effectiveTx, workOrders, ships, virtualQty]
   )
 
   const unitFullLabel = useMemo(() => {
@@ -108,6 +110,17 @@ export default function MaterialConsumption6MModal({
               <span className="text-slate-400">
                 Retiros (6m): <strong className="text-cyan-300 font-mono">{summary.totalWithdrawals}</strong>
               </span>
+              {virtualQty > 0 && (
+                <>
+                  <span className="text-slate-700">|</span>
+                  <span className="text-slate-400">
+                    Stock Virtual:{' '}
+                    <strong className="text-cyan-300 font-mono">
+                      +{virtualQty.toLocaleString('es-AR', { maximumFractionDigits: 2 })} {summary.unitShort}
+                    </strong>
+                  </span>
+                </>
+              )}
             </div>
             {loading && (
               <span className="inline-flex items-center gap-1.5 text-[10px] text-amber-300 font-bold">
@@ -178,22 +191,45 @@ export default function MaterialConsumption6MModal({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-xl bg-gradient-to-r from-emerald-950/60 via-slate-950 to-amber-950/60 border border-emerald-500/40">
-            <div className="flex items-center justify-between sm:justify-start sm:gap-3 px-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-                TOTAL GENERAL (6 MESES):
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-gradient-to-r from-emerald-950/60 via-slate-950 to-amber-950/60 border border-emerald-500/40">
+            <div className="flex items-center justify-between sm:block px-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block">
+                TOTAL GENERAL (6 MESES)
               </span>
               <span className="text-base font-black font-mono text-white">
                 {formatQty(summary.grandTotal)}
               </span>
             </div>
-            <div className="flex items-center justify-between sm:justify-end sm:gap-3 px-2 sm:border-l sm:border-slate-800">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
-                PROMEDIO MENSUAL:
+            <div className="flex items-center justify-between sm:block px-2 sm:border-l sm:border-slate-800">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 block">
+                PROMEDIO MENSUAL
               </span>
               <span className="text-base font-black font-mono text-amber-200">
                 {formatQty(summary.monthlyAverage)}/mes
               </span>
+            </div>
+            <div className="flex items-center justify-between sm:block px-2 sm:border-l sm:border-slate-800">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 block">
+                VITALIDAD ESTIMADA
+              </span>
+              <div>
+                <span className={`text-sm font-black font-mono ${
+                  summary.vitality.physical.status === 'CRITICO' || summary.vitality.physical.status === 'NEGATIVO' || summary.vitality.physical.status === 'AGOTADO'
+                    ? 'text-rose-300'
+                    : summary.vitality.physical.status === 'ALERTA'
+                    ? 'text-amber-300'
+                    : summary.vitality.physical.status === 'SALUDABLE'
+                    ? 'text-emerald-300'
+                    : 'text-slate-300'
+                }`}>
+                  {summary.vitality.physical.label}
+                </span>
+                {summary.vitality.hasVirtual && (
+                  <span className="block text-[10px] font-mono text-cyan-300/90">
+                    Con tránsito (+{virtualQty}): {summary.vitality.withVirtual.label}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { Package, Plus, ExternalLink, Flame, Truck, FolderTree, ShoppingBasket } from 'lucide-react'
+import { Package, Plus, ExternalLink, Flame, Truck, FolderTree, ShoppingBasket, ArrowDownUp, ClipboardCheck } from 'lucide-react'
 import CanonicalActiveSubmoduleBadge from '../canonical/CanonicalActiveSubmoduleBadge'
 
 export default function PanolHeader({
@@ -6,9 +6,13 @@ export default function PanolHeader({
   activeSubmodule,
   isAdmin = false,
   filteredTransactionsCount,
+  auditsCount = 0,
+  entradasCount = 0,
   criticalCount,
   onOpenWithdrawalModal,
   onOpenCostBasketModal = null,
+  onOpenAuditBatchModal = null,
+  onOpenStockAdjustModal = null,
   onOpenNewMaterialModal,
   onOpenRubrosModal = null,
   onOpenGasModal,
@@ -18,6 +22,10 @@ export default function PanolHeader({
   const badgeSuffix =
     activeTab === 'planillas'
       ? `(${filteredTransactionsCount})`
+      : activeTab === 'control_stock'
+      ? `(${auditsCount})`
+      : activeTab === 'entradas'
+      ? `(${entradasCount})`
       : activeTab === 'catalogo' && criticalCount > 0
       ? `(${criticalCount} crít.)`
       : null
@@ -93,6 +101,26 @@ export default function PanolHeader({
                 <span>Registrar Retiro Multi-Material</span>
               </button>
             </div>
+          )}
+          {activeTab === 'control_stock' && onOpenAuditBatchModal && (
+            <button
+              type="button"
+              onClick={onOpenAuditBatchModal}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 text-slate-950 font-black text-xs transition-all shadow-lg shadow-cyan-500/20 cursor-pointer"
+            >
+              <ClipboardCheck className="w-4 h-4 stroke-[2.5]" />
+              <span>+ Nuevo Control por Rubro</span>
+            </button>
+          )}
+          {activeTab === 'entradas' && onOpenStockAdjustModal && (
+            <button
+              type="button"
+              onClick={() => onOpenStockAdjustModal(null)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-teal-400 to-emerald-500 hover:from-teal-300 hover:to-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
+            >
+              <ArrowDownUp className="w-4 h-4 stroke-[2.5]" />
+              <span>+ Registrar Entrada / Ajuste</span>
+            </button>
           )}
           {activeTab === 'catalogo' && isAdmin && (
             <div className="flex flex-wrap items-center gap-2">

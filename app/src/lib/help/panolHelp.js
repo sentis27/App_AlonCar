@@ -240,7 +240,7 @@ export const PANOL_QUICK_PURCHASE_STEP_HELP = {
     step: 2,
     title: 'PASO 2 · CANTIDAD Y URGENCIA',
     uiBullets: [
-      { label: 'Prioridad Compras', text: 'SIN APURO (reposición normal) · URGENTE (prioridad diaria) · BLOQUEANTE (frena obra en curso).' }
+      { label: 'Prioridad Compras', text: 'SIN APURO (reposición normal) · URGENTE (prioridad alta) · PRÓXIMA SALIDA (antes de zarpada de buque).' }
     ],
     aiRuleContext:
       'Regla de Urgencia en Pedidos Directos: El nivel de urgencia ordena las alertas de Compras sin perder la fecha del pedido.'

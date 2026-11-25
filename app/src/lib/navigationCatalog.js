@@ -54,8 +54,10 @@ export const NAVIGATION_MODULES = [
     tabAliases: { movimientos: 'planillas', kardex: 'planillas' },
     children: [
       { id: 'planillas', label: 'Planilla de Retiros', shortLabel: 'Planilla de Retiros', iconKey: 'FileSpreadsheet', permissionKey: 'panol.planillas', theme: 'emerald' },
-      { id: 'gases', label: 'Control de Gases', shortLabel: 'Control de Gases', iconKey: 'Flame', permissionKey: 'panol.gases', theme: 'amber' },
+      { id: 'control_stock', label: 'Control Físico de Stock', shortLabel: 'Control de Stock', iconKey: 'ClipboardCheck', permissionKey: 'panol.control_stock', theme: 'cyan' },
+      { id: 'entradas', label: 'Entradas & Ajustes', shortLabel: 'Entradas & Ajustes', iconKey: 'ArrowDownUp', permissionKey: 'panol.entradas', theme: 'teal' },
       { id: 'catalogo', label: 'Catálogo & Stock (B.D)', shortLabel: 'Catálogo & Stock', iconKey: 'Layers', permissionKey: 'panol.catalogo', theme: 'sky' },
+      { id: 'gases', label: 'Control de Gases', shortLabel: 'Control de Gases', iconKey: 'Flame', permissionKey: 'panol.gases', theme: 'amber' },
       { id: 'epp', label: 'Control EPP', shortLabel: 'Control EPP', iconKey: 'Shield', permissionKey: 'panol.epp', theme: 'purple' },
     ],
   },

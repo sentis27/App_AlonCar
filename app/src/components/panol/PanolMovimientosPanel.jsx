@@ -11,18 +11,20 @@ import GridStatusBarBottom from '../GridStatusBarBottom'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import HighlightText from '../HighlightText'
 import ShipWorkOrderPickerModal from '../ShipWorkOrderPickerModal'
-import ContractorPickerModal from '../ContractorPickerModal'
+import PanolContractorSelect from './PanolContractorSelect'
 import CanonicalMaterialPicker from '../canonical/CanonicalMaterialPicker'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
 import PanolMovimientoCostCell from './PanolMovimientoCostCell'
 import { describeFormula, getStoredCellFormula, getEditableCellInitialValue, formatFormulaNumericDisplay } from '../../lib/formulaEngine'
-import { getPanolMovimientosColumns, getPanolPasteFields, resolvePanolTxCost } from '../../lib/panolCostHelpers'
+import { getPanolMovimientosColumns, getPanolPasteFields, resolvePanolTxCost, resolvePanolTxWeight } from '../../lib/panolCostHelpers'
 import { formatUsd } from '../../lib/drydockCatalogConstants'
 import { formatUnitMeasureShort } from '../../lib/unitMeasureUtils'
 import { getLocalDateKey, formatLocalTimeHHMM } from '../../lib/panolBasketsEngine'
-import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
+import { formatDateAr, formatDateTimeAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 import { evaluateAllocationState } from '../../lib/allocationEngine'
+import { resolveTxStockCellState } from '../../lib/stockControlService'
+import { buildPanolContractorSelectModel, saveInlineContractorService } from '../../lib/panolContractorService'
 import {
   saveShipAndWorkOrderService, saveInlineTxService, insertBlankRowService,
   duplicateTxService, requestDeletionTxService, permanentDeleteTxService, restoreTxService
@@ -31,29 +33,30 @@ import {
 export default function PanolMovimientosPanel({
   filteredTransactions, totalTransactionsCount, loading, filterResetKey = '',
   materials, setMaterials, ships, workOrders, workItems, astilleroWorkers, contractorGroups,
-  availableGroups, pendingAlerts, isAdmin, searchQuery, hasActivePanolFilter, panolTotals,
+  workers = [], pendingAlerts, isAdmin, searchQuery, hasActivePanolFilter, panolTotals,
   user, profile, getEnabledWorkersAndContractors, getEnabledWosForShipAndContractor,
   formatWorkOrderTooltip, onClearAllFilters, onOpenWithdrawalModal, onOpenQuickPurchaseModal,
   onOpenRequestOtModal, onOpenWorkerPermissionModal, onPreviewImage, showFeedback, setInventoryTx,
   gasMovements = [], setGasMovements = null, macroVariables = [], pricingPolicy = null,
-  onOpenEditMaterialModal = null, onHistoryChange = null
+  onOpenEditMaterialModal = null, onHistoryChange = null, stockFreezeConfig = null, onOpenKardexModal = null
 }) {
   const [selectedTxIds, setSelectedTxIds] = useState(new Set())
   const [inlineEdit, setInlineEdit] = useState({ id: null, field: null, value: '' })
+  const [expandedContractorRowId, setExpandedContractorRowId] = useState(null)
+  const [showCostCenter, setShowCostCenter] = useState(() => {
+    try { return localStorage.getItem('aloncar_panol_show_cost_center') === '1' } catch { return false }
+  })
+  const toggleCostCenterColumn = () => {
+    setShowCostCenter((prev) => {
+      const next = !prev
+      try { localStorage.setItem('aloncar_panol_show_cost_center', next ? '1' : '0') } catch {}
+      return next
+    })
+  }
   const [pickerModal, setPickerModal] = useState({ isOpen: false, txId: null, shipId: '', workOrderId: '', workerName: '', contractorName: '' })
 
-  const [contractorPickerModal, setContractorPickerModal] = useState({
-    isOpen: false,
-    txId: null,
-    currentValue: '',
-    shipId: '',
-    shipName: '',
-    workOrderId: '',
-    workOrderTitle: '',
-    isOtBlank: true
-  })
-
   const onPasteRowRef = useRef(null)
+  const suppressBlurCommitRef = useRef(false)
   const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
 
   const toggleSelectTx = (id) => {
@@ -98,17 +101,20 @@ export default function PanolMovimientosPanel({
     }
   }
 
-  const handleSaveInlineTx = async (txId, field, value) => {
+  const handleSaveInlineTx = async (txId, field, value, { skipUndo = false } = {}) => {
     try {
       if (field === 'cost_center' && !isAdmin) {
         return showFeedback('error', 'Solo el Administrador puede cambiar el Centro de Costo.')
+      }
+      if (field === 'weight_total' && !isAdmin) {
+        return showFeedback('error', 'El peso es solo de referencia para el Pañolero.')
       }
       const tx = filteredTransactions.find((t) => t.id === txId)
       const prevUndoVal =
         field === 'quantity_withdrawn' && tx
           ? getEditableCellInitialValue(tx, 'quantity_withdrawn', tx[field])
           : tx?.[field]
-      if (grid?.pushUndoAction && tx && String(prevUndoVal ?? '') !== String(value ?? '')) {
+      if (!skipUndo && grid?.pushUndoAction && tx && String(prevUndoVal ?? '') !== String(value ?? '')) {
         grid.pushUndoAction({
           colKey: field,
           colLabel: field,
@@ -118,13 +124,71 @@ export default function PanolMovimientosPanel({
           timestamp: Date.now()
         })
       }
-      const updates = await saveInlineTxService({ txId, field, value, tx, materials, user, macroVariables, pricingPolicy })
-      setInventoryTx((prev) => prev.map((t) => (t.id === txId ? { ...t, ...updates } : t)))
+      const { _matUpdates, ...rowUpdates } = await saveInlineTxService({ txId, field, value, tx, materials, user, isAdmin, macroVariables, pricingPolicy })
+      setInventoryTx((prev) => prev.map((t) => (t.id === txId ? { ...t, ...rowUpdates } : t)))
+      if (_matUpdates?.length > 0) {
+        setMaterials((prev) => prev.map((m) => { const u = _matUpdates.find((x) => x.id === m.id); return u ? { ...m, current_stock: u.newStock } : m }))
+      }
       showFeedback('success', 'Dato actualizado correctamente en la planilla.')
     } catch (err) {
       showFeedback('error', 'Error al actualizar celda: ' + err.message)
     }
   }
+
+  const handleSaveInlineContractor = async (tx, newName, { skipUndo = false } = {}) => {
+    try {
+      const res = await saveInlineContractorService({
+        tx, newName, ships, workOrders, workItems, astilleroWorkers, contractorGroups, workers, user
+      })
+      if (!skipUndo && grid?.pushUndoAction) {
+        const undoMutations = [
+          { rowId: tx.id, colKey: 'contractor_name', oldValue: tx.worker_name || tx.contractor_name || '', newValue: res.resolvedName, actionLabel: 'Cambio Contratista' },
+          { rowId: tx.id, colKey: 'worker_id', oldValue: tx.worker_id ?? null, newValue: res.updates.worker_id ?? null, actionLabel: 'Cambio Contratista' },
+          ...(res.shouldClearOt ? [
+            { rowId: tx.id, colKey: 'work_order_id', oldValue: tx.work_order_id ?? null, newValue: null, actionLabel: 'OT borrada por contratista no habilitado' },
+            { rowId: tx.id, colKey: 'work_item_id', oldValue: tx.work_item_id ?? null, newValue: null, actionLabel: 'OT borrada por contratista no habilitado' }
+          ] : [])
+        ]
+        grid.pushUndoAction(undoMutations)
+      }
+      setInventoryTx((prev) => prev.map((t) => (t.id === tx.id ? { ...t, ...res.updates } : t)))
+      showFeedback(
+        'success',
+        res.shouldClearOt
+          ? `Contratista actualizado a ${res.resolvedName}. No está habilitado en la OT anterior: se borró la OT (⚠️ Sin OT) como aviso.`
+          : 'Operario / Contratista actualizado correctamente.'
+      )
+    } catch (err) {
+      showFeedback('error', 'Error al actualizar contratista: ' + err.message)
+    }
+  }
+
+  const commitInlineField = (txId, field, rawVal, focusGrid = false) => {
+    if (suppressBlurCommitRef.current) return
+    suppressBlurCommitRef.current = true
+    handleSaveInlineTx(txId, field, rawVal)
+    setInlineEdit({ id: null, field: null, value: '' })
+    setTimeout(() => {
+      suppressBlurCommitRef.current = false
+      if (focusGrid) grid.gridContainerRef.current?.focus()
+    }, 0)
+  }
+
+  const inlineFieldHandlers = (txId, field, val) => ({
+    value: val,
+    onChange: (e) => setInlineEdit({ id: txId, field, value: e.target.value }),
+    onBlur: () => commitInlineField(txId, field, val, false),
+    onKeyDown: (e) => {
+      e.stopPropagation()
+      if (e.key === 'Enter') { e.preventDefault(); commitInlineField(txId, field, val, true) }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        suppressBlurCommitRef.current = true
+        setInlineEdit({ id: null, field: null, value: '' })
+        setTimeout(() => { suppressBlurCommitRef.current = false; grid.gridContainerRef.current?.focus() }, 0)
+      }
+    }
+  })
 
   const handleInsertBlankRow = async () => {
     try {
@@ -147,8 +211,11 @@ export default function PanolMovimientosPanel({
 
   const handleDuplicateTx = async (tx) => {
     try {
-      const data = await duplicateTxService({ tx, user })
+      const { _matUpdates, ...data } = await duplicateTxService({ tx, user })
       setInventoryTx((prev) => [data, ...prev])
+      if (_matUpdates?.length > 0) {
+        setMaterials((prev) => prev.map((m) => { const u = _matUpdates.find((x) => x.id === m.id); return u ? { ...m, current_stock: u.newStock } : m }))
+      }
       showFeedback('success', 'Retiro duplicado con fecha de hoy.')
     } catch (e) {
       showFeedback('error', 'Error duplicando: ' + e.message)
@@ -168,8 +235,11 @@ export default function PanolMovimientosPanel({
 
   const handlePermanentDeleteTx = async (tx) => {
     try {
-      const res = await permanentDeleteTxService({ tx, materials, gasMovements, user })
+      const res = await permanentDeleteTxService({ tx, gasMovements, user })
       setInventoryTx((prev) => prev.filter((t) => t.id !== tx.id))
+      if (res?.updatedMaterial && setMaterials) {
+        setMaterials((prev) => prev.map((m) => (m.id === res.updatedMaterial.id ? { ...m, current_stock: res.updatedMaterial.current_stock } : m)))
+      }
       if (res?.deletedGasMovementId && setGasMovements) {
         setGasMovements((prev) => prev.filter((g) => g.id !== res.deletedGasMovementId))
       }
@@ -199,9 +269,12 @@ export default function PanolMovimientosPanel({
           resolvePanolTxCost(row, row?.material_id ? (materialById.get(String(row.material_id)) || null) : null, {
             macroVariables,
             policy: pricingPolicy
-          }).totalUsd
+          }).totalUsd,
+        getWeightTotalKg: (row) =>
+          resolvePanolTxWeight(row, row?.material_id ? (materialById.get(String(row.material_id)) || null) : null),
+        showCostCenter
       }),
-    [isAdmin, materialById, macroVariables, pricingPolicy]
+    [isAdmin, materialById, macroVariables, pricingPolicy, showCostCenter]
   )
   const totalColSpan = isAdmin ? 14 : 12
 
@@ -238,6 +311,20 @@ export default function PanolMovimientosPanel({
         })
         return
       }
+      if (colDef.key === 'contractor_name') {
+        setExpandedContractorRowId(null)
+        setInlineEdit({ id: row.id, field: 'contractor_name', value: row.worker_name || row.contractor_name || '' })
+        return
+      }
+      if (colDef.key === 'cost_center') {
+        if (isAdmin) handleSaveInlineTx(row.id, 'cost_center', row.cost_center === 'CLIENTE' ? 'CONTRATISTA' : 'CLIENTE')
+        return
+      }
+      if (colDef.key === 'weight_total') {
+        const matRow = row?.material_id ? (materialById.get(String(row.material_id)) || null) : null
+        setInlineEdit({ id: row.id, field: 'weight_total', value: String(resolvePanolTxWeight(row, matRow)) })
+        return
+      }
       if (colDef.key === 'material_id') {
         const matchedMat = materials.find((m) => m.id === row.material_id)
         setInlineEdit({ id: row.id, field: 'material_id', value: matchedMat?.name || '' })
@@ -259,17 +346,26 @@ export default function PanolMovimientosPanel({
         showFeedback('error', 'Solo el Administrador puede editar el Centro de Costo.')
         return false
       }
+      if (colKey === 'weight_total' && !isAdmin) {
+        showFeedback('error', 'El peso es solo de referencia para el Pañolero.')
+        return false
+      }
       return true
     },
     onBatchUpdate: async ({ colKey, newValue, targetIds, isRevert, revertMap }) => {
       try {
         if (isRevert && revertMap) {
           for (const [id, val] of Object.entries(revertMap)) {
-            await handleSaveInlineTx(id, colKey, val)
+            await handleSaveInlineTx(id, colKey, val, { skipUndo: true })
           }
         } else if (targetIds && targetIds.length > 0) {
           for (const id of targetIds) {
-            await handleSaveInlineTx(id, colKey, newValue)
+            if (colKey === 'contractor_name') {
+              const targetTx = filteredTransactions.find((t) => t.id === id)
+              if (targetTx) await handleSaveInlineContractor(targetTx, newValue, { skipUndo: true })
+            } else {
+              await handleSaveInlineTx(id, colKey, newValue)
+            }
           }
         }
       } catch (err) {
@@ -356,7 +452,11 @@ export default function PanolMovimientosPanel({
       { key: 'contractor_name', label: 'Contratista', formatter: (_v, row) => row.worker_name || row.contractor_name || '' },
       { key: 'material_id', label: 'Material', formatter: (v) => materialById.get(v)?.name || '' },
       { key: 'quantity_withdrawn', label: 'Cantidad' },
-      { key: 'weight_total', label: 'Peso (kg)' },
+      {
+        key: 'weight_total',
+        label: 'Peso (kg)',
+        formatter: (_v, row) => resolvePanolTxWeight(row, row?.material_id ? (materialById.get(String(row.material_id)) || null) : null)
+      },
       ...(isAdmin
         ? [
             { key: 'cost_unit_usd', label: 'P. Unit US$', formatter: (_v, row) => resolvePanolTxCost(row, materialById.get(row.material_id) || null, { macroVariables, policy: pricingPolicy }).unitUsd },
@@ -382,11 +482,21 @@ export default function PanolMovimientosPanel({
         exportRows={filteredTransactions}
         exportColumns={exportColumns}
         exportFilename={`panol_retiros_${getTodayArIso()}`}
+        extraActions={isAdmin ? (
+          <button
+            type="button"
+            onClick={toggleCostCenterColumn}
+            title={showCostCenter ? 'Contraer columna Centro de Costo (estilo Sheets)' : 'Expandir columna Centro de Costo'}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold transition-colors cursor-pointer ${
+              showCostCenter
+                ? 'bg-amber-950/70 hover:bg-amber-900/80 border-amber-500/60 text-amber-200'
+                : 'bg-slate-800 hover:bg-slate-700 border-cyan-500/50 text-cyan-300'
+            }`}
+          >
+            <span>{showCostCenter ? '− Ocultar C. Costo' : '+ Centro de Costo'}</span>
+          </button>
+        ) : null}
       />
-
-      <datalist id="panol-contractors-datalist">
-        {availableGroups.map((grp) => (<option key={grp} value={grp} />))}
-      </datalist>
 
       <div
         tabIndex={0}
@@ -394,10 +504,10 @@ export default function PanolMovimientosPanel({
         ref={grid.gridContainerRef}
         className="alon-grid-scroll focus:outline-none"
       >
-        <table className="w-full text-left text-[11px] border-collapse">
+        <table className="w-full text-left text-[10.5px] border-collapse">
           <thead className="sticky top-0 z-20 alon-grid-thead">
-            <tr>
-              <th className="py-1 px-1 w-8 text-center select-none">
+            <tr className="text-[9px] leading-tight tracking-normal">
+              <th className="py-1 px-0.5 w-7 text-center select-none">
                 <div className="flex flex-col items-center justify-center gap-0.5">
                   <button
                     type="button"
@@ -414,19 +524,48 @@ export default function PanolMovimientosPanel({
                   <span className="font-mono text-[9px] text-slate-500 font-bold" title="Número de fila">#</span>
                 </div>
               </th>
-              <th className="py-2 px-1.5 text-center whitespace-nowrap" title="Stock disponible actual del material en Pañol">Stock</th>
-              <th className="py-2 px-1.5">Fecha ✎</th>
-              <th className="py-2 px-1.5">Barco / Destino ✎</th>
-              <th className="py-2 px-1.5">Orden de Trabajo (OT) ✎</th>
-              <th className="py-2 px-1.5">Contratista / Grupo ✎</th>
-              <th className="py-2 px-1.5">Material Insumo ✎</th>
-              <th className="py-2 px-1.5 text-right">Cant. ✎</th>
-              <th className="py-2 px-1.5 text-right">Peso (kg) ✎</th>
-              {isAdmin && <th className="py-2 px-1.5 text-right whitespace-nowrap" title="Costo total del retiro en US$ (y unitario debajo) según precio congelado por quincena">Costo US$</th>}
-              {isAdmin && <th className="py-2 px-1.5 text-center whitespace-nowrap">Centro de Costo ✎</th>}
-              <th className="py-2 px-1.5 whitespace-nowrap">Nº Remito ✎</th>
-              <th className="py-2 px-1.5">Observaciones ✎</th>
-              <th className="py-2 px-1.5 text-center">Acciones</th>
+              <th className="py-1.5 px-1 text-center whitespace-nowrap" title="Stock del material: en vivo durante el día, congelado a las 21:00 hs ART · Clic para ver Kárdex">Stock</th>
+              <th className="py-1.5 px-1">Fecha ✎</th>
+              <th className="py-1.5 px-1">Barco / Destino ✎</th>
+              <th className="py-1.5 px-1">Orden de Trabajo (OT) ✎</th>
+              <th className="py-1.5 px-1">Contratista / Grupo ✎</th>
+              <th className="py-1.5 px-1">Material Insumo ✎</th>
+              <th className="py-1.5 px-1 text-right">Cant. ✎</th>
+              <th
+                className="py-1.5 px-1 text-right"
+                title={isAdmin ? 'Peso total en kg (calculado desde Catálogo; doble clic para editar)' : 'Peso referencial en kg (solo vista, calculado desde Catálogo)'}
+              >
+                Peso (kg){isAdmin ? ' ✎' : ''}
+              </th>
+              {isAdmin && <th className="py-1.5 px-1 text-right" title="Costo total del retiro en US$ (y unitario debajo) según precio congelado por quincena">Costo US$</th>}
+              {isAdmin && (showCostCenter ? (
+                <th className="py-1.5 px-1 text-center">
+                  <div className="inline-flex items-center justify-center gap-1">
+                    <span>Centro de Costo ✎</span>
+                    <button
+                      type="button"
+                      onClick={toggleCostCenterColumn}
+                      title="Contraer columna Centro de Costo"
+                      className="w-4 h-4 rounded bg-slate-800 hover:bg-amber-900/80 border border-slate-600 text-amber-300 text-[10px] font-black leading-none inline-flex items-center justify-center cursor-pointer shrink-0"
+                    >
+                      −
+                    </button>
+                  </div>
+                </th>
+              ) : (
+                <th className="py-1 px-0.5 w-6 text-center" title="Columna Centro de Costo contraída · Clic en [+] para expandir">
+                  <button
+                    type="button"
+                    onClick={toggleCostCenterColumn}
+                    className="w-4 h-4 rounded bg-cyan-950/90 hover:bg-cyan-800 border border-cyan-500/60 text-cyan-300 text-[10px] font-black leading-none inline-flex items-center justify-center cursor-pointer"
+                  >
+                    +
+                  </button>
+                </th>
+              ))}
+              <th className="py-1.5 px-1">Nº Remito ✎</th>
+              <th className="py-1.5 px-1">Observaciones ✎</th>
+              <th className="py-1.5 px-1 text-center">Acciones</th>
             </tr>
           </thead>
 
@@ -466,7 +605,7 @@ export default function PanolMovimientosPanel({
                     }`}
                   >
                     {/* 1. Checkbox + # */}
-                    <td className="py-1 px-1 text-center w-8 select-none relative">
+                    <td className="py-1 px-0.5 text-center w-7 select-none relative">
                       <div className="flex flex-col items-center justify-center gap-0.5">
                         <button
                           type="button"
@@ -476,7 +615,7 @@ export default function PanolMovimientosPanel({
                           {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
                         </button>
                         <span
-                          className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded ${
+                          className={`font-mono text-[9px] font-bold px-0.5 rounded ${
                             isDeletionReq
                               ? 'text-rose-400 line-through'
                               : isSelected
@@ -490,14 +629,42 @@ export default function PanolMovimientosPanel({
                       </div>
                     </td>
 
-                    {/* 1b. Stock disponible del material (Columna A) */}
+                    {/* 1b. Stock disponible del material (Vivo hoy / Congelado 21:00 ART · Clic -> Kárdex) */}
                     {(() => {
-                      if (!mat) return <td className="py-1.5 px-1.5 text-center font-mono text-slate-600 whitespace-nowrap" title="Sin material asignado">—</td>
-                      const hasCtrl = Boolean(mat.requires_stock_control)
-                      const label = hasCtrl ? `${mat.current_stock} ${formatUnitMeasureShort(mat.unit_measure)}` : 'S/C'
-                      const isLow = hasCtrl && (Number(mat.current_stock) || 0) <= (Number(mat.minimum_stock) || 0)
-                      const cls = !hasCtrl ? 'bg-slate-800/80 text-slate-400 border-slate-700' : isLow ? 'bg-rose-950/70 text-rose-300 border-rose-500/50' : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
-                      return <td className="py-1.5 px-1.5 text-center font-mono whitespace-nowrap" title={hasCtrl ? `Stock disponible: ${label} (Mín: ${mat.minimum_stock ?? 0})` : 'Sin control de stock físico'}><span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${cls}`}>{label}</span></td>
+                      const cell = resolveTxStockCellState({ tx, material: mat, freezeConfig: stockFreezeConfig })
+                      if (cell.mode === 'NO_MATERIAL') return <td className="py-1 px-1 text-center font-mono text-slate-600 whitespace-nowrap" title="Sin material asignado">—</td>
+                      const openKardex = () => onOpenKardexModal?.(mat)
+                      if (!mat.requires_stock_control || cell.mode === 'NO_CONTROL') {
+                        return (
+                          <td className="py-1 px-1 text-center font-mono whitespace-nowrap" title="Sin control de stock físico · Clic para ver Kárdex">
+                            <button type="button" onClick={openKardex} className="inline-block px-1 py-0.5 rounded text-[10px] font-bold border bg-slate-800/80 text-slate-400 border-slate-700 hover:border-cyan-500/50 cursor-pointer">{'S/C'}</button>
+                          </td>
+                        )
+                      }
+                      if (cell.mode === 'PRE_ACTIVATION') {
+                        const actLbl = cell.activatedDateAr ? formatDateAr(cell.activatedDateAr) : 'activación'
+                        return (
+                          <td className="py-1 px-1 text-center font-mono whitespace-nowrap" title={`Histórico previo a la activación del control de stock (${actLbl}) · Clic para ver Kárdex`}>
+                            <button type="button" onClick={openKardex} className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border bg-slate-900/70 text-slate-500 border-slate-800 hover:text-cyan-300 cursor-pointer">—</button>
+                          </td>
+                        )
+                      }
+                      const unitShort = formatUnitMeasureShort(mat.unit_measure)
+                      const minStock = Number(mat.minimum_stock) || 0
+                      const isLow = cell.value < 0 || cell.value <= minStock
+                      const isFrozen = cell.mode === 'FROZEN'
+                      const cls = isLow ? 'bg-rose-950/75 text-rose-300 border-rose-500/50 hover:border-rose-400' : isFrozen ? 'bg-sky-950/75 text-sky-200 border-sky-500/50 hover:border-cyan-400' : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40 hover:border-cyan-400'
+                      const tip = isFrozen
+                        ? `Stock congelado al cierre del día (${formatDateTimeAr(cell.frozenAt)} hs · Mín: ${minStock}) · Clic para ver Kárdex`
+                        : `Stock en vivo hoy (congela a las ${cell.cutoffHourAr}:00 hs · Mín: ${minStock}) · Clic para ver Kárdex`
+                      return (
+                        <td className="py-1 px-1 text-center font-mono whitespace-nowrap" title={tip}>
+                          <button type="button" onClick={openKardex} className={`inline-flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition-colors ${cls}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isFrozen ? 'bg-sky-400' : 'bg-emerald-400 animate-pulse'}`} />
+                            <span>{isFrozen ? '🔒 ' : ''}{cell.value} {unitShort}</span>
+                          </button>
+                        </td>
+                      )
                     })()}
 
                     {/* 2. Fecha */}
@@ -509,7 +676,7 @@ export default function PanolMovimientosPanel({
                         <td
                           {...cp.domProps}
                           onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'transaction_date', value: dateVal })}
-                          className={`py-1.5 px-1.5 whitespace-nowrap font-mono cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
+                          className={`py-1 px-1 whitespace-nowrap font-mono cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
                           title={timeVal ? `Registrado a las ${timeVal} hs · Doble clic para editar fecha` : 'Doble clic para editar fecha con calendario'}
                         >
                           {inlineEdit.id === tx.id && inlineEdit.field === 'transaction_date' ? (
@@ -522,31 +689,13 @@ export default function PanolMovimientosPanel({
                                   try { if (typeof el.showPicker === 'function') el.showPicker() } catch {}
                                 }
                               }}
-                              value={inlineEdit.value}
-                              onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onBlur={() => {
-                                handleSaveInlineTx(tx.id, 'transaction_date', inlineEdit.value)
-                                setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSaveInlineTx(tx.id, 'transaction_date', inlineEdit.value)
-                                  setInlineEdit({ id: null, field: null, value: '' })
-                                }
-                                if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] font-mono text-white focus:outline-none"
+                              {...inlineFieldHandlers(tx.id, 'transaction_date', inlineEdit.value)}
+                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10.5px] font-mono text-white focus:outline-none"
                             />
                           ) : (
                             <span><HighlightText text={formatDateAr(dateVal)} query={searchQuery} /></span>
                           )}
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
@@ -559,34 +708,24 @@ export default function PanolMovimientosPanel({
                           {...cp.domProps}
                           onDoubleClick={() => {
                             setPickerModal({
-                              isOpen: true,
-                              txId: tx.id,
-                              shipId: tx.ship_id,
-                              workOrderId: tx.work_order_id,
-                              workerName: tx.worker_name,
-                              contractorName: tx.contractor_name
+                              isOpen: true, txId: tx.id, shipId: tx.ship_id, workOrderId: tx.work_order_id,
+                              workerName: tx.worker_name, contractorName: tx.contractor_name
                             })
                           }}
-                          className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-semibold ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : 'text-slate-200'}`}
-                          title="Doble clic para cambiar Buque u Orden de Trabajo"
+                          className={`py-1 px-1 cursor-pointer font-semibold ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : 'text-slate-200'}`}
+                          title={`${ship?.name || 'Sin buque'} · Doble clic para cambiar Buque u Orden de Trabajo`}
                         >
-                          <div className="flex items-center gap-1.5 font-bold text-white truncate" title={ship?.name || 'Sin buque asignado'}>
+                          <div className="flex items-center gap-1 font-bold text-white max-w-[95px] xl:max-w-[115px] 2xl:max-w-[145px]">
                             {ship ? (
                               <>
-                                <Anchor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                                <HighlightText text={ship.name} query={searchQuery} />
+                                <Anchor className="w-3 h-3 text-cyan-400 shrink-0" />
+                                <span className="truncate"><HighlightText text={ship.name} query={searchQuery} /></span>
                               </>
                             ) : (
-                              <span className="text-slate-500 font-normal italic text-[11px]">— Sin Buque (Doble clic)</span>
+                              <span className="text-slate-500 font-normal italic text-[10px] truncate">— Sin Buque</span>
                             )}
                           </div>
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
@@ -598,12 +737,8 @@ export default function PanolMovimientosPanel({
                       const enabledShipWos = getEnabledWosForShipAndContractor(tx.ship_id, contractorVal)
                       const otTooltip = typeof formatWorkOrderTooltip === 'function' ? formatWorkOrderTooltip(wo, ship, workItems, workOrders) : ''
                       const allocState = evaluateAllocationState({
-                        shipId: tx.ship_id,
-                        workOrderId: tx.work_order_id,
-                        contractorName: contractorVal,
-                        isSinOt: !tx.work_order_id,
-                        availableWos: enabledShipWos,
-                        pendingAlerts
+                        shipId: tx.ship_id, workOrderId: tx.work_order_id, contractorName: contractorVal,
+                        isSinOt: !tx.work_order_id, availableWos: enabledShipWos, pendingAlerts
                       })
 
                       return (
@@ -611,88 +746,115 @@ export default function PanolMovimientosPanel({
                           {...cp.domProps}
                           onDoubleClick={() => {
                             setPickerModal({
-                              isOpen: true,
-                              txId: tx.id,
-                              shipId: tx.ship_id,
-                              workOrderId: tx.work_order_id,
-                              workerName: tx.worker_name,
-                              contractorName: tx.contractor_name
+                              isOpen: true, txId: tx.id, shipId: tx.ship_id, workOrderId: tx.work_order_id,
+                              workerName: tx.worker_name, contractorName: tx.contractor_name
                             })
                           }}
-                          className={`py-1.5 px-1.5 max-w-[220px] truncate cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                          className={`py-1 px-1 cursor-pointer ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
                           title={otTooltip}
                         >
-                          {wo ? (
-                            <CanonicalOtBadge
-                              wo={wo}
-                              ship={ship || null}
-                              workItems={workItems}
-                              workOrders={workOrders}
-                              searchQuery={searchQuery}
-                              tooltipOverride={otTooltip}
-                              variant="pill"
-                            />
-                          ) : (
-                            <div className="flex items-center justify-between gap-1">
-                              <CanonicalOtBadge wo={null} tooltipOverride={otTooltip} />
-                              {allocState.needsOtRequest && (
-                                allocState.isOtRequestPending ? (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shrink-0">
-                                    Solicitud enviada (1)
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      onOpenRequestOtModal({
-                                        txId: tx.id,
-                                        shipId: tx.ship_id || '',
-                                        targetWorkerOrContractor: contractorVal || ''
-                                      })
-                                    }}
-                                    className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-rose-600 hover:bg-rose-500 text-white shadow animate-pulse shrink-0 cursor-pointer"
-                                    title="No hay OT habilitada. Clic para pedir apertura a Jorge Sentis."
-                                  >
-                                    ➕ Pedir Apertura OT
-                                  </button>
-                                )
-                              )}
-                            </div>
-                          )}
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          <div className="max-w-[130px] xl:max-w-[155px] 2xl:max-w-[195px] overflow-hidden">
+                            {wo ? (
+                              <CanonicalOtBadge
+                                wo={wo} ship={ship || null} workItems={workItems} workOrders={workOrders}
+                                searchQuery={searchQuery} tooltipOverride={otTooltip} variant="pill"
+                              />
+                            ) : (
+                              <div className="flex items-center justify-between gap-1">
+                                <CanonicalOtBadge wo={null} tooltipOverride={otTooltip} />
+                                {allocState.needsOtRequest && (
+                                  allocState.isOtRequestPending ? (
+                                    <span className="px-1 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shrink-0">
+                                      Enviada (1)
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        onOpenRequestOtModal({
+                                          txId: tx.id, shipId: tx.ship_id || '', targetWorkerOrContractor: contractorVal || ''
+                                        })
+                                      }}
+                                      className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-rose-600 hover:bg-rose-500 text-white shadow animate-pulse shrink-0 cursor-pointer"
+                                      title="No hay OT habilitada. Clic para pedir apertura a Jorge Sentis."
+                                    >
+                                      ➕ Pedir OT
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
 
-                    {/* 5. Operario / Contratista (tras OT) */}
+                    {/* 5. Operario / Contratista (mismo selector agrupado del modal ✎) */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'contractor_name')
                       const currentVal = tx.worker_name || tx.contractor_name || ''
+                      const isEditingContractor = inlineEdit.id === tx.id && inlineEdit.field === 'contractor_name'
+                      const isRowExpanded = expandedContractorRowId === tx.id
+                      const selectModel = isEditingContractor
+                        ? buildPanolContractorSelectModel({
+                            shipId: tx.ship_id, workOrderId: tx.work_order_id, isExpanded: isRowExpanded,
+                            astilleroWorkers, contractorGroups, workOrders, workItems
+                          })
+                        : null
+                      const allocState = isEditingContractor
+                        ? evaluateAllocationState({
+                            shipId: tx.ship_id, workOrderId: tx.work_order_id, contractorName: currentVal,
+                            isSinOt: !tx.work_order_id,
+                            availableWos: getEnabledWosForShipAndContractor(tx.ship_id, currentVal),
+                            pendingAlerts
+                          })
+                        : null
                       return (
                         <td
                           {...cp.domProps}
                           onDoubleClick={() => {
-                            const effShip = ships.find((s) => s.id === tx.ship_id)
-                            const effWo = workOrders.find((w) => w.id === tx.work_order_id)
-                            setContractorPickerModal({
-                              isOpen: true, txId: tx.id, currentValue: currentVal,
-                              shipId: tx.ship_id || '', shipName: effShip?.name || 'Astillero',
-                              workOrderId: tx.work_order_id || '',
-                              workOrderTitle: effWo ? (effWo.ot_number ? `#${effWo.ot_number} ${effWo.title}` : effWo.title) : '',
-                              isOtBlank: !tx.work_order_id
-                            })
+                            setExpandedContractorRowId(null)
+                            setInlineEdit({ id: tx.id, field: 'contractor_name', value: currentVal })
                           }}
-                          className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-bold text-cyan-300 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
-                          title="Doble clic para cambiar Operario o Contratista"
+                          className={`py-1 px-1 cursor-pointer font-bold text-cyan-300 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                          title={`${currentVal || 'Sin asignar'} · Doble clic o Enter para seleccionar Operario / Contratista`}
                         >
-                          <HighlightText text={currentVal || 'Sin asignar'} query={searchQuery} />
+                          {isEditingContractor && selectModel ? (
+                            <PanolContractorSelect
+                              inline
+                              value={currentVal}
+                              enabled={selectModel.displayed}
+                              isExpanded={isRowExpanded}
+                              hasScope={selectModel.hasScope}
+                              scopeLabel={selectModel.scopeLabel}
+                              enabledAstSet={selectModel.enabledAstSet}
+                              enabledCntSet={selectModel.enabledCntSet}
+                              unmatchedSuffix={tx.work_order_id ? ' (Sin OT — borra OT)' : ' (Sin OT en barco)'}
+                              isOtRequestPending={Boolean(allocState?.isOtRequestPending)}
+                              onToggleExpand={(exp) => setExpandedContractorRowId(exp ? tx.id : null)}
+                              onRequestOt={() => onOpenRequestOtModal({ txId: tx.id, shipId: tx.ship_id || '', targetWorkerOrContractor: currentVal || '' })}
+                              onRequestWorkerPermission={() => onOpenWorkerPermissionModal()}
+                              onCancel={() => {
+                                setInlineEdit({ id: null, field: null, value: '' })
+                                setExpandedContractorRowId(null)
+                                grid.gridContainerRef.current?.focus()
+                              }}
+                              onChange={(selectedName) => {
+                                setInlineEdit({ id: null, field: null, value: '' })
+                                setExpandedContractorRowId(null)
+                                grid.gridContainerRef.current?.focus()
+                                if (selectedName && selectedName !== currentVal) {
+                                  handleSaveInlineContractor(tx, selectedName)
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div className="max-w-[105px] xl:max-w-[125px] 2xl:max-w-[155px] truncate">
+                              <HighlightText text={currentVal || 'Sin asignar'} query={searchQuery} />
+                            </div>
+                          )}
                           {renderFillHandle(cp)}
                         </td>
                       )
@@ -701,14 +863,15 @@ export default function PanolMovimientosPanel({
                     {/* 6. Material Insumo */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'material_id')
+                      const isEditingMat = inlineEdit.id === tx.id && inlineEdit.field === 'material_id'
                       return (
                         <td
                           {...cp.domProps}
                           onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'material_id', value: mat?.name || '' })}
-                          className={`py-1.5 px-1.5 max-w-[220px] truncate cursor-pointer font-bold ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : 'text-white'}`}
-                          title="Doble clic para cambiar material"
+                          className={`py-1 px-1 cursor-pointer font-bold ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : 'text-white'}`}
+                          title={`${mat?.name || 'Insumo sin asignar'} · Doble clic para cambiar material`}
                         >
-                          {inlineEdit.id === tx.id && inlineEdit.field === 'material_id' ? (
+                          {isEditingMat ? (
                             <CanonicalMaterialPicker
                               materials={materials} value={tx.material_id || ''} initialText={inlineEdit.value} compact autoFocus
                               placeholder="Buscar material o rubro..."
@@ -719,7 +882,7 @@ export default function PanolMovimientosPanel({
                               onCancel={() => { setInlineEdit({ id: null, field: null, value: '' }); grid.gridContainerRef.current?.focus() }}
                             />
                           ) : (
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1 max-w-[130px] xl:max-w-[155px] 2xl:max-w-[205px]">
                               {mat?.image_url && (
                                 <img
                                   src={mat.image_url} alt=""
@@ -727,7 +890,7 @@ export default function PanolMovimientosPanel({
                                   className="w-4 h-4 rounded object-cover shrink-0 cursor-zoom-in border border-slate-700"
                                 />
                               )}
-                              <HighlightText text={mat?.name || 'Insumo sin asignar'} query={searchQuery} />
+                              <span className="truncate"><HighlightText text={mat?.name || 'Insumo sin asignar'} query={searchQuery} /></span>
                             </div>
                           )}
                           {renderFillHandle(cp)}
@@ -744,7 +907,7 @@ export default function PanolMovimientosPanel({
                         <td
                           {...cp.domProps}
                           onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'quantity_withdrawn', value: getEditableCellInitialValue(tx, 'quantity_withdrawn', tx.quantity_withdrawn ?? 1) })}
-                          className={`py-1.5 px-1.5 text-right font-mono font-bold cursor-pointer whitespace-nowrap ${cp.className} ${isDeletionReq ? 'line-through' : 'text-emerald-400'}`}
+                          className={`py-1 px-1 text-right font-mono font-bold cursor-pointer whitespace-nowrap ${cp.className} ${isDeletionReq ? 'line-through' : 'text-emerald-400'}`}
                           title={formulaMeta?.tooltipText || 'Doble clic para editar cantidad (acepta fórmulas =1*0.5 o +42+45)'}
                         >
                           <FormulaCellCornerMark formula={qtyFormula} />
@@ -756,10 +919,10 @@ export default function PanolMovimientosPanel({
                               onCommit={(rawVal) => { handleSaveInlineTx(tx.id, 'quantity_withdrawn', rawVal); setInlineEdit({ id: null, field: null, value: '' }) }}
                               onCancel={() => setInlineEdit({ id: null, field: null, value: '' })}
                               onInvalid={(errMsg) => showFeedback('error', errMsg)}
-                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none w-24 text-right"
+                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10.5px] font-mono text-white focus:outline-none w-20 text-right"
                             />
                           ) : (
-                            <span>{formatFormulaNumericDisplay(tx.quantity_withdrawn, { maxDecimals: 3 })} {mat?.unit_measure || 'un.'}</span>
+                            <span>{formatFormulaNumericDisplay(tx.quantity_withdrawn, { maxDecimals: 3 })} {formatUnitMeasureShort(mat?.unit_measure || 'un.')}</span>
                           )}
                           {renderFillHandle(cp)}
                         </td>
@@ -769,29 +932,29 @@ export default function PanolMovimientosPanel({
                     {/* 8. Peso (kg) */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'weight_total')
-                      const w = Number(tx.weight_total) || 0
+                      const w = resolvePanolTxWeight(tx, mat)
+                      const unitKg = Number(mat?.weight_kg) || 0
+                      const qtyNum = Number(tx?.quantity_withdrawn) || 0
+                      const weightTooltip = isAdmin
+                        ? (w > 0 && unitKg > 0 ? `${qtyNum} × ${unitKg} kg c/u = ${w.toFixed(2)} kg · Doble clic para editar` : 'Doble clic para editar peso en kg')
+                        : (w > 0 && unitKg > 0 ? `Peso referencial (solo vista): ${qtyNum} × ${unitKg} kg c/u = ${w.toFixed(2)} kg` : 'Peso referencial (solo vista)')
                       return (
                         <td
                           {...cp.domProps}
-                          onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'weight_total', value: String(w) })}
-                          className={`py-1.5 px-1.5 text-right font-mono text-slate-300 cursor-pointer whitespace-nowrap ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
-                          title="Doble clic para editar peso en kg"
+                          onDoubleClick={() => { if (isAdmin) setInlineEdit({ id: tx.id, field: 'weight_total', value: String(w) }) }}
+                          className={`py-1 px-1 text-right font-mono text-slate-300 ${isAdmin ? 'cursor-pointer' : 'cursor-default'} whitespace-nowrap ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
+                          title={weightTooltip}
                         >
-                          {inlineEdit.id === tx.id && inlineEdit.field === 'weight_total' ? (
+                          {isAdmin && inlineEdit.id === tx.id && inlineEdit.field === 'weight_total' ? (
                             <input
-                              type="number" autoFocus step="any" min="0" value={inlineEdit.value}
-                              onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onBlur={() => { handleSaveInlineTx(tx.id, 'weight_total', inlineEdit.value); setInlineEdit({ id: null, field: null, value: '' }) }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') { handleSaveInlineTx(tx.id, 'weight_total', inlineEdit.value); setInlineEdit({ id: null, field: null, value: '' }) }
-                                if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[11px] font-mono text-white focus:outline-none w-16 text-right"
+                              type="number" autoFocus step="any" min="0"
+                              {...inlineFieldHandlers(tx.id, 'weight_total', inlineEdit.value)}
+                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10.5px] font-mono text-white focus:outline-none w-16 text-right"
                             />
                           ) : (
                             <span>{w > 0 ? `${w.toFixed(2)} kg` : '—'}</span>
                           )}
-                          {renderFillHandle(cp)}
+                          {isAdmin && renderFillHandle(cp)}
                         </td>
                       )
                     })()}
@@ -808,19 +971,19 @@ export default function PanolMovimientosPanel({
                       )
                     })()}
 
-                    {/* 10. Centro de Costo (Solo Administrador — Oculto al resto) */}
-                    {isAdmin && (() => {
+                    {/* 10. Centro de Costo (Solo Administrador — Colapsable estilo Sheets) */}
+                    {isAdmin && (showCostCenter ? (() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'cost_center')
                       const isCliente = tx.cost_center === 'CLIENTE'
                       return (
                         <td
                           {...cp.domProps}
                           onDoubleClick={() => handleSaveInlineTx(tx.id, 'cost_center', isCliente ? 'CONTRATISTA' : 'CLIENTE')}
-                          className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer text-center ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
+                          className={`py-1 px-1 whitespace-nowrap cursor-pointer text-center ${cp.className} ${isDeletionReq ? 'line-through' : ''}`}
                           title="Doble clic para alternar CLIENTE / CONTRATISTA"
                         >
                           {tx.cost_center ? (
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${isCliente ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-amber-950 text-amber-300 border-amber-800'}`}>
+                            <span className={`inline-block px-1 py-0.5 rounded text-[9.5px] font-bold border ${isCliente ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-amber-950 text-amber-300 border-amber-800'}`}>
                               {tx.cost_center}
                             </span>
                           ) : (
@@ -829,52 +992,40 @@ export default function PanolMovimientosPanel({
                           {renderFillHandle(cp)}
                         </td>
                       )
-                    })()}
+                    })() : (
+                      <td
+                        onClick={toggleCostCenterColumn}
+                        className="py-1 px-0.5 w-6 text-center cursor-pointer hover:bg-slate-800/70"
+                        title={`Centro de Costo: ${tx.cost_center || 'Sin definir'} · Clic para expandir columna`}
+                      >
+                        <span className={`inline-block w-2 h-2 rounded-full ${tx.cost_center === 'CLIENTE' ? 'bg-cyan-400' : tx.cost_center === 'CONTRATISTA' ? 'bg-amber-400' : 'bg-slate-700'}`} />
+                      </td>
+                    ))}
 
-                    {/* 9b. Nº Remito AlonCar (previo a Observaciones) */}
+                    {/* 9b. Nº Remito AlonCar */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'voucher_number')
                       return (
                         <td
                           {...cp.domProps}
                           onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'voucher_number', value: tx.voucher_number || '' })}
-                          className={`py-1.5 px-1.5 whitespace-nowrap cursor-pointer font-mono ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                          className={`py-1 px-1 whitespace-nowrap cursor-pointer font-mono ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
                           title="Doble clic para cargar o editar Nº de Remito AlonCar"
                         >
                           {inlineEdit.id === tx.id && inlineEdit.field === 'voucher_number' ? (
                             <input
-                              type="text"
-                              autoFocus
-                              placeholder="Ej: 2530"
-                              value={inlineEdit.value}
-                              onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onBlur={() => {
-                                handleSaveInlineTx(tx.id, 'voucher_number', inlineEdit.value)
-                                setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSaveInlineTx(tx.id, 'voucher_number', inlineEdit.value)
-                                  setInlineEdit({ id: null, field: null, value: '' })
-                                }
-                                if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] font-mono text-white focus:outline-none w-20"
+                              type="text" autoFocus placeholder="Ej: 2530"
+                              {...inlineFieldHandlers(tx.id, 'voucher_number', inlineEdit.value)}
+                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10.5px] font-mono text-white focus:outline-none w-16"
                             />
                           ) : tx.voucher_number ? (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-[10px] font-bold">
+                            <span className="inline-flex items-center px-1 py-0.5 rounded bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-[9.5px] font-bold">
                               #<HighlightText text={tx.voucher_number} query={searchQuery} />
                             </span>
                           ) : (
                             <span className="text-slate-600 text-[10px]">—</span>
                           )}
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
@@ -882,58 +1033,40 @@ export default function PanolMovimientosPanel({
                     {/* 10. Observaciones */}
                     {(() => {
                       const cp = getSpreadsheetCellProps(rowIndex, 'notes')
+                      const isEditingNotes = inlineEdit.id === tx.id && inlineEdit.field === 'notes'
                       return (
                         <td
                           {...cp.domProps}
                           onDoubleClick={() => setInlineEdit({ id: tx.id, field: 'notes', value: tx.notes || '' })}
-                          className={`py-1.5 px-1.5 max-w-[160px] truncate cursor-pointer text-slate-400 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
-                          title="Doble clic para editar observaciones"
+                          className={`py-1 px-1 cursor-pointer text-slate-400 ${cp.className} ${isDeletionReq ? 'line-through text-rose-300' : ''}`}
+                          title={tx.notes || 'Doble clic para editar observaciones'}
                         >
-                          {inlineEdit.id === tx.id && inlineEdit.field === 'notes' ? (
+                          {isEditingNotes ? (
                             <input
-                              type="text"
-                              autoFocus
-                              value={inlineEdit.value}
-                              onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
-                              onBlur={() => {
-                                handleSaveInlineTx(tx.id, 'notes', inlineEdit.value)
-                                setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSaveInlineTx(tx.id, 'notes', inlineEdit.value)
-                                  setInlineEdit({ id: null, field: null, value: '' })
-                                }
-                                if (e.key === 'Escape') setInlineEdit({ id: null, field: null, value: '' })
-                              }}
-                              className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none w-full"
+                              type="text" autoFocus
+                              {...inlineFieldHandlers(tx.id, 'notes', inlineEdit.value)}
+                              className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10.5px] text-white focus:outline-none w-full"
                             />
                           ) : (
-                            <HighlightText text={tx.notes || '—'} query={searchQuery} />
+                            <div className="max-w-[75px] xl:max-w-[100px] 2xl:max-w-[140px] truncate">
+                              <HighlightText text={tx.notes || '—'} query={searchQuery} />
+                            </div>
                           )}
-                          {cp.renderHandle && (
-                            <div
-                              onMouseDown={grid.handleFillHandleMouseDown}
-                              onDoubleClick={grid.handleFillHandleDoubleClick}
-                              className="fill-handle absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-cyan-400 border border-slate-900 rounded-[1px] cursor-crosshair z-30 shadow-md hover:scale-125 transition-transform"
-                            />
-                          )}
+                          {renderFillHandle(cp)}
                         </td>
                       )
                     })()}
 
                     {/* 11. Acciones */}
-                    <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1">
+                    <td className="py-1 px-1 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-0.5">
                         <button
-                          type="button"
-                          onClick={() => onOpenWithdrawalModal(tx)}
-                          className="p-1 rounded hover:bg-emerald-950/80 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                          type="button" onClick={() => onOpenWithdrawalModal(tx)}
+                          className="p-0.5 rounded hover:bg-emerald-950/80 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
                           title="Editar fila en ventana de salida multi-material"
                         >
                           <Edit3 className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>
-
                         <button
                           type="button"
                           onClick={() => onOpenQuickPurchaseModal({
@@ -941,16 +1074,14 @@ export default function PanolMovimientosPanel({
                             material: mat || { id: tx.material_id, name: 'Insumo', unit_measure: 'Unidad' },
                             quantity: String(tx.quantity_withdrawn || 1)
                           })}
-                          className="p-1 rounded hover:bg-cyan-950/80 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                          className="p-0.5 rounded hover:bg-cyan-950/80 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
                           title="Generar Pedido de Compra directo a Compras (Estado: PEDIR)"
                         >
                           <ShoppingCart className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>
-
                         <button
-                          type="button"
-                          onClick={() => handleDuplicateTx(tx)}
-                          className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                          type="button" onClick={() => handleDuplicateTx(tx)}
+                          className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
                           title="Duplicar retiro con fecha de hoy"
                         >
                           <Copy className="w-3.5 h-3.5" />
@@ -1060,30 +1191,6 @@ export default function PanolMovimientosPanel({
           if (!pickerModal.txId) return
           await handleSaveShipAndWorkOrder(pickerModal.txId, shipId, workOrderId)
           setPickerModal({ isOpen: false, txId: null, shipId: '', workOrderId: '', workerName: '', contractorName: '' })
-        }}
-      />
-
-      <ContractorPickerModal
-        isOpen={contractorPickerModal.isOpen}
-        onClose={() => setContractorPickerModal({ isOpen: false, txId: null, currentValue: '', shipId: '', shipName: '', workOrderId: '', workOrderTitle: '', isOtBlank: true })}
-        currentValue={contractorPickerModal.currentValue}
-        shipName={contractorPickerModal.shipName}
-        workOrderTitle={contractorPickerModal.workOrderTitle}
-        isOtBlank={contractorPickerModal.isOtBlank}
-        astilleroWorkers={getEnabledWorkersAndContractors(contractorPickerModal.shipId, contractorPickerModal.workOrderId).astilleroWorkers}
-        contractorGroups={getEnabledWorkersAndContractors(contractorPickerModal.shipId, contractorPickerModal.workOrderId).contractorGroups}
-        onRequestOt={() => {
-          onOpenRequestOtModal({
-            txId: contractorPickerModal.txId,
-            shipId: contractorPickerModal.shipId || '',
-            targetWorkerOrContractor: contractorPickerModal.currentValue || ''
-          })
-        }}
-        onRequestWorkerPermission={() => onOpenWorkerPermissionModal()}
-        onSelect={(selectedName) => {
-          if (contractorPickerModal.txId) {
-            handleSaveInlineTx(contractorPickerModal.txId, 'contractor_name', selectedName)
-          }
         }}
       />
     </div>

@@ -36,8 +36,7 @@ export default function PanolStockPanel({
   setTraceMaterialFilter: propSetTraceMaterialFilter,
   isAdmin, user, macroVariables = [], pricingPolicy = null, criticalMaterialsCount, stockControlledCount, onClearFilters,
   onOpenEditMaterialModal = null,
-  onOpenStockAdjustModal,
-  onOpenConsumption6MModal = null,
+  onOpenStockAdjustModal, onOpenConsumption6MModal = null, onOpenKardexModal = null, virtualStockMap = null,
   onOpenWithdrawalModal,
   onOpenGasFinalReturnModal = null,
   onOpenGasSupplierModal = null,
@@ -382,8 +381,7 @@ export default function PanolStockPanel({
       criticalMaterialsCount={criticalMaterialsCount} stockControlledCount={stockControlledCount}
       onClearFilters={onClearFilters}
       onOpenEditMaterialModal={onOpenEditMaterialModal}
-      onOpenStockAdjustModal={onOpenStockAdjustModal}
-      onOpenConsumption6MModal={onOpenConsumption6MModal}
+      onOpenStockAdjustModal={onOpenStockAdjustModal} onOpenConsumption6MModal={onOpenConsumption6MModal} onOpenKardexModal={onOpenKardexModal} virtualStockMap={virtualStockMap}
       onPreviewImage={onPreviewImage} showFeedback={showFeedback}
       fetchData={fetchData} setMaterials={setMaterials} onHistoryChange={onHistoryChange}
     />

@@ -19,13 +19,20 @@ import { GasSupplierMovementModal } from './GasSupplierMovementModal.jsx'
 import MaterialCatalogFormModal from './MaterialCatalogFormModal.jsx'
 import MaterialRubrosManagerModal from './MaterialRubrosManagerModal.jsx'
 import MaterialConsumption6MModal from './MaterialConsumption6MModal.jsx'
+import StockAdjustModal from './StockAdjustModal.jsx'
+import MaterialStockKardexModal from './MaterialStockKardexModal.jsx'
+import StockAuditBatchModal from './StockAuditBatchModal.jsx'
 import {
   updateCatalogMaterialService,
   uploadMaterialImageService
 } from '../../lib/panolCatalogService'
 import {
+  createStockAdjustmentService,
+  createStockRecountAdjustmentService,
+  createStockAuditBatchService
+} from '../../lib/stockControlService'
+import {
   saveMultiWithdrawalService,
-  saveInlineMaterialService,
   createMaterialService,
   createDirectPurchaseOrderService,
   submitRequestOtService,
@@ -112,9 +119,9 @@ export function QuickPurchaseModal({ material, initialQuantity, initialUrgency =
           <div>
             <label className="block text-slate-400 font-semibold text-[11px] mb-1">Nivel de Urgencia</label>
             <select value={urgency} onChange={(e) => setUrgency(e.target.value)} className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold focus:outline-none focus:border-cyan-400">
-              <option value="SIN_APURO">Sin Apuro</option>
-              <option value="URGENTE">⚠️ Urgente</option>
-              <option value="BLOQUEANTE">🚨 Bloqueante</option>
+              <option value="SIN_APURO">🟢 Sin Apuro (Normal)</option>
+              <option value="URGENTE">🔴 Urgente (Prioridad Alta)</option>
+              <option value="PROXIMA_SALIDA">🟡 Próxima Salida de Buque</option>
             </select>
           </div>
         </div>
@@ -127,69 +134,9 @@ export function QuickPurchaseModal({ material, initialQuantity, initialUrgency =
 export { MaterialCatalogFormModal as NewMaterialModal }
 
 // ==============================================================================
-// 5. SUBCOMPONENTE: AJUSTE DE STOCK FÍSICO
+// 5. SUBCOMPONENTE: AJUSTE DE STOCK FÍSICO (RE-EXPORT MODULAR CANÓNICO)
 // ==============================================================================
-export function StockAdjustModal({ material, onClose, onSave }) {
-  const [newStock, setNewStock] = useState(material?.current_stock || 0)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (isSubmitting) return
-    try {
-      setIsSubmitting(true)
-      await onSave(material.id, 'current_stock', newStock)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4 text-xs font-sans">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-          <span className="font-bold text-white uppercase">Ajuste de Stock Físico</span>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">✕</button>
-        </div>
-
-        <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-          <span className="font-bold text-white block truncate">{material?.name}</span>
-          <span className="text-[10px] text-slate-500">Stock Actual en Sistema: {material?.current_stock} {material?.unit_measure}</span>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Nuevo Recuento Físico</label>
-            <input
-              type="number"
-              step="any"
-              autoFocus
-              value={newStock}
-              onChange={(e) => setNewStock(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-base font-bold focus:outline-none focus:border-cyan-400"
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black cursor-pointer shadow"
-            >
-              Confirmar Ajuste
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
+export { StockAdjustModal }
 
 // ==============================================================================
 // 6. SUBCOMPONENTE: MOVIMIENTO DE GASES Y CILINDROS
@@ -562,6 +509,9 @@ export function PanolModalsContainer({
   setConsumption6MModal,
   showStockAdjustModal,
   setShowStockAdjustModal,
+  showAuditBatchModal = false, setShowAuditBatchModal = null, setStockAudits = null,
+  kardexModal = { isOpen: false, material: null }, setKardexModal = null, setStockAdjustments = null,
+  virtualStockMap = null,
   showGasModal,
   setShowGasModal,
   gasFinalReturnModal,
@@ -696,14 +646,54 @@ export function PanolModalsContainer({
     }
   }
 
-  const handleSaveStockAdjust = async (matId, field, value) => {
+  const handleSaveStockAdjust = async (payload) => {
     try {
-      const updates = await saveInlineMaterialService({ matId, field, value, materials, user })
-      setMaterials((prev) => prev.map((m) => (m.id === matId ? { ...m, ...updates } : m)))
-      showFeedback('success', 'Stock físico ajustado con éxito.')
-      setShowStockAdjustModal({ isOpen: false, material: null })
+      const targetMat = payload?.material || materials.find((m) => m.id === payload?.materialId)
+      const isRecount = payload?.mode === 'RECOUNT'
+      const res = isRecount
+        ? await createStockRecountAdjustmentService({
+            material: targetMat, targetStock: payload.quantity,
+            reasonType: payload.reasonType || 'AUDIT_CORRECTION',
+            materialCondition: payload.materialCondition || 'DISPONIBLE',
+            date: payload.date, notes: payload.notes, user
+          })
+        : await createStockAdjustmentService({
+            materialId: payload.materialId,
+            quantity: payload.mode === 'EXIT' ? -Math.abs(Number(payload.quantity)) : Math.abs(Number(payload.quantity)),
+            reasonType: payload.reasonType || 'MANUAL_ENTRY',
+            materialCondition: payload.materialCondition || 'DISPONIBLE',
+            date: payload.date, notes: payload.notes, material: targetMat, user
+          })
+      if (res.skipped) {
+        showFeedback('success', 'Sin cambios: el recuento físico coincide con el stock actual.')
+        setShowStockAdjustModal({ isOpen: false, material: null, initialMode: null })
+        return
+      }
+      setMaterials((prev) => prev.map((m) => (m.id === payload.materialId ? { ...m, current_stock: res.newStock } : m)))
+      if (res.adjustment && setStockAdjustments) {
+        setStockAdjustments((prev) => [res.adjustment, ...prev])
+      }
+      showFeedback('success', 'Movimiento de stock registrado y recalculado en PostgreSQL.')
+      setShowStockAdjustModal({ isOpen: false, material: null, initialMode: null })
     } catch (err) {
-      showFeedback('error', 'Error al ajustar stock: ' + err.message)
+      showFeedback('error', 'Error al registrar movimiento: ' + err.message)
+      throw err
+    }
+  }
+
+  const handleSaveAuditBatch = async (payload) => {
+    try {
+      const res = await createStockAuditBatchService({ ...payload, user })
+      if (res.createdAudits?.length > 0 && setStockAudits) setStockAudits((prev) => [...res.createdAudits, ...prev])
+      if (res.createdAdjustments?.length > 0 && setStockAdjustments) setStockAdjustments((prev) => [...res.createdAdjustments, ...prev])
+      if (res.stockByMaterialId?.size > 0) {
+        setMaterials((prev) => prev.map((m) => (res.stockByMaterialId.has(String(m.id)) ? { ...m, current_stock: res.stockByMaterialId.get(String(m.id)) } : m)))
+      }
+      showFeedback('success', `Control físico guardado: ${res.createdAudits.length} ítem(s)${res.createdAdjustments.length > 0 ? ` · ${res.createdAdjustments.length} ajuste(s) aplicado(s)` : ''}.`)
+      setShowAuditBatchModal?.(false)
+    } catch (err) {
+      showFeedback('error', 'Error guardando control físico: ' + err.message)
+      throw err
     }
   }
 
@@ -774,7 +764,7 @@ export function PanolModalsContainer({
 
   const handleConfirmQuickPurchase = async (args) => {
     try {
-      await createDirectPurchaseOrderService({ ...args, ships })
+      await createDirectPurchaseOrderService({ ...args, ships, user })
       setQuickPurchaseModal({ isOpen: false, material: null, quantity: '', urgency: 'SIN_APURO' })
       showFeedback('success', `Pedido de "${args.material?.name}" enviado a Compras.`)
     } catch (e) {
@@ -811,30 +801,14 @@ export function PanolModalsContainer({
       {showWithdrawalModal && (
         <MultiWithdrawalModal
           key={editingWithdrawalRow?.id || 'new-withdrawal'}
-          materials={materials}
-          suppliers={suppliers}
-          gasStats={gasStats}
-          gasMovements={gasMovements}
-          ships={ships}
-          workOrders={workOrders}
-          workItems={workItems}
-          astilleroWorkers={astilleroWorkers}
-          contractorGroups={contractorGroups}
-          unauthorizedWorkers={unauthorizedWorkers}
-          getEnabledWorkersAndContractors={getEnabledWorkersAndContractors}
-          pendingAlerts={pendingAlerts}
-          isAdmin={isAdmin}
-          editingRow={editingWithdrawalRow}
-          onRequestOt={(targetShipId, preselectedWorker) =>
-            setRequestOtModal({ isOpen: true, txId: null, shipId: targetShipId || '', targetWorkerOrContractor: preselectedWorker || '', reason: '' })
-          }
-          onRequestWorkerPermission={() =>
-            setWorkerPermissionModal({ isOpen: true, workerId: '', reason: '' })
-          }
-          onClose={() => {
-            setShowWithdrawalModal(false)
-            setEditingWithdrawalRow(null)
-          }}
+          materials={materials} suppliers={suppliers} gasStats={gasStats} gasMovements={gasMovements}
+          ships={ships} workOrders={workOrders} workItems={workItems}
+          astilleroWorkers={astilleroWorkers} contractorGroups={contractorGroups} unauthorizedWorkers={unauthorizedWorkers}
+          getEnabledWorkersAndContractors={getEnabledWorkersAndContractors} pendingAlerts={pendingAlerts}
+          isAdmin={isAdmin} editingRow={editingWithdrawalRow}
+          onRequestOt={(targetShipId, preselectedWorker) => setRequestOtModal({ isOpen: true, txId: null, shipId: targetShipId || '', targetWorkerOrContractor: preselectedWorker || '', reason: '' })}
+          onRequestWorkerPermission={() => setWorkerPermissionModal({ isOpen: true, workerId: '', reason: '' })}
+          onClose={() => { setShowWithdrawalModal(false); setEditingWithdrawalRow(null) }}
           onSave={handleSaveMultiWithdrawal}
         />
       )}
@@ -852,35 +826,46 @@ export function PanolModalsContainer({
 
       {showRubrosModal && (
         <MaterialRubrosManagerModal
-          rubros={rubros}
-          materials={materials}
-          isAdmin={isAdmin}
-          user={user}
-          onRefreshData={onRefreshData}
-          showFeedback={showFeedback}
-          onClose={() => setShowRubrosModal(false)}
+          rubros={rubros} materials={materials} isAdmin={isAdmin} user={user}
+          onRefreshData={onRefreshData} showFeedback={showFeedback} onClose={() => setShowRubrosModal(false)}
         />
       )}
 
       {consumption6MModal?.isOpen && consumption6MModal.material && (
         <MaterialConsumption6MModal
-          material={consumption6MModal.material}
-          inventoryTx={inventoryTx}
-          workOrders={workOrders}
-          ships={ships}
-          onReponer={navigate ? (mat) => {
-            setConsumption6MModal({ isOpen: false, material: null })
-            navigate(`/compras?nuevo=true&materialId=${mat.id}&materialName=${encodeURIComponent(mat.name)}`)
-          } : null}
+          material={consumption6MModal.material} inventoryTx={inventoryTx} workOrders={workOrders} ships={ships}
+          virtualStockInfo={virtualStockMap?.get(String(consumption6MModal.material.id)) || null}
+          onReponer={navigate ? (mat) => { setConsumption6MModal({ isOpen: false, material: null }); navigate(`/compras?nuevo=true&materialId=${mat.id}&materialName=${encodeURIComponent(mat.name)}`) } : null}
           onClose={() => setConsumption6MModal({ isOpen: false, material: null })}
         />
+      )}
+
+      {showAuditBatchModal && (
+        <StockAuditBatchModal materials={materials} rubros={rubros} onClose={() => setShowAuditBatchModal?.(false)} onSave={handleSaveAuditBatch} />
       )}
 
       {showStockAdjustModal.isOpen && (
         <StockAdjustModal
           material={showStockAdjustModal.material}
-          onClose={() => setShowStockAdjustModal({ isOpen: false, material: null })}
+          materials={materials}
+          initialMode={showStockAdjustModal.initialMode || null}
+          onClose={() => setShowStockAdjustModal({ isOpen: false, material: null, initialMode: null })}
           onSave={handleSaveStockAdjust}
+        />
+      )}
+
+      {kardexModal?.isOpen && kardexModal.material && (
+        <MaterialStockKardexModal
+          material={materials.find((m) => m.id === kardexModal.material.id) || kardexModal.material}
+          onClose={() => setKardexModal?.({ isOpen: false, material: null })}
+          onOpenStockAdjust={(mat) => {
+            setKardexModal?.({ isOpen: false, material: null })
+            setShowStockAdjustModal({ isOpen: true, material: mat, initialMode: 'ENTRY' })
+          }}
+          onOpenQuickPurchase={(mat) => {
+            setKardexModal?.({ isOpen: false, material: null })
+            setQuickPurchaseModal({ isOpen: true, material: mat, quantity: '', urgency: 'SIN_APURO' })
+          }}
         />
       )}
 
