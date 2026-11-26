@@ -69,3 +69,21 @@ Si no hay selección manual de celdas, muestra la agregación de las columnas nu
 - `Σ TOTAL AR$: $[Monto en pesos]`
 - `Σ TOTAL US$: $[Monto en dólares]`
 - `Ø PROMEDIO: $[Promedio por ítem]`
+
+---
+
+## 4. Motor General Excel/Sheets (`SKL-019` · `FL-027`)
+
+Toda tabla tipo planilla (`<table`) del sistema —editable o de consulta— **DEBE** conectar el motor único en **4 Capas Soldadas** y exponer **una `GridStatusBarBottom` propia por tabla** (`isFixed={false}` cuando conviven múltiples tablas en la misma vista, como DEBE y HABER en Cuentas Corrientes):
+
+1. **Capa 1 — Motor puro (`app/src/lib/sheetSelectionEngine.js`):** parseo numérico argentino (`1.250,50`, `US$ 1.146,97`, `-US$ 101.531,77`) sin tocar fechas (`DD/MM/AAAA` / `YYYY-MM-DD`) ni códigos, rango multi-bloque, selección de columna completa, 7 métricas (`Suma`, `Promedio`, `Mínimo`, `Máximo`, `Cantidad`, `Contar números`, `Únicos`), exportación `Ctrl+C` en TSV 2D y ordenamiento cronológico/numérico/alfabético.
+2. **Capa 2 — Hooks ("en 3 líneas"):** `useSheetSelection` (`app/src/hooks/grid/useSheetSelection.js`) para tablas de consulta/control, y `useSpreadsheetGrid` + `useGridSelection` + `useGridRangeCopy` para planillas editables. Soporta arrastre, `Shift+Flechas`, `Ctrl+Clic` salteado, clic en encabezado (`getHeaderProps` / `getColumnHeaderProps`) y doble clic para ordenar `↕` (si `sortable: true`).
+3. **Capa 3 — Barra y Fórmula (`GridStatusBarBottom.jsx` + `FormulaNumericInput.jsx`):** clic en cualquier chip/fila del menú `Σ ▾` copia el valor exacto al portapapeles; `FormulaNumericInput` frena `onMouseDown` y `onDoubleClick` para poder hacer clic en cualquier parte de una fórmula (`=5*0.9`) sin cerrar el editor.
+4. **Capa 4 — Candado Mecánico (`check:hygiene`):** `app/scripts/lib/antiRegressionChecks.mjs` verifica automáticamente cada `.jsx` con `<table` fuera del listado explícito `NON_SPREADSHEET_TABLE_ALLOWLIST` y falla en rojo si omite el motor, los encabezados interactivos o `GridStatusBarBottom`.
+
+```jsx
+const sheet = useSheetSelection({ rows, columns, getRowId: (r) => r.id, sortable: true })
+// <th {...sheet.getHeaderProps('amountUsd')}>Monto{sheet.getSortIndicator('amountUsd')}</th>
+// <td {...cp.domProps} className={cp.className}>...</td>
+// <GridStatusBarBottom isFixed={false} selectionStats={sheet.selectionStats} onClearSelection={sheet.clearSelection} ... />
+```

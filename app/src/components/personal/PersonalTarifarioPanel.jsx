@@ -666,8 +666,8 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
   }, [rateCards, filterTableCenter, rateTableSearch])
 
   const rateColumns = useMemo(() => [
-    { key: 'rate_oficial_ars', label: 'Oficial AR$' },
-    { key: 'rate_ayudante_ars', label: 'Ayudante AR$' }
+    { key: 'rate_oficial_ars', label: 'Oficial AR$', isNumeric: true, formatType: 'ars' },
+    { key: 'rate_ayudante_ars', label: 'Ayudante AR$', isNumeric: true, formatType: 'ars' }
   ], [])
 
   const canEditRateCell = useCallback((rc, colKeyOrDef) => {
@@ -1506,9 +1506,9 @@ export default function PersonalTarifarioPanel({ currentPeriodKey: initialPeriod
                   </th>
                   <th className="py-2.5 px-3">Quincena</th>
                   <th className="py-2.5 px-3">Categoría / Contratista</th>
-                  <th className="py-2.5 px-3 text-right">Oficial AR$ ✎</th>
+                  <th {...ratesGrid.getColumnHeaderProps('rate_oficial_ars', 'py-2.5 px-3 text-right')}>Oficial AR$ ✎</th>
                   <th className="py-2.5 px-3 text-center text-emerald-400">Oficial U$</th>
-                  <th className="py-2.5 px-3 text-right">Ayudante AR$ ✎</th>
+                  <th {...ratesGrid.getColumnHeaderProps('rate_ayudante_ars', 'py-2.5 px-3 text-right')}>Ayudante AR$ ✎</th>
                   <th className="py-2.5 px-3 text-center text-amber-400">Ayudante U$</th>
                   <th className="py-2.5 px-3 text-center">Dólar</th>
                   <th className="py-2.5 px-3 text-center">Centro</th>

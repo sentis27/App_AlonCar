@@ -53,14 +53,14 @@ export default function WorkOrdersUnificadoPanel({
           <thead className="sticky top-0 z-20 alon-grid-thead text-[10px] uppercase font-bold text-slate-300 shadow-sm backdrop-blur-md">
             <tr>
               <th className="py-2 px-2 text-center w-10">#</th>
-              <th className="py-2 px-2.5">Barco ✎</th>
-              <th className="py-2 px-2.5">Orden de Trabajo (Estado Calculado) ✎</th>
+              <th {...woGrid.getColumnHeaderProps('ship_id', 'py-2 px-2.5')}>Barco ✎</th>
+              <th {...woGrid.getColumnHeaderProps('ot_number', 'py-2 px-2.5')}>Orden de Trabajo (Estado Calculado) ✎</th>
               <th className="py-2 px-2.5 min-w-[140px]">Fechas OT (Creac. / Inicio / Fin)</th>
-              <th className="py-2 px-2.5 min-w-[230px]">Descripción del Trabajo ✎</th>
-              <th className="py-2 px-2.5">Contratista ✎</th>
-              <th className="py-2 px-2.5">Jefe de Obra ✎</th>
-              <th className="py-2 px-2">Tipo / Facturación ✎</th>
-              <th className="py-2 px-2.5 text-center">Estado del Trabajo ✎</th>
+              <th {...woGrid.getColumnHeaderProps('description', 'py-2 px-2.5 min-w-[230px]')}>Descripción del Trabajo ✎</th>
+              <th {...woGrid.getColumnHeaderProps('contractors', 'py-2 px-2.5')}>Contratista ✎</th>
+              <th {...woGrid.getColumnHeaderProps('foreman_name', 'py-2 px-2.5')}>Jefe de Obra ✎</th>
+              <th {...woGrid.getColumnHeaderProps('work_type', 'py-2 px-2')}>Tipo / Facturación ✎</th>
+              <th {...woGrid.getColumnHeaderProps('status', 'py-2 px-2.5 text-center')}>Estado del Trabajo ✎</th>
               <th className="py-2 px-2 text-center">Alertas / 3ros</th>
               <th className="py-2 px-2.5 text-right">Acciones</th>
             </tr>

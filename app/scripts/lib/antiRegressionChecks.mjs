@@ -70,6 +70,7 @@ const REQUIRED_CANONICAL_OT_SURFACES = [
   'app/src/components/compras/ComprasPedidoRow.jsx',
   'app/src/components/terceros/TercerosFilasPanel.jsx',
   'app/src/components/terceros/TercerosFichasPanel.jsx',
+  'app/src/components/terceros/cc/TercerosCcDebeTable.jsx',
   'app/src/components/labor/LaborLogsTableRow.jsx',
   'app/src/components/labor/LaborControlDiarioPanel.jsx',
   'app/src/components/labor/LaborSabanaPanel.jsx',
@@ -89,6 +90,7 @@ const REQUIRED_ACCORDION_TAB_PAGES = [
   'app/src/pages/Compras.jsx',
   'app/src/pages/Personal.jsx',
   'app/src/pages/Ships.jsx',
+  'app/src/pages/Terceros.jsx',
   'app/src/pages/ResumenGerencial.jsx',
   'app/src/pages/AdminDashboard.jsx',
 ]
@@ -100,6 +102,7 @@ const REQUIRED_CANONICAL_ZONE3_SURFACES = [
   'app/src/components/compras/ComprasProveedoresPanel.jsx',
   'app/src/components/compras/ComprasOcrPanel.jsx',
   'app/src/components/terceros/TercerosToolbar.jsx',
+  'app/src/components/terceros/cc/TercerosCuentasCorrientesPanel.jsx',
   'app/src/components/personal/PersonalNominaToolbar.jsx',
   'app/src/components/personal/PersonalTarifarioPanel.jsx',
   'app/src/components/panol/PanolToolbar.jsx',
@@ -125,6 +128,8 @@ const REQUIRED_PROGRESSIVE_GRID_SURFACES = [
   'app/src/components/compras/ComprasOcrPanel.jsx',
   'app/src/components/terceros/TercerosFilasPanel.jsx',
   'app/src/components/terceros/TercerosFichasPanel.jsx',
+  'app/src/components/terceros/cc/TercerosCcDebeTable.jsx',
+  'app/src/components/terceros/cc/TercerosCcHaberTable.jsx',
   'app/src/components/workOrders/WorkOrdersUnificadoPanel.jsx',
   'app/src/components/workOrders/WorkOrdersOtsPanel.jsx',
   'app/src/components/workOrders/WorkOrdersTercerosPanel.jsx',
@@ -149,10 +154,27 @@ const REQUIRED_HISTORY_RANGE_SURFACES = [
   'app/src/components/AdminAuditLedger.jsx',
 ]
 
+const NON_SPREADSHEET_TABLE_ALLOWLIST = new Set([
+  'app/src/components/admin/AdminRolesMatrixPanel.jsx',
+  'app/src/components/admin/AdminAlertsCompliancePanel.jsx',
+  'app/src/components/AiGovernancePanel.jsx',
+  'app/src/components/TradesManagementPanel.jsx',
+  'app/src/components/labor/LaborModals.jsx',
+  'app/src/components/panol/MaterialRubrosManagerModal.jsx',
+  'app/src/components/panol/StockAuditBatchModal.jsx',
+  'app/src/components/workOrders/OtCatalogLineItemsTable.jsx',
+])
+
+const PARENT_OWNED_STATUS_BAR_TABLES = new Set([
+  'app/src/components/compras/ComprasPedidosTable.jsx',
+  'app/src/components/personal/PersonalNominaTable.jsx',
+])
+
 const REQUIRED_BATCHED_REPOSITORIES = [
   'app/src/repositories/laborLogsRepository.js',
   'app/src/repositories/purchaseOrdersRepository.js',
   'app/src/repositories/thirdPartyServicesRepository.js',
+  'app/src/repositories/thirdPartyCcRepository.js',
   'app/src/repositories/inventoryTransactionsRepository.js',
   'app/src/repositories/gasMovementsRepository.js',
   'app/src/repositories/materialsRepository.js',
@@ -219,6 +241,16 @@ export function checkCanonicalComponentsUsage(rootDir, appDir) {
           if (missing.length > 0) {
             errors.push(`Consulta work_items incompleta en ${rel} (falta ${missing.join(', ')}): usar workItemsRepository.listCanonicalWorkItems()`)
           }
+        }
+      }
+
+      if ((rel.startsWith('app/src/components/') || rel.startsWith('app/src/pages/')) && /<table\b/.test(content) && !NON_SPREADSHEET_TABLE_ALLOWLIST.has(rel)) {
+        const hasEngine = /(?:useSpreadsheetGrid|useSheetSelection|useReadOnlySheetSelection|getColumnHeaderProps)/.test(content)
+        const hasHeaders = /(?:getColumnHeaderProps|getHeaderProps)/.test(content)
+        const hasStatusBar = PARENT_OWNED_STATUS_BAR_TABLES.has(rel) || content.includes('GridStatusBarBottom')
+        if (!hasEngine || !hasHeaders || !hasStatusBar) {
+          const missing = [!hasEngine && 'useSheetSelection/useSpreadsheetGrid', !hasHeaders && 'getHeaderProps/getColumnHeaderProps', !hasStatusBar && 'GridStatusBarBottom'].filter(Boolean).join(', ')
+          errors.push(`Planilla sin Motor General Excel/Sheets (FL-027 · falta ${missing}): ${rel}`)
         }
       }
     }

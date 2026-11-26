@@ -265,15 +265,15 @@ export default function ResumenHojaTercerosPanel({
             <thead className="alon-grid-thead sticky top-0 z-10 text-[10px] uppercase tracking-wider text-slate-300">
               <tr>
                 <th className="px-2.5 py-2 w-10 text-center">#</th>
-                <th className="px-2.5 py-2">Fecha</th>
-                <th className="px-2.5 py-2">O.T</th>
-                <th className="px-2.5 py-2">Contratista / Taller</th>
-                <th className="px-2.5 py-2">Rubro</th>
-                <th className="px-2.5 py-2 text-right">Importe ARS</th>
-                <th className="px-2.5 py-2 text-right">Total US$</th>
-                <th className="px-2.5 py-2">Observaciones</th>
+                <th {...sheetSelection.getHeaderProps('date', 'px-2.5 py-2')}>Fecha</th>
+                <th {...sheetSelection.getHeaderProps('otLabel', 'px-2.5 py-2')}>O.T</th>
+                <th {...sheetSelection.getHeaderProps('contractorName', 'px-2.5 py-2')}>Contratista / Taller</th>
+                <th {...sheetSelection.getHeaderProps('rubro', 'px-2.5 py-2')}>Rubro</th>
+                <th {...sheetSelection.getHeaderProps('amountArs', 'px-2.5 py-2 text-right')}>Importe ARS</th>
+                <th {...sheetSelection.getHeaderProps('amountUsd', 'px-2.5 py-2 text-right')}>Total US$</th>
+                <th {...sheetSelection.getHeaderProps('observations', 'px-2.5 py-2')}>Observaciones</th>
                 <th
-                  className="px-2.5 py-2 text-right"
+                  {...sheetSelection.getHeaderProps('usdRate', 'px-2.5 py-2 text-right')}
                   title="Tipo de cambio aplicado (cotización AR$ / US$ utilizada para convertir el importe a dólares)"
                 >
                   <span className="inline-flex items-center justify-end gap-1 cursor-help">

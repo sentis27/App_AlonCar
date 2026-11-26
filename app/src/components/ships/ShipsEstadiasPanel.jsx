@@ -433,10 +433,10 @@ export default function ShipsEstadiasPanel({
                       <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
                     </div>
                   </th>
-                  <th className="py-3 px-4">Locación ✎</th>
-                  <th className="py-3 px-4">Buque ✎</th>
-                  <th className="py-3 px-4 text-center">Comienzo ✎</th>
-                  <th className="py-3 px-4 text-center">Fin ✎</th>
+                  <th {...staysGrid.getColumnHeaderProps('location', 'py-3 px-4')}>Locación ✎</th>
+                  <th {...staysGrid.getColumnHeaderProps('ship_id', 'py-3 px-4')}>Buque ✎</th>
+                  <th {...staysGrid.getColumnHeaderProps('start_date', 'py-3 px-4 text-center')}>Comienzo ✎</th>
+                  <th {...staysGrid.getColumnHeaderProps('end_date', 'py-3 px-4 text-center')}>Fin ✎</th>
                   <th className="py-3 px-4 text-center text-cyan-300">Días de Estadía</th>
                   <th className="py-3 px-4 text-center">Acciones</th>
                 </tr>

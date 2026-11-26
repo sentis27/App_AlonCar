@@ -1,50 +1,22 @@
-import { useState } from 'react'
-import {
-  Flame,
-  Shield,
-  Building2,
-  AlertTriangle,
-  CheckCircle2,
-  MessageSquare,
-  Plus,
-  RotateCcw,
-  Truck
-} from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Flame, Shield, Building2, AlertTriangle, CheckCircle2, MessageSquare, Plus, RotateCcw, Truck } from 'lucide-react'
 import HighlightText from '../HighlightText'
+import GridStatusBarBottom from '../GridStatusBarBottom'
 import GasTraceabilityGrid from './GasTraceabilityGrid'
 import PanolCatalogGrid from './PanolCatalogGrid'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
+import { PANOL_STOCK_GAS_SHEET_COLUMNS } from '../../lib/sheetColumnsOperational'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 
 export default function PanolStockPanel({
-  activeTab,
-  filteredMaterials,
-  materials,
-  rubros = [],
-  gasStats,
-  gasMovements = [],
-  setGasMovements = null,
-  suppliers = [],
-  ships = [],
-  workOrders = [],
-  searchQuery,
-  activeKpiFilter,
-  filterCategory,
-  filterStockOnly,
-  traceSupplierFilter: propTraceSupplierFilter,
-  setTraceSupplierFilter: propSetTraceSupplierFilter,
-  traceMaterialFilter: propTraceMaterialFilter,
-  setTraceMaterialFilter: propSetTraceMaterialFilter,
+  activeTab, filteredMaterials, materials, rubros = [], gasStats, gasMovements = [], setGasMovements = null,
+  suppliers = [], ships = [], workOrders = [], searchQuery, activeKpiFilter, filterCategory, filterStockOnly,
+  traceSupplierFilter: propTraceSupplierFilter, setTraceSupplierFilter: propSetTraceSupplierFilter,
+  traceMaterialFilter: propTraceMaterialFilter, setTraceMaterialFilter: propSetTraceMaterialFilter,
   isAdmin, user, macroVariables = [], pricingPolicy = null, criticalMaterialsCount, stockControlledCount, onClearFilters,
-  onOpenEditMaterialModal = null,
-  onOpenStockAdjustModal, onOpenConsumption6MModal = null, onOpenKardexModal = null, virtualStockMap = null,
-  onOpenWithdrawalModal,
-  onOpenGasFinalReturnModal = null,
-  onOpenGasSupplierModal = null,
-  onPreviewImage,
-  showFeedback,
-  fetchData,
-  setMaterials,
-  onHistoryChange = null
+  onOpenEditMaterialModal = null, onOpenStockAdjustModal, onOpenConsumption6MModal = null, onOpenKardexModal = null, virtualStockMap = null,
+  onOpenWithdrawalModal, onOpenGasFinalReturnModal = null, onOpenGasSupplierModal = null, onPreviewImage,
+  showFeedback, fetchData, setMaterials, onHistoryChange = null
 }) {
   const [localTraceSupplierFilter, setLocalTraceSupplierFilter] = useState('TODOS')
   const [localTraceMaterialFilter, setLocalTraceMaterialFilter] = useState('TODOS')
@@ -52,6 +24,28 @@ export default function PanolStockPanel({
   const setTraceSupplierFilter = propSetTraceSupplierFilter ?? setLocalTraceSupplierFilter
   const traceMaterialFilter = propTraceMaterialFilter ?? localTraceMaterialFilter
   const setTraceMaterialFilter = propSetTraceMaterialFilter ?? setLocalTraceMaterialFilter
+
+  const debtRows = useMemo(() => {
+    const entries = Object.entries(gasStats?.contractorDebts || {})
+    return entries
+      .filter(([cName, data]) => {
+        if (!searchQuery?.trim()) return true
+        const searchable = [
+          cName,
+          ...(data.activeHoldings || []).map((h) => `${h.materialName} ${h.supplierName}`),
+          ...(data.exchangesByBrand || []).map((ex) => `${ex.materialName} ${ex.deliveredSupplierName} ${ex.returnedSupplierName}`)
+        ].join(' ')
+        return matchesUniversalSearch(searchable, searchQuery)
+      })
+      .map(([name, data]) => ({
+        name,
+        data,
+        longHeld: (gasStats?.longHeldContractors || []).find((lh) => lh.contractor === name) || null
+      }))
+  }, [gasStats, searchQuery])
+
+  const debtSheet = useSheetSelection({ rows: debtRows, columns: PANOL_STOCK_GAS_SHEET_COLUMNS, getRowId: (r) => r.name, sortable: true })
+  const totalHeldSummary = useMemo(() => debtRows.reduce((s, r) => s + (Number(r.data?.totalHeld) || 0), 0), [debtRows])
 
   // ==============================================================================
   // RENDER PESTAÃ‘A 2: CONTROL DE GASES
@@ -178,7 +172,7 @@ export default function PanolStockPanel({
         </div>
 
         {/* Matriz de Deuda de Tubos por Contratista */}
-        <div className="alon-zone-grid">
+        <div ref={debtSheet.containerRef} tabIndex={0} onKeyDown={debtSheet.handleKeyDown} className="alon-zone-grid focus:outline-none">
           <div className="alon-grid-ribbon">
             <span className="font-bold text-slate-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
               <Flame className="w-4 h-4 text-amber-400" />
@@ -193,37 +187,30 @@ export default function PanolStockPanel({
             <table className="w-full text-left text-xs border-collapse">
               <thead className="sticky top-0 z-20 alon-grid-thead">
                 <tr>
-                  <th className="py-2.5 px-3">Contratista / Taller</th>
-                  <th className="py-2.5 px-3 text-center">Tubos en Poder</th>
-                  <th className="py-2.5 px-3">Detalle por Gas / Marca y Recambios</th>
-                  <th className="py-2.5 px-3">Estado de RetenciÃ³n</th>
+                  <th {...debtSheet.getHeaderProps('contractor', 'py-2.5 px-3')}>Contratista / Taller{debtSheet.getSortIndicator('contractor')}</th>
+                  <th {...debtSheet.getHeaderProps('totalHeld', 'py-2.5 px-3 text-center')}>Tubos en Poder{debtSheet.getSortIndicator('totalHeld')}</th>
+                  <th {...debtSheet.getHeaderProps('detail', 'py-2.5 px-3')}>Detalle por Gas / Marca y Recambios</th>
+                  <th {...debtSheet.getHeaderProps('retention', 'py-2.5 px-3')}>Estado de RetenciÃ³n{debtSheet.getSortIndicator('retention')}</th>
                   <th className="py-2.5 px-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {Object.entries(gasStats.contractorDebts)
-                  .filter(([cName, data]) => {
-                    if (!searchQuery.trim()) return true
-                    const searchable = [
-                      cName,
-                      ...(data.activeHoldings || []).map((h) => `${h.materialName} ${h.supplierName}`),
-                      ...(data.exchangesByBrand || []).map((ex) => `${ex.materialName} ${ex.deliveredSupplierName} ${ex.returnedSupplierName}`)
-                    ].join(' ')
-                    return matchesUniversalSearch(searchable, searchQuery)
-                  })
-                  .map(([cName, data]) => {
-                    const longHeld = gasStats.longHeldContractors.find((lh) => lh.contractor === cName)
+                {debtSheet.sortedRows.map(({ name: cName, data, longHeld }, rowIdx) => {
                     const activeHoldings = data.activeHoldings || []
                     const exchangesByBrand = data.exchangesByBrand || []
+                    const cpName = debtSheet.getCellProps(rowIdx, 'contractor')
+                    const cpHeld = debtSheet.getCellProps(rowIdx, 'totalHeld')
+                    const cpDet = debtSheet.getCellProps(rowIdx, 'detail')
+                    const cpRet = debtSheet.getCellProps(rowIdx, 'retention')
                     return (
                       <tr key={cName} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-2.5 px-3 font-bold text-white align-middle">
+                        <td {...cpName.domProps} className={`py-2.5 px-3 font-bold text-white align-middle ${cpName.className}`}>
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-cyan-400 shrink-0" />
                             <span><HighlightText text={cName} query={searchQuery} /></span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 text-center align-middle">
+                        <td {...cpHeld.domProps} className={`py-2.5 px-3 text-center align-middle ${cpHeld.className}`}>
                           <div className="inline-flex flex-col items-center gap-1">
                             <span
                               className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-black text-xs ${
@@ -244,7 +231,7 @@ export default function PanolStockPanel({
                             )}
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 align-middle">
+                        <td {...cpDet.domProps} className={`py-2.5 px-3 align-middle ${cpDet.className}`}>
                           <div className="flex flex-wrap gap-1.5">
                             {activeHoldings.map((h) => (
                               <span
@@ -271,7 +258,7 @@ export default function PanolStockPanel({
                             )}
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 align-middle">
+                        <td {...cpRet.domProps} className={`py-2.5 px-3 align-middle ${cpRet.className}`}>
                           {longHeld ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950 border border-rose-600 text-rose-300 font-bold text-[10px]">
                               <AlertTriangle className="w-3 h-3 text-rose-400" />
@@ -318,21 +305,21 @@ export default function PanolStockPanel({
               </tbody>
             </table>
           </div>
+          <div className="p-2 border-t border-slate-800/80">
+            <GridStatusBarBottom
+              isFixed={false} filteredCount={debtRows.length} totalCount={debtRows.length} entityName="contratistas"
+              selectionStats={debtSheet.selectionStats} onClearSelection={debtSheet.clearSelection}
+              globalAggregates={[{ label: 'Σ Tubos en Obra', value: `${totalHeldSummary} tubos`, highlight: true }]}
+            />
+          </div>
         </div>
 
         {/* Tabla CronolÃ³gica Completa de Trazabilidad (Gaseras + Contratistas) */}
         <GasTraceabilityGrid
-          gasMovements={gasMovements}
-          setGasMovements={setGasMovements}
-          suppliers={suppliers}
-          materials={materials}
-          ships={ships}
-          workOrders={workOrders}
-          searchQuery={searchQuery}
-          filterSupplierId={traceSupplierFilter}
-          setFilterSupplierId={setTraceSupplierFilter}
-          filterMaterialId={traceMaterialFilter}
-          setFilterMaterialId={setTraceMaterialFilter}
+          gasMovements={gasMovements} setGasMovements={setGasMovements} suppliers={suppliers} materials={materials}
+          ships={ships} workOrders={workOrders} searchQuery={searchQuery}
+          filterSupplierId={traceSupplierFilter} setFilterSupplierId={setTraceSupplierFilter}
+          filterMaterialId={traceMaterialFilter} setFilterMaterialId={setTraceMaterialFilter}
           isAdmin={isAdmin} user={user} showFeedback={showFeedback}
           onOpenSupplierModal={onOpenGasSupplierModal} onHistoryChange={onHistoryChange}
         />

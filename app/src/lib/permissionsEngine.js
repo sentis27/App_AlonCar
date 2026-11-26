@@ -182,6 +182,8 @@ export function resolveUserCapabilities(profile = null, orgRole = null) {
 
   const canEditTercerosAmounts = isMasterAdmin || rolePerspective === 'admin' || rolePerspective === 'maria_jose'
   const canMutateTercerosRows = isMasterAdmin || rolePerspective !== 'direccion'
+  const canManageTercerosCc =
+    isMasterAdmin || rolePerspective === 'admin' || rolePerspective === 'maria_jose' || roleKey.includes('TESORERIA')
   const isPanolAdmin = isMasterAdmin || (secLevel === 'SUPERVISOR' && roleKey.includes('SUPERVISION'))
   const canUseComprasCompleteMode =
     isMasterAdmin || hasSection('compras.proveedores') || hasSection('compras.documentos')
@@ -191,6 +193,7 @@ export function resolveUserCapabilities(profile = null, orgRole = null) {
     rolePerspective,
     canEditTercerosAmounts,
     canMutateTercerosRows,
+    canManageTercerosCc,
     isPanolAdmin,
     canUseComprasCompleteMode,
     allowedSections: effectiveSections,

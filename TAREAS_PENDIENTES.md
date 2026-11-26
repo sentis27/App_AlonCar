@@ -7,6 +7,9 @@ Lista de trabajo activa priorizada por fase y criticidad.
 
 ## 📌 Pendientes Operativos y Módulos Futuros Acordados
 
+- [ ] **Precarga en borrador a Terceros desde Remitos de Pañol (Sujeta a revisión de María José):**
+  - **Alcance:** Cuando Pañol cargue materiales con `Nº Remito` destinados a un taller externo (ej. *Teco Taller*, *Pampa Naval*), pregenerar un borrador en Terceros (`third_party_services`) pendiente de validación para que María José complete la descripción técnica/rubro del trabajo realizado (corte/plegado vs. armado de estructura) y su valorización sin perder trazabilidad con `Resumen Gerencial`.
+
 - [ ] **Patrón Arquitectónico Acordado — Expansión Relacional de Columnas sobre Entidad Madre (Anti-JSON Global):**
   - **Criterio validado (`2026-11-19`, Migración `0049`):** Cuando una entidad operativa (ej. `work_orders`, `ships`, y en futuros ciclos `purchase_orders`, `third_party_services`, `tesoreria`) avanza a etapas comerciales o administrativas nuevas, **ampliar columnas específicas sobre la fila de esa entidad madre** en Supabase en lugar de concentrar todos los registros en un único JSON de `system_settings`. Evita colisiones concurrentes entre Gerencia, Administración y Jefes de Obra, y mantiene trazabilidad atómica por registro.
 - [ ] **Bandeja Posterior de Cobro / Menú de Facturación Final al Cliente (Siguiente Etapa tras `[🚀 Enviar a Facturación]`):**

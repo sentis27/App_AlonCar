@@ -2,31 +2,23 @@ import { useState, useMemo, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
 import CanonicalHistoryRangeSelect from '../canonical/CanonicalHistoryRangeSelect'
+import GridStatusBarBottom from '../GridStatusBarBottom'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
 import { buildLookupMap } from '../../lib/gridPerformanceHelpers'
 import { buildDailyControlUnifiedList } from '../../lib/laborPerformanceHelpers'
+import { LABOR_CONTROL_DIARIO_SHEET_COLUMNS } from '../../lib/sheetColumnsOperational'
 import { Calendar, UserCheck, Ship, Pencil, Plus, Trash2 } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
-import {
-  evaluateFormulaInput,
-  buildCellFormulasPatch,
-  describeFormula,
-  getStoredCellFormula,
-  getEditableCellInitialValue
-} from '../../lib/formulaEngine'
+import { evaluateFormulaInput, buildCellFormulasPatch, describeFormula, getStoredCellFormula, getEditableCellInitialValue } from '../../lib/formulaEngine'
 import { patchLaborLogService } from '../../services/laborService'
-import {
-  cleanShipName,
-  NOMINA_ASTILLERO_BASE,
-  TALLERES_FRECUENTES,
-  CONTRATISTAS_FRECUENTES
-} from '../../lib/laborConstants'
+import { cleanShipName, NOMINA_ASTILLERO_BASE, TALLERES_FRECUENTES, CONTRATISTAS_FRECUENTES } from '../../lib/laborConstants'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 
 export default function LaborControlDiarioPanel({
@@ -202,6 +194,8 @@ export default function LaborControlDiarioPanel({
   }, [unifiedDailyList, dailySearch, dailyFilterType])
 
   const astilleroWorkersList = useMemo(() => unifiedDailyList.filter(i => i.type === 'Astillero'), [unifiedDailyList])
+  const sheet = useSheetSelection({ rows: filteredDailyList, columns: LABOR_CONTROL_DIARIO_SHEET_COLUMNS, getRowId: (it) => `${it.worker?.name}-${it.type}` })
+  const totalDayHours = useMemo(() => filteredDailyList.reduce((s, it) => s + (Number(it.totalDay) || 0), 0), [filteredDailyList])
   const totalAstillero = astilleroWorkersList.length
   const completasAstillero = astilleroWorkersList.filter(i => i.status === 'completa' || i.status === 'extras').length
   const incompletasAstillero = astilleroWorkersList.filter(i => i.status === 'incompleta').length
@@ -370,30 +364,24 @@ export default function LaborControlDiarioPanel({
         </div>
 
         {/* TABLA DE AUDITORÍA */}
+        <div ref={sheet.containerRef} tabIndex={0} onKeyDown={sheet.handleKeyDown} className="focus:outline-none space-y-2">
         <div ref={scrollContainerRef} className="alon-grid-scroll border border-slate-800 rounded-xl">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800 shadow-sm backdrop-blur-md">
               <tr>
                 <th className="py-2.5 px-2 text-center w-8 bg-slate-950">
-                  <input
-                    type="checkbox"
-                    checked={allAuditDateLogIds.length > 0 && allAuditDateLogIds.every(id => selectedLogIds.has(id))}
-                    onChange={() => toggleSelectAllLogs(allAuditDateLogIds)}
-                    disabled={allAuditDateLogIds.length === 0}
-                    className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary disabled:opacity-30"
-                    title="Seleccionar todas las imputaciones del día"
-                  />
+                  <input type="checkbox" checked={allAuditDateLogIds.length > 0 && allAuditDateLogIds.every(id => selectedLogIds.has(id))} onChange={() => toggleSelectAllLogs(allAuditDateLogIds)} disabled={allAuditDateLogIds.length === 0} className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary disabled:opacity-30" title="Seleccionar todas las imputaciones del día" />
                 </th>
-                <th className="py-2.5 px-2 min-w-[95px] bg-slate-950">Aprobación</th>
-                <th className="py-2.5 px-3 bg-slate-950">Estado / Semáforo</th>
-                <th className="py-2.5 px-3 bg-slate-950">Operario / Taller</th>
-                <th className="py-2.5 px-2 bg-slate-950">Tipo</th>
-                <th className="py-2.5 px-3 bg-slate-950">Imputación (Barco & OT)</th>
-                <th className="py-2.5 px-3 bg-slate-950">Rubro(s)</th>
-                <th className="py-2.5 px-2 text-center bg-slate-950">Norm</th>
-                <th className="py-2.5 px-2 text-center text-cyan-400 bg-slate-950">50%</th>
-                <th className="py-2.5 px-2 text-center text-amber-400 bg-slate-950">100%</th>
-                <th className="py-2.5 px-3 text-center text-primary font-bold bg-slate-950">Total Día</th>
+                <th {...sheet.getHeaderProps('approval', 'py-2.5 px-2 min-w-[95px] bg-slate-950')}>Aprobación</th>
+                <th {...sheet.getHeaderProps('status', 'py-2.5 px-3 bg-slate-950')}>Estado / Semáforo</th>
+                <th {...sheet.getHeaderProps('worker', 'py-2.5 px-3 bg-slate-950')}>Operario / Taller</th>
+                <th {...sheet.getHeaderProps('type', 'py-2.5 px-2 bg-slate-950')}>Tipo</th>
+                <th {...sheet.getHeaderProps('ship_wo', 'py-2.5 px-3 bg-slate-950')}>Imputación (Barco & OT)</th>
+                <th {...sheet.getHeaderProps('rubro', 'py-2.5 px-3 bg-slate-950')}>Rubro(s)</th>
+                <th {...sheet.getHeaderProps('hours_normal', 'py-2.5 px-2 text-center bg-slate-950')}>Norm</th>
+                <th {...sheet.getHeaderProps('hours_extra_50', 'py-2.5 px-2 text-center text-cyan-400 bg-slate-950')}>50%</th>
+                <th {...sheet.getHeaderProps('hours_extra_100', 'py-2.5 px-2 text-center text-amber-400 bg-slate-950')}>100%</th>
+                <th {...sheet.getHeaderProps('totalDay', 'py-2.5 px-3 text-center text-primary font-bold bg-slate-950')}>Total Día</th>
                 <th className="py-2.5 px-3 text-right bg-slate-950">Acciones</th>
               </tr>
             </thead>
@@ -406,13 +394,10 @@ export default function LaborControlDiarioPanel({
                 </tr>
               ) : (
                 <>
-                {visibleDailyItems.map(item => {
-                  const isAstillero = item.type === 'Astillero'
-                  const isSinCarga = item.status === 'sin_carga'
-                  const isIncompleta = item.status === 'incompleta'
-                  const isCompleta = item.status === 'completa'
-                  const isExtras = item.status === 'extras'
+                {visibleDailyItems.map((item, rowIdx) => {
+                  const isAstillero = item.type === 'Astillero', isSinCarga = item.status === 'sin_carga', isIncompleta = item.status === 'incompleta', isCompleta = item.status === 'completa', isExtras = item.status === 'extras'
                   const isSelected = item.logs.length > 0 && item.logs.every(l => selectedLogIds.has(l.id))
+                  const cpApp = sheet.getCellProps(rowIdx, 'approval'), cpSt = sheet.getCellProps(rowIdx, 'status'), cpW = sheet.getCellProps(rowIdx, 'worker'), cpTyp = sheet.getCellProps(rowIdx, 'type'), cpWo = sheet.getCellProps(rowIdx, 'ship_wo'), cpRub = sheet.getCellProps(rowIdx, 'rubro'), cpN = sheet.getCellProps(rowIdx, 'hours_normal'), cp50 = sheet.getCellProps(rowIdx, 'hours_extra_50'), cp100 = sheet.getCellProps(rowIdx, 'hours_extra_100'), cpTot = sheet.getCellProps(rowIdx, 'totalDay')
 
                   return (
                     <tr 
@@ -431,13 +416,7 @@ export default function LaborControlDiarioPanel({
                           <div className="space-y-2 py-0.5">
                             {item.logs.map(log => (
                               <div key={log.id} className="h-6 flex items-center justify-center">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedLogIds.has(log.id)}
-                                  onChange={() => toggleSelectLog(log.id)}
-                                  className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary"
-                                  title={`Seleccionar ${log.work_orders?.ships?.name} - ${log.work_orders?.title}`}
-                                />
+                                <input type="checkbox" checked={selectedLogIds.has(log.id)} onChange={() => toggleSelectLog(log.id)} className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-primary cursor-pointer accent-primary" title={`Seleccionar ${log.work_orders?.ships?.name} - ${log.work_orders?.title}`} />
                               </div>
                             ))}
                           </div>
@@ -445,7 +424,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* Casilla de Aprobación */}
-                      <td className="py-2.5 px-2 align-top">
+                      <td {...cpApp.domProps} className={`py-2.5 px-2 align-top ${cpApp.className}`}>
                         {item.logs.length === 0 ? (
                           <span className="text-slate-700 text-xs">-</span>
                         ) : (
@@ -489,7 +468,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* Semáforo */}
-                      <td className="py-2.5 px-3 align-top">
+                      <td {...cpSt.domProps} className={`py-2.5 px-3 align-top ${cpSt.className}`}>
                         {isAstillero ? (
                           <span className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full font-bold border ${
                             isSinCarga
@@ -516,7 +495,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* Operario */}
-                      <td className="py-2.5 px-3 align-top">
+                      <td {...cpW.domProps} className={`py-2.5 px-3 align-top ${cpW.className}`}>
                         <span className="font-bold text-white block">
                           <HighlightText text={item.worker.name} query={dailySearch} />
                         </span>
@@ -526,7 +505,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* Tipo */}
-                      <td className="py-2.5 px-2 align-top">
+                      <td {...cpTyp.domProps} className={`py-2.5 px-2 align-top ${cpTyp.className}`}>
                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
                           item.type === 'Astillero'
                             ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60'
@@ -539,7 +518,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* Imputación OT */}
-                      <td className="py-2.5 px-3 align-top font-sans">
+                      <td {...cpWo.domProps} className={`py-2.5 px-3 align-top font-sans ${cpWo.className}`}>
                         {item.logs.length === 0 ? (
                           <span className="text-slate-500 italic text-[11px]">Sin imputación</span>
                         ) : (
@@ -592,7 +571,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* Rubro(s) */}
-                      <td className="py-2.5 px-3 align-top">
+                      <td {...cpRub.domProps} className={`py-2.5 px-3 align-top ${cpRub.className}`}>
                         {item.logs.length === 0 ? (
                           <span className="text-slate-600 text-[11px]">-</span>
                         ) : (
@@ -639,7 +618,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* Horas Normales */}
-                      <td className="py-2.5 px-2 text-center font-mono align-top">
+                      <td {...cpN.domProps} className={`py-2.5 px-2 text-center font-mono align-top ${cpN.className}`}>
                         {item.logs.length === 0 ? (
                           <span className="text-slate-600">-</span>
                         ) : (
@@ -681,7 +660,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* 50% */}
-                      <td className="py-2.5 px-2 text-center font-mono text-cyan-400 align-top">
+                      <td {...cp50.domProps} className={`py-2.5 px-2 text-center font-mono text-cyan-400 align-top ${cp50.className}`}>
                         {item.logs.length === 0 ? (
                           <span className="text-slate-600">-</span>
                         ) : (
@@ -720,7 +699,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* 100% */}
-                      <td className="py-2.5 px-2 text-center font-mono text-amber-400 align-top">
+                      <td {...cp100.domProps} className={`py-2.5 px-2 text-center font-mono text-amber-400 align-top ${cp100.className}`}>
                         {item.logs.length === 0 ? (
                           <span className="text-slate-600">-</span>
                         ) : (
@@ -759,7 +738,7 @@ export default function LaborControlDiarioPanel({
                       </td>
 
                       {/* Total Día */}
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-primary align-top">
+                      <td {...cpTot.domProps} className={`py-2.5 px-3 text-center font-mono font-bold text-primary align-top ${cpTot.className}`}>
                         {item.totalDay > 0 ? `${item.totalDay} hs` : <span className="text-slate-600">0 hs</span>}
                       </td>
 
@@ -849,21 +828,18 @@ export default function LaborControlDiarioPanel({
                     </tr>
                   )
                 })}
-                <CanonicalProgressiveTableFooter
-                  visibleCount={dailyVisibleCount}
-                  totalCount={filteredDailyList.length}
-                  hasMore={dailyHasMore}
-                  remainingCount={dailyRemainingCount}
-                  loadMore={dailyLoadMore}
-                  showAll={dailyShowAll}
-                  sentinelRef={dailySentinelRef}
-                  colSpan={12}
-                  entityLabel="operarios"
-                />
+                <CanonicalProgressiveTableFooter visibleCount={dailyVisibleCount} totalCount={filteredDailyList.length} hasMore={dailyHasMore} remainingCount={dailyRemainingCount} loadMore={dailyLoadMore} showAll={dailyShowAll} sentinelRef={dailySentinelRef} colSpan={12} entityLabel="operarios" />
                 </>
               )}
             </tbody>
           </table>
+        </div>
+        <GridStatusBarBottom
+          isFixed={false} filteredCount={filteredDailyList.length} totalCount={unifiedDailyList.length} entityName="operarios"
+          hasActiveFilter={Boolean(dailySearch || dailyFilterType !== 'todos')} onClearFilters={() => { setDailySearch(''); setDailyFilterType('todos') }}
+          selectionStats={sheet.selectionStats} onClearSelection={sheet.clearSelection}
+          globalAggregates={[{ label: 'Σ Hs Día', value: `${totalDayHours.toLocaleString('es-AR')} hs`, highlight: true }]}
+        />
         </div>
       </div>
     </div>

@@ -26,12 +26,12 @@ export function buildPedidosSpreadsheetColumns(viewMode, ships = [], workOrders 
     },
     { key: 'requested_by_name', label: 'Solicita', readOnly: false },
     { key: 'material_name_raw', label: 'Material', readOnly: false },
-    { key: 'quantity', label: 'Cant.', type: 'number', allowFormula: true, readOnly: false }
+    { key: 'quantity', label: 'Cant.', type: 'number', isNumeric: true, formatType: 'number', allowFormula: true, readOnly: false }
   ]
   if (viewMode === 'completa') {
     cols.push(
-      { key: 'supplier_quoted_price', label: '$/U Prov.', type: 'currency', allowFormula: true, readOnly: false },
-      { key: 'system_unit_price', label: '$/U Sist.', readOnly: true }
+      { key: 'supplier_quoted_price', label: '$/U Prov.', type: 'currency', isNumeric: true, formatType: 'ars', allowFormula: true, readOnly: false },
+      { key: 'system_unit_price', label: '$/U Sist.', isNumeric: true, formatType: 'ars', readOnly: true }
     )
   }
   cols.push(

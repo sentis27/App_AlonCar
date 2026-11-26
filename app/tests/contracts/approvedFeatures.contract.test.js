@@ -73,6 +73,17 @@ import {
   DEFAULT_PROGRESSIVE_BATCH,
   buildDateRangeOption,
 } from '../../src/lib/gridPerformanceHelpers.js'
+import {
+  buildThirdPartyCcLedger,
+  computePaymentNetUsd,
+} from '../../src/lib/thirdPartyCcEngine.js'
+import {
+  computeSheetStats,
+  buildColumnRange,
+  buildSelectionTsv,
+  parseSheetNumber,
+  sortRowsByColumn,
+} from '../../src/lib/sheetSelectionEngine.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '../..')
@@ -131,6 +142,8 @@ const COVERED_CONTRACT_IDS = new Set([
   'FL-023',
   'FL-024',
   'FL-025',
+  'FL-026',
+  'FL-027',
 ])
 
 describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', () => {
@@ -636,10 +649,10 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
   })
 
   it('FL-021: blinda el Menú Lateral Acordeón 3 Capas y Zona 1 limpia (sin pestañas ni selectores manuales de Terminal/Rol)', () => {
-    // Capa 1: Catálogo maestro con 11 módulos y 32 submódulos con permissionKey único
+    // Capa 1: Catálogo maestro con 11 módulos y 34 submódulos con permissionKey único
     expect(NAVIGATION_MODULES.length).toBe(11)
     const allChildren = NAVIGATION_MODULES.flatMap((m) => m.children || [])
-    expect(allChildren.length).toBe(32)
+    expect(allChildren.length).toBe(34)
     const permKeys = [
       ...NAVIGATION_MODULES.map((m) => m.permissionKey),
       ...allChildren.map((c) => c.permissionKey),
@@ -686,6 +699,7 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
       'app/src/pages/Compras.jsx',
       'app/src/pages/Personal.jsx',
       'app/src/pages/Ships.jsx',
+      'app/src/pages/Terceros.jsx',
       'app/src/pages/ResumenGerencial.jsx',
       'app/src/pages/AdminDashboard.jsx',
     ]
@@ -698,6 +712,7 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
       'app/src/components/workOrders/WorkOrdersHeader.jsx',
       'app/src/components/labor/LaborLogsHeader.jsx',
       'app/src/components/panol/PanolHeader.jsx',
+      'app/src/components/terceros/TercerosHeader.jsx',
       'app/src/pages/Compras.jsx',
       'app/src/pages/Personal.jsx',
       'app/src/pages/Ships.jsx',
@@ -755,17 +770,20 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(mariaCaps.rolePerspective).toBe('maria_jose')
     expect(mariaCaps.canEditTercerosAmounts).toBe(true)
     expect(mariaCaps.canMutateTercerosRows).toBe(true)
+    expect(mariaCaps.canManageTercerosCc).toBe(true)
 
     const jefeCaps = resolveUserCapabilities(null, { role_key: 'JEFE_OBRA_PABLO_N', security_level: 'SUPERVISOR', allowed_sections: ['terceros', 'compras.compras'] })
     expect(jefeCaps.rolePerspective).toBe('jefe_obra')
     expect(jefeCaps.canEditTercerosAmounts).toBe(false)
     expect(jefeCaps.canMutateTercerosRows).toBe(true)
+    expect(jefeCaps.canManageTercerosCc).toBe(false)
     expect(jefeCaps.canUseComprasCompleteMode).toBe(false)
 
     const gracielaCaps = resolveUserCapabilities(null, gracielaRole)
     expect(gracielaCaps.rolePerspective).toBe('direccion')
     expect(gracielaCaps.canEditTercerosAmounts).toBe(false)
     expect(gracielaCaps.canMutateTercerosRows).toBe(false)
+    expect(gracielaCaps.canManageTercerosCc).toBe(true)
 
     // 5. Cableado en AuthContext, App, Sidebar, AdminRolesMatrixPanel y Login
     const authSrc = readRepoFile('app/src/context/AuthContext.jsx')
@@ -885,24 +903,28 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     const horasSrc = readRepoFile('app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx')
     expect(horasSrc).toContain('OvertimeBreakdownCell')
     expect(horasSrc).toContain('Hs Extra')
-    expect(horasSrc).not.toContain('<th className="px-2.5 py-2">Centro</th>')
-    expect(horasSrc).not.toContain('<th className="px-2.5 py-2">Fuente</th>')
-    expect(horasSrc).not.toContain('<th className="px-2.5 py-2">Estado</th>')
+    expect(horasSrc).not.toContain('>Centro</th>')
+    expect(horasSrc).not.toContain('>Fuente</th>')
+    expect(horasSrc).not.toContain('>Estado</th>')
     expect(horasSrc).toContain("{ key: 'workerType', label: 'Centro' }")
     expect(horasSrc).toContain("{ key: 'approvalStatus', label: 'Estado' }")
 
     const matSrc = readRepoFile('app/src/components/resumenGerencial/ResumenHojaMaterialesPanel.jsx')
-    expect(matSrc).toContain('<th className="px-2.5 py-2">Origen</th>')
-    expect(matSrc).not.toContain('<th className="px-2.5 py-2">Rubro</th>')
-    expect(matSrc).not.toContain('<th className="px-2.5 py-2">Clasificación</th>')
-    expect(matSrc).not.toContain('<th className="px-2.5 py-2 text-right">Ref. EPP*</th>')
-    expect(matSrc.indexOf('<th className="px-2.5 py-2">O.T</th>')).toBeLessThan(matSrc.indexOf('<th className="px-2.5 py-2">Solicitante</th>'))
-    expect(matSrc.indexOf('<th className="px-2.5 py-2">Solicitante</th>')).toBeLessThan(matSrc.indexOf('<th className="px-2.5 py-2">Material / Insumo</th>'))
+    expect(matSrc).toContain('>Origen</th>')
+    expect(matSrc).not.toContain('>Rubro</th>')
+    expect(matSrc).not.toContain('>Clasificación</th>')
+    expect(matSrc).not.toContain('>Ref. EPP*</th>')
+    const otIdx = matSrc.indexOf('>O.T</th>')
+    const solIdx = matSrc.indexOf('>Solicitante</th>')
+    const matIdx = matSrc.indexOf('>Material / Insumo</th>')
+    expect(otIdx).toBeGreaterThan(0)
+    expect(otIdx).toBeLessThan(solIdx)
+    expect(solIdx).toBeLessThan(matIdx)
     expect(matSrc).toContain("{ key: 'referenceUsd', label: 'Ref EPP US$' }")
 
     const tercSrc = readRepoFile('app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx')
-    expect(tercSrc).not.toContain('<th className="px-2.5 py-2">Comprobante</th>')
-    expect(tercSrc).not.toContain('<th className="px-2.5 py-2">N° Comp.</th>')
+    expect(tercSrc).not.toContain('>Comprobante</th>')
+    expect(tercSrc).not.toContain('>N° Comp.</th>')
     expect(tercSrc).toContain("{ key: 'voucherType', label: 'Comprobante' }")
     expect(tercSrc).toContain("{ key: 'voucherNumber', label: 'Nro Comp.' }")
 
@@ -1040,5 +1062,90 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(guardSrc).toContain('REQUIRED_PROGRESSIVE_GRID_SURFACES')
     expect(guardSrc).toContain('REQUIRED_HISTORY_RANGE_SURFACES')
     expect(guardSrc).toContain('REQUIRED_BATCHED_REPOSITORIES')
+  })
+
+  it('FL-026: blinda Cuentas Corrientes de Talleres en 3 Capas (PER_KG solo MATERIALES, BY_VOUCHER, IVA neto y auditoría)', () => {
+    expect(STATUS_BY_ID.get('FL-026')).toBe('blindado')
+
+    // Capa 1: Repositorio sin techo 1000
+    const repoSrc = readRepoFile('app/src/repositories/thirdPartyCcRepository.js')
+    expect(repoSrc).toContain('findAllBatched')
+    expect(repoSrc).toContain('upsertBySourceKey')
+
+    // Capa 2: Motor puro filtra MATERIALES en PER_KG, descuenta IVA 21% y soporta BY_VOUCHER
+    expect(computePaymentNetUsd({ paymentType: 'ECHEQ_ARS', amountArs: 1815000, exchangeRate: 1500, hasIva: true, ivaPct: 21 }).netUsd).toBe(1000)
+
+    const perKgLedger = buildThirdPartyCcLedger({
+      account: { id: 'a1', worker_id: 'w1', operational_name: 'INA PANTOGRAFO', legal_name: 'PAMPA NAVAL', pricing_mode: 'PER_KG', current_rate_usd: 1.25, opening_balance_usd: 0, cancellation_mode: 'FIFO' },
+      materials: [
+        { id: 'm1', name: 'CHAPA', category: 'MATERIALES', weight_kg: 52 },
+        { id: 'm2', name: 'DISCO', category: 'CONSUMIBLES', weight_kg: 0.3 },
+      ],
+      panolRemitoTx: [
+        { id: 'x1', material_id: 'm1', worker_id: 'w1', voucher_number: '100', quantity_withdrawn: 2, weight_total: 104, transaction_date: '2026-11-10T15:00:00Z' },
+        { id: 'x2', material_id: 'm2', worker_id: 'w1', voucher_number: '101', quantity_withdrawn: 10, weight_total: 3, transaction_date: '2026-11-10T15:00:00Z' },
+      ],
+      payments: [{ id: 'p1', payment_date: '2026-11-12', payment_type: 'EFECTIVO_USD', amount_usd: 130 }],
+    })
+    expect(perKgLedger.debeRows).toHaveLength(1)
+    expect(perKgLedger.totals).toMatchObject({ totalKilos: 104, totalDebeUsd: 130, totalHaberUsd: 130, balanceUsd: 0 })
+    expect(perKgLedger.debeRows[0].isCancelled).toBe(true)
+
+    const byVoucherLedger = buildThirdPartyCcLedger({
+      account: { id: 'a2', worker_id: 'w2', operational_name: 'TECO TALLER', pricing_mode: 'BY_VOUCHER', cancellation_mode: 'FIFO' },
+      thirdPartyServices: [{ id: 's1', contractor_id: 'w2', service_date: '2026-11-01', internal_remito_number: '55', amount_usd: 400 }],
+    })
+    expect(byVoucherLedger.debeRows).toHaveLength(1)
+    expect(byVoucherLedger.totals.balanceUsd).toBe(-400)
+
+    // Capa 3 & Servicio: Canónicos + auditoría obligatoria
+    expect(readRepoFile('app/src/components/terceros/cc/TercerosCuentasCorrientesPanel.jsx')).toContain('CanonicalZone3Toolbar')
+    expect(readRepoFile('app/src/components/terceros/cc/TercerosCcDebeTable.jsx')).toContain('CanonicalOtBadge')
+    expect(readRepoFile('app/src/components/terceros/cc/TercerosCcPaymentModal.jsx')).toContain('CanonicalStepperStep')
+    expect(readRepoFile('app/src/services/thirdPartyCcService.js')).toContain('logRowAction')
+    expect(readRepoFile('app/src/services/thirdPartyCcLedgerMutations.js')).toContain('logCellChange')
+  })
+
+  it('FL-027: blinda Motor General Excel/Sheets en 4 capas (selección, columna, Ctrl+Clic, fórmula click-safe y candado mecánico)', () => {
+    expect(STATUS_BY_ID.get('FL-027')).toBe('blindado')
+
+    // Capa 1: Parseo argentino + columna completa + Ctrl+Clic salteado + TSV 2D + orden fecha AR
+    expect(parseSheetNumber('US$ 1.146,97')).toBe(1146.97)
+    expect(parseSheetNumber('-US$ 101.531,77')).toBe(-101531.77)
+    expect(parseSheetNumber('15/01/2025')).toBeNull()
+
+    const cols = [
+      { key: 'fecha', label: 'Fecha', type: 'date' },
+      { key: 'usd', label: 'Monto US$', isNumeric: true, formatType: 'usd' },
+    ]
+    const sampleRows = [
+      { id: '1', fecha: '15/01/2025', usd: 'US$ 1.146,97' },
+      { id: '2', fecha: '20/12/2024', usd: 'US$ 53,03' },
+      { id: '3', fecha: '02/05/2025', usd: 'US$ 300,00' },
+    ]
+    expect(computeSheetStats(buildColumnRange(1, sampleRows.length), sampleRows, cols)).toMatchObject({
+      sum: 1500, avg: 500, min: 53.03, max: 1146.97, count: 3, numericCount: 3, unique: 3, scope: 'column', formatType: 'usd',
+    })
+    expect(computeSheetStats([
+      { startRow: 0, endRow: 0, startCol: 1, endCol: 1 },
+      { startRow: 2, endRow: 2, startCol: 1, endCol: 1 },
+    ], sampleRows, cols)).toMatchObject({ sum: 1446.97, count: 2, scope: 'multi' })
+    expect(buildSelectionTsv([{ startRow: 0, endRow: 1, startCol: 0, endCol: 1 }], sampleRows, cols)).toBe('15/01/2025\tUS$ 1.146,97\n20/12/2024\tUS$ 53,03')
+    expect(sortRowsByColumn(sampleRows, cols[0], 'asc').map((r) => r.id)).toEqual(['2', '1', '3'])
+
+    // Capa 2 & 3: Formula click-safe + Barra Sheets 7 métricas / 1 por tabla
+    const formulaSrc = readRepoFile('app/src/components/canonical/FormulaNumericInput.jsx')
+    expect(formulaSrc).toContain('onMouseDown={(e) => e.stopPropagation()}')
+    expect(formulaSrc).toContain('onDoubleClick={(e) => e.stopPropagation()}')
+
+    const barSrc = readRepoFile('app/src/components/GridStatusBarBottom.jsx')
+    expect(barSrc).toContain('Contar números')
+    expect(barSrc).toContain('Únicos')
+    expect(barSrc).toContain('isFixed')
+
+    // Capa 4: Candado mecánico <table en antiRegressionChecks.mjs
+    const guardSrc = readRepoFile('app/scripts/lib/antiRegressionChecks.mjs')
+    expect(guardSrc).toContain('NON_SPREADSHEET_TABLE_ALLOWLIST')
+    expect(guardSrc).toContain('FL-027')
   })
 })

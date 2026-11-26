@@ -3,9 +3,7 @@ import { REDACTED, isSecretKey, redactSecrets } from './security/piiMask.js'
 import { auditLogsRepository } from '../repositories/auditLogsRepository.js'
 import { getTodayArIso, toArIsoDate } from './dateTimeCanonical.js'
 
-/**
- * Diccionario Canónico de Módulos y Submódulos Auditables (Padrón 2.A)
- */
+/** Diccionario Canónico de Módulos y Submódulos Auditables (Padrón 2.A) */
 export const AUDIT_ENTITY_CATALOG = {
   work_orders: { label: 'Órdenes de Trabajo (OTs)', route: '/ots', module: 'Órdenes de Trabajo' },
   ot_templates: { label: 'Catálogo de Trabajos (OT.ABC)', route: '/ots', module: 'Órdenes de Trabajo' },
@@ -27,8 +25,9 @@ export const AUDIT_ENTITY_CATALOG = {
   ships: { label: 'Barcos · Padrón de Buques', route: '/barcos', module: 'Barcos y Armadores' },
   ship_stays: { label: 'Barcos · Estadías y Movimientos', route: '/barcos', module: 'Barcos y Armadores' },
   owners: { label: 'Barcos · Padrón de Armadores', route: '/barcos', module: 'Barcos y Armadores' },
-  third_party_services: { label: 'Terceros · Servicios y Facturación', route: '/terceros', module: 'Servicios de Terceros' },
-  workshops: { label: 'Terceros · Talleres y Contratistas', route: '/terceros', module: 'Servicios de Terceros' },
+  third_party_services: { label: 'Terceros · Servicios y Facturación', route: '/terceros?tab=servicios', module: 'Servicios de Terceros' },
+  third_party_cc: { label: 'Terceros · Cuentas Corrientes', route: '/terceros?tab=cuentas-corrientes', module: 'Servicios de Terceros' },
+  workshops: { label: 'Terceros · Talleres y Contratistas', route: '/terceros?tab=servicios', module: 'Servicios de Terceros' },
   system_settings: { label: 'Admin · Catálogo de Rubros y Configuración', route: '/admin', module: 'Administración' },
   user_roles: { label: 'Admin · Matriz de Puestos y Permisos', route: '/admin', module: 'Administración' },
   macro_variables: { label: 'Admin · Variables Macroeconómicas', route: '/admin', module: 'Administración' },

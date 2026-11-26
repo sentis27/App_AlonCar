@@ -254,7 +254,7 @@ export function getSpreadsheetColumnsTerceros(canEditAmounts, shipMap, otMap) {
       }
     },
     { key: 'contractor_name', label: 'Contratista', readOnly: false },
-    { key: 'amount_ars', label: 'Importe AR$', type: 'currency', allowFormula: true, readOnly: !canEditAmounts },
+    { key: 'amount_ars', label: 'Importe AR$', type: 'currency', isNumeric: true, formatType: 'ars', allowFormula: true, readOnly: !canEditAmounts }, { key: 'amount_usd', label: 'Dólar / US$', type: 'currency', isNumeric: true, formatType: 'usd', readOnly: true },
     { key: 'voucher_type', label: 'Comprobante', readOnly: false },
     { key: 'voucher_number', label: 'Nº Comprobante', readOnly: false },
     { key: 'direct_observations', label: 'Comentarios', readOnly: false }

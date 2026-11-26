@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { resolveUserRolePerspective } from '../lib/navigationCatalog.js'
+import { useModuleTab } from '../hooks/useModuleTab'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../hooks/useModuleFilterMemory'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import { useSpreadsheetGrid } from '../hooks/useSpreadsheetGrid'
@@ -13,6 +14,7 @@ import TercerosToolbar from '../components/terceros/TercerosToolbar'
 import TercerosFilasPanel from '../components/terceros/TercerosFilasPanel'
 import TercerosFichasPanel from '../components/terceros/TercerosFichasPanel'
 import { TercerosModalsContainer } from '../components/terceros/TercerosModals'
+import TercerosCuentasCorrientesPanel from '../components/terceros/cc/TercerosCuentasCorrientesPanel'
 import { fetchTercerosData, insertBlankRowService, deleteServiceService, saveInlineEditService, saveSpreadsheetBatchService } from '../lib/tercerosService.js'
 import { getEditableCellInitialValue } from '../lib/formulaEngine.js'
 import { calculateTercerosKpis, calculateTercerosStats, filterTercerosServices, getSpreadsheetColumnsTerceros, buildTercerosMaps, TERCEROS_CLONE_FIELDS, TERCEROS_PASTE_BASE_FIELDS } from '../lib/tercerosConstants.js'
@@ -23,9 +25,12 @@ import { AlertTriangle, CheckCircle2, Clock, Wrench } from 'lucide-react'
 
 export default function Terceros() {
   const { user, profile, orgRole, capabilities } = useAuth()
+  const { activeTab, activeSubmodule } = useModuleTab('terceros')
+  const isCcTab = activeTab === 'cuentas-corrientes'
   const activeRolePerspective = capabilities?.rolePerspective || resolveUserRolePerspective(profile)
   const canEditAmounts = capabilities ? capabilities.canEditTercerosAmounts : (activeRolePerspective === 'admin' || activeRolePerspective === 'maria_jose')
   const canMutateRows = capabilities ? capabilities.canMutateTercerosRows : activeRolePerspective !== 'direccion'
+  const canManageCc = capabilities ? Boolean(capabilities.canManageTercerosCc) : (activeRolePerspective === 'admin' || activeRolePerspective === 'maria_jose')
   const actor = orgRole?.holder_name || profile?.full_name || user?.email || (activeRolePerspective === 'jefe_obra' ? 'JEFE DE OBRA' : 'ADMINISTRACIÓN')
 
   // Datos principales
@@ -69,10 +74,8 @@ export default function Terceros() {
 
   // Triggers de modales
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingService, setEditingService] = useState(null)
-  const [evolvingService, setEvolvingService] = useState(null)
-  const [auditingService, setAuditingService] = useState(null)
-  const [historyService, setHistoryService] = useState(null)
+  const [editingService, setEditingService] = useState(null); const [evolvingService, setEvolvingService] = useState(null)
+  const [auditingService, setAuditingService] = useState(null); const [historyService, setHistoryService] = useState(null)
   const [pickerModal, setPickerModal] = useState({ isOpen: false, serviceId: null, shipId: '', workOrderId: '', contractorName: '' })
   const [contractorPickerModal, setContractorPickerModal] = useState({ isOpen: false, serviceId: null, currentValue: '', shipId: '', shipName: '', workOrderId: '', workOrderTitle: '', isOtBlank: true })
 
@@ -95,10 +98,10 @@ export default function Terceros() {
     channelName: 'terceros_live',
     tables: ['third_party_services', 'third_party_voucher_history', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables', 'inventory_transactions', 'materials'],
     onSync: () => loadData({ silent: true }),
-    pauseWhen: Boolean(inlineEdit.id || isModalOpen || evolvingService || auditingService || pickerModal.isOpen || contractorPickerModal.isOpen)
+    pauseWhen: Boolean(isCcTab || inlineEdit.id || isModalOpen || evolvingService || auditingService || pickerModal.isOpen || contractorPickerModal.isOpen)
   })
 
-  useEffect(() => { loadData({ silent: false }) }, [loadData])
+  useEffect(() => { if (!isCcTab) loadData({ silent: false }) }, [loadData, isCcTab])
 
   // Mapas y derivados
   const { shipMap, otMap, contractorMap } = useMemo(() => buildTercerosMaps(ships, workOrders, contractors), [ships, workOrders, contractors])
@@ -204,20 +207,19 @@ export default function Terceros() {
     })
   }
 
+  if (isCcTab) return <TercerosCuentasCorrientesPanel activeSubmodule={activeSubmodule} canManageCc={canManageCc} actor={actor} />
+
   return (
     <div className="space-y-4 w-full pb-10">
       {feedbackMessage && (
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-4 transition-all ${feedbackMessage.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200' : 'bg-rose-950/90 border-rose-500/60 text-rose-200'}`}>
-          <div className="flex items-center gap-3">
-            {feedbackMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> : <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />}
-            <span className="text-sm font-medium">{feedbackMessage.text}</span>
-          </div>
+          <div className="flex items-center gap-3">{feedbackMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> : <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />}<span className="text-sm font-medium">{feedbackMessage.text}</span></div>
           <button type="button" onClick={() => setFeedbackMessage(null)} className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white">✕</button>
         </div>
       )}
 
       {/* ZONA 1: CONTEXTO Y ACCIÓN PRINCIPAL */}
-      <TercerosHeader canEditAmounts={canEditAmounts} canMutateRows={canMutateRows} onOpenNewModal={handleOpenNewModal} />
+      <TercerosHeader canEditAmounts={canEditAmounts} canMutateRows={canMutateRows} activeSubmodule={activeSubmodule} onOpenNewModal={handleOpenNewModal} />
 
       {/* ZONA 2: RADAR DE KPIS */}
       <TercerosKpiRadar kpiFilter={kpiFilter} setKpiFilter={setKpiFilter} kpiCounts={kpiCounts} />
@@ -245,9 +247,7 @@ export default function Terceros() {
           <div className="p-12 text-center text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800 space-y-3">
             <Wrench className="w-10 h-10 mx-auto text-slate-600 mb-2" />
             <p className="text-base font-semibold text-slate-300">No se encontraron comprobantes con los filtros seleccionados.</p>
-            {activeRolePerspective !== 'direccion' && (
-              <button type="button" onClick={handleOpenNewModal} className="px-4 py-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold hover:bg-cyan-500 hover:text-slate-950 transition-all cursor-pointer">+ Cargar Primer Gasto</button>
-            )}
+            {activeRolePerspective !== 'direccion' && (<button type="button" onClick={handleOpenNewModal} className="px-4 py-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold hover:bg-cyan-500 hover:text-slate-950 transition-all cursor-pointer">+ Cargar Primer Gasto</button>)}
           </div>
         ) : viewMode === 'filas' ? (
           <TercerosFilasPanel

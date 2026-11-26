@@ -112,7 +112,7 @@ export const GAS_TRACEABILITY_COLUMNS = [
   { key: 'actor_display', label: 'Empresa / Contratista', readOnly: true },
   { key: 'condition_display', label: 'Estado Tubo', readOnly: false },
   { key: 'patio_impact', label: 'Impacto Patio / Deuda', readOnly: true },
-  { key: 'quantity', label: 'Cant.', isNumeric: true, readOnly: false },
+  { key: 'quantity', label: 'Cant.', isNumeric: true, formatType: 'number', readOnly: false },
   { key: 'notes', label: 'Observaciones / Responsable', readOnly: false }
 ]
 
@@ -269,13 +269,13 @@ export const getMaterialsColumns = (isAdmin) => [
   { key: 'rubro', label: 'Rubro Técnico', readOnly: !isAdmin },
   { key: 'category', label: 'Categoría', readOnly: !isAdmin },
   { key: 'unit_measure', label: 'Unidad', readOnly: !isAdmin },
-  { key: 'weight_kg', label: 'Peso Unit. (kg)', isNumeric: true, readOnly: !isAdmin },
-  { key: 'current_stock', label: 'Stock Actual', isNumeric: true, readOnly: true },
-  { key: 'minimum_stock', label: 'Stock Mínimo', isNumeric: true, readOnly: !isAdmin },
+  { key: 'weight_kg', label: 'Peso Unit. (kg)', isNumeric: true, formatType: 'kg', readOnly: !isAdmin },
+  { key: 'current_stock', label: 'Stock Actual', isNumeric: true, formatType: 'number', readOnly: true },
+  { key: 'minimum_stock', label: 'Stock Mínimo', isNumeric: true, formatType: 'number', readOnly: !isAdmin },
   { key: 'requires_stock_control', label: 'Lleva Stock Físico', readOnly: !isAdmin },
-  ...(isAdmin ? [{ key: 'cost_ars', label: 'Precio AR$', isNumeric: true, readOnly: false }] : []),
-  { key: 'security_factor', label: '% Seg. Naval', readOnly: !isAdmin },
-  ...(isAdmin ? [{ key: 'cost_usd', label: 'Costo US$', isNumeric: true, readOnly: false }] : [])
+  ...(isAdmin ? [{ key: 'cost_ars', label: 'Precio AR$', isNumeric: true, formatType: 'ars', readOnly: false }] : []),
+  { key: 'security_factor', label: '% Seg. Naval', isNumeric: true, formatType: 'pct', readOnly: !isAdmin },
+  ...(isAdmin ? [{ key: 'cost_usd', label: 'Costo US$', isNumeric: true, formatType: 'usd', readOnly: false }] : [])
 ]
 
 export const getMaterialsPasteFields = (isAdmin) => (isAdmin ? MATERIALS_PASTE_FIELDS : [])

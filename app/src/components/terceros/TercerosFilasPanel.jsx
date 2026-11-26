@@ -122,21 +122,21 @@ export default function TercerosFilasPanel({
                 </div>
               </th>
               {/* 1. Fecha */}
-              <th className="py-2.5 px-2 w-[8%]">Fecha ✎</th>
+              <th {...grid.getColumnHeaderProps('service_date', 'py-2.5 px-2 w-[8%]')}>Fecha ✎</th>
               {/* 2. Barco / OT */}
-              <th className="py-2.5 px-2 w-[14%]">Barco / OT ✎</th>
+              <th {...grid.getColumnHeaderProps('ship_wo', 'py-2.5 px-2 w-[14%]')}>Barco / OT ✎</th>
               {/* 3. Contratista / Rubro */}
-              <th className="py-2.5 px-2 w-[15%]">Contratista / Rubro ✎</th>
+              <th {...grid.getColumnHeaderProps('contractor_name', 'py-2.5 px-2 w-[15%]')}>Contratista / Rubro ✎</th>
               {/* 4. Importe AR$ */}
-              <th className="py-2.5 px-2 w-[11%] text-right">Importe AR$ ✎</th>
+              <th {...grid.getColumnHeaderProps('amount_ars', 'py-2.5 px-2 w-[11%] text-right')}>Importe AR$ ✎</th>
               {/* 5. Dólar / US$ */}
-              <th className="py-2.5 px-2 w-[10%] text-right">Dólar / US$ ✎</th>
+              <th {...grid.getColumnHeaderProps('amount_usd', 'py-2.5 px-2 w-[10%] text-right')}>Dólar / US$ ✎</th>
               {/* 6. Comprobante */}
-              <th className="py-2.5 px-2 w-[7%] text-center">Comprobante ✎</th>
+              <th {...grid.getColumnHeaderProps('voucher_type', 'py-2.5 px-2 w-[7%] text-center')}>Comprobante ✎</th>
               {/* 7. Nº Comprobante */}
-              <th className="py-2.5 px-2 w-[12%]">Nº Comprobante ✎</th>
+              <th {...grid.getColumnHeaderProps('voucher_number', 'py-2.5 px-2 w-[12%]')}>Nº Comprobante ✎</th>
               {/* 8. Comentarios */}
-              <th className="py-2.5 px-2 w-[13%]">Comentarios ✎</th>
+              <th {...grid.getColumnHeaderProps('direct_observations', 'py-2.5 px-2 w-[13%]')}>Comentarios ✎</th>
               {/* 9. Acciones */}
               <th className="py-2.5 px-2 w-[10%] text-right">Acciones</th>
             </tr>
@@ -437,14 +437,12 @@ export default function TercerosFilasPanel({
                   })()}
 
                   {/* 5. Dólar / US$ */}
-                  <td className="py-2.5 px-2 text-right whitespace-nowrap">
-                    <div className="font-mono font-extrabold text-cyan-300">
-                      $<HighlightText text={formatArsCached(srv.amount_usd || 0)} query={searchTerm} />
-                    </div>
-                    <div className="text-[10px] text-slate-500 font-mono">
-                      Cotiz: $<HighlightText text={formatArsCached(srv.usd_rate || 0)} query={searchTerm} />
-                    </div>
+                  {(() => { const cp = getSpreadsheetCellProps(index, 'amount_usd'); return (
+                  <td {...cp.domProps} className={`py-2.5 px-2 text-right whitespace-nowrap ${cp.className}`}>
+                    <div className="font-mono font-extrabold text-cyan-300">$<HighlightText text={formatArsCached(srv.amount_usd || 0)} query={searchTerm} /></div>
+                    <div className="text-[10px] text-slate-500 font-mono">Cotiz: $<HighlightText text={formatArsCached(srv.usd_rate || 0)} query={searchTerm} /></div>
                   </td>
+                  )})()}
 
                   {/* 6. Comprobante (Tipo) */}
                   {(() => {

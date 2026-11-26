@@ -337,10 +337,10 @@ export default function ShipsArmadoresPanel({
                       <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
                     </div>
                   </th>
-                  <th className="py-3 px-4">Empresa / Razón Social ✎</th>
-                  <th className="py-3 px-4">Nombre del Armador ✎</th>
-                  <th className="py-3 px-4">Teléfono Directo ✎</th>
-                  <th className="py-3 px-4">Correos (Principal ✎ / Facturación)</th>
+                  <th {...ownersGrid.getColumnHeaderProps('name', 'py-3 px-4')}>Empresa / Razón Social ✎</th>
+                  <th {...ownersGrid.getColumnHeaderProps('armador_name', 'py-3 px-4')}>Nombre del Armador ✎</th>
+                  <th {...ownersGrid.getColumnHeaderProps('armador_phone', 'py-3 px-4')}>Teléfono Directo ✎</th>
+                  <th {...ownersGrid.getColumnHeaderProps('email_principal', 'py-3 px-4')}>Correos (Principal ✎ / Facturación)</th>
                   <th className="py-3 px-4">Flota Vinculada</th>
                   <th className="py-3 px-4 text-right">Acciones</th>
                 </tr>

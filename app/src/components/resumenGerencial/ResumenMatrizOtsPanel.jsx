@@ -1,7 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { ArrowLeft, Download, Eye, ShieldAlert, Megaphone, ReceiptText, CheckCircle2 } from 'lucide-react'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
+import { RESUMEN_MATRIZ_OTS_SHEET_COLUMNS } from '../../lib/sheetColumnsAdmin'
+import GridStatusBarBottom from '../GridStatusBarBottom'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 const OT_STATUS_PILLS = {
@@ -35,6 +38,13 @@ export default function ResumenMatrizOtsPanel({
 }) {
   const { ship, totals, otRows = [] } = summary || {}
   const [busyOtId, setBusyOtId] = useState(null)
+  const sheet = useSheetSelection({ rows: otRows, columns: RESUMEN_MATRIZ_OTS_SHEET_COLUMNS, getRowId: (r) => r.id })
+  const matrixAggregates = useMemo(() => (totals ? [
+    { label: 'Σ TERCEROS', value: formatUsd(totals.tercerosUsd || 0) },
+    { label: 'Σ MAT+CONS', value: formatUsd(totals.matPlusConsUsd || 0) },
+    { label: 'Σ M.O', value: formatUsd(totals.manoObraTotalUsd || 0) },
+    { label: 'Σ TOTAL OTs', value: formatUsd(totals.directTotalUsd || 0), highlight: true }
+  ] : []), [totals])
 
   if (!ship || !totals) return null
 
@@ -103,7 +113,7 @@ export default function ResumenMatrizOtsPanel({
         </button>
       </div>
 
-      <div className="overflow-x-auto max-h-[calc(100vh-250px)] overflow-y-auto">
+      <div ref={sheet.containerRef} tabIndex={0} onKeyDown={sheet.handleKeyDown} className="overflow-x-auto max-h-[calc(100vh-250px)] overflow-y-auto focus:outline-none">
         <table className="w-full text-xs text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-slate-950 border-b border-slate-700">
             <tr className="bg-cyan-950/45 border-b border-cyan-500/30 text-[11px] font-extrabold text-cyan-200 tabular-nums">
@@ -124,39 +134,34 @@ export default function ResumenMatrizOtsPanel({
             </tr>
 
             <tr className="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-900">
-              <th className="px-3 py-2">Orden de Trabajo & Estado</th>
-              <th className="px-3 py-2 text-right">Terceros</th>
-              <th className="px-3 py-2 text-right">Materiales</th>
-              <th className="px-3 py-2 text-right">Consumibles</th>
-              <th className="px-3 py-2 text-right">Hora</th>
-              <th className="px-3 py-2 text-right border-l border-slate-800 text-cyan-300">Mat+Cons</th>
-              <th className="px-3 py-2 text-right text-emerald-300">M.O</th>
-              <th className="px-3 py-2 text-right text-amber-300">Total por O.T</th>
-              <th className="px-3 py-2 text-right text-sky-300">KG por O.T</th>
-              <th className="px-3 py-2 text-right text-amber-400">
+              <th {...sheet.getHeaderProps('ot', 'px-3 py-2')}>Orden de Trabajo & Estado</th>
+              <th {...sheet.getHeaderProps('tercerosUsd', 'px-3 py-2 text-right')}>Terceros</th>
+              <th {...sheet.getHeaderProps('materialesUsd', 'px-3 py-2 text-right')}>Materiales</th>
+              <th {...sheet.getHeaderProps('consumiblesObraUsd', 'px-3 py-2 text-right')}>Consumibles</th>
+              <th {...sheet.getHeaderProps('horasTotalUsd', 'px-3 py-2 text-right')}>Hora</th>
+              <th {...sheet.getHeaderProps('matPlusConsUsd', 'px-3 py-2 text-right border-l border-slate-800 text-cyan-300')}>Mat+Cons</th>
+              <th {...sheet.getHeaderProps('manoObraTotalUsd', 'px-3 py-2 text-right text-emerald-300')}>M.O</th>
+              <th {...sheet.getHeaderProps('directTotalUsd', 'px-3 py-2 text-right text-amber-300')}>Total por O.T</th>
+              <th {...sheet.getHeaderProps('weightKg', 'px-3 py-2 text-right text-sky-300')}>KG por O.T</th>
+              <th {...sheet.getHeaderProps('seguridadReferenciaUsd', 'px-3 py-2 text-right text-amber-400')}>
                 <span className="inline-flex items-center gap-1">
                   <ShieldAlert className="w-3 h-3" />
                   EPP Ref*
                 </span>
               </th>
-              <th className="px-3 py-2">Descripción de trabajo</th>
+              <th {...sheet.getHeaderProps('description', 'px-3 py-2')}>Descripción de trabajo</th>
               <th className="px-3 py-2 text-right">Facturación / Acuse</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-slate-800/70">
-            {otRows.map((row) => {
+            {otRows.map((row, rowIdx) => {
               const isSelected = row.id === activeOtId
               const isOrphan = row.id === 'SIN_OT'
+              const cpOt = sheet.getCellProps(rowIdx, 'ot'), cpTer = sheet.getCellProps(rowIdx, 'tercerosUsd'), cpMat = sheet.getCellProps(rowIdx, 'materialesUsd'), cpCon = sheet.getCellProps(rowIdx, 'consumiblesObraUsd'), cpHs = sheet.getCellProps(rowIdx, 'horasTotalUsd'), cpMc = sheet.getCellProps(rowIdx, 'matPlusConsUsd'), cpMo = sheet.getCellProps(rowIdx, 'manoObraTotalUsd'), cpTot = sheet.getCellProps(rowIdx, 'directTotalUsd'), cpKg = sheet.getCellProps(rowIdx, 'weightKg'), cpEpp = sheet.getCellProps(rowIdx, 'seguridadReferenciaUsd'), cpDesc = sheet.getCellProps(rowIdx, 'description')
               return (
-                <tr
-                  key={row.id}
-                  onClick={() => onSelectOtAndInspect(row.id)}
-                  className={`cursor-pointer transition-colors ${
-                    isSelected ? 'bg-cyan-950/35 text-white' : 'hover:bg-slate-800/60 text-slate-200'
-                  }`}
-                >
-                  <td className="px-3 py-2 font-semibold whitespace-nowrap">
+                <tr key={row.id} onClick={() => { if (!sheet.selectionStats) onSelectOtAndInspect(row.id) }} className={`cursor-pointer transition-colors ${isSelected ? 'bg-cyan-950/35 text-white' : 'hover:bg-slate-800/60 text-slate-200'}`}>
+                  <td {...cpOt.domProps} className={`px-3 py-2 font-semibold whitespace-nowrap ${cpOt.className}`}>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Eye className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                       <CanonicalOtBadge
@@ -187,28 +192,16 @@ export default function ResumenMatrizOtsPanel({
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatUsd(row.tercerosUsd)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatUsd(row.materialesUsd)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatUsd(row.consumiblesObraUsd)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatUsd(row.horasTotalUsd)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums border-l border-slate-800 font-semibold text-cyan-200">
-                    {formatUsd(row.matPlusConsUsd)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-200">
-                    {formatUsd(row.manoObraTotalUsd)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums font-extrabold text-amber-300 bg-amber-500/5">
-                    {formatUsd(row.directTotalUsd)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-sky-200">
-                    {formatKg(row.weightKg, 2)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-amber-400/80 italic">
-                    {row.seguridadReferenciaUsd > 0 ? formatUsd(row.seguridadReferenciaUsd) : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-slate-400 max-w-[240px] truncate" title={row.description}>
-                    {row.description}
-                  </td>
+                  <td {...cpTer.domProps} className={`px-3 py-2 text-right tabular-nums ${cpTer.className}`}>{formatUsd(row.tercerosUsd)}</td>
+                  <td {...cpMat.domProps} className={`px-3 py-2 text-right tabular-nums ${cpMat.className}`}>{formatUsd(row.materialesUsd)}</td>
+                  <td {...cpCon.domProps} className={`px-3 py-2 text-right tabular-nums ${cpCon.className}`}>{formatUsd(row.consumiblesObraUsd)}</td>
+                  <td {...cpHs.domProps} className={`px-3 py-2 text-right tabular-nums ${cpHs.className}`}>{formatUsd(row.horasTotalUsd)}</td>
+                  <td {...cpMc.domProps} className={`px-3 py-2 text-right tabular-nums border-l border-slate-800 font-semibold text-cyan-200 ${cpMc.className}`}>{formatUsd(row.matPlusConsUsd)}</td>
+                  <td {...cpMo.domProps} className={`px-3 py-2 text-right tabular-nums font-semibold text-emerald-200 ${cpMo.className}`}>{formatUsd(row.manoObraTotalUsd)}</td>
+                  <td {...cpTot.domProps} className={`px-3 py-2 text-right tabular-nums font-extrabold text-amber-300 bg-amber-500/5 ${cpTot.className}`}>{formatUsd(row.directTotalUsd)}</td>
+                  <td {...cpKg.domProps} className={`px-3 py-2 text-right tabular-nums text-sky-200 ${cpKg.className}`}>{formatKg(row.weightKg, 2)}</td>
+                  <td {...cpEpp.domProps} className={`px-3 py-2 text-right tabular-nums text-amber-400/80 italic ${cpEpp.className}`}>{row.seguridadReferenciaUsd > 0 ? formatUsd(row.seguridadReferenciaUsd) : '—'}</td>
+                  <td {...cpDesc.domProps} className={`px-3 py-2 text-slate-400 max-w-[240px] truncate ${cpDesc.className}`} title={row.description}>{row.description}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {!isOrphan && (
                       <div className="inline-flex items-center gap-1.5">
@@ -244,6 +237,9 @@ export default function ResumenMatrizOtsPanel({
             })}
           </tbody>
         </table>
+      </div>
+      <div className="p-2 border-t border-slate-800/80">
+        <GridStatusBarBottom isFixed={false} filteredCount={otRows.length} totalCount={otRows.length} entityName="OTs" selectionStats={sheet.selectionStats} onClearSelection={sheet.clearSelection} globalAggregates={matrixAggregates} />
       </div>
     </div>
   )

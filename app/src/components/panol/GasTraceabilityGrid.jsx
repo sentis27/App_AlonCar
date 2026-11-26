@@ -224,14 +224,8 @@ export default function GasTraceabilityGrid({
     return {
       renderHandle,
       domProps: {
-        onClick: (e) => {
-          grid.gridContainerRef.current?.focus()
-          grid.handleCellClick(rowIndex, colIdx, e)
-        },
-        onMouseDown: (e) => {
-          grid.gridContainerRef.current?.focus()
-          grid.handleCellMouseDown(rowIndex, colIdx, e)
-        },
+        onClick: (e) => { if (!e.target.closest('input, select, textarea, button')) { grid.gridContainerRef.current?.focus(); grid.handleCellClick(rowIndex, colIdx, e) } },
+        onMouseDown: (e) => { if (!e.target.closest('input, select, textarea, button')) { grid.gridContainerRef.current?.focus(); grid.handleCellMouseDown(rowIndex, colIdx, e) } },
         onMouseEnter: () => grid.handleCellMouseEnter(rowIndex, colIdx)
       },
       className: `relative select-none transition-colors ${
@@ -432,15 +426,15 @@ export default function GasTraceabilityGrid({
                   <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
                 </div>
               </th>
-              <th className="py-2 px-2">Fecha ✎</th>
-              <th className="py-2 px-2">Operación</th>
-              <th className="py-2 px-2">N° Remito ✎</th>
-              <th className="py-2 px-2">Tipo de Gas</th>
-              <th className="py-2 px-2">Empresa Gasera / Contratista</th>
-              <th className="py-2 px-2 text-center">Estado Tubo ✎</th>
-              <th className="py-2 px-2">Impacto Patio / Deuda</th>
-              <th className="py-2 px-2 text-right">Cant. ✎</th>
-              <th className="py-2 px-2">Observaciones / Responsable ✎</th>
+              <th {...grid.getColumnHeaderProps('movement_date', 'py-2 px-2')}>Fecha ✎</th>
+              <th {...grid.getColumnHeaderProps('operation_type', 'py-2 px-2')}>Operación</th>
+              <th {...grid.getColumnHeaderProps('remito_number', 'py-2 px-2')}>N° Remito ✎</th>
+              <th {...grid.getColumnHeaderProps('gas_name', 'py-2 px-2')}>Tipo de Gas</th>
+              <th {...grid.getColumnHeaderProps('actor_display', 'py-2 px-2')}>Empresa Gasera / Contratista</th>
+              <th {...grid.getColumnHeaderProps('condition_display', 'py-2 px-2 text-center')}>Estado Tubo ✎</th>
+              <th {...grid.getColumnHeaderProps('patio_impact', 'py-2 px-2')}>Impacto Patio / Deuda</th>
+              <th {...grid.getColumnHeaderProps('quantity', 'py-2 px-2 text-right')}>Cant. ✎</th>
+              <th {...grid.getColumnHeaderProps('notes', 'py-2 px-2')}>Observaciones / Responsable ✎</th>
               <th className="py-2 px-2 text-center">Acciones</th>
             </tr>
           </thead>

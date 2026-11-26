@@ -2,16 +2,15 @@ import React, { useMemo } from 'react'
 import { Download } from 'lucide-react'
 import { formatUsd, formatKg } from '../../lib/drydockCatalogConstants'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
+import { buildComparadorNivel2Columns } from '../../lib/sheetColumnsAdmin'
+import GridStatusBarBottom from '../GridStatusBarBottom'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
 
 /**
  * Nivel 2 del Comparador de Obras: Matriz comparativa OT a OT (productividad y costo/KG entre buques seleccionados).
  */
-export default function ComparadorNivel2OtTable({
-  selectedShipsData = [],
-  selectedOtKeys = []
-}) {
-  // Normalizar lista de títulos/códigos OT presentes entre los buques seleccionados
+export default function ComparadorNivel2OtTable({ selectedShipsData = [], selectedOtKeys = [] }) {
   const otComparisonRows = useMemo(() => {
     const keyMap = new Map()
     selectedShipsData.forEach((ship) => {
@@ -32,8 +31,11 @@ export default function ComparadorNivel2OtTable({
     return Array.from(keyMap.values())
   }, [selectedShipsData, selectedOtKeys])
 
+  const columns = useMemo(() => buildComparadorNivel2Columns(selectedShipsData), [selectedShipsData])
+  const sheet = useSheetSelection({ rows: otComparisonRows, columns, getRowId: (r) => r.key })
+
   const handleExport = () => {
-    const columns = [
+    const expColumns = [
       { key: 'label', label: 'Orden de Trabajo' },
       ...selectedShipsData.flatMap((s) => [
         { key: `${s.shipId}_usd`, label: `${s.shipName} (US$)` },
@@ -41,7 +43,6 @@ export default function ComparadorNivel2OtTable({
         { key: `${s.shipId}_ckg`, label: `${s.shipName} (US$/KG)` }
       ])
     ]
-
     const rows = otComparisonRows.map((row) => {
       const flat = { label: row.label }
       selectedShipsData.forEach((s) => {
@@ -52,16 +53,11 @@ export default function ComparadorNivel2OtTable({
       })
       return flat
     })
-
-    exportToSpreadsheet({
-      filename: 'comparador_obras_nivel2_ots.xls',
-      columns,
-      rows
-    })
+    exportToSpreadsheet({ filename: 'comparador_obras_nivel2_ots.xls', columns: expColumns, rows })
   }
 
   return (
-    <div className="bg-slate-950/75 border border-violet-500/30 rounded-xl overflow-hidden">
+    <div ref={sheet.containerRef} tabIndex={0} onKeyDown={sheet.handleKeyDown} className="bg-slate-950/75 border border-violet-500/30 rounded-xl overflow-hidden focus:outline-none">
       <div className="px-3.5 py-2.5 bg-violet-950/35 border-b border-violet-500/25 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h4 className="text-xs font-extrabold uppercase tracking-wider text-violet-200">
@@ -73,9 +69,7 @@ export default function ComparadorNivel2OtTable({
         </div>
 
         <button
-          type="button"
-          onClick={handleExport}
-          disabled={otComparisonRows.length === 0}
+          type="button" onClick={handleExport} disabled={otComparisonRows.length === 0}
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-40 text-emerald-300 border border-emerald-500/40 cursor-pointer"
         >
           <Download className="w-3.5 h-3.5" />
@@ -87,9 +81,9 @@ export default function ComparadorNivel2OtTable({
         <table className="w-full text-xs text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-slate-900 border-b border-slate-700 text-[10px] uppercase tracking-wider text-slate-400">
             <tr>
-              <th className="px-3 py-2">Orden / Rubro Común</th>
+              <th {...sheet.getHeaderProps('label', 'px-3 py-2')}>Orden / Rubro Común</th>
               {selectedShipsData.map((ship) => (
-                <th key={ship.shipId} className="px-3 py-2 text-right border-l border-slate-800 text-violet-200">
+                <th key={ship.shipId} {...sheet.getHeaderProps(`ship_${ship.shipId}`, 'px-3 py-2 text-right border-l border-slate-800 text-violet-200')}>
                   {ship.shipName}
                 </th>
               ))}
@@ -103,50 +97,45 @@ export default function ComparadorNivel2OtTable({
                 </td>
               </tr>
             ) : (
-              otComparisonRows.map((row) => (
-                <tr key={row.key} className="hover:bg-slate-800/40 text-slate-200">
-                  <td className="px-3 py-2 font-semibold text-white whitespace-nowrap max-w-[260px]">
-                    <CanonicalOtBadge
-                      wo={row.sampleOt?.wo || null}
-                      otNumber={row.sampleOt?.otNumber}
-                      otTitle={row.sampleOt?.title}
-                      tooltipOverride={row.sampleOt?.canonicalTooltip || ''}
-                      variant="inline"
-                      className="text-white font-semibold"
-                    />
-                  </td>
-                  {selectedShipsData.map((ship) => {
-                    const ot = row.byShip[ship.shipId]
-                    if (!ot) {
+              otComparisonRows.map((row, rowIdx) => {
+                const cpLabel = sheet.getCellProps(rowIdx, 'label')
+                return (
+                  <tr key={row.key} className="hover:bg-slate-800/40 text-slate-200">
+                    <td {...cpLabel.domProps} className={`px-3 py-2 font-semibold text-white whitespace-nowrap max-w-[260px] ${cpLabel.className}`}>
+                      <CanonicalOtBadge
+                        wo={row.sampleOt?.wo || null} otNumber={row.sampleOt?.otNumber} otTitle={row.sampleOt?.title}
+                        tooltipOverride={row.sampleOt?.canonicalTooltip || ''} variant="inline" className="text-white font-semibold"
+                      />
+                    </td>
+                    {selectedShipsData.map((ship) => {
+                      const ot = row.byShip[ship.shipId]
+                      const cpShip = sheet.getCellProps(rowIdx, `ship_${ship.shipId}`)
+                      if (!ot) {
+                        return <td key={ship.shipId} {...cpShip.domProps} className={`px-3 py-2 text-right border-l border-slate-800/70 text-slate-600 ${cpShip.className}`}>—</td>
+                      }
+                      const costKg = ot.weightKg > 0 ? ot.directTotalUsd / ot.weightKg : 0
+                      const kgHr = ot.physicalHours > 0 ? ot.weightKg / ot.physicalHours : 0
                       return (
-                        <td
-                          key={ship.shipId}
-                          className="px-3 py-2 text-right border-l border-slate-800/70 text-slate-600"
-                        >
-                          —
+                        <td key={ship.shipId} {...cpShip.domProps} className={`px-3 py-2 text-right border-l border-slate-800/70 tabular-nums ${cpShip.className}`}>
+                          <div className="font-bold text-emerald-300">{formatUsd(ot.directTotalUsd, 0)}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {formatKg(ot.weightKg, 0)} · {costKg > 0 ? `${formatUsd(costKg, 1)}/kg` : 'sin peso'} · {kgHr > 0 ? `${kgHr.toFixed(1)} kg/h` : `${ot.physicalHours}h`}
+                          </div>
                         </td>
                       )
-                    }
-                    const costKg = ot.weightKg > 0 ? ot.directTotalUsd / ot.weightKg : 0
-                    const kgHr = ot.physicalHours > 0 ? ot.weightKg / ot.physicalHours : 0
-                    return (
-                      <td
-                        key={ship.shipId}
-                        className="px-3 py-2 text-right border-l border-slate-800/70 tabular-nums"
-                      >
-                        <div className="font-bold text-emerald-300">{formatUsd(ot.directTotalUsd, 0)}</div>
-                        <div className="text-[10px] text-slate-400">
-                          {formatKg(ot.weightKg, 0)} · {costKg > 0 ? `${formatUsd(costKg, 1)}/kg` : 'sin peso'} ·{' '}
-                          {kgHr > 0 ? `${kgHr.toFixed(1)} kg/h` : `${ot.physicalHours}h`}
-                        </div>
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))
+                    })}
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
+      </div>
+      <div className="p-2 border-t border-slate-800/80">
+        <GridStatusBarBottom
+          isFixed={false} filteredCount={otComparisonRows.length} totalCount={otComparisonRows.length}
+          entityName="OTs comparadas" selectionStats={sheet.selectionStats} onClearSelection={sheet.clearSelection}
+        />
       </div>
     </div>
   )

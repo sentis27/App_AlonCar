@@ -413,14 +413,8 @@ export default function PanolMovimientosPanel({
     return {
       renderHandle,
       domProps: {
-        onClick: (e) => {
-          grid.gridContainerRef.current?.focus()
-          grid.handleCellClick(rowIndex, colIdx, e)
-        },
-        onMouseDown: (e) => {
-          grid.gridContainerRef.current?.focus()
-          grid.handleCellMouseDown(rowIndex, colIdx, e)
-        },
+        onClick: (e) => { if (!e.target.closest('input, select, textarea, button')) { grid.gridContainerRef.current?.focus(); grid.handleCellClick(rowIndex, colIdx, e) } },
+        onMouseDown: (e) => { if (!e.target.closest('input, select, textarea, button')) { grid.gridContainerRef.current?.focus(); grid.handleCellMouseDown(rowIndex, colIdx, e) } },
         onMouseEnter: () => grid.handleCellMouseEnter(rowIndex, colIdx)
       },
       className: `relative select-none transition-colors ${
@@ -525,21 +519,21 @@ export default function PanolMovimientosPanel({
                 </div>
               </th>
               <th className="py-1.5 px-1 text-center whitespace-nowrap" title="Stock del material: en vivo durante el día, congelado a las 21:00 hs ART · Clic para ver Kárdex">Stock</th>
-              <th className="py-1.5 px-1">Fecha ✎</th>
-              <th className="py-1.5 px-1">Barco / Destino ✎</th>
-              <th className="py-1.5 px-1">Orden de Trabajo (OT) ✎</th>
-              <th className="py-1.5 px-1">Contratista / Grupo ✎</th>
-              <th className="py-1.5 px-1">Material Insumo ✎</th>
-              <th className="py-1.5 px-1 text-right">Cant. ✎</th>
+              <th {...grid.getColumnHeaderProps('transaction_date', 'py-1.5 px-1')}>Fecha ✎</th>
+              <th {...grid.getColumnHeaderProps('ship_id', 'py-1.5 px-1')}>Barco / Destino ✎</th>
+              <th {...grid.getColumnHeaderProps('work_order_id', 'py-1.5 px-1')}>Orden de Trabajo (OT) ✎</th>
+              <th {...grid.getColumnHeaderProps('contractor_name', 'py-1.5 px-1')}>Contratista / Grupo ✎</th>
+              <th {...grid.getColumnHeaderProps('material_id', 'py-1.5 px-1')}>Material Insumo ✎</th>
+              <th {...grid.getColumnHeaderProps('quantity_withdrawn', 'py-1.5 px-1 text-right')}>Cant. ✎</th>
               <th
-                className="py-1.5 px-1 text-right"
+                {...grid.getColumnHeaderProps('weight_total', 'py-1.5 px-1 text-right')}
                 title={isAdmin ? 'Peso total en kg (calculado desde Catálogo; doble clic para editar)' : 'Peso referencial en kg (solo vista, calculado desde Catálogo)'}
               >
                 Peso (kg){isAdmin ? ' ✎' : ''}
               </th>
-              {isAdmin && <th className="py-1.5 px-1 text-right" title="Costo total del retiro en US$ (y unitario debajo) según precio congelado por quincena">Costo US$</th>}
+              {isAdmin && <th {...grid.getColumnHeaderProps('cost_total_usd', 'py-1.5 px-1 text-right')} title="Costo total del retiro en US$ (y unitario debajo) según precio congelado por quincena">Costo US$</th>}
               {isAdmin && (showCostCenter ? (
-                <th className="py-1.5 px-1 text-center">
+                <th {...grid.getColumnHeaderProps('cost_center', 'py-1.5 px-1 text-center')}>
                   <div className="inline-flex items-center justify-center gap-1">
                     <span>Centro de Costo ✎</span>
                     <button
@@ -563,8 +557,8 @@ export default function PanolMovimientosPanel({
                   </button>
                 </th>
               ))}
-              <th className="py-1.5 px-1">Nº Remito ✎</th>
-              <th className="py-1.5 px-1">Observaciones ✎</th>
+              <th {...grid.getColumnHeaderProps('voucher_number', 'py-1.5 px-1')}>Nº Remito ✎</th>
+              <th {...grid.getColumnHeaderProps('notes', 'py-1.5 px-1')}>Observaciones ✎</th>
               <th className="py-1.5 px-1 text-center">Acciones</th>
             </tr>
           </thead>
@@ -1168,7 +1162,7 @@ export default function PanolMovimientosPanel({
         entityName="retiros"
         hasActiveFilter={hasActivePanolFilter}
         onClearFilters={onClearAllFilters}
-        selectionStats={grid.selectionStats}
+        selectionStats={grid.selectionStats} onClearSelection={() => grid.setSelectionRange(null)}
         globalAggregates={[
           { label: 'Σ CANT', value: panolTotals.totalQty.toLocaleString('es-AR') },
           { label: 'Σ PESO', value: `${panolTotals.totalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg` },

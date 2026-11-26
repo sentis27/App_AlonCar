@@ -5,10 +5,12 @@
 
 import React from 'react'
 import { Wrench, Plus } from 'lucide-react'
+import CanonicalActiveSubmoduleBadge from '../canonical/CanonicalActiveSubmoduleBadge'
 
 export default function TercerosHeader({
   canEditAmounts = true,
   canMutateRows = true,
+  activeSubmodule = null,
   onOpenNewModal
 }) {
   return (
@@ -23,6 +25,10 @@ export default function TercerosHeader({
               <h1 className="text-xl font-black text-white tracking-wide">
                 TERCEROS & TALLERES EXTERNOS
               </h1>
+              <CanonicalActiveSubmoduleBadge
+                label={activeSubmodule?.shortLabel || activeSubmodule?.label || 'Servicios'}
+                theme={activeSubmodule?.theme || 'cyan'}
+              />
               <span className="text-[10px] font-mono tracking-widest text-cyan-400/90 bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 rounded-md uppercase font-bold">
                 M3 · Servicios & Facturación
               </span>

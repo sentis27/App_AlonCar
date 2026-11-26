@@ -1,16 +1,16 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  History, Search, RefreshCw, Download, User, FileSpreadsheet, ArrowRight,
-  Activity, AlertTriangle, ExternalLink, Layers, Database, Copy, X
-} from 'lucide-react'
+import { History, Search, RefreshCw, Download, User, FileSpreadsheet, ArrowRight, Activity, AlertTriangle, ExternalLink, Layers, Database, Copy, X } from 'lucide-react'
 import { auditService, AUDIT_ENTITY_CATALOG, AUDIT_ACTION_LABELS } from '../lib/auditService'
 import { formatDateTimeAr, getTodayArIso } from '../lib/dateTimeCanonical'
 import { buildDateRangeOption, DEFAULT_HISTORY_RANGE } from '../lib/gridPerformanceHelpers'
 import { exportToSpreadsheet } from '../lib/exportEngine'
 import { useProgressiveRows } from '../hooks/useProgressiveRows'
+import { useSheetSelection } from '../hooks/grid/useSheetSelection'
+import { buildAdminAuditLedgerColumns } from '../lib/sheetColumnsAdmin'
 import CanonicalProgressiveTableFooter from './canonical/CanonicalProgressiveTableFooter'
 import CanonicalHistoryRangeSelect from './canonical/CanonicalHistoryRangeSelect'
+import GridStatusBarBottom from './GridStatusBarBottom'
 import HighlightText from './HighlightText'
 import { matchesUniversalSearch } from '../lib/searchEngine'
 
@@ -121,12 +121,11 @@ export default function AdminAuditLedger() {
       }
     })
 
-    exportToSpreadsheet({
-      filename: `libro_auditoria_aloncar_${getTodayArIso()}.csv`,
-      rows,
-      columns
-    })
+    exportToSpreadsheet({ filename: `libro_auditoria_aloncar_${getTodayArIso()}.csv`, rows, columns })
   }
+
+  const auditCols = useMemo(() => buildAdminAuditLedgerColumns(AUDIT_ENTITY_CATALOG, AUDIT_ACTION_LABELS), [])
+  const auditSheet = useSheetSelection({ rows: filteredLogs, columns: auditCols, getRowId: (l) => l.id })
 
   return (
     <div className="space-y-5 animate-in fade-in duration-150">
@@ -355,145 +354,81 @@ export default function AdminAuditLedger() {
         </div>
 
         {/* GRILLA CANÓNICA DEL LIBRO DE AUDITORÍA */}
-        <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60">
+        <div ref={auditSheet.containerRef} tabIndex={0} onKeyDown={auditSheet.handleKeyDown} className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60 focus:outline-none">
           <div ref={scrollRef} className="overflow-x-auto max-h-[600px]">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-slate-900/95 text-slate-300 uppercase text-[10px] font-mono sticky top-0 z-10 border-b border-slate-800">
                 <tr>
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
-                  <th className="py-2.5 px-3">Fecha / Hora</th>
-                  <th className="py-2.5 px-3">Planilla / Submódulo</th>
-                  <th className="py-2.5 px-3">Usuario</th>
-                  <th className="py-2.5 px-3">Acción</th>
-                  <th className="py-2.5 px-3">Registro Afectado</th>
-                  <th className="py-2.5 px-3">Detalle del Cambio (Anterior ➔ Nuevo)</th>
+                  <th {...auditSheet.getHeaderProps('created_at', 'py-2.5 px-3')}>Fecha / Hora</th>
+                  <th {...auditSheet.getHeaderProps('sheet', 'py-2.5 px-3')}>Planilla / Submódulo</th>
+                  <th {...auditSheet.getHeaderProps('performed_by', 'py-2.5 px-3')}>Usuario</th>
+                  <th {...auditSheet.getHeaderProps('action', 'py-2.5 px-3')}>Acción</th>
+                  <th {...auditSheet.getHeaderProps('entity_name', 'py-2.5 px-3')}>Registro Afectado</th>
+                  <th {...auditSheet.getHeaderProps('detail', 'py-2.5 px-3')}>Detalle del Cambio (Anterior ➔ Nuevo)</th>
                   <th className="py-2.5 px-3 text-center">Ir</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {loading ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 font-mono">
-                      Cargando bitácora de auditoría desde Supabase...
-                    </td>
-                  </tr>
+                  <tr><td colSpan={8} className="py-12 text-center text-slate-400 font-mono">Cargando bitácora de auditoría desde Supabase...</td></tr>
                 ) : error ? (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-rose-400 font-mono">
-                      {error}
-                    </td>
-                  </tr>
+                  <tr><td colSpan={8} className="py-8 text-center text-rose-400 font-mono">{error}</td></tr>
                 ) : filteredLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-500">
-                      No se encontraron registros de auditoría con los filtros seleccionados.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={8} className="py-12 text-center text-slate-500">No se encontraron registros de auditoría con los filtros seleccionados.</td></tr>
                 ) : (
                   <>
                   {visibleLogs.map((log, idx) => {
-                    const catalogMeta = AUDIT_ENTITY_CATALOG[log.entity_type] || {
-                      label: log.entity_type,
-                      route: '/'
-                    }
-                    const actionMeta = AUDIT_ACTION_LABELS[log.action] || {
-                      label: log.action,
-                      badge: 'bg-slate-800 text-slate-300 border-slate-700'
-                    }
+                    const catalogMeta = AUDIT_ENTITY_CATALOG[log.entity_type] || { label: log.entity_type, route: '/' }
+                    const actionMeta = AUDIT_ACTION_LABELS[log.action] || { label: log.action, badge: 'bg-slate-800 text-slate-300 border-slate-700' }
                     const d = typeof log.details === 'object' && log.details !== null ? log.details : {}
-                    const sheetName = d.sheet_name || catalogMeta.label
-                    const route = d.module_route || catalogMeta.route || '/'
+                    const sheetName = d.sheet_name || catalogMeta.label, route = d.module_route || catalogMeta.route || '/'
                     const hasFieldDiff = d.field || d.old_value !== undefined || d.new_value !== undefined
-
-                    const formattedDate = log.created_at
-                      ? formatDateTimeAr(log.created_at, { includeSeconds: true, shortYear: true })
-                      : '—'
+                    const formattedDate = log.created_at ? formatDateTimeAr(log.created_at, { includeSeconds: true, shortYear: true }) : '—'
+                    const cpDt = auditSheet.getCellProps(idx, 'created_at'), cpSh = auditSheet.getCellProps(idx, 'sheet'), cpU = auditSheet.getCellProps(idx, 'performed_by'), cpAc = auditSheet.getCellProps(idx, 'action'), cpEn = auditSheet.getCellProps(idx, 'entity_name'), cpDet = auditSheet.getCellProps(idx, 'detail')
 
                     return (
                       <tr key={log.id || idx} className="hover:bg-slate-900/70 transition-colors">
                         <td className="py-2 px-2 w-10 text-center font-mono text-[11px] border-r border-slate-800/80 bg-slate-900/50">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedLogDetail(log)}
-                            className="px-1.5 py-0.5 rounded text-cyan-400 hover:text-white hover:bg-cyan-950/80 font-bold cursor-pointer transition-colors"
-                            title="Clic para inspeccionar payload JSON y ficha técnica del evento"
-                          >
-                            #{idx + 1}
-                          </button>
+                          <button type="button" onClick={() => setSelectedLogDetail(log)} className="px-1.5 py-0.5 rounded text-cyan-400 hover:text-white hover:bg-cyan-950/80 font-bold cursor-pointer transition-colors" title="Clic para inspeccionar payload JSON y ficha técnica del evento">#{idx + 1}</button>
                         </td>
-                        <td className="py-2 px-3 font-mono text-[11px] text-slate-300 whitespace-nowrap">
-                          {formattedDate}
-                        </td>
-                        <td className="py-2 px-3">
-                          <span className="font-semibold text-cyan-300 text-[11px]">
-                            <HighlightText text={sheetName} query={searchQuery} />
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-mono text-[11px] text-slate-200">
-                          <HighlightText text={log.performed_by || 'Sistema'} query={searchQuery} />
-                        </td>
-                        <td className="py-2 px-3">
-                          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border inline-block ${actionMeta.badge}`}>
-                            <HighlightText text={actionMeta.label} query={searchQuery} />
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-bold text-white max-w-[200px] truncate" title={log.entity_name || log.entity_id}>
-                          <HighlightText text={log.entity_name || log.entity_id || '—'} query={searchQuery} />
-                        </td>
-                        <td className="py-2 px-3 font-mono text-[11px]">
+                        <td {...cpDt.domProps} className={`py-2 px-3 font-mono text-[11px] text-slate-300 whitespace-nowrap ${cpDt.className}`}>{formattedDate}</td>
+                        <td {...cpSh.domProps} className={`py-2 px-3 ${cpSh.className}`}><span className="font-semibold text-cyan-300 text-[11px]"><HighlightText text={sheetName} query={searchQuery} /></span></td>
+                        <td {...cpU.domProps} className={`py-2 px-3 font-mono text-[11px] text-slate-200 ${cpU.className}`}><HighlightText text={log.performed_by || 'Sistema'} query={searchQuery} /></td>
+                        <td {...cpAc.domProps} className={`py-2 px-3 ${cpAc.className}`}><span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border inline-block ${actionMeta.badge}`}><HighlightText text={actionMeta.label} query={searchQuery} /></span></td>
+                        <td {...cpEn.domProps} className={`py-2 px-3 font-bold text-white max-w-[200px] truncate ${cpEn.className}`} title={log.entity_name || log.entity_id}><HighlightText text={log.entity_name || log.entity_id || '—'} query={searchQuery} /></td>
+                        <td {...cpDet.domProps} className={`py-2 px-3 font-mono text-[11px] ${cpDet.className}`}>
                           {hasFieldDiff ? (
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] font-bold">
-                                <HighlightText text={d.field_label || d.field || 'Campo'} query={searchQuery} />
-                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] font-bold"><HighlightText text={d.field_label || d.field || 'Campo'} query={searchQuery} /></span>
                               <span className="px-1.5 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/50 line-through max-w-[180px] truncate">
-                                {d.old_value !== null && d.old_value !== undefined && String(d.old_value) !== '' ? (
-                                  <HighlightText text={String(d.old_value)} query={searchQuery} />
-                                ) : (
-                                  '(vacío)'
-                                )}
+                                {d.old_value !== null && d.old_value !== undefined && String(d.old_value) !== '' ? <HighlightText text={String(d.old_value)} query={searchQuery} /> : '(vacío)'}
                               </span>
                               <ArrowRight className="w-3 h-3 text-slate-500 shrink-0" />
                               <span className="px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-bold max-w-[220px] truncate">
-                                {d.new_value !== null && d.new_value !== undefined && String(d.new_value) !== '' ? (
-                                  <HighlightText text={String(d.new_value)} query={searchQuery} />
-                                ) : (
-                                  '(vacío)'
-                                )}
+                                {d.new_value !== null && d.new_value !== undefined && String(d.new_value) !== '' ? <HighlightText text={String(d.new_value)} query={searchQuery} /> : '(vacío)'}
                               </span>
                             </div>
                           ) : d.changes ? (
-                            <span className="text-slate-300 text-[10px]">
-                              {Object.keys(d.changes).slice(0, 5).join(', ')}
-                              {Object.keys(d.changes).length > 5 ? '...' : ''}
-                            </span>
+                            <span className="text-slate-300 text-[10px]">{Object.keys(d.changes).slice(0, 5).join(', ')}{Object.keys(d.changes).length > 5 ? '...' : ''}</span>
                           ) : (
-                            <span className="text-slate-400 text-[10px] truncate block max-w-xs">
-                              {JSON.stringify(d)}
-                            </span>
+                            <span className="text-slate-400 text-[10px] truncate block max-w-xs">{JSON.stringify(d)}</span>
                           )}
                         </td>
                         <td className="py-2 px-3 text-center">
-                          <Link
-                            to={route}
-                            title={`Abrir planilla ${sheetName}`}
-                            className="inline-flex items-center justify-center p-1.5 rounded-lg bg-slate-900 hover:bg-cyan-950 text-slate-400 hover:text-cyan-300 border border-slate-800 hover:border-cyan-500/40 transition-colors"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </Link>
+                          <Link to={route} title={`Abrir planilla ${sheetName}`} className="inline-flex items-center justify-center p-1.5 rounded-lg bg-slate-900 hover:bg-cyan-950 text-slate-400 hover:text-cyan-300 border border-slate-800 hover:border-cyan-500/40 transition-colors"><ExternalLink className="w-3.5 h-3.5" /></Link>
                         </td>
                       </tr>
                     )
                   })}
-                  <CanonicalProgressiveTableFooter
-                    visibleCount={visibleCount} totalCount={filteredLogs.length} hasMore={hasMore}
-                    remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
-                    sentinelRef={sentinelRef} colSpan={8} entityLabel="eventos"
-                  />
+                  <CanonicalProgressiveTableFooter visibleCount={visibleCount} totalCount={filteredLogs.length} hasMore={hasMore} remainingCount={remainingCount} loadMore={loadMore} showAll={showAll} sentinelRef={sentinelRef} colSpan={8} entityLabel="eventos" />
                   </>
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="p-2 border-t border-slate-800/80">
+            <GridStatusBarBottom isFixed={false} filteredCount={filteredLogs.length} totalCount={logs.length} entityName="eventos" hasActiveFilter={Boolean(searchQuery || entityFilter !== 'ALL' || actionFilter !== 'ALL' || userFilter !== 'ALL')} onClearFilters={() => { setSearchQuery(''); setEntityFilter('ALL'); setActionFilter('ALL'); setUserFilter('ALL') }} selectionStats={auditSheet.selectionStats} onClearSelection={auditSheet.clearSelection} />
           </div>
         </div>
 

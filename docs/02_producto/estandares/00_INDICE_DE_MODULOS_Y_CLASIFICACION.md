@@ -76,8 +76,9 @@ Todos los módulos y submódulos listados a continuación son hojas de edición 
 | **6.1** | **`Ships.jsx`** | `/barcos` | **1. Padrón de Buques / Embarcaciones** (`buques`) | `ships` | `ships` | ✅ Estandarizado + Auditado |
 | **6.2** | **`Ships.jsx`** | `/barcos` | **2. Estadías y Movimientos de Muelle** (`movimientos`) | `ship_stays` | `ship_stays` | ✅ Estandarizado + Auditado |
 | **6.3** | **`Ships.jsx`** | `/barcos` | **3. Padrón de Armadores / Razón Social** (`armadores`) | `owners` | `owners` | ✅ Estandarizado + Auditado |
-| **7.1** | **`Terceros.jsx`** | `/terceros` | **1. Servicios de Terceros y Facturación** (`filas` / `fichas`) | `third_party_services` | `third_party_services` | ✅ Estandarizado + Auditado |
-| **7.2** | **`Terceros.jsx`** | `/terceros` | **2. Padrón de Talleres / Contratistas** (`ContractorPickerModal`) | `workshops` | `workshops` | ✅ Estandarizado + Auditado |
+| **7.1** | **`Terceros.jsx`** | `/terceros?tab=servicios` | **1. Servicios de Terceros y Facturación** (`servicios` · `filas` / `fichas`) | `third_party_services` | `third_party_services` | ✅ Estandarizado + Auditado |
+| **7.2** | **`Terceros.jsx`** | `/terceros?tab=servicios` | **2. Padrón de Talleres / Contratistas** (`ContractorPickerModal`) | `workshops` | `workshops` | ✅ Estandarizado + Auditado |
+| **7.3** | **`Terceros.jsx`** + **`TercerosCuentasCorrientesPanel.jsx`** | `/terceros?tab=cuentas-corrientes` | **3. Cuentas Corrientes de Talleres** (`cuentas-corrientes` · Pampa Naval / Multi-taller `PER_KG` y `BY_VOUCHER`) | `third_party_cc_accounts`, `third_party_cc_rate_history`, `third_party_cc_entries`, `third_party_cc_payments` | `third_party_cc` | ✅ Estandarizado + Auditado |
 | **8.1** | **`AdminDashboard.jsx`** | `/admin` | **1. Gestión de Rubros & Oficios** (`rubros`) | `system_settings` (`master_trades`) | `system_settings` | ✅ Estandarizado + Auditado |
 | **8.2** | **`AdminDashboard.jsx`** | `/admin` | **2. Matriz de Puestos & Permisos** (`matriz`) | `user_roles`, `profiles` | `user_roles` | ✅ Estandarizado + Auditado |
 | **8.3** | **`AdminDashboard.jsx`** | `/admin` | **3. Variables Macroeconómicas** (`macro`) | `macro_variables` | `macro_variables` | ✅ Estandarizado + Auditado |

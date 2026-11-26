@@ -1,10 +1,12 @@
 import { useMemo, useRef } from 'react'
 import { CheckCircle2, ClipboardCheck, History, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
 import { buildLookupMap } from '../../lib/gridPerformanceHelpers'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 import { formatUnitMeasureShort } from '../../lib/unitMeasureUtils'
+import { buildPanolStockAuditSheetColumns } from '../../lib/sheetColumnsOperational'
 import { computeStockAuditMetrics, MATERIAL_CONDITION_LABELS } from '../../lib/stockControlService'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
@@ -33,11 +35,13 @@ export default function PanolStockAuditPanel({
     return matchesUniversalSearch(searchable, searchQuery)
   }), [stockAudits, filterRubro, filterAuditStatus, searchQuery, materialById])
 
+  const sheetColumns = useMemo(() => buildPanolStockAuditSheetColumns(materialById, MATERIAL_CONDITION_LABELS), [materialById])
+  const sheet = useSheetSelection({ rows: filteredAudits, columns: sheetColumns, getRowId: (r) => r.id, sortable: true })
   const metrics = useMemo(() => computeStockAuditMetrics(filteredAudits), [filteredAudits])
   const adjustedCount = useMemo(() => filteredAudits.filter((a) => Boolean(a.adjustment_id)).length, [filteredAudits])
 
   const { visibleItems, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
-    items: filteredAudits, scrollContainerRef: scrollRef,
+    items: sheet.sortedRows, scrollContainerRef: scrollRef,
     resetKey: `${searchQuery}|${filterRubro}|${filterAuditStatus}|${stockAudits.length}`
   })
 
@@ -78,15 +82,11 @@ export default function PanolStockAuditPanel({
         </div>
       </div>
 
-      <div className="alon-zone-grid">
+      <div ref={sheet.containerRef} tabIndex={0} onKeyDown={sheet.handleKeyDown} className="alon-zone-grid focus:outline-none">
         <GridRibbon
-          onInsertRow={() => onOpenAuditBatchModal?.()}
-          insertRowLabel="+ Nuevo Control por Rubro"
-          totalRows={filteredAudits.length}
-          entityName="controles"
-          exportRows={filteredAudits}
-          exportColumns={exportColumns}
-          exportFilename={`panol_control_stock_${getTodayArIso()}`}
+          onInsertRow={() => onOpenAuditBatchModal?.()} insertRowLabel="+ Nuevo Control por Rubro"
+          totalRows={filteredAudits.length} entityName="controles" exportRows={filteredAudits}
+          exportColumns={exportColumns} exportFilename={`panol_control_stock_${getTodayArIso()}`}
         />
 
         <div ref={scrollRef} className="alon-grid-scroll">
@@ -94,15 +94,15 @@ export default function PanolStockAuditPanel({
             <thead className="sticky top-0 z-20 alon-grid-thead">
               <tr>
                 <th className="py-2 px-2 w-10 text-center">#</th>
-                <th className="py-2 px-2">Fecha</th>
-                <th className="py-2 px-2">Material / Insumo</th>
-                <th className="py-2 px-2">Rubro</th>
-                <th className="py-2 px-2 text-right">Stock Sistema</th>
-                <th className="py-2 px-2 text-right">Conteo Físico</th>
-                <th className="py-2 px-2 text-right">Diferencia</th>
-                <th className="py-2 px-2 text-center">Resultado</th>
-                <th className="py-2 px-2 text-center">Condición</th>
-                <th className="py-2 px-2">Auditor / Notas</th>
+                <th {...sheet.getHeaderProps('date', 'py-2 px-2')}>Fecha{sheet.getSortIndicator('date')}</th>
+                <th {...sheet.getHeaderProps('material', 'py-2 px-2')}>Material / Insumo{sheet.getSortIndicator('material')}</th>
+                <th {...sheet.getHeaderProps('rubro', 'py-2 px-2')}>Rubro{sheet.getSortIndicator('rubro')}</th>
+                <th {...sheet.getHeaderProps('system_quantity', 'py-2 px-2 text-right')}>Stock Sistema{sheet.getSortIndicator('system_quantity')}</th>
+                <th {...sheet.getHeaderProps('counted_quantity', 'py-2 px-2 text-right')}>Conteo Físico{sheet.getSortIndicator('counted_quantity')}</th>
+                <th {...sheet.getHeaderProps('calculated_delta', 'py-2 px-2 text-right')}>Diferencia{sheet.getSortIndicator('calculated_delta')}</th>
+                <th {...sheet.getHeaderProps('status', 'py-2 px-2 text-center')}>Resultado{sheet.getSortIndicator('status')}</th>
+                <th {...sheet.getHeaderProps('material_condition', 'py-2 px-2 text-center')}>Condición{sheet.getSortIndicator('material_condition')}</th>
+                <th {...sheet.getHeaderProps('notes', 'py-2 px-2')}>Auditor / Notas{sheet.getSortIndicator('notes')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -126,80 +126,66 @@ export default function PanolStockAuditPanel({
                   const unitShort = formatUnitMeasureShort(mat?.unit_measure)
                   const delta = Number(audit.calculated_delta) || 0
                   const isOk = audit.status === 'OK' || Math.abs(delta) <= 0.0005
+                  const cpDate = sheet.getCellProps(idx, 'date')
+                  const cpMat = sheet.getCellProps(idx, 'material')
+                  const cpRub = sheet.getCellProps(idx, 'rubro')
+                  const cpSys = sheet.getCellProps(idx, 'system_quantity')
+                  const cpCnt = sheet.getCellProps(idx, 'counted_quantity')
+                  const cpDel = sheet.getCellProps(idx, 'calculated_delta')
+                  const cpSt = sheet.getCellProps(idx, 'status')
+                  const cpCond = sheet.getCellProps(idx, 'material_condition')
+                  const cpNotes = sheet.getCellProps(idx, 'notes')
 
                   return (
                     <tr key={audit.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="py-1.5 px-2 text-center font-mono text-[10px] text-slate-500">{idx + 1}</td>
-                      <td className="py-1.5 px-2 font-mono text-slate-300 whitespace-nowrap">
-                        <HighlightText text={formatDateAr(audit.date)} query={searchQuery} />
-                      </td>
-                      <td className="py-1.5 px-2 font-bold text-white max-w-[230px]">
+                      <td {...cpDate.domProps} className={`py-1.5 px-2 font-mono text-slate-300 whitespace-nowrap ${cpDate.className}`}><HighlightText text={formatDateAr(audit.date)} query={searchQuery} /></td>
+                      <td {...cpMat.domProps} className={`py-1.5 px-2 font-bold text-white max-w-[230px] ${cpMat.className}`}>
                         <div className="flex items-center gap-1.5 min-w-0">
                           {mat ? (
                             <>
-                              <button
-                                type="button"
-                                onClick={() => onOpenKardexModal?.(mat)}
-                                className="text-left hover:text-cyan-300 truncate cursor-pointer"
-                                title="Clic para ver Kárdex cronológico"
-                              >
+                              <button type="button" onClick={() => onOpenKardexModal?.(mat)} className="text-left hover:text-cyan-300 truncate cursor-pointer" title="Clic para ver Kárdex cronológico">
                                 <HighlightText text={mat.name} query={searchQuery} />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => onOpenKardexModal?.(mat)}
-                                className="w-5 h-5 rounded bg-slate-900 hover:bg-cyan-500 border border-slate-700 text-cyan-300 hover:text-slate-950 inline-flex items-center justify-center shrink-0 cursor-pointer"
-                                title="Abrir Kárdex del material"
-                              >
+                              <button type="button" onClick={() => onOpenKardexModal?.(mat)} className="w-5 h-5 rounded bg-slate-900 hover:bg-cyan-500 border border-slate-700 text-cyan-300 hover:text-slate-950 inline-flex items-center justify-center shrink-0 cursor-pointer" title="Abrir Kárdex del material">
                                 <History className="w-3 h-3" />
                               </button>
                             </>
                           ) : <span className="text-slate-500">Material eliminado</span>}
                         </div>
                       </td>
-                      <td className="py-1.5 px-2 text-slate-400 truncate max-w-[130px]">{mat?.rubro || '—'}</td>
-                      <td className="py-1.5 px-2 text-right font-mono text-slate-300 whitespace-nowrap">{audit.system_quantity} {unitShort}</td>
-                      <td className="py-1.5 px-2 text-right font-mono font-bold text-white whitespace-nowrap">{audit.counted_quantity} {unitShort}</td>
-                      <td className={`py-1.5 px-2 text-right font-mono font-black whitespace-nowrap ${isOk ? 'text-emerald-300' : delta > 0 ? 'text-cyan-300' : 'text-rose-300'}`}>
+                      <td {...cpRub.domProps} className={`py-1.5 px-2 text-slate-400 truncate max-w-[130px] ${cpRub.className}`}>{mat?.rubro || '—'}</td>
+                      <td {...cpSys.domProps} className={`py-1.5 px-2 text-right font-mono text-slate-300 whitespace-nowrap ${cpSys.className}`}>{audit.system_quantity} {unitShort}</td>
+                      <td {...cpCnt.domProps} className={`py-1.5 px-2 text-right font-mono font-bold text-white whitespace-nowrap ${cpCnt.className}`}>{audit.counted_quantity} {unitShort}</td>
+                      <td {...cpDel.domProps} className={`py-1.5 px-2 text-right font-mono font-black whitespace-nowrap ${isOk ? 'text-emerald-300' : delta > 0 ? 'text-cyan-300' : 'text-rose-300'} ${cpDel.className}`}>
                         {isOk ? '0' : `${delta > 0 ? `+${delta}` : delta}`} {unitShort}
                       </td>
-                      <td className="py-1.5 px-2 text-center whitespace-nowrap">
+                      <td {...cpSt.domProps} className={`py-1.5 px-2 text-center whitespace-nowrap ${cpSt.className}`}>
                         <div className="inline-flex items-center gap-1">
                           <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold ${isOk ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40' : 'bg-rose-950/70 text-rose-300 border-rose-500/40'}`}>
                             {isOk ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
                             <span>{isOk ? 'OK' : 'DIFERENCIA'}</span>
                           </span>
-                          {audit.adjustment_id && (
-                            <span className="px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 text-[9px] font-bold">Ajustado</span>
-                          )}
+                          {audit.adjustment_id && <span className="px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 text-[9px] font-bold">Ajustado</span>}
                         </div>
                       </td>
-                      <td className="py-1.5 px-2 text-center whitespace-nowrap text-[10px] text-slate-300">
-                        {MATERIAL_CONDITION_LABELS[audit.material_condition] || audit.material_condition}
-                      </td>
-                      <td className="py-1.5 px-2 max-w-[210px] truncate text-slate-300" title={audit.notes || ''}>
-                        <span className="text-slate-400">{audit.audited_by || 'Pañol'}:</span>{' '}
-                        <HighlightText text={audit.notes || 'Sin obs.'} query={searchQuery} />
+                      <td {...cpCond.domProps} className={`py-1.5 px-2 text-center whitespace-nowrap text-[10px] text-slate-300 ${cpCond.className}`}>{MATERIAL_CONDITION_LABELS[audit.material_condition] || audit.material_condition}</td>
+                      <td {...cpNotes.domProps} className={`py-1.5 px-2 max-w-[210px] truncate text-slate-300 ${cpNotes.className}`} title={audit.notes || ''}>
+                        <span className="text-slate-400">{audit.audited_by || 'Pañol'}:</span> <HighlightText text={audit.notes || 'Sin obs.'} query={searchQuery} />
                       </td>
                     </tr>
                   )
                 })
               )}
-              <CanonicalProgressiveTableFooter
-                visibleCount={visibleCount} totalCount={filteredAudits.length} hasMore={hasMore}
-                remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
-                sentinelRef={sentinelRef} colSpan={10} entityLabel="controles"
-              />
+              <CanonicalProgressiveTableFooter visibleCount={visibleCount} totalCount={filteredAudits.length} hasMore={hasMore} remainingCount={remainingCount} loadMore={loadMore} showAll={showAll} sentinelRef={sentinelRef} colSpan={10} entityLabel="controles" />
             </tbody>
           </table>
         </div>
 
         <GridStatusBarBottom
-          filteredCount={filteredAudits.length}
-          totalCount={stockAudits.length}
-          entityName="controles"
-          hasActiveFilter={hasActiveFilters}
-          onClearFilters={onClearFilters}
+          filteredCount={filteredAudits.length} totalCount={stockAudits.length} entityName="controles"
+          hasActiveFilter={hasActiveFilters} onClearFilters={onClearFilters}
+          selectionStats={sheet.selectionStats} onClearSelection={sheet.clearSelection}
           globalAggregates={[
             { label: '% Datos Correctos', value: `${metrics.okPct}%`, highlight: true },
             { label: '% Con Error', value: `${metrics.errorPct}%` },

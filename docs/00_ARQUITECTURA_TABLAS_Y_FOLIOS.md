@@ -43,6 +43,7 @@ A partir de este estándar, el número en la **Columna 0 (`#`)** es un **Folio M
 | **Barcos y Obras** | Estadías y Muelle | `app/src/pages/Ships.jsx` | `ship_stays` | `id` (uuid) | `entry_date`, `created_at` | Folio de estadía portuaria (1...N) |
 | **Barcos y Obras** | Padrón de Armadores | `app/src/pages/Ships.jsx` | `owners` | `id` (uuid) | `created_at` | Folio de empresa armadora (1...N) |
 | **Terceros** | Comprobantes y Servicios | `app/src/pages/Terceros.jsx` | `third_party_services` | `id` (uuid) | `service_date`, `created_at` | Folio de comprobante de terceros (1...N) |
+| **Terceros** | Cuentas Corrientes (DEBE/HABER) | `app/src/components/terceros/cc/TercerosCuentasCorrientesPanel.jsx` | `third_party_cc_accounts / _entries / _payments` | `id` (uuid) | `entry_date`, `payment_date` | Remito AlonCar / fecha cronológica + `audit_logs` |
 | **Panel Admin** | Variables Macro | `app/src/pages/AdminDashboard.jsx` | `rate_cards` / `macro_variables` | `id` (uuid) | `year`, `month` | Folio mensual de variables macro (1...N) |
 
 ---

@@ -173,17 +173,17 @@ export default function LaborLogsTable({
                     title="Seleccionar todas las imputaciones visibles"
                   />
                 </th>
-                <th className="py-2.5 px-2.5">Fecha ✎</th>
-                <th className="py-2.5 px-2.5">Barco / OT ✎</th>
-                <th className="py-2.5 px-2.5">Operario / Tipo ✎</th>
-                <th className="py-2.5 px-2.5">Rubro ✎</th>
-                <th className="py-2.5 px-2 text-center" title="Columna F (GS-001): Hora, Presupuesto o Control">Modalidad ✎</th>
-                <th className="py-2.5 px-2 text-center">Norm ✎</th>
-                <th className="py-2.5 px-2 text-center text-cyan-400">50% ✎</th>
-                <th className="py-2.5 px-2 text-center text-amber-400">100% ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('date_logged', 'py-2.5 px-2.5')}>Fecha ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('ship_wo', 'py-2.5 px-2.5')}>Barco / OT ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('worker_name', 'py-2.5 px-2.5')}>Operario / Tipo ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('rubro', 'py-2.5 px-2.5')}>Rubro ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('work_type', 'py-2.5 px-2 text-center')} title="Columna F (GS-001): Hora, Presupuesto o Control">Modalidad ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('hours_normal', 'py-2.5 px-2 text-center')}>Norm ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('hours_extra_50', 'py-2.5 px-2 text-center text-cyan-400')}>50% ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('hours_extra_100', 'py-2.5 px-2 text-center text-amber-400')}>100% ✎</th>
                 <th className="py-2.5 px-2.5 text-center text-primary font-bold">Total</th>
-                <th className="py-2.5 px-2 text-center">Estado ✎</th>
-                <th className="py-2.5 px-2.5">Obs / Tarea ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('approval_status', 'py-2.5 px-2 text-center')}>Estado ✎</th>
+                <th {...horasGrid.getColumnHeaderProps('notes', 'py-2.5 px-2.5')}>Obs / Tarea ✎</th>
                 <th className="py-2.5 px-2.5 text-right">Acciones</th>
               </tr>
             </thead>

@@ -1,32 +1,15 @@
-import { useState, useEffect } from 'react'
-import {
-  DollarSign,
-  Percent,
-  Save,
-  TrendingUp,
-  Calendar,
-  Pencil,
-  Trash2,
-  Lock,
-  Unlock,
-  CheckSquare,
-  Square,
-  CheckCircle2,
-  AlertCircle,
-  X
-} from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { DollarSign, Percent, Save, TrendingUp, Calendar, Pencil, Trash2, Lock, Unlock, CheckSquare, Square, CheckCircle2, AlertCircle, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
+import { buildAdminMacroMonthlyColumns, ADMIN_MACRO_QUINCENA_SHEET_COLUMNS } from '../../lib/sheetColumnsAdmin'
+import GridStatusBarBottom from '../GridStatusBarBottom'
 import { assignMonotonicFolios } from '../../lib/monotonicFolioEngine.js'
 import { saveMacroVariables } from '../../lib/macroVariablesService.js'
 import { formatDateTimeAr } from '../../lib/dateTimeCanonical.js'
 import {
-  loadAdminMacroBoardDataService,
-  quickSaveAdminMacroMonthService,
-  adjustAdminQuincenaDollarService,
-  deleteAdminMacroRecordService,
-  toggleAdminPeriodLockService,
-  deleteAdminRateCardsByPeriodService,
-  deleteAdminRateCardsByPeriodsService
+  loadAdminMacroBoardDataService, quickSaveAdminMacroMonthService, adjustAdminQuincenaDollarService,
+  deleteAdminMacroRecordService, toggleAdminPeriodLockService, deleteAdminRateCardsByPeriodService, deleteAdminRateCardsByPeriodsService
 } from '../../services/adminGovernanceService.js'
 
 export const MONTH_NAMES = [
@@ -75,6 +58,9 @@ export default function AdminMacroPanel() {
 
   // Selección manual de quincenas (Checkboxes para borrado granular)
   const [selectedPeriods, setSelectedPeriods] = useState(new Set())
+  const monthlyCols = useMemo(() => buildAdminMacroMonthlyColumns(MONTH_NAMES), [])
+  const monthlySheet = useSheetSelection({ rows: macroVariables, columns: monthlyCols, getRowId: (m) => m.id, sortable: true })
+  const quincenaSheet = useSheetSelection({ rows: ratePeriods, columns: ADMIN_MACRO_QUINCENA_SHEET_COLUMNS, getRowId: (p) => p.period, sortable: true })
 
   useEffect(() => {
     loadMacroData()
@@ -581,97 +567,44 @@ export default function AdminMacroPanel() {
           </span>
         </div>
 
+        <div ref={monthlySheet.containerRef} tabIndex={0} onKeyDown={monthlySheet.handleKeyDown} className="focus:outline-none space-y-2">
         <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="sticky top-0 z-20 alon-grid-thead">
               <tr>
                 <th className="py-2.5 px-2 w-10 text-center font-bold text-slate-400 bg-slate-900 border-b border-r border-slate-750">#</th>
-                <th className="py-2.5 px-3">Mes y Año</th>
-                <th className="py-2.5 px-3 text-right">Dólar Referencia ($ / USD)</th>
-                <th className="py-2.5 px-3 text-center">Inflación Mensual (%)</th>
-                <th className="py-2.5 px-3 text-center">Quincenas que Rige</th>
-                <th className="py-2.5 px-3">Registrado por</th>
-                <th className="py-2.5 px-3 text-center">Fecha de Carga</th>
+                <th {...monthlySheet.getHeaderProps('month', 'py-2.5 px-3')}>Mes y Año{monthlySheet.getSortIndicator('month')}</th>
+                <th {...monthlySheet.getHeaderProps('dollar_rate', 'py-2.5 px-3 text-right')}>Dólar Referencia ($ / USD){monthlySheet.getSortIndicator('dollar_rate')}</th>
+                <th {...monthlySheet.getHeaderProps('monthly_inflation_pct', 'py-2.5 px-3 text-center')}>Inflación Mensual (%){monthlySheet.getSortIndicator('monthly_inflation_pct')}</th>
+                <th {...monthlySheet.getHeaderProps('quincenas', 'py-2.5 px-3 text-center')}>Quincenas que Rige{monthlySheet.getSortIndicator('quincenas')}</th>
+                <th {...monthlySheet.getHeaderProps('updated_by', 'py-2.5 px-3')}>Registrado por{monthlySheet.getSortIndicator('updated_by')}</th>
+                <th {...monthlySheet.getHeaderProps('updated_at', 'py-2.5 px-3 text-center')}>Fecha de Carga{monthlySheet.getSortIndicator('updated_at')}</th>
                 <th className="py-2.5 px-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {macroVariables.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-500">
-                    No hay variables macroeconómicas cargadas aún. Utiliza el formulario superior para crear la primera.
-                  </td>
-                </tr>
+                <tr><td colSpan={8} className="py-8 text-center text-slate-500">No hay variables macroeconómicas cargadas aún. Utiliza el formulario superior para crear la primera.</td></tr>
               ) : (
-                macroVariables.map((item, idx) => {
-                  const monthName = MONTH_NAMES[item.month - 1]
-                  const q1Key = `${item.year}-${String(item.month).padStart(2, '0')}-1Q`
-                  const q2Key = `${item.year}-${String(item.month).padStart(2, '0')}-2Q`
-                  const updatedDate = item.updated_at ? formatDateTimeAr(item.updated_at) : '--'
+                monthlySheet.sortedRows.map((item, idx) => {
+                  const monthName = MONTH_NAMES[item.month - 1], q1Key = `${item.year}-${String(item.month).padStart(2, '0')}-1Q`, q2Key = `${item.year}-${String(item.month).padStart(2, '0')}-2Q`, updatedDate = item.updated_at ? formatDateTimeAr(item.updated_at) : '--'
+                  const cpM = monthlySheet.getCellProps(idx, 'month'), cpDr = monthlySheet.getCellProps(idx, 'dollar_rate'), cpInf = monthlySheet.getCellProps(idx, 'monthly_inflation_pct'), cpQ = monthlySheet.getCellProps(idx, 'quincenas'), cpBy = monthlySheet.getCellProps(idx, 'updated_by'), cpAt = monthlySheet.getCellProps(idx, 'updated_at')
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="py-2.5 px-2 w-10 text-center border-r border-slate-800/80 bg-slate-900/50 font-mono text-[11px] text-slate-500">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenMacroModal(item)}
-                          className="hover:text-cyan-300 hover:bg-slate-800 px-1 py-0.5 rounded font-bold cursor-pointer transition-colors"
-                          title={`Fila #${item._rowSeq || idx + 1} (DNI Inviolable) • Clic para editar parámetros`}
-                        >
-                          {item._rowSeq || idx + 1}
-                        </button>
+                        <button type="button" onClick={() => handleOpenMacroModal(item)} className="hover:text-cyan-300 hover:bg-slate-800 px-1 py-0.5 rounded font-bold cursor-pointer transition-colors" title={`Fila #${item._rowSeq || idx + 1} (DNI Inviolable) • Clic para editar parámetros`}>{item._rowSeq || idx + 1}</button>
                       </td>
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <span className="font-extrabold text-white text-sm">
-                            {monthName} {item.year}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono font-black text-emerald-400 text-sm">
-                        ${Number(item.dollar_rate).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-3 px-3 text-center font-mono font-bold text-amber-300">
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 font-extrabold">
-                          {Number(item.monthly_inflation_pct).toFixed(1)}%
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-bold">
-                            {q1Key}
-                          </span>
-                          <span className="text-slate-500 text-[10px]">&</span>
-                          <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-bold">
-                            {q2Key}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 text-slate-300 text-xs">
-                        <span className="font-semibold text-white">{item.updated_by || 'Administrador'}</span>
-                      </td>
-                      <td className="py-3 px-3 text-center text-slate-400 text-[11px] font-mono">
-                        {updatedDate}
-                      </td>
+                      <td {...cpM.domProps} className={`py-3 px-3 ${cpM.className}`}><div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-emerald-400 shrink-0" /><span className="font-extrabold text-white text-sm">{monthName} {item.year}</span></div></td>
+                      <td {...cpDr.domProps} className={`py-3 px-3 text-right font-mono font-black text-emerald-400 text-sm ${cpDr.className}`}>${Number(item.dollar_rate).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                      <td {...cpInf.domProps} className={`py-3 px-3 text-center font-mono font-bold text-amber-300 ${cpInf.className}`}><span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 font-extrabold">{Number(item.monthly_inflation_pct).toFixed(1)}%</span></td>
+                      <td {...cpQ.domProps} className={`py-3 px-3 text-center ${cpQ.className}`}><div className="flex items-center justify-center gap-1.5"><span className="font-mono text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-bold">{q1Key}</span><span className="text-slate-500 text-[10px]">&</span><span className="font-mono text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-bold">{q2Key}</span></div></td>
+                      <td {...cpBy.domProps} className={`py-3 px-3 text-slate-300 text-xs ${cpBy.className}`}><span className="font-semibold text-white">{item.updated_by || 'Administrador'}</span></td>
+                      <td {...cpAt.domProps} className={`py-3 px-3 text-center text-slate-400 text-[11px] font-mono ${cpAt.className}`}>{updatedDate}</td>
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenMacroModal(item)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-                            title="Editar parámetros e inflacion de este mes"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteMacro(item)}
-                            className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
-                            title="Eliminar registro"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <button type="button" onClick={() => handleOpenMacroModal(item)} className="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer" title="Editar parámetros e inflacion de este mes"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button type="button" onClick={() => handleDeleteMacro(item)} className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer" title="Eliminar registro"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </td>
                     </tr>
@@ -680,6 +613,8 @@ export default function AdminMacroPanel() {
               )}
             </tbody>
           </table>
+        </div>
+        <GridStatusBarBottom isFixed={false} filteredCount={macroVariables.length} totalCount={macroVariables.length} entityName="meses" selectionStats={monthlySheet.selectionStats} onClearSelection={monthlySheet.clearSelection} />
         </div>
       </div>
 
@@ -708,200 +643,84 @@ export default function AdminMacroPanel() {
           )}
         </div>
 
+        <div ref={quincenaSheet.containerRef} tabIndex={0} onKeyDown={quincenaSheet.handleKeyDown} className="focus:outline-none space-y-2">
         <div className="overflow-y-auto max-h-[calc(100vh-280px)] border border-slate-800 rounded-xl">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="sticky top-0 z-20 alon-grid-thead">
               <tr>
                 <th className="py-2.5 px-2 w-10 text-center font-bold text-slate-400 bg-slate-900 border-b border-r border-slate-750">
                   <div className="flex flex-col items-center justify-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={toggleSelectAllPeriods}
-                      className="text-slate-400 hover:text-cyan-300 transition-colors"
-                      title="Seleccionar todas las quincenas"
-                    >
-                      {ratePeriods.length > 0 && selectedPeriods.size === ratePeriods.length ? (
-                        <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
-                      ) : (
-                        <Square className="w-3.5 h-3.5" />
-                      )}
+                    <button type="button" onClick={toggleSelectAllPeriods} className="text-slate-400 hover:text-cyan-300 transition-colors" title="Seleccionar todas las quincenas">
+                      {ratePeriods.length > 0 && selectedPeriods.size === ratePeriods.length ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
                     </button>
                     <span className="text-[10px] text-slate-500 font-mono">#</span>
                   </div>
                 </th>
-                <th className="py-2.5 px-3">Quincena (Período)</th>
-                <th className="py-2.5 px-3 text-right">Dólar Quincenal (AR$/USD)</th>
-                <th className="py-2.5 px-3 text-center">Inflación Mensual</th>
-                <th className="py-2.5 px-3 text-center">Tarifario de Mano de Obra</th>
-                <th className="py-2.5 px-3 text-center">Estado del Período</th>
-                <th className="py-2.5 px-3 text-right">Control de Cierre</th>
+                <th {...quincenaSheet.getHeaderProps('period', 'py-2.5 px-3')}>Quincena (Período){quincenaSheet.getSortIndicator('period')}</th>
+                <th {...quincenaSheet.getHeaderProps('dollar_rate', 'py-2.5 px-3 text-right')}>Dólar Quincenal (AR$/USD){quincenaSheet.getSortIndicator('dollar_rate')}</th>
+                <th {...quincenaSheet.getHeaderProps('inflation', 'py-2.5 px-3 text-center')}>Inflación Mensual{quincenaSheet.getSortIndicator('inflation')}</th>
+                <th {...quincenaSheet.getHeaderProps('rates_count', 'py-2.5 px-3 text-center')}>Tarifario de Mano de Obra{quincenaSheet.getSortIndicator('rates_count')}</th>
+                <th {...quincenaSheet.getHeaderProps('status', 'py-2.5 px-3 text-center')}>Estado del Período{quincenaSheet.getSortIndicator('status')}</th>
+                <th {...quincenaSheet.getHeaderProps('control', 'py-2.5 px-3 text-right')}>Control de Cierre{quincenaSheet.getSortIndicator('control')}</th>
                 <th className="py-2.5 px-3 text-right">Acción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {ratePeriods.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-500">
-                    No hay quincenas generadas en la base de datos.
-                  </td>
-                </tr>
+                <tr><td colSpan={8} className="py-8 text-center text-slate-500">No hay quincenas generadas en la base de datos.</td></tr>
               ) : (
-                ratePeriods.map((p, pIdx) => {
-                  const hasRates = p.rates_count > 0
-                  const isSelected = selectedPeriods.has(p.period)
+                quincenaSheet.sortedRows.map((p, pIdx) => {
+                  const hasRates = p.rates_count > 0, isSelected = selectedPeriods.has(p.period)
+                  const cpPr = quincenaSheet.getCellProps(pIdx, 'period'), cpDr = quincenaSheet.getCellProps(pIdx, 'dollar_rate'), cpInf = quincenaSheet.getCellProps(pIdx, 'inflation'), cpRc = quincenaSheet.getCellProps(pIdx, 'rates_count'), cpSt = quincenaSheet.getCellProps(pIdx, 'status'), cpCt = quincenaSheet.getCellProps(pIdx, 'control')
 
                   return (
-                    <tr 
-                      key={p.period} 
-                      className={`hover:bg-slate-800/30 transition-colors ${isSelected ? 'bg-cyan-950/20' : ''}`}
-                    >
+                    <tr key={p.period} className={`hover:bg-slate-800/30 transition-colors ${isSelected ? 'bg-cyan-950/20' : ''}`}>
                       <td className="py-2 px-2 w-10 text-center border-r border-slate-800/80 bg-slate-900/50">
                         <div className="flex flex-col items-center justify-center gap-0.5">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleSelectPeriod(p.period)
-                            }}
-                            className="text-slate-400 hover:text-cyan-300 transition-colors"
-                            title={isSelected ? 'Deseleccionar quincena' : 'Seleccionar quincena'}
-                          >
-                            {isSelected ? (
-                              <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
-                            ) : (
-                              <Square className="w-3.5 h-3.5" />
-                            )}
+                          <button type="button" onClick={(e) => { e.stopPropagation(); toggleSelectPeriod(p.period) }} className="text-slate-400 hover:text-cyan-300 transition-colors" title={isSelected ? 'Deseleccionar quincena' : 'Seleccionar quincena'}>
+                            {isSelected ? <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> : <Square className="w-3.5 h-3.5" />}
                           </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleOpenQuincenaDollar(p)
-                            }}
-                            className={`text-[10px] font-mono px-1 py-0.5 rounded transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-cyan-950/60 text-cyan-300 font-bold border border-cyan-800'
-                                : 'text-slate-500 hover:text-cyan-400 hover:bg-slate-800'
-                            }`}
-                            title={`Clic para ajustar cotización de dólar de ${p.period}`}
-                          >
-                            {pIdx + 1}
-                          </button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); handleOpenQuincenaDollar(p) }} className={`text-[10px] font-mono px-1 py-0.5 rounded transition-all cursor-pointer ${isSelected ? 'bg-cyan-950/60 text-cyan-300 font-bold border border-cyan-800' : 'text-slate-500 hover:text-cyan-400 hover:bg-slate-800'}`} title={`Clic para ajustar cotización de dólar de ${p.period}`}>{pIdx + 1}</button>
                         </div>
                       </td>
 
-                      <td className="py-3 px-3 font-mono font-bold text-cyan-300 text-sm">
-                        {p.period}
-                        <span className="ml-2 text-[10px] font-normal text-slate-400 font-sans block sm:inline">
-                          ({p.quincena === 1 ? '1ª Quincena' : '2ª Quincena'} de {MONTH_NAMES[p.month - 1]} {p.year})
-                        </span>
+                      <td {...cpPr.domProps} className={`py-3 px-3 font-mono font-bold text-cyan-300 text-sm ${cpPr.className}`}>
+                        {p.period}<span className="ml-2 text-[10px] font-normal text-slate-400 font-sans block sm:inline">({p.quincena === 1 ? '1ª Quincena' : '2ª Quincena'} de {MONTH_NAMES[p.month - 1]} {p.year})</span>
                       </td>
 
-                      <td className="py-3 px-3 text-right">
+                      <td {...cpDr.domProps} className={`py-3 px-3 text-right ${cpDr.className}`}>
                         <div className="flex items-center justify-end gap-1.5 font-mono">
-                          <span className="font-extrabold text-emerald-400 text-sm">
-                            ${p.dollar_rate.toLocaleString('es-AR')}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenQuincenaDollar(p)}
-                            className="p-1 text-slate-400 hover:text-emerald-300 hover:bg-slate-800 rounded transition-colors cursor-pointer"
-                            title={`Ajustar cotización de dólar para ${p.period}`}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
+                          <span className="font-extrabold text-emerald-400 text-sm">${p.dollar_rate.toLocaleString('es-AR')}</span>
+                          <button type="button" onClick={() => handleOpenQuincenaDollar(p)} className="p-1 text-slate-400 hover:text-emerald-300 hover:bg-slate-800 rounded transition-colors cursor-pointer" title={`Ajustar cotización de dólar para ${p.period}`}><Pencil className="w-3 h-3" /></button>
                         </div>
-
                         <div className="flex items-center justify-end gap-1 mt-0.5 font-mono text-[10px]">
-                          {p.dollarDiffPct !== null ? (
-                            <span className={`px-1.5 py-0.2 rounded font-bold ${
-                              p.dollarDiffPct > 0 
-                                ? 'bg-amber-950 text-amber-300 border border-amber-800/60' 
-                                : p.dollarDiffPct < 0 
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
-                                : 'text-slate-500'
-                            }`}>
-                              {p.dollarDiffPct > 0 ? '+' : ''}{p.dollarDiffPct.toFixed(1)}% vs mes ant.
-                            </span>
-                          ) : (
-                            <span className="text-slate-500 text-[9px]">Base inicial</span>
-                          )}
-
-                          {p.intraDollarDiffPct !== null && Math.abs(p.intraDollarDiffPct) > 0.01 && (
-                            <span className="text-[9px] text-cyan-400 ml-1">
-                              ({p.intraDollarDiffPct > 0 ? '+' : ''}{p.intraDollarDiffPct.toFixed(1)}% vs 1Q)
-                            </span>
-                          )}
+                          {p.dollarDiffPct !== null ? <span className={`px-1.5 py-0.2 rounded font-bold ${p.dollarDiffPct > 0 ? 'bg-amber-950 text-amber-300 border border-amber-800/60' : p.dollarDiffPct < 0 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60' : 'text-slate-500'}`}>{p.dollarDiffPct > 0 ? '+' : ''}{p.dollarDiffPct.toFixed(1)}% vs mes ant.</span> : <span className="text-slate-500 text-[9px]">Base inicial</span>}
+                          {p.intraDollarDiffPct !== null && Math.abs(p.intraDollarDiffPct) > 0.01 && <span className="text-[9px] text-cyan-400 ml-1">({p.intraDollarDiffPct > 0 ? '+' : ''}{p.intraDollarDiffPct.toFixed(1)}% vs 1Q)</span>}
                         </div>
                       </td>
 
-                      <td className="py-3 px-3 text-center">
-                        <span className="font-mono font-bold text-amber-300 text-sm block">
-                          {p.monthly_inflation_pct}% mensual
-                        </span>
-                        {p.infDiff !== null ? (
-                          <span className={`text-[10px] font-mono font-bold inline-block mt-0.5 px-1.5 py-0.2 rounded ${
-                            p.infDiff > 0 
-                              ? 'bg-rose-950 text-rose-300 border border-rose-800/60' 
-                              : p.infDiff < 0 
-                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
-                              : 'text-slate-500'
-                          }`}>
-                            {p.infDiff > 0 ? '+' : ''}{p.infDiff.toFixed(1)} p.p. vs mes ant.
-                          </span>
-                        ) : (
-                          <span className="text-[9px] text-slate-500 block">Base inicial</span>
-                        )}
+                      <td {...cpInf.domProps} className={`py-3 px-3 text-center ${cpInf.className}`}>
+                        <span className="font-mono font-bold text-amber-300 text-sm block">{p.monthly_inflation_pct}% mensual</span>
+                        {p.infDiff !== null ? <span className={`text-[10px] font-mono font-bold inline-block mt-0.5 px-1.5 py-0.2 rounded ${p.infDiff > 0 ? 'bg-rose-950 text-rose-300 border border-rose-800/60' : p.infDiff < 0 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60' : 'text-slate-500'}`}>{p.infDiff > 0 ? '+' : ''}{p.infDiff.toFixed(1)} p.p. vs mes ant.</span> : <span className="text-[9px] text-slate-500 block">Base inicial</span>}
                       </td>
 
-                      <td className="py-3 px-3 text-center">
-                        {hasRates ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold inline-flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3 text-blue-400" />
-                            {p.rates_count} tarifas vigentes (Personal & Tarifas)
-                          </span>
-                        ) : (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium inline-flex items-center gap-1">
-                            <AlertCircle className="w-3 h-3 text-amber-400/80" />
-                            Pendiente fijar tarifas de mano de obra
-                          </span>
-                        )}
+                      <td {...cpRc.domProps} className={`py-3 px-3 text-center ${cpRc.className}`}>
+                        {hasRates ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-blue-400" />{p.rates_count} tarifas vigentes (Personal & Tarifas)</span> : <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium inline-flex items-center gap-1"><AlertCircle className="w-3 h-3 text-amber-400/80" />Pendiente fijar tarifas de mano de obra</span>}
                       </td>
 
-                      <td className="py-3 px-3 text-center">
-                        <span className={`text-[9px] px-2.5 py-1 rounded font-black border uppercase inline-flex items-center gap-1.5 ${
-                          p.is_locked
-                            ? 'bg-amber-950 text-amber-300 border-amber-700'
-                            : 'bg-emerald-950 text-emerald-300 border-emerald-700'
-                        }`}>
+                      <td {...cpSt.domProps} className={`py-3 px-3 text-center ${cpSt.className}`}>
+                        <span className={`text-[9px] px-2.5 py-1 rounded font-black border uppercase inline-flex items-center gap-1.5 ${p.is_locked ? 'bg-amber-950 text-amber-300 border-amber-700' : 'bg-emerald-950 text-emerald-300 border-emerald-700'}`}>
                           {p.is_locked ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
                           <span>{p.is_locked ? 'CONGELADA / CERRADA' : 'ABIERTA / MODIFICABLE'}</span>
                         </span>
                       </td>
 
-                      <td className="py-3 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => togglePeriodLock(p)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                            p.is_locked
-                              ? 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700'
-                              : 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800'
-                          }`}
-                        >
-                          {p.is_locked ? 'Desbloquear Quincena' : 'Bloquear e Inmutabilizar'}
-                        </button>
+                      <td {...cpCt.domProps} className={`py-3 px-3 text-right ${cpCt.className}`}>
+                        <button type="button" onClick={() => togglePeriodLock(p)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${p.is_locked ? 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700' : 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800'}`}>{p.is_locked ? 'Desbloquear Quincena' : 'Bloquear e Inmutabilizar'}</button>
                       </td>
 
                       <td className="py-3 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSinglePeriod(p)}
-                          className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                          title={`Eliminar registros de la quincena ${p.period}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <button type="button" onClick={() => handleDeleteSinglePeriod(p)} className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer" title={`Eliminar registros de la quincena ${p.period}`}><Trash2 className="w-3.5 h-3.5" /></button>
                       </td>
                     </tr>
                   )
@@ -909,6 +728,8 @@ export default function AdminMacroPanel() {
               )}
             </tbody>
           </table>
+        </div>
+        <GridStatusBarBottom isFixed={false} filteredCount={ratePeriods.length} totalCount={ratePeriods.length} entityName="quincenas" selectionStats={quincenaSheet.selectionStats} onClearSelection={quincenaSheet.clearSelection} />
         </div>
       </div>
 

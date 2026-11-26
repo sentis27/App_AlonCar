@@ -7,14 +7,7 @@ import CanonicalPriceHelpBadge from '../canonical/CanonicalPriceHelpBadge'
  * Al acercarse al valor del precio despliega el signo (?) con la lógica de congelamiento quincenal.
  */
 export function CatalogPriceArsCell({
-  mat,
-  inlineEdit,
-  setInlineEdit,
-  commitTextOrNum,
-  clearEdit,
-  pricingPolicy,
-  dollarRate,
-  periodKey
+  mat, inlineEdit, setInlineEdit, commitTextOrNum, clearEdit, pricingPolicy, dollarRate, periodKey, cellProps = null
 }) {
   const isEditing = inlineEdit.id === mat.id && inlineEdit.field === 'cost_ars'
   const ars = Number(mat.cost_ars) || 0
@@ -23,8 +16,9 @@ export function CatalogPriceArsCell({
 
   return (
     <td
+      {...cellProps?.domProps}
       onDoubleClick={() => setInlineEdit({ id: mat.id, field: 'cost_ars', value: String(ars) })}
-      className="group/price py-1.5 px-1.5 text-right font-mono whitespace-nowrap cursor-pointer"
+      className={`group/price py-1.5 px-1.5 text-right font-mono whitespace-nowrap cursor-pointer ${cellProps?.className || ''}`}
       title="Doble clic para cargar o editar Precio Base AR$ (recalcula US$ con % Seg. Naval y dólar vigente)"
     >
       {isEditing ? (
@@ -69,20 +63,15 @@ export function CatalogPriceArsCell({
   )
 }
 
-export function CatalogPriceUsdCell({
-  mat,
-  inlineEdit,
-  setInlineEdit,
-  commitTextOrNum,
-  clearEdit
-}) {
+export function CatalogPriceUsdCell({ mat, inlineEdit, setInlineEdit, commitTextOrNum, clearEdit, cellProps = null }) {
   const isEditing = inlineEdit.id === mat.id && inlineEdit.field === 'cost_usd'
   const usd = Number(mat.cost_usd) || 0
 
   return (
     <td
+      {...cellProps?.domProps}
       onDoubleClick={() => setInlineEdit({ id: mat.id, field: 'cost_usd', value: String(usd) })}
-      className="py-1.5 px-1.5 text-right font-mono whitespace-nowrap cursor-pointer"
+      className={`py-1.5 px-1.5 text-right font-mono whitespace-nowrap cursor-pointer ${cellProps?.className || ''}`}
       title="Doble clic para editar Costo US$ directamente (sincroniza Precio AR$ con dólar vigente)"
     >
       {isEditing ? (

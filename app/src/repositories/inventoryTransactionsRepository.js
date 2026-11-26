@@ -37,7 +37,7 @@ export function createInventoryTransactionsRepository({ client = defaultClient }
     },
 
     async listWithVoucherNumber({
-      select = 'id, material_id, work_order_id, ship_id, quantity_withdrawn, weight_total, voucher_number, transaction_date, contractor_name, worker_name, notes',
+      select = 'id, material_id, work_order_id, ship_id, worker_id, quantity_withdrawn, weight_total, voucher_number, transaction_date, contractor_name, worker_name, notes',
     } = {}) {
       return base.findAllBatched({
         select,

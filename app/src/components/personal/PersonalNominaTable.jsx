@@ -162,17 +162,17 @@ export default function PersonalNominaTable({
                   <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
                 </div>
               </th>
-              <th className="py-2.5 px-2">Nombre y Apellido ✎</th>
-              <th className="py-2.5 px-1.5 text-center">Categoría ✎</th>
-              <th className="py-2.5 px-1.5">Rubro ✎</th>
-              <th className="py-2.5 px-2 text-right">AR$/Hora ✎</th>
+              <th {...nominaGrid.getColumnHeaderProps('name', 'py-2.5 px-2')}>Nombre y Apellido ✎</th>
+              <th {...nominaGrid.getColumnHeaderProps('category', 'py-2.5 px-1.5 text-center')}>Categoría ✎</th>
+              <th {...nominaGrid.getColumnHeaderProps('trade', 'py-2.5 px-1.5')}>Rubro ✎</th>
+              <th {...nominaGrid.getColumnHeaderProps('hourly_rate_ars', 'py-2.5 px-2 text-right')}>AR$/Hora ✎</th>
               <th className="py-2.5 px-1.5 text-center text-emerald-400">U$/Hora</th>
-              <th className="py-2.5 px-2">Grupo de Trabajo ✎</th>
-              <th className="py-2.5 px-1.5">Centro Admin ✎</th>
+              <th {...nominaGrid.getColumnHeaderProps('work_group', 'py-2.5 px-2')}>Grupo de Trabajo ✎</th>
+              <th {...nominaGrid.getColumnHeaderProps('admin_center', 'py-2.5 px-1.5')}>Centro Admin ✎</th>
               <th className="py-2.5 px-1.5">Contrato</th>
               <th className="py-2.5 px-1.5 text-center">Estado</th>
               <th className="py-2.5 px-1.5">Consumibles</th>
-              <th className="py-2.5 px-1.5">
+              <th {...nominaGrid.getColumnHeaderProps('safety_items', 'py-2.5 px-1.5')}>
                 <div className="relative group inline-flex items-center gap-1 cursor-help">
                   <span>Elem. Seg. ✎</span>
                   <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />

@@ -292,14 +292,14 @@ export default function ResumenHojaHorasPanel({
             <thead className="alon-grid-thead sticky top-0 z-10 text-[10px] uppercase tracking-wider text-slate-300">
               <tr>
                 <th className="px-2.5 py-2 w-10 text-center">#</th>
-                <th className="px-2.5 py-2">Fecha</th>
-                <th className="px-2.5 py-2">O.T</th>
-                <th className="px-2.5 py-2">Operario / Contratista</th>
-                <th className="px-2.5 py-2">Oficio / Rubro</th>
-                <th className="px-2.5 py-2">Modalidad</th>
-                <th className="px-2.5 py-2 text-right">Hs Norm.</th>
+                <th {...sheetSelection.getHeaderProps('date', 'px-2.5 py-2')}>Fecha</th>
+                <th {...sheetSelection.getHeaderProps('otLabel', 'px-2.5 py-2')}>O.T</th>
+                <th {...sheetSelection.getHeaderProps('workerName', 'px-2.5 py-2')}>Operario / Contratista</th>
+                <th {...sheetSelection.getHeaderProps('rubro', 'px-2.5 py-2')}>Oficio / Rubro</th>
+                <th {...sheetSelection.getHeaderProps('workType', 'px-2.5 py-2')}>Modalidad</th>
+                <th {...sheetSelection.getHeaderProps('hoursNormal', 'px-2.5 py-2 text-right')}>Hs Norm.</th>
                 <th
-                  className="px-2.5 py-2 text-right"
+                  {...sheetSelection.getHeaderProps('hoursExtraEquiv', 'px-2.5 py-2 text-right')}
                   title="Suma de horas extra convertidas a su valor de referencia en horas normales (50% × 1,5 y 100% × 2,0 en Astillero). Acercá el mouse a cada valor para ver el desglose."
                 >
                   <span className="inline-flex items-center justify-end gap-1 cursor-help">
@@ -307,9 +307,9 @@ export default function ResumenHojaHorasPanel({
                     <HelpCircle className="w-3 h-3 text-amber-400" />
                   </span>
                 </th>
-                <th className="px-2.5 py-2 text-right">Tarifa US$</th>
-                <th className="px-2.5 py-2 text-right">Costo US$</th>
-                <th className="px-2.5 py-2">Notas</th>
+                <th {...sheetSelection.getHeaderProps('hourlyRateUsd', 'px-2.5 py-2 text-right')}>Tarifa US$</th>
+                <th {...sheetSelection.getHeaderProps('costUsd', 'px-2.5 py-2 text-right')}>Costo US$</th>
+                <th {...sheetSelection.getHeaderProps('notes', 'px-2.5 py-2')}>Notas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">

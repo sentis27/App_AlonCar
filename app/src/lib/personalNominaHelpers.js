@@ -70,7 +70,7 @@ export const NOMINA_COLUMNS = [
   { key: 'name', label: 'Nombre y Apellido' },
   { key: 'category', label: 'Categoría' },
   { key: 'trade', label: 'Rubro' },
-  { key: 'hourly_rate_ars', label: 'AR$/Hora' },
+  { key: 'hourly_rate_ars', label: 'AR$/Hora', isNumeric: true, formatType: 'ars' },
   { key: 'work_group', label: 'Grupo de Trabajo' },
   { key: 'admin_center', label: 'Centro Admin' },
   { key: 'safety_items', label: 'Elem. Seg.' }

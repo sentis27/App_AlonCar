@@ -139,7 +139,12 @@ export default function FormulaNumericInput({
   }
 
   return (
-    <div className="relative inline-block w-full" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="relative inline-block w-full"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
       <input
         ref={inputRef}
         type="text"

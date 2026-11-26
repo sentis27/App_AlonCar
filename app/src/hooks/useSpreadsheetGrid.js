@@ -1,8 +1,9 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useMemo } from 'react'
 import { useGridHistory } from './grid/useGridHistory.js'
 import { useGridSelection } from './grid/useGridSelection.js'
 import { useGridClipboard } from './grid/useGridClipboard.js'
 import { useGridNavigation } from './grid/useGridNavigation.js'
+import { useGridRangeCopy } from './grid/useGridRangeCopy.js'
 
 /**
  * useSpreadsheetGrid
@@ -89,13 +90,30 @@ export function useSpreadsheetGrid({
     showFeedback
   })
 
+  // 4b. Ctrl+C de rangos 2D / salteados hacia Excel y Sheets (motor único)
+  const copyRange = useGridRangeCopy({
+    selectionRanges: selection.selectionRanges,
+    rows,
+    columns,
+    readCellValue,
+    clipboard,
+    showFeedback
+  })
+  const copyActiveCellOrRange = useCallback(() => {
+    if (!copyRange()) clipboard.copyActiveCell()
+  }, [copyRange, clipboard])
+  const clipboardWithRange = useMemo(
+    () => ({ ...clipboard, copyActiveCell: copyActiveCellOrRange }),
+    [clipboard, copyActiveCellOrRange]
+  )
+
   // 5. Sub-hook: Navegación por teclado, atajos y tirador (Fill Handle)
   const navigation = useGridNavigation({
     rows,
     columns,
     getRowId,
     selection,
-    clipboard,
+    clipboard: clipboardWithRange,
     history,
     canEditCell,
     readCellValue,
@@ -119,6 +137,11 @@ export function useSpreadsheetGrid({
     handleCellMouseEnter: selection.handleCellMouseEnter,
     isCellActive: selection.isCellActive,
     isCellSelected: selection.isCellSelected,
+    selectionRanges: selection.selectionRanges,
+    selectColumn: selection.selectColumn,
+    isColumnSelected: selection.isColumnSelected,
+    getColumnHeaderProps: selection.getColumnHeaderProps,
+    getCellProps: selection.getCellProps,
 
     // Selección canónica de filas (Columna 0 #)
     selectedRowIds: selection.selectedRowIds,
@@ -138,7 +161,8 @@ export function useSpreadsheetGrid({
     redo: history.redo,
 
     // Portapapeles y mutaciones matriciales
-    copyActiveCell: clipboard.copyActiveCell,
+    copyActiveCell: copyActiveCellOrRange,
+    copyRange,
     copyRow: clipboard.copyRow,
     internalClipboard: clipboard.internalClipboard,
     pasteToActiveOrRange: clipboard.pasteToActiveOrRange,

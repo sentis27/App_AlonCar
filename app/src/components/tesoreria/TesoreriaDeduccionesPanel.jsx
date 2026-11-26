@@ -3,13 +3,16 @@ import { Download, Shield, Package, Users, Layers, CheckCircle2, Info } from 'lu
 import { useAuth } from '../../context/AuthContext'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import GridStatusBarBottom from '../GridStatusBarBottom'
 import { getFilterSelectClass } from '../../lib/filterThemeConstants'
 import HighlightText from '../HighlightText'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { exportToSpreadsheet } from '../../lib/exportEngine'
 import { formatDateAr } from '../../lib/dateTimeCanonical'
+import { TESORERIA_RESUMEN_SHEET_COLUMNS, buildTesoreriaDetalleSheetColumns } from '../../lib/sheetColumnsAdmin'
 
 /**
  * Panel analítico de Extracción de Descuentos a Contratistas (Gallina / METRICAS_ANALISIS)
@@ -75,7 +78,10 @@ export default function TesoreriaDeduccionesPanel({
 
   const activeDetailRows = subView === 'exentos' ? filteredExempt : filteredDetails
   const resetKey = `${selectedPeriod}|${subView}|${selectedContractor}|${categoryFilter}|${searchTerm}`
-  const { visibleItems: visibleSummary, visibleCount: visSummaryCount, hasMore: hasMoreSummary, remainingCount: remSummary, loadMore: loadMoreSummary, showAll: showAllSummary, sentinelRef: summarySentinelRef } = useProgressiveRows({ items: filteredSummary, resetKey, scrollContainerRef: scrollRef })
+  const summarySheet = useSheetSelection({ rows: filteredSummary, columns: TESORERIA_RESUMEN_SHEET_COLUMNS, getRowId: (r) => r.contractorLabel, sortable: true })
+  const detailCols = useMemo(() => buildTesoreriaDetalleSheetColumns(subView), [subView])
+  const detailSheet = useSheetSelection({ rows: activeDetailRows, columns: detailCols, getRowId: (r) => `${r.id || ''}|${r.date || ''}|${r.materialName || ''}` })
+  const { visibleItems: visibleSummary, visibleCount: visSummaryCount, hasMore: hasMoreSummary, remainingCount: remSummary, loadMore: loadMoreSummary, showAll: showAllSummary, sentinelRef: summarySentinelRef } = useProgressiveRows({ items: summarySheet.sortedRows, resetKey, scrollContainerRef: scrollRef })
   const { visibleItems: visibleDetailRows, visibleCount: visDetailCount, hasMore: hasMoreDetail, remainingCount: remDetail, loadMore: loadMoreDetail, showAll: showAllDetail, sentinelRef: detailSentinelRef } = useProgressiveRows({ items: activeDetailRows, resetKey, scrollContainerRef: scrollRef })
 
   const clearFilters = () => { setSearchTerm(''); setCategoryFilter('ALL'); setSelectedContractor('ALL') }
@@ -86,16 +92,11 @@ export default function TesoreriaDeduccionesPanel({
         filename: `descuentos_contratistas_${selectedPeriod}`,
         rows: filteredSummary,
         columns: [
-          { key: 'contractorLabel', label: 'Contratista / Grupo' },
-          { key: 'adminCenter', label: 'Centro Admin' },
-          { key: 'safetyCenter', label: 'Regla Seguridad' },
-          { key: 'consumablesCount', label: 'Cant. Consumibles' },
-          { key: 'consumablesArs', label: 'Consumibles AR$' },
-          { key: 'consumablesUsd', label: 'Consumibles US$' },
-          { key: 'safetyCount', label: 'Cant. Elem. Seguridad' },
-          { key: 'safetyArs', label: 'Seguridad AR$' },
-          { key: 'safetyUsd', label: 'Seguridad US$' },
-          { key: 'totalDeductArs', label: 'Total Descontar AR$' },
+          { key: 'contractorLabel', label: 'Contratista / Grupo' }, { key: 'adminCenter', label: 'Centro Admin' },
+          { key: 'safetyCenter', label: 'Regla Seguridad' }, { key: 'consumablesCount', label: 'Cant. Consumibles' },
+          { key: 'consumablesArs', label: 'Consumibles AR$' }, { key: 'consumablesUsd', label: 'Consumibles US$' },
+          { key: 'safetyCount', label: 'Cant. Elem. Seguridad' }, { key: 'safetyArs', label: 'Seguridad AR$' },
+          { key: 'safetyUsd', label: 'Seguridad US$' }, { key: 'totalDeductArs', label: 'Total Descontar AR$' },
           { key: 'totalDeductUsd', label: 'Total Descontar US$' }
         ]
       })
@@ -304,85 +305,81 @@ export default function TesoreriaDeduccionesPanel({
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-400">Calculando extracciones de la quincena {selectedPeriod}...</div>
           ) : subView === 'consolidado' ? (
+            <div ref={summarySheet.containerRef} tabIndex={0} onKeyDown={summarySheet.handleKeyDown} className="focus:outline-none space-y-2">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="sticky top-0 z-20 alon-grid-thead">
                 <tr>
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
-                  <th className="py-2.5 px-3">Contratista / Razón Social</th>
-                  <th className="py-2.5 px-3">Centro</th>
-                  <th className="py-2.5 px-3 text-center">Regla EPP</th>
-                  <th className="py-2.5 px-3 text-right">Consumibles (AR$)</th>
-                  <th className="py-2.5 px-3 text-right">Elem. Seguridad (AR$)</th>
-                  <th className="py-2.5 px-3 text-right text-emerald-300">Total Descontar AR$</th>
-                  <th className="py-2.5 px-3 text-right text-cyan-300">Total Descontar US$</th>
+                  <th {...summarySheet.getHeaderProps('contractorLabel', 'py-2.5 px-3')}>Contratista / Razón Social{summarySheet.getSortIndicator('contractorLabel')}</th>
+                  <th {...summarySheet.getHeaderProps('adminCenter', 'py-2.5 px-3')}>Centro{summarySheet.getSortIndicator('adminCenter')}</th>
+                  <th {...summarySheet.getHeaderProps('safetyCenter', 'py-2.5 px-3 text-center')}>Regla EPP{summarySheet.getSortIndicator('safetyCenter')}</th>
+                  <th {...summarySheet.getHeaderProps('consumablesArs', 'py-2.5 px-3 text-right')}>Consumibles (AR$){summarySheet.getSortIndicator('consumablesArs')}</th>
+                  <th {...summarySheet.getHeaderProps('safetyArs', 'py-2.5 px-3 text-right')}>Elem. Seguridad (AR$){summarySheet.getSortIndicator('safetyArs')}</th>
+                  <th {...summarySheet.getHeaderProps('totalDeductArs', 'py-2.5 px-3 text-right text-emerald-300')}>Total Descontar AR${summarySheet.getSortIndicator('totalDeductArs')}</th>
+                  <th {...summarySheet.getHeaderProps('totalDeductUsd', 'py-2.5 px-3 text-right text-cyan-300')}>Total Descontar US${summarySheet.getSortIndicator('totalDeductUsd')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredSummary.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-10 text-center text-slate-500">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
-                      Sin deducciones registradas en Pañol para {selectedPeriod}.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={8} className="py-10 text-center text-slate-500"><CheckCircle2 className="w-5 h-5 text-emerald-400 mx-auto mb-1" />Sin deducciones registradas en Pañol para {selectedPeriod}.</td></tr>
                 ) : (
                   <>
-                    {visibleSummary.map((r, idx) => (
+                    {visibleSummary.map((r, idx) => {
+                      const cpC = summarySheet.getCellProps(idx, 'contractorLabel'), cpA = summarySheet.getCellProps(idx, 'adminCenter'), cpS = summarySheet.getCellProps(idx, 'safetyCenter'), cpCo = summarySheet.getCellProps(idx, 'consumablesArs'), cpSa = summarySheet.getCellProps(idx, 'safetyArs'), cpTa = summarySheet.getCellProps(idx, 'totalDeductArs'), cpTu = summarySheet.getCellProps(idx, 'totalDeductUsd')
+                      return (
                       <tr key={r.contractorLabel} className="hover:bg-slate-800/40">
                         <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
-                        <td className="py-2 px-3 font-bold text-white"><HighlightText text={r.contractorLabel} query={searchTerm} /></td>
-                        <td className="py-2 px-3 text-[10px] font-bold text-amber-300">{r.adminCenter}</td>
-                        <td className="py-2 px-3 text-center"><span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-bold">{r.safetyCenter}</span></td>
-                        <td className="py-2 px-3 text-right font-mono text-slate-200">${r.consumablesArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.consumablesCount})</td>
-                        <td className="py-2 px-3 text-right font-mono text-slate-200">${r.safetyArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.safetyCount})</td>
-                        <td className="py-2 px-3 text-right font-mono font-black text-emerald-300">${r.totalDeductArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
-                        <td className="py-2 px-3 text-right font-mono font-bold text-cyan-300">US$ {r.totalDeductUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                        <td {...cpC.domProps} className={`py-2 px-3 font-bold text-white ${cpC.className}`}><HighlightText text={r.contractorLabel} query={searchTerm} /></td>
+                        <td {...cpA.domProps} className={`py-2 px-3 text-[10px] font-bold text-amber-300 ${cpA.className}`}>{r.adminCenter}</td>
+                        <td {...cpS.domProps} className={`py-2 px-3 text-center ${cpS.className}`}><span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-bold">{r.safetyCenter}</span></td>
+                        <td {...cpCo.domProps} className={`py-2 px-3 text-right font-mono text-slate-200 ${cpCo.className}`}>${r.consumablesArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.consumablesCount})</td>
+                        <td {...cpSa.domProps} className={`py-2 px-3 text-right font-mono text-slate-200 ${cpSa.className}`}>${r.safetyArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ({r.safetyCount})</td>
+                        <td {...cpTa.domProps} className={`py-2 px-3 text-right font-mono font-black text-emerald-300 ${cpTa.className}`}>${r.totalDeductArs.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                        <td {...cpTu.domProps} className={`py-2 px-3 text-right font-mono font-bold text-cyan-300 ${cpTu.className}`}>US$ {r.totalDeductUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
                       </tr>
-                    ))}
+                      )
+                    })}
                     <CanonicalProgressiveTableFooter colSpan={8} visibleCount={visSummaryCount} totalCount={filteredSummary.length} remainingCount={remSummary} hasMore={hasMoreSummary} loadMore={loadMoreSummary} showAll={showAllSummary} sentinelRef={summarySentinelRef} entityLabel="contratistas" />
                   </>
                 )}
               </tbody>
             </table>
+            <GridStatusBarBottom isFixed={false} filteredCount={filteredSummary.length} totalCount={summaryRows.length} entityName="contratistas" hasActiveFilter={Boolean(searchTerm || categoryFilter !== 'ALL' || selectedContractor !== 'ALL')} onClearFilters={clearFilters} selectionStats={summarySheet.selectionStats} onClearSelection={summarySheet.clearSelection} globalAggregates={[{ label: 'Σ AR$', value: `AR$ ${Number(totals.totalDeductArs || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, highlight: true }, { label: 'Σ US$', value: `US$ ${Number(totals.totalDeductUsd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` }]} />
+            </div>
           ) : (
+            <div ref={detailSheet.containerRef} tabIndex={0} onKeyDown={detailSheet.handleKeyDown} className="focus:outline-none space-y-2">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="sticky top-0 z-20 alon-grid-thead">
                 <tr>
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
-                  <th className="py-2.5 px-3">Fecha</th>
-                  <th className="py-2.5 px-3">Contratista</th>
-                  <th className="py-2.5 px-3">Operario</th>
-                  <th className="py-2.5 px-3">Material / Insumo</th>
-                  <th className="py-2.5 px-3">Categoría</th>
-                  <th className="py-2.5 px-3 text-right">Cant.</th>
-                  <th className="py-2.5 px-3">Buque / OT</th>
-                  <th className="py-2.5 px-3 text-right">
-                    {subView === 'exentos' ? 'Costo Ref. US$' : 'Descuento AR$ / US$'}
-                  </th>
+                  <th {...detailSheet.getHeaderProps('date', 'py-2.5 px-3')}>Fecha</th>
+                  <th {...detailSheet.getHeaderProps('contractorLabel', 'py-2.5 px-3')}>Contratista</th>
+                  <th {...detailSheet.getHeaderProps('workerName', 'py-2.5 px-3')}>Operario</th>
+                  <th {...detailSheet.getHeaderProps('materialName', 'py-2.5 px-3')}>Material / Insumo</th>
+                  <th {...detailSheet.getHeaderProps('category', 'py-2.5 px-3')}>Categoría</th>
+                  <th {...detailSheet.getHeaderProps('quantity', 'py-2.5 px-3 text-right')}>Cant.</th>
+                  <th {...detailSheet.getHeaderProps('ship_wo', 'py-2.5 px-3')}>Buque / OT</th>
+                  <th {...detailSheet.getHeaderProps('amount', 'py-2.5 px-3 text-right')}>{subView === 'exentos' ? 'Costo Ref. US$' : 'Descuento AR$ / US$'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {activeDetailRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="py-10 text-center text-slate-500">
-                      No hay movimientos para mostrar con los filtros actuales.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={9} className="py-10 text-center text-slate-500">No hay movimientos para mostrar con los filtros actuales.</td></tr>
                 ) : (
                   <>
-                    {visibleDetailRows.map((r, idx) => (
+                    {visibleDetailRows.map((r, idx) => {
+                      const cpDt = detailSheet.getCellProps(idx, 'date'), cpC = detailSheet.getCellProps(idx, 'contractorLabel'), cpW = detailSheet.getCellProps(idx, 'workerName'), cpM = detailSheet.getCellProps(idx, 'materialName'), cpCat = detailSheet.getCellProps(idx, 'category'), cpQ = detailSheet.getCellProps(idx, 'quantity'), cpSw = detailSheet.getCellProps(idx, 'ship_wo'), cpAm = detailSheet.getCellProps(idx, 'amount')
+                      return (
                       <tr key={r.id || idx} className="hover:bg-slate-800/40">
                         <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
-                        <td className="py-2 px-3 font-mono text-slate-300">{formatDateAr(r.date)}</td>
-                        <td className="py-2 px-3 font-bold text-white"><HighlightText text={r.contractorLabel} query={searchTerm} /></td>
-                        <td className="py-2 px-3 text-slate-300"><HighlightText text={r.workerName} query={searchTerm} /></td>
-                        <td className="py-2 px-3 font-semibold text-slate-100"><HighlightText text={r.materialName} query={searchTerm} /></td>
-                        <td className="py-2 px-3">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${r.category === 'ELEM.SEGURIDAD' ? 'bg-cyan-950 text-cyan-300 border-cyan-700' : 'bg-amber-950 text-amber-300 border-amber-700'}`}>{r.category}</span>
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-slate-200">{r.quantity} {r.unitMeasure}</td>
-                        <td className="py-2 px-3 text-slate-300"><span className="font-bold text-white">{r.shipName}</span> · <span className="text-[11px] text-slate-400">{r.otLabel}</span></td>
-                        <td className="py-2 px-3 text-right font-mono">
+                        <td {...cpDt.domProps} className={`py-2 px-3 font-mono text-slate-300 ${cpDt.className}`}>{formatDateAr(r.date)}</td>
+                        <td {...cpC.domProps} className={`py-2 px-3 font-bold text-white ${cpC.className}`}><HighlightText text={r.contractorLabel} query={searchTerm} /></td>
+                        <td {...cpW.domProps} className={`py-2 px-3 text-slate-300 ${cpW.className}`}><HighlightText text={r.workerName} query={searchTerm} /></td>
+                        <td {...cpM.domProps} className={`py-2 px-3 font-semibold text-slate-100 ${cpM.className}`}><HighlightText text={r.materialName} query={searchTerm} /></td>
+                        <td {...cpCat.domProps} className={`py-2 px-3 ${cpCat.className}`}><span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${r.category === 'ELEM.SEGURIDAD' ? 'bg-cyan-950 text-cyan-300 border-cyan-700' : 'bg-amber-950 text-amber-300 border-amber-700'}`}>{r.category}</span></td>
+                        <td {...cpQ.domProps} className={`py-2 px-3 text-right font-mono text-slate-200 ${cpQ.className}`}>{r.quantity} {r.unitMeasure}</td>
+                        <td {...cpSw.domProps} className={`py-2 px-3 text-slate-300 ${cpSw.className}`}><span className="font-bold text-white">{r.shipName}</span> · <span className="text-[11px] text-slate-400">{r.otLabel}</span></td>
+                        <td {...cpAm.domProps} className={`py-2 px-3 text-right font-mono ${cpAm.className}`}>
                           {subView === 'exentos' ? (
                             <span className="text-purple-300 font-bold">US$ {r.classification.referenceUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })} (No desc.)</span>
                           ) : (
@@ -393,12 +390,15 @@ export default function TesoreriaDeduccionesPanel({
                           )}
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                     <CanonicalProgressiveTableFooter colSpan={9} visibleCount={visDetailCount} totalCount={activeDetailRows.length} remainingCount={remDetail} hasMore={hasMoreDetail} loadMore={loadMoreDetail} showAll={showAllDetail} sentinelRef={detailSentinelRef} entityLabel="movimientos" />
                   </>
                 )}
               </tbody>
             </table>
+            <GridStatusBarBottom isFixed={false} filteredCount={activeDetailRows.length} totalCount={activeDetailRows.length} entityName="retiros" hasActiveFilter={Boolean(searchTerm || categoryFilter !== 'ALL' || selectedContractor !== 'ALL')} onClearFilters={clearFilters} selectionStats={detailSheet.selectionStats} onClearSelection={detailSheet.clearSelection} />
+            </div>
           )}
         </div>
       </div>

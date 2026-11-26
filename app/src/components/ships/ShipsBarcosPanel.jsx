@@ -411,12 +411,12 @@ export default function ShipsBarcosPanel({
                       <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
                     </div>
                   </th>
-                  <th className="py-3 px-3">Buque ✎</th>
-                  <th className="py-3 px-3">Tipo ✎</th>
-                  <th className="py-3 px-3">Locación ✎</th>
+                  <th {...shipsGrid.getColumnHeaderProps('name', 'py-3 px-3')}>Buque ✎</th>
+                  <th {...shipsGrid.getColumnHeaderProps('vessel_type', 'py-3 px-3')}>Tipo ✎</th>
+                  <th {...shipsGrid.getColumnHeaderProps('current_location', 'py-3 px-3')}>Locación ✎</th>
                   <th className="py-3 px-3">Dimensiones</th>
                   <th className="py-3 px-3">OTs Activas</th>
-                  <th className="py-3 px-3">Armador / Empresa ✎</th>
+                  <th {...shipsGrid.getColumnHeaderProps('owner_id', 'py-3 px-3')}>Armador / Empresa ✎</th>
                   <th className="py-3 px-3">Estado / Solicitud</th>
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>

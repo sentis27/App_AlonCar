@@ -14,6 +14,10 @@ import { SystemPromptSchema, AiProcessingLogSchema } from './aiGovernance.schema
 import { ShipSchema, ShipStaySchema, OwnerSchema, ShipDocumentSchema, ContactSchema } from './ships.schema.js'
 import { PurchaseOrderSchema, SupplierSchema, PurchaseDocumentSchema } from './purchases.schema.js'
 import { ThirdPartyServiceSchema, ThirdPartyVoucherHistorySchema } from './thirdParty.schema.js'
+import {
+  CC_PRICING_MODES, CC_CANCELLATION_MODES, CC_ENTRY_SOURCES, CC_PAYMENT_TYPES, CC_SOURCE_MODULES,
+  ThirdPartyCcAccountSchema, ThirdPartyCcRateHistorySchema, ThirdPartyCcEntrySchema, ThirdPartyCcPaymentSchema,
+} from './thirdPartyCc.schema.js'
 import { WorkItemSchema } from './workItems.schema.js'
 import {
   MaterialSchema, InventoryTransactionSchema, GasCylinderMovementSchema, MaterialRubroSchema,
@@ -198,40 +202,15 @@ export function validatePartialPayload(schema, patch) {
 }
 
 export {
-  WorkerSchema,
-  WorkerUpdateSchema,
-  RateCardSchema,
-  WorkOrderSchema,
-  LaborLogSchema,
-  SystemSettingSchema,
-  OrganizationRoleSchema,
-  MacroVariableSchema,
-  OtTemplateSchema,
-  SystemPromptSchema,
-  AiProcessingLogSchema,
-  ShipSchema,
-  ShipStaySchema,
-  OwnerSchema,
-  ShipDocumentSchema,
-  ContactSchema,
-  PurchaseOrderSchema,
-  SupplierSchema,
-  PurchaseDocumentSchema,
-  ThirdPartyServiceSchema,
-  ThirdPartyVoucherHistorySchema,
-  WorkItemSchema,
-  MaterialSchema,
-  InventoryTransactionSchema,
-  GasCylinderMovementSchema,
-  MaterialRubroSchema,
-  StockAdjustmentSchema,
-  StockAuditSchema,
-  STOCK_ADJUSTMENT_REASONS,
-  MATERIAL_CONDITIONS,
-  DataRequirementSchema,
-  ComplianceAlertSchema,
-  WorkerPermissionRequestSchema,
-  AuditLogSchema,
-  ProfileSchema,
-  PROFILE_ROLES,
+  WorkerSchema, WorkerUpdateSchema, RateCardSchema, WorkOrderSchema, LaborLogSchema,
+  SystemSettingSchema, OrganizationRoleSchema, MacroVariableSchema, OtTemplateSchema,
+  SystemPromptSchema, AiProcessingLogSchema, ShipSchema, ShipStaySchema, OwnerSchema,
+  ShipDocumentSchema, ContactSchema, PurchaseOrderSchema, SupplierSchema, PurchaseDocumentSchema,
+  ThirdPartyServiceSchema, ThirdPartyVoucherHistorySchema,
+  CC_PRICING_MODES, CC_CANCELLATION_MODES, CC_ENTRY_SOURCES, CC_PAYMENT_TYPES, CC_SOURCE_MODULES,
+  ThirdPartyCcAccountSchema, ThirdPartyCcRateHistorySchema, ThirdPartyCcEntrySchema, ThirdPartyCcPaymentSchema,
+  WorkItemSchema, MaterialSchema, InventoryTransactionSchema, GasCylinderMovementSchema,
+  MaterialRubroSchema, StockAdjustmentSchema, StockAuditSchema, STOCK_ADJUSTMENT_REASONS, MATERIAL_CONDITIONS,
+  DataRequirementSchema, ComplianceAlertSchema, WorkerPermissionRequestSchema,
+  AuditLogSchema, ProfileSchema, PROFILE_ROLES,
 }

@@ -5,8 +5,11 @@ import { useAuth } from '../../context/AuthContext'
 import { formatDateAr } from '../../lib/dateTimeCanonical'
 import { useModuleFilterMemory, resolveInitialModuleFilters } from '../../hooks/useModuleFilterMemory'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
+import { COMPRAS_OCR_SHEET_COLUMNS } from '../../lib/sheetColumnsAdmin'
 import CanonicalZone3Toolbar from '../canonical/CanonicalZone3Toolbar'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import GridStatusBarBottom from '../GridStatusBarBottom'
 import { extractTextFromPdf } from '../../lib/pdfTextExtractor'
 
 export function UploadDocModal({ order, supplier, onClose, onSuccess }) {
@@ -397,8 +400,9 @@ export default function ComprasOcrPanel({
     })
   }, [documents, filterDocType, searchQuery])
 
+  const docSheet = useSheetSelection({ rows: filteredDocs, columns: COMPRAS_OCR_SHEET_COLUMNS, getRowId: (d) => d.id, sortable: true })
   const { visibleItems: visibleDocs, visibleCount: docsVisibleCount, hasMore: docsHasMore, remainingCount: docsRemainingCount, loadMore: docsLoadMore, showAll: docsShowAll, sentinelRef: docsSentinelRef } = useProgressiveRows({
-    items: filteredDocs,
+    items: docsViewMode === 'lista' ? docSheet.sortedRows : filteredDocs,
     resetKey: `${searchQuery}|${filterDocType}|${docsViewMode}`
   })
 
@@ -479,83 +483,53 @@ export default function ComprasOcrPanel({
 
       {/* Visualización Lista o Fichas */}
       {docsViewMode === 'lista' ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+        <div ref={docSheet.containerRef} tabIndex={0} onKeyDown={docSheet.handleKeyDown} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl focus:outline-none">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="sticky top-0 z-20 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="py-2.5 px-3">Archivo</th>
-                <th className="py-2.5 px-3">Tipo Documento</th>
-                <th className="py-2.5 px-3">Descripción</th>
-                <th className="py-2.5 px-3">Rubro</th>
-                <th className="py-2.5 px-3">Fecha</th>
+                <th {...docSheet.getHeaderProps('original_filename', 'py-2.5 px-3')}>Archivo{docSheet.getSortIndicator('original_filename')}</th>
+                <th {...docSheet.getHeaderProps('doc_type', 'py-2.5 px-3')}>Tipo Documento{docSheet.getSortIndicator('doc_type')}</th>
+                <th {...docSheet.getHeaderProps('description', 'py-2.5 px-3')}>Descripción{docSheet.getSortIndicator('description')}</th>
+                <th {...docSheet.getHeaderProps('category', 'py-2.5 px-3')}>Rubro{docSheet.getSortIndicator('category')}</th>
+                <th {...docSheet.getHeaderProps('created_at', 'py-2.5 px-3')}>Fecha{docSheet.getSortIndicator('created_at')}</th>
                 <th className="py-2.5 px-3 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {filteredDocs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500">
-                    No se encontraron documentos adjuntos.
-                  </td>
-                </tr>
+                <tr><td colSpan={6} className="py-8 text-center text-slate-500">No se encontraron documentos adjuntos.</td></tr>
               ) : (
                 <>
-                {visibleDocs.map((d) => (
+                {visibleDocs.map((d, rowIdx) => {
+                  const cpFn = docSheet.getCellProps(rowIdx, 'original_filename'), cpTp = docSheet.getCellProps(rowIdx, 'doc_type'), cpDs = docSheet.getCellProps(rowIdx, 'description'), cpCt = docSheet.getCellProps(rowIdx, 'category'), cpDt = docSheet.getCellProps(rowIdx, 'created_at')
+                  return (
                   <tr key={d.id} className="hover:bg-slate-800/50 transition-colors">
-                    <td className="py-2 px-3 font-bold text-white flex items-center gap-2">
+                    <td {...cpFn.domProps} className={`py-2 px-3 font-bold text-white flex items-center gap-2 ${cpFn.className}`}>
                       <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
                       <span className="truncate max-w-[260px]">{d.original_filename}</span>
-                      {d.extracted_text && (
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800" title="Texto OCR indexado">
-                          OCR ✓
-                        </span>
-                      )}
+                      {d.extracted_text && <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800" title="Texto OCR indexado">OCR ✓</span>}
                     </td>
-                    <td className="py-2 px-3">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300">
-                        {d.doc_type || 'COTIZACION_MATERIAL'}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-slate-300">{d.description || '—'}</td>
-                    <td className="py-2 px-3 text-slate-400">{d.category || 'General'}</td>
-                    <td className="py-2 px-3 text-slate-400 font-mono text-[10px]">
-                      {d.created_at ? formatDateAr(d.created_at) : '—'}
-                    </td>
+                    <td {...cpTp.domProps} className={`py-2 px-3 ${cpTp.className}`}><span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300">{d.doc_type || 'COTIZACION_MATERIAL'}</span></td>
+                    <td {...cpDs.domProps} className={`py-2 px-3 text-slate-300 ${cpDs.className}`}>{d.description || '—'}</td>
+                    <td {...cpCt.domProps} className={`py-2 px-3 text-slate-400 ${cpCt.className}`}>{d.category || 'General'}</td>
+                    <td {...cpDt.domProps} className={`py-2 px-3 text-slate-400 font-mono text-[10px] ${cpDt.className}`}>{d.created_at ? formatDateAr(d.created_at) : '—'}</td>
                     <td className="py-2 px-3 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1.5">
-                        <a
-                          href={d.storage_path}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-2 py-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 rounded text-xs font-bold flex items-center gap-1"
-                        >
-                          <Eye className="w-3 h-3" />
-                          <span>Abrir</span>
-                        </a>
-                        <button
-                          onClick={() => {
-                            setSelectedDocAction(d)
-                            setShowDocActionModal(true)
-                          }}
-                          className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
-                          title="Gestionar archivo (editar metadatos, reemplazar, borrar)"
-                        >
-                          <SlidersHorizontal className="w-3.5 h-3.5" />
-                        </button>
+                        <a href={d.storage_path} target="_blank" rel="noreferrer" className="px-2 py-1 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 rounded text-xs font-bold flex items-center gap-1"><Eye className="w-3 h-3" /><span>Abrir</span></a>
+                        <button onClick={() => { setSelectedDocAction(d); setShowDocActionModal(true) }} className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer" title="Gestionar archivo (editar metadatos, reemplazar, borrar)"><SlidersHorizontal className="w-3.5 h-3.5" /></button>
                       </div>
                     </td>
                   </tr>
-                ))}
-                <CanonicalProgressiveTableFooter
-                  visibleCount={docsVisibleCount} totalCount={filteredDocs.length}
-                  hasMore={docsHasMore} remainingCount={docsRemainingCount}
-                  loadMore={docsLoadMore} showAll={docsShowAll}
-                  sentinelRef={docsSentinelRef} colSpan={6} entityLabel="documentos"
-                />
+                  )
+                })}
+                <CanonicalProgressiveTableFooter visibleCount={docsVisibleCount} totalCount={filteredDocs.length} hasMore={docsHasMore} remainingCount={docsRemainingCount} loadMore={docsLoadMore} showAll={docsShowAll} sentinelRef={docsSentinelRef} colSpan={6} entityLabel="documentos" />
                 </>
               )}
             </tbody>
           </table>
+          <div className="p-2 border-t border-slate-800/80">
+            <GridStatusBarBottom isFixed={false} filteredCount={filteredDocs.length} totalCount={documents.length} entityName="documentos" hasActiveFilter={Boolean(searchQuery || filterDocType !== 'TODOS')} onClearFilters={() => { setSearchQuery(''); setFilterDocType('TODOS') }} selectionStats={docSheet.selectionStats} onClearSelection={docSheet.clearSelection} />
+          </div>
         </div>
       ) : (
         <>

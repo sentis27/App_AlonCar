@@ -83,10 +83,7 @@ export default function PanolCatalogGrid({
   useEffect(() => { matHistoryActionsRef.current = { undo: materialsGrid.undo, redo: materialsGrid.redo } }, [materialsGrid.undo, materialsGrid.redo])
   const matUndoCount = materialsGrid.undoStack?.length || 0; const matRedoCount = materialsGrid.redoStack?.length || 0
   useEffect(() => {
-    onHistoryChange?.({
-      canUndo: materialsGrid.canUndo, canRedo: materialsGrid.canRedo, undoCount: matUndoCount, redoCount: matRedoCount,
-      onUndo: () => matHistoryActionsRef.current.undo?.(), onRedo: () => matHistoryActionsRef.current.redo?.()
-    })
+    onHistoryChange?.({ canUndo: materialsGrid.canUndo, canRedo: materialsGrid.canRedo, undoCount: matUndoCount, redoCount: matRedoCount, onUndo: () => matHistoryActionsRef.current.undo?.(), onRedo: () => matHistoryActionsRef.current.redo?.() })
   }, [onHistoryChange, materialsGrid.canUndo, materialsGrid.canRedo, matUndoCount, matRedoCount])
   useEffect(() => () => onHistoryChange?.(null), [onHistoryChange])
 
@@ -142,36 +139,34 @@ export default function PanolCatalogGrid({
                   <span className="font-mono text-[9px] text-slate-500 font-bold">#</span>
                 </div>
               </th>
-              <th className="py-2 px-1.5">Material / Insumo {isAdmin ? '✎' : ''}</th>
-              <th className="py-2 px-1.5">Rubro Técnico {isAdmin ? '✎' : ''}</th>
-              <th className="py-2 px-1.5">Categoría {isAdmin ? '✎' : ''}</th>
-              <th className="py-2 px-1.5 text-center">Unidad {isAdmin ? '✎' : ''}</th>
-              <th className="py-2 px-1.5 text-right">Peso (kg) {isAdmin ? '✎' : ''}</th>
-              <th className="py-2 px-1.5 text-right">Stock Actual</th>
+              <th {...materialsGrid.getColumnHeaderProps('name', 'py-2 px-1.5')}>Material / Insumo {isAdmin ? '✎' : ''}</th>
+              <th {...materialsGrid.getColumnHeaderProps('rubro', 'py-2 px-1.5')}>Rubro Técnico {isAdmin ? '✎' : ''}</th>
+              <th {...materialsGrid.getColumnHeaderProps('category', 'py-2 px-1.5')}>Categoría {isAdmin ? '✎' : ''}</th>
+              <th {...materialsGrid.getColumnHeaderProps('unit_measure', 'py-2 px-1.5 text-center')}>Unidad {isAdmin ? '✎' : ''}</th>
+              <th {...materialsGrid.getColumnHeaderProps('weight_kg', 'py-2 px-1.5 text-right')}>Peso (kg) {isAdmin ? '✎' : ''}</th>
+              <th {...materialsGrid.getColumnHeaderProps('current_stock', 'py-2 px-1.5 text-right')}>Stock Actual</th>
               <th className="py-2 px-1.5 text-right whitespace-nowrap" title="Pedidos emitidos a Compras en tránsito hacia Pañol (PEDIDO / INCOMPLETO)">Stock Virtual</th>
-              <th className="py-2 px-1.5 text-right">Stock Mín. {isAdmin ? '✎' : '🔒'}</th>
-              <th className="py-2 px-1.5 text-center">Lleva Stock {isAdmin ? '✎' : '🔒'}</th>
+              <th {...materialsGrid.getColumnHeaderProps('minimum_stock', 'py-2 px-1.5 text-right')}>Stock Mín. {isAdmin ? '✎' : '🔒'}</th>
+              <th {...materialsGrid.getColumnHeaderProps('requires_stock_control', 'py-2 px-1.5 text-center')}>Lleva Stock {isAdmin ? '✎' : '🔒'}</th>
               {isAdmin && (
-                <th className="py-2 px-1.5 text-right whitespace-nowrap">
+                <th {...materialsGrid.getColumnHeaderProps('cost_ars', 'py-2 px-1.5 text-right whitespace-nowrap')}>
                   <span className="inline-flex items-center justify-end gap-1">
                     <span>Precio AR$ ✎</span>
                     <CanonicalPriceHelpBadge isAdmin={isAdmin} pricingPolicy={pricingPolicy} dollarRate={activeDollarRate} periodKey={currentPeriodKey} size="xs" />
                   </span>
                 </th>
               )}
-              <th className="py-2 px-1.5 text-center">% Seg. Naval {isAdmin ? '✎' : '🔒'}</th>
-              {isAdmin && <th className="py-2 px-1.5 text-right whitespace-nowrap" title={`Costo US$ calculado con dólar vigente ($${activeDollarRate.toLocaleString('es-AR')})`}>Costo US$ ✎</th>}
+              <th {...materialsGrid.getColumnHeaderProps('security_factor', 'py-2 px-1.5 text-center')}>% Seg. Naval {isAdmin ? '✎' : '🔒'}</th>
+              {isAdmin && <th {...materialsGrid.getColumnHeaderProps('cost_usd', 'py-2 px-1.5 text-right whitespace-nowrap')} title={`Costo US$ calculado con dólar vigente ($${activeDollarRate.toLocaleString('es-AR')})`}>Costo US$ ✎</th>}
               <th className="py-2 px-1.5 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-sans">
             {visibleMaterials.map((mat, idx) => {
-              const isSelected = materialsGrid.selectedRowIds.has(mat.id)
-              const stockNum = Number(mat.current_stock) || 0
-              const isCritical = stockNum <= (Number(mat.minimum_stock) || 0) && mat.requires_stock_control
-              const vInfo = virtualStockMap?.get(String(mat.id)) || null
-              const badge = getSecurityFactorBadge(mat.security_factor)
-              const unitShort = formatUnitMeasureShort(mat.unit_measure)
+              const isSelected = materialsGrid.selectedRowIds.has(mat.id), stockNum = Number(mat.current_stock) || 0, isCritical = stockNum <= (Number(mat.minimum_stock) || 0) && mat.requires_stock_control
+              const vInfo = virtualStockMap?.get(String(mat.id)) || null, badge = getSecurityFactorBadge(mat.security_factor), unitShort = formatUnitMeasureShort(mat.unit_measure)
+              const gcp = (k) => materialsGrid.getCellProps(idx, k)
+              const cpName = gcp('name'), cpRub = gcp('rubro'), cpCat = gcp('category'), cpUnit = gcp('unit_measure'), cpKg = gcp('weight_kg'), cpSt = gcp('current_stock'), cpMin = gcp('minimum_stock'), cpCtrl = gcp('requires_stock_control'), cpSeg = gcp('security_factor')
 
               return (
                 <tr key={mat.id} onContextMenu={(e) => openMenu(e, mat, idx, { entityType: 'materials', recordId: mat.id, recordLabel: mat.name }, materialsGrid)} className={`group transition-colors ${isSelected ? 'bg-cyan-950/40 text-cyan-50' : isCritical ? 'bg-rose-950/20' : 'hover:bg-slate-800/40'}`}>
@@ -186,7 +181,7 @@ export default function PanolCatalogGrid({
                     </div>
                   </td>
 
-                  <td onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'name', value: mat.name || '' })} className={`py-1.5 px-1.5 font-bold text-white max-w-[230px] truncate ${isAdmin ? 'cursor-pointer' : ''}`} title={isAdmin ? 'Doble clic para editar nombre' : 'Material del catálogo'}>
+                  <td {...cpName.domProps} onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'name', value: mat.name || '' })} className={`py-1.5 px-1.5 font-bold text-white max-w-[230px] truncate ${isAdmin ? 'cursor-pointer' : ''} ${cpName.className}`} title={isAdmin ? 'Doble clic para editar nombre' : 'Material del catálogo'}>
                     {inlineEdit.id === mat.id && inlineEdit.field === 'name' ? (
                       <input type="text" autoFocus value={inlineEdit.value} onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value.toUpperCase() })} onBlur={() => commitTextOrNum(mat.id, 'name')} onKeyDown={(e) => { if (e.key === 'Enter') commitTextOrNum(mat.id, 'name'); if (e.key === 'Escape') clearEdit() }} className="bg-slate-950 border border-cyan-400 rounded px-1.5 py-0.5 text-xs text-white uppercase focus:outline-none w-full" />
                     ) : (
@@ -203,7 +198,7 @@ export default function PanolCatalogGrid({
                     )}
                   </td>
 
-                  <td onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'rubro', value: String(mat.rubro || '').toUpperCase() })} className={`py-1.5 px-1.5 text-slate-300 font-semibold ${isAdmin ? 'cursor-pointer' : ''}`} title={isAdmin ? 'Doble clic para cambiar Rubro Técnico' : 'Rubro Técnico (Solo Admin)'}>
+                  <td {...cpRub.domProps} onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'rubro', value: String(mat.rubro || '').toUpperCase() })} className={`py-1.5 px-1.5 text-slate-300 font-semibold ${isAdmin ? 'cursor-pointer' : ''} ${cpRub.className}`} title={isAdmin ? 'Doble clic para cambiar Rubro Técnico' : 'Rubro Técnico (Solo Admin)'}>
                     {inlineEdit.id === mat.id && inlineEdit.field === 'rubro' ? (
                       <select autoFocus value={inlineEdit.value} onChange={(e) => { handleSaveInlineMaterial(mat.id, 'rubro', e.target.value); clearEdit() }} onBlur={() => clearEdit()} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-white focus:outline-none max-w-[140px]">
                         {mergedRubros.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}
@@ -211,7 +206,7 @@ export default function PanolCatalogGrid({
                     ) : <span className="truncate block max-w-[130px]">{mat.rubro || '—'}</span>}
                   </td>
 
-                  <td onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'category', value: mat.category || 'MATERIALES' })} className={`py-1.5 px-1.5 ${isAdmin ? 'cursor-pointer' : ''}`} title={isAdmin ? 'Doble clic para cambiar Categoría' : 'Categoría (Solo Admin)'}>
+                  <td {...cpCat.domProps} onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'category', value: mat.category || 'MATERIALES' })} className={`py-1.5 px-1.5 ${isAdmin ? 'cursor-pointer' : ''} ${cpCat.className}`} title={isAdmin ? 'Doble clic para cambiar Categoría' : 'Categoría (Solo Admin)'}>
                     {inlineEdit.id === mat.id && inlineEdit.field === 'category' ? (
                       <select autoFocus value={inlineEdit.value} onChange={(e) => { handleSaveInlineMaterial(mat.id, 'category', e.target.value); clearEdit() }} onBlur={() => clearEdit()} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-white focus:outline-none">
                         {MATERIAL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -219,7 +214,7 @@ export default function PanolCatalogGrid({
                     ) : <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">{mat.category}</span>}
                   </td>
 
-                  <td onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'unit_measure', value: normalizeUnitMeasure(mat.unit_measure, mat.name) })} className={`py-1.5 px-1.5 text-center ${isAdmin ? 'cursor-pointer' : ''}`} title={isAdmin ? 'Doble clic para cambiar Unidad (se sincroniza con Compras)' : 'Unidad oficial (Solo Admin)'}>
+                  <td {...cpUnit.domProps} onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'unit_measure', value: normalizeUnitMeasure(mat.unit_measure, mat.name) })} className={`py-1.5 px-1.5 text-center ${isAdmin ? 'cursor-pointer' : ''} ${cpUnit.className}`} title={isAdmin ? 'Doble clic para cambiar Unidad (se sincroniza con Compras)' : 'Unidad oficial (Solo Admin)'}>
                     {inlineEdit.id === mat.id && inlineEdit.field === 'unit_measure' ? (
                       <select autoFocus value={inlineEdit.value} onChange={(e) => { handleSaveInlineMaterial(mat.id, 'unit_measure', e.target.value); clearEdit() }} onBlur={() => clearEdit()} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-cyan-200 font-bold focus:outline-none">
                         {OFFICIAL_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
@@ -227,13 +222,13 @@ export default function PanolCatalogGrid({
                     ) : <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-950/70 text-cyan-300 border border-indigo-500/40">{unitShort}</span>}
                   </td>
 
-                  <td onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'weight_kg', value: String(mat.weight_kg || 0) })} className={`py-1.5 px-1.5 text-right font-mono text-slate-300 ${isAdmin ? 'cursor-pointer' : ''}`} title={isAdmin ? 'Doble clic para editar peso' : 'Peso unitario (Solo Admin)'}>
+                  <td {...cpKg.domProps} onDoubleClick={() => isAdmin && setInlineEdit({ id: mat.id, field: 'weight_kg', value: String(mat.weight_kg || 0) })} className={`py-1.5 px-1.5 text-right font-mono text-slate-300 ${isAdmin ? 'cursor-pointer' : ''} ${cpKg.className}`} title={isAdmin ? 'Doble clic para editar peso' : 'Peso unitario (Solo Admin)'}>
                     {inlineEdit.id === mat.id && inlineEdit.field === 'weight_kg' ? (
                       <input type="number" autoFocus step="any" min="0" value={inlineEdit.value} onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })} onBlur={() => commitTextOrNum(mat.id, 'weight_kg')} onKeyDown={(e) => { if (e.key === 'Enter') commitTextOrNum(mat.id, 'weight_kg'); if (e.key === 'Escape') clearEdit() }} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-xs font-mono text-white w-16 text-right" />
                     ) : <span>{Number(mat.weight_kg) > 0 ? `${mat.weight_kg} kg` : '—'}</span>}
                   </td>
 
-                  <td className="py-1.5 px-1.5 text-right font-mono font-bold whitespace-nowrap">
+                  <td {...cpSt.domProps} className={`py-1.5 px-1.5 text-right font-mono font-bold whitespace-nowrap ${cpSt.className}`}>
                     <button type="button" onClick={() => onOpenKardexModal?.(mat)} title="Clic para ver Kárdex cronológico del material" className={`inline-flex items-center gap-1 hover:underline cursor-pointer ${isCritical ? 'text-rose-400' : 'text-emerald-400'}`}>
                       {stockNum < 0 && <span className="px-1 rounded bg-rose-500/20 border border-rose-500/50 text-[8px] font-black text-rose-300">NEGATIVO</span>}
                       {stockNum >= 0 && isCritical && <span className="px-1 rounded bg-amber-500/20 border border-amber-500/50 text-[8px] font-black text-amber-300">FALTA</span>}
@@ -249,21 +244,21 @@ export default function PanolCatalogGrid({
                     ) : <span className="text-slate-600">—</span>}
                   </td>
 
-                  <td onDoubleClick={() => { if (isAdmin) setInlineEdit({ id: mat.id, field: 'minimum_stock', value: String(mat.minimum_stock || 0) }); else showFeedback('error', 'Solo el Administrador puede modificar el stock mínimo.') }} className={`py-1.5 px-1.5 text-right font-mono text-slate-400 ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`} title={isAdmin ? 'Doble clic para editar stock mínimo (Solo Admin)' : '🔒 Solo editable por Administrador'}>
+                  <td {...cpMin.domProps} onDoubleClick={() => { if (isAdmin) setInlineEdit({ id: mat.id, field: 'minimum_stock', value: String(mat.minimum_stock || 0) }); else showFeedback('error', 'Solo el Administrador puede modificar el stock mínimo.') }} className={`py-1.5 px-1.5 text-right font-mono text-slate-400 ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'} ${cpMin.className}`} title={isAdmin ? 'Doble clic para editar stock mínimo (Solo Admin)' : '🔒 Solo editable por Administrador'}>
                     {inlineEdit.id === mat.id && inlineEdit.field === 'minimum_stock' ? (
                       <input type="number" autoFocus min="0" step="any" value={inlineEdit.value} onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })} onBlur={() => commitTextOrNum(mat.id, 'minimum_stock')} onKeyDown={(e) => { if (e.key === 'Enter') commitTextOrNum(mat.id, 'minimum_stock'); if (e.key === 'Escape') clearEdit() }} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-xs font-mono text-white w-16 text-right" />
                     ) : <span className="inline-flex items-center gap-1"><span>{mat.minimum_stock || 0}</span>{!isAdmin && <Lock className="w-2.5 h-2.5 text-slate-600" />}</span>}
                   </td>
 
-                  <td onDoubleClick={() => { if (isAdmin) handleSaveInlineMaterial(mat.id, 'requires_stock_control', !mat.requires_stock_control); else showFeedback('error', 'Solo el Administrador puede modificar si lleva control de stock.') }} className={`py-1.5 px-1.5 text-center ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`} title={isAdmin ? 'Doble clic para alternar control de stock (Solo Admin)' : '🔒 Solo editable por Administrador'}>
+                  <td {...cpCtrl.domProps} onDoubleClick={() => { if (isAdmin) handleSaveInlineMaterial(mat.id, 'requires_stock_control', !mat.requires_stock_control); else showFeedback('error', 'Solo el Administrador puede modificar si lleva control de stock.') }} className={`py-1.5 px-1.5 text-center ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'} ${cpCtrl.className}`} title={isAdmin ? 'Doble clic para alternar control de stock (Solo Admin)' : '🔒 Solo editable por Administrador'}>
                     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${mat.requires_stock_control ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
                       <span>{mat.requires_stock_control ? 'SÍ (Físico)' : 'NO (Eventual)'}</span>{!isAdmin && <Lock className="w-2.5 h-2.5 text-slate-500" />}
                     </span>
                   </td>
 
-                  {isAdmin && <CatalogPriceArsCell mat={mat} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} commitTextOrNum={commitTextOrNum} clearEdit={clearEdit} pricingPolicy={pricingPolicy} dollarRate={activeDollarRate} periodKey={currentPeriodKey} />}
+                  {isAdmin && <CatalogPriceArsCell mat={mat} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} commitTextOrNum={commitTextOrNum} clearEdit={clearEdit} pricingPolicy={pricingPolicy} dollarRate={activeDollarRate} periodKey={currentPeriodKey} cellProps={gcp('cost_ars')} />}
 
-                  <td onDoubleClick={() => { if (isAdmin) setInlineEdit({ id: mat.id, field: 'security_factor', value: String(mat.security_factor || 1.06) }); else showFeedback('error', 'Solo el Administrador puede modificar el % de seguridad.') }} className={`py-1.5 px-1.5 text-center ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`} title={isAdmin ? 'Doble clic para editar % seguridad naval (Solo Admin)' : '🔒 Solo editable por Administrador'}>
+                  <td {...cpSeg.domProps} onDoubleClick={() => { if (isAdmin) setInlineEdit({ id: mat.id, field: 'security_factor', value: String(mat.security_factor || 1.06) }); else showFeedback('error', 'Solo el Administrador puede modificar el % de seguridad.') }} className={`py-1.5 px-1.5 text-center ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'} ${cpSeg.className}`} title={isAdmin ? 'Doble clic para editar % seguridad naval (Solo Admin)' : '🔒 Solo editable por Administrador'}>
                     {inlineEdit.id === mat.id && inlineEdit.field === 'security_factor' ? (
                       <select autoFocus value={inlineEdit.value} onChange={(e) => { handleSaveInlineMaterial(mat.id, 'security_factor', e.target.value); clearEdit() }} onBlur={() => clearEdit()} className="bg-slate-950 border border-cyan-400 rounded px-1 py-0.5 text-[10px] text-white focus:outline-none">
                         {SECURITY_FACTORS.map((sf) => <option key={sf.value} value={sf.value}>{sf.label}</option>)}
@@ -271,7 +266,7 @@ export default function PanolCatalogGrid({
                     ) : <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${badge.style}`}><span>{badge.label}</span>{!isAdmin && <Lock className="w-2.5 h-2.5 text-slate-500" />}</span>}
                   </td>
 
-                  {isAdmin && <CatalogPriceUsdCell mat={mat} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} commitTextOrNum={commitTextOrNum} clearEdit={clearEdit} />}
+                  {isAdmin && <CatalogPriceUsdCell mat={mat} inlineEdit={inlineEdit} setInlineEdit={setInlineEdit} commitTextOrNum={commitTextOrNum} clearEdit={clearEdit} cellProps={gcp('cost_usd')} />}
 
                   <td className="py-1.5 px-1.5 text-center whitespace-nowrap">
                     <div className="flex items-center justify-center gap-1">
@@ -315,7 +310,7 @@ export default function PanolCatalogGrid({
         hasActiveFilter={Boolean(searchQuery || activeKpiFilter || filterCategory !== 'TODAS' || filterStockOnly)}
         onClearFilters={onClearFilters} selectionStats={materialsGrid.selectionStats}
         onClearSelection={() => materialsGrid.setSelectionRange(null)}
-        customSelection={materialsGrid.selectedRowIds.size > 0 ? { count: materialsGrid.selectedRowIds.size, label: 'materiales tildados', onClear: materialsGrid.clearRowSelection } : null}
+        customSelection={materialsGrid.selectedRowIds.size > 0 ? { count: materialsGrid.selectedRowIds.size, label: 'materiales tildados', onClear: materialsGrid.clearSelectedRows } : null}
         globalAggregates={[{ label: 'Total Insumos', value: materials.length, highlight: true }, { label: 'Stock Crítico', value: criticalMaterialsCount }, { label: 'Con Control Físico', value: stockControlledCount }]}
       />
     </div>

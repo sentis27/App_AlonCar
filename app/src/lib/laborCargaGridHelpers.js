@@ -66,9 +66,9 @@ export function buildHorasSpreadsheetColumns() {
     { key: 'worker_name', label: 'Operario', readOnly: false },
     { key: 'rubro', label: 'Rubro', readOnly: false },
     { key: 'work_type', label: 'Modalidad (Col. F)', readOnly: false },
-    { key: 'hours_normal', label: 'Norm', readOnly: false },
-    { key: 'hours_extra_50', label: '50%', readOnly: false },
-    { key: 'hours_extra_100', label: '100%', readOnly: false },
+    { key: 'hours_normal', label: 'Norm', isNumeric: true, formatType: 'hours', readOnly: false },
+    { key: 'hours_extra_50', label: '50%', isNumeric: true, formatType: 'hours', readOnly: false },
+    { key: 'hours_extra_100', label: '100%', isNumeric: true, formatType: 'hours', readOnly: false },
     { key: 'approval_status', label: 'Estado', readOnly: false },
     { key: 'notes', label: 'Obs / Tarea', readOnly: false }
   ]

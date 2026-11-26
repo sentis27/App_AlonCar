@@ -134,11 +134,12 @@ export function getPanolMovimientosColumns(
     { key: 'work_order_id', label: 'Orden de Trabajo (OT)', readOnly: false },
     { key: 'contractor_name', label: 'Contratista / Grupo', readOnly: false },
     { key: 'material_id', label: 'Material Insumo', readOnly: false },
-    { key: 'quantity_withdrawn', label: 'Cant.', isNumeric: true, type: 'number', allowFormula: true, readOnly: false },
+    { key: 'quantity_withdrawn', label: 'Cant.', isNumeric: true, type: 'number', formatType: 'number', allowFormula: true, readOnly: false },
     {
       key: 'weight_total',
       label: 'Peso (kg)',
       isNumeric: true,
+      formatType: 'kg',
       readOnly: !isAdmin,
       ...(typeof getWeightTotalKg === 'function' ? { getValue: getWeightTotalKg } : {})
     }
@@ -150,6 +151,7 @@ export function getPanolMovimientosColumns(
           key: 'cost_total_usd',
           label: 'Costo US$',
           isNumeric: true,
+          formatType: 'usd',
           readOnly: true,
           ...(typeof getCostTotalUsd === 'function' ? { getValue: getCostTotalUsd } : {})
         },

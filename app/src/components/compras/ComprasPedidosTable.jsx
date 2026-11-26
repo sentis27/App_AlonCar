@@ -164,23 +164,23 @@ export default function ComprasPedidosTable({
                   <span className="font-mono text-[9px] text-slate-500 font-bold" title="Número de fila">#</span>
                 </div>
               </th>
-              <th className="py-2 px-1.5">Destino ✎</th>
-              <th className="py-2 px-1.5">Fecha / Q. ✎</th>
-              <th className="py-2 px-1.5">Buque / OT ✎</th>
-              <th className="py-2 px-1.5">Solicita ✎</th>
-              <th className="py-2 px-1.5">Material Solicitado ✎</th>
-              <th className="py-2 px-1.5 text-right">Cant. ✎</th>
+              <th {...grid.getColumnHeaderProps('charge_type', 'py-2 px-1.5')}>Destino ✎</th>
+              <th {...grid.getColumnHeaderProps('order_date', 'py-2 px-1.5')}>Fecha / Q. ✎</th>
+              <th {...grid.getColumnHeaderProps('ship_id', 'py-2 px-1.5')}>Buque / OT ✎</th>
+              <th {...grid.getColumnHeaderProps('requested_by_name', 'py-2 px-1.5')}>Solicita ✎</th>
+              <th {...grid.getColumnHeaderProps('material_name_raw', 'py-2 px-1.5')}>Material Solicitado ✎</th>
+              <th {...grid.getColumnHeaderProps('quantity', 'py-2 px-1.5 text-right')}>Cant. ✎</th>
               {viewMode === 'completa' && (
                 <>
-                  <th className="py-2 px-1.5 text-right">$/U Prov. ✎</th>
-                  <th className="py-2 px-1.5 text-right">$/U Sist.</th>
+                  <th {...grid.getColumnHeaderProps('supplier_quoted_price', 'py-2 px-1.5 text-right')}>$/U Prov. ✎</th>
+                  <th {...grid.getColumnHeaderProps('system_unit_price', 'py-2 px-1.5 text-right')}>$/U Sist.</th>
                 </>
               )}
-              <th className="py-2 px-1.5">Proveedor ✎</th>
-              <th className="py-2 px-1.5">Estado ✎</th>
-              <th className="py-2 px-1.5">Urg. ✎</th>
+              <th {...grid.getColumnHeaderProps('supplier_id', 'py-2 px-1.5')}>Proveedor ✎</th>
+              <th {...grid.getColumnHeaderProps('status', 'py-2 px-1.5')}>Estado ✎</th>
+              <th {...grid.getColumnHeaderProps('urgency', 'py-2 px-1.5')}>Urg. ✎</th>
               <th className="py-2 px-1.5 text-center">Doc</th>
-              <th className="py-2 px-1.5 text-center" title="Fecha de entrega del pedido">F. Entrega ✎</th>
+              <th {...grid.getColumnHeaderProps('delivery_date', 'py-2 px-1.5 text-center')} title="Fecha de entrega del pedido">F. Entrega ✎</th>
               {viewMode === 'completa' && (
                 <th className="py-2 px-1 w-9 text-center" title="Conciliado con Factura">Conc.</th>
               )}

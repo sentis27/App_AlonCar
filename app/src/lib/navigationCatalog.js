@@ -68,8 +68,12 @@ export const NAVIGATION_MODULES = [
     iconKey: 'Wrench',
     archetype: 'CARGA_EDICION',
     permissionKey: 'terceros',
-    defaultTab: null,
-    children: [],
+    defaultTab: 'servicios',
+    tabAliases: { filas: 'servicios', fichas: 'servicios', cc: 'cuentas-corrientes', pampa: 'cuentas-corrientes' },
+    children: [
+      { id: 'servicios', label: '1. Servicios y Comprobantes', shortLabel: 'Servicios', iconKey: 'Wrench', permissionKey: 'terceros.servicios', theme: 'cyan' },
+      { id: 'cuentas-corrientes', label: '2. Cuentas Corrientes', shortLabel: 'Cuentas Corrientes', iconKey: 'Wallet', permissionKey: 'terceros.cuentas_corrientes', theme: 'emerald' },
+    ],
   },
   {
     id: 'compras',

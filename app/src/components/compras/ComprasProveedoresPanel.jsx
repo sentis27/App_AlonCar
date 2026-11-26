@@ -662,14 +662,14 @@ export default function ComprasProveedoresPanel({
                         <span className="text-[10px] text-slate-500 font-mono">#</span>
                       </div>
                     </th>
-                    <th className="py-2.5 px-3">Proveedor / Razón Social</th>
-                    <th className="py-2.5 px-3">Rubros</th>
-                    <th className="py-2.5 px-3 text-center">Local (MDP)</th>
-                    <th className="py-2.5 px-3">CUIT / CUIL</th>
-                    <th className="py-2.5 px-3">Teléfono / WhatsApp</th>
-                    <th className="py-2.5 px-3">Email</th>
-                    <th className="py-2.5 px-3">Pago</th>
-                    <th className="py-2.5 px-3 min-w-[220px]">Notas / Observaciones</th>
+                    <th {...suppliersGrid.getColumnHeaderProps('name', 'py-2.5 px-3')}>Proveedor / Razón Social</th>
+                    <th {...suppliersGrid.getColumnHeaderProps('trades', 'py-2.5 px-3')}>Rubros</th>
+                    <th {...suppliersGrid.getColumnHeaderProps('is_local_supplier', 'py-2.5 px-3 text-center')}>Local (MDP)</th>
+                    <th {...suppliersGrid.getColumnHeaderProps('cuit_cuil', 'py-2.5 px-3')}>CUIT / CUIL</th>
+                    <th {...suppliersGrid.getColumnHeaderProps('phone', 'py-2.5 px-3')}>Teléfono / WhatsApp</th>
+                    <th {...suppliersGrid.getColumnHeaderProps('email', 'py-2.5 px-3')}>Email</th>
+                    <th {...suppliersGrid.getColumnHeaderProps('payment_method', 'py-2.5 px-3')}>Pago</th>
+                    <th {...suppliersGrid.getColumnHeaderProps('observations', 'py-2.5 px-3 min-w-[220px]')}>Notas / Observaciones</th>
                     <th className="py-2.5 px-3 text-center">Acciones</th>
                   </tr>
                 </thead>

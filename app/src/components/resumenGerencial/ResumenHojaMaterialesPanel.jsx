@@ -278,16 +278,16 @@ export default function ResumenHojaMaterialesPanel({
             <thead className="alon-grid-thead sticky top-0 z-10 text-[10px] uppercase tracking-wider text-slate-300">
               <tr>
                 <th className="px-2.5 py-2 w-10 text-center">#</th>
-                <th className="px-2.5 py-2">Fecha</th>
-                <th className="px-2.5 py-2">Origen</th>
-                <th className="px-2.5 py-2">O.T</th>
-                <th className="px-2.5 py-2">Solicitante</th>
-                <th className="px-2.5 py-2">Material / Insumo</th>
-                <th className="px-2.5 py-2 text-right">Cant.</th>
-                <th className="px-2.5 py-2 text-right">KG</th>
-                <th className="px-2.5 py-2 text-right">P.Unit US$</th>
-                <th className="px-2.5 py-2 text-right">Total Obra US$</th>
-                <th className="px-2.5 py-2">Comp. / Notas</th>
+                <th {...sheetSelection.getHeaderProps('date', 'px-2.5 py-2')}>Fecha</th>
+                <th {...sheetSelection.getHeaderProps('sourceLabel', 'px-2.5 py-2')}>Origen</th>
+                <th {...sheetSelection.getHeaderProps('otLabel', 'px-2.5 py-2')}>O.T</th>
+                <th {...sheetSelection.getHeaderProps('workerName', 'px-2.5 py-2')}>Solicitante</th>
+                <th {...sheetSelection.getHeaderProps('materialName', 'px-2.5 py-2')}>Material / Insumo</th>
+                <th {...sheetSelection.getHeaderProps('qty', 'px-2.5 py-2 text-right')}>Cant.</th>
+                <th {...sheetSelection.getHeaderProps('weightKg', 'px-2.5 py-2 text-right')}>KG</th>
+                <th {...sheetSelection.getHeaderProps('unitUsd', 'px-2.5 py-2 text-right')}>P.Unit US$</th>
+                <th {...sheetSelection.getHeaderProps('shipDirectUsd', 'px-2.5 py-2 text-right')}>Total Obra US$</th>
+                <th {...sheetSelection.getHeaderProps('notes', 'px-2.5 py-2')}>Comp. / Notas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">

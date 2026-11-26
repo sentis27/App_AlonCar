@@ -1,15 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
 import { ArrowDownUp, History, RefreshCw, Scale, Trash2 } from 'lucide-react'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
+import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
 import { buildLookupMap } from '../../lib/gridPerformanceHelpers'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 import { formatDateAr, getTodayArIso } from '../../lib/dateTimeCanonical'
 import { formatUnitMeasureShort } from '../../lib/unitMeasureUtils'
-import {
-  STOCK_REASON_LABELS,
-  MATERIAL_CONDITION_LABELS,
-  deleteStockAdjustmentService
-} from '../../lib/stockControlService'
+import { buildPanolEntradasSheetColumns } from '../../lib/sheetColumnsOperational'
+import { STOCK_REASON_LABELS, MATERIAL_CONDITION_LABELS, deleteStockAdjustmentService } from '../../lib/stockControlService'
 import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
@@ -48,23 +46,24 @@ export default function PanolEntradasPanel({
     return matchesUniversalSearch(searchable, searchQuery)
   }), [stockAdjustments, filterReason, filterDirection, searchQuery, materialById])
 
+  const sheetColumns = useMemo(
+    () => buildPanolEntradasSheetColumns(materialById, STOCK_REASON_LABELS, MATERIAL_CONDITION_LABELS),
+    [materialById]
+  )
+  const sheet = useSheetSelection({ rows: filteredAdjustments, columns: sheetColumns, getRowId: (r) => r.id, sortable: true })
+
   const totals = useMemo(() => {
-    let totalIn = 0
-    let totalOut = 0
+    let totalIn = 0, totalOut = 0
     for (const adj of filteredAdjustments) {
       const q = Number(adj.quantity) || 0
       if (q > 0) totalIn += q
       else if (q < 0) totalOut += Math.abs(q)
     }
-    return {
-      totalIn: Number(totalIn.toFixed(3)),
-      totalOut: Number(totalOut.toFixed(3)),
-      netBalance: Number((totalIn - totalOut).toFixed(3))
-    }
+    return { totalIn: Number(totalIn.toFixed(3)), totalOut: Number(totalOut.toFixed(3)), netBalance: Number((totalIn - totalOut).toFixed(3)) }
   }, [filteredAdjustments])
 
   const { visibleItems, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
-    items: filteredAdjustments, scrollContainerRef: scrollRef,
+    items: sheet.sortedRows, scrollContainerRef: scrollRef,
     resetKey: `${searchQuery}|${filterReason}|${filterDirection}|${stockAdjustments.length}`
   })
 
@@ -98,15 +97,11 @@ export default function PanolEntradasPanel({
   ], [materialById])
 
   return (
-    <div className="alon-zone-grid font-sans">
+    <div ref={sheet.containerRef} tabIndex={0} onKeyDown={sheet.handleKeyDown} className="alon-zone-grid font-sans focus:outline-none">
       <GridRibbon
-        onInsertRow={() => onOpenStockAdjustModal?.(null)}
-        insertRowLabel="+ Nueva Entrada / Ajuste"
-        totalRows={filteredAdjustments.length}
-        entityName="movimientos"
-        exportRows={filteredAdjustments}
-        exportColumns={exportColumns}
-        exportFilename={`panol_entradas_ajustes_${getTodayArIso()}`}
+        onInsertRow={() => onOpenStockAdjustModal?.(null)} insertRowLabel="+ Nueva Entrada / Ajuste"
+        totalRows={filteredAdjustments.length} entityName="movimientos" exportRows={filteredAdjustments}
+        exportColumns={exportColumns} exportFilename={`panol_entradas_ajustes_${getTodayArIso()}`}
       />
 
       <div ref={scrollRef} className="alon-grid-scroll">
@@ -114,14 +109,14 @@ export default function PanolEntradasPanel({
           <thead className="sticky top-0 z-20 alon-grid-thead">
             <tr>
               <th className="py-2 px-2 w-10 text-center">#</th>
-              <th className="py-2 px-2">Fecha</th>
-              <th className="py-2 px-2">Material / Insumo</th>
-              <th className="py-2 px-2">Rubro</th>
-              <th className="py-2 px-2 text-right">Movimiento</th>
-              <th className="py-2 px-2">Motivo</th>
-              <th className="py-2 px-2 text-center">Estado</th>
-              <th className="py-2 px-2">Observaciones</th>
-              <th className="py-2 px-2">Registrado por</th>
+              <th {...sheet.getHeaderProps('date', 'py-2 px-2')}>Fecha{sheet.getSortIndicator('date')}</th>
+              <th {...sheet.getHeaderProps('material', 'py-2 px-2')}>Material / Insumo{sheet.getSortIndicator('material')}</th>
+              <th {...sheet.getHeaderProps('rubro', 'py-2 px-2')}>Rubro{sheet.getSortIndicator('rubro')}</th>
+              <th {...sheet.getHeaderProps('quantity', 'py-2 px-2 text-right')}>Movimiento{sheet.getSortIndicator('quantity')}</th>
+              <th {...sheet.getHeaderProps('reason_type', 'py-2 px-2')}>Motivo{sheet.getSortIndicator('reason_type')}</th>
+              <th {...sheet.getHeaderProps('material_condition', 'py-2 px-2 text-center')}>Estado{sheet.getSortIndicator('material_condition')}</th>
+              <th {...sheet.getHeaderProps('notes', 'py-2 px-2')}>Observaciones{sheet.getSortIndicator('notes')}</th>
+              <th {...sheet.getHeaderProps('created_by', 'py-2 px-2')}>Registrado por{sheet.getSortIndicator('created_by')}</th>
               <th className="py-2 px-2 text-center">Acciones</th>
             </tr>
           </thead>
@@ -147,77 +142,48 @@ export default function PanolEntradasPanel({
                 const isEntry = qty > 0
                 const unitShort = formatUnitMeasureShort(mat?.unit_measure)
                 const condCls = CONDITION_BADGE_CLASSES[adj.material_condition] || CONDITION_BADGE_CLASSES.DISPONIBLE
+                const cpDate = sheet.getCellProps(idx, 'date')
+                const cpMat = sheet.getCellProps(idx, 'material')
+                const cpRub = sheet.getCellProps(idx, 'rubro')
+                const cpQty = sheet.getCellProps(idx, 'quantity')
+                const cpReas = sheet.getCellProps(idx, 'reason_type')
+                const cpCond = sheet.getCellProps(idx, 'material_condition')
+                const cpNotes = sheet.getCellProps(idx, 'notes')
+                const cpBy = sheet.getCellProps(idx, 'created_by')
 
                 return (
                   <tr key={adj.id} className="hover:bg-slate-800/40 transition-colors">
                     <td className="py-1.5 px-2 text-center font-mono text-[10px] text-slate-500">{idx + 1}</td>
-                    <td className="py-1.5 px-2 font-mono text-slate-300 whitespace-nowrap">
-                      <HighlightText text={formatDateAr(adj.date)} query={searchQuery} />
-                    </td>
-                    <td className="py-1.5 px-2 font-bold text-white max-w-[230px] truncate">
+                    <td {...cpDate.domProps} className={`py-1.5 px-2 font-mono text-slate-300 whitespace-nowrap ${cpDate.className}`}><HighlightText text={formatDateAr(adj.date)} query={searchQuery} /></td>
+                    <td {...cpMat.domProps} className={`py-1.5 px-2 font-bold text-white max-w-[230px] truncate ${cpMat.className}`}>
                       {mat ? (
-                        <button
-                          type="button"
-                          onClick={() => onOpenKardexModal?.(mat)}
-                          className="text-left hover:text-cyan-300 transition-colors truncate max-w-full cursor-pointer"
-                          title="Clic para ver Kárdex cronológico del material"
-                        >
+                        <button type="button" onClick={() => onOpenKardexModal?.(mat)} className="text-left hover:text-cyan-300 transition-colors truncate max-w-full cursor-pointer" title="Clic para ver Kárdex cronológico del material">
                           <HighlightText text={mat.name} query={searchQuery} />
                         </button>
                       ) : <span className="text-slate-500">Material eliminado</span>}
                     </td>
-                    <td className="py-1.5 px-2 text-slate-400 truncate max-w-[130px]">{mat?.rubro || '—'}</td>
-                    <td className="py-1.5 px-2 text-right font-mono font-black whitespace-nowrap">
+                    <td {...cpRub.domProps} className={`py-1.5 px-2 text-slate-400 truncate max-w-[130px] ${cpRub.className}`}>{mat?.rubro || '—'}</td>
+                    <td {...cpQty.domProps} className={`py-1.5 px-2 text-right font-mono font-black whitespace-nowrap ${cpQty.className}`}>
                       <span className={`inline-block px-2 py-0.5 rounded border text-[10.5px] ${isEntry ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40' : 'bg-rose-950/70 text-rose-300 border-rose-500/40'}`}>
                         {isEntry ? `+${qty}` : qty} {unitShort}
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 text-slate-200 whitespace-nowrap">
-                      <HighlightText text={STOCK_REASON_LABELS[adj.reason_type] || adj.reason_type} query={searchQuery} />
+                    <td {...cpReas.domProps} className={`py-1.5 px-2 text-slate-200 whitespace-nowrap ${cpReas.className}`}><HighlightText text={STOCK_REASON_LABELS[adj.reason_type] || adj.reason_type} query={searchQuery} /></td>
+                    <td {...cpCond.domProps} className={`py-1.5 px-2 text-center whitespace-nowrap ${cpCond.className}`}>
+                      <span className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-bold ${condCls}`}>{MATERIAL_CONDITION_LABELS[adj.material_condition] || adj.material_condition}</span>
                     </td>
-                    <td className="py-1.5 px-2 text-center whitespace-nowrap">
-                      <span className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-bold ${condCls}`}>
-                        {MATERIAL_CONDITION_LABELS[adj.material_condition] || adj.material_condition}
-                      </span>
-                    </td>
-                    <td className="py-1.5 px-2 text-slate-300 max-w-[220px] truncate" title={adj.notes || ''}>
-                      <HighlightText text={adj.notes || '—'} query={searchQuery} />
-                    </td>
-                    <td className="py-1.5 px-2 text-slate-400 text-[10.5px] truncate max-w-[140px]">
-                      <HighlightText text={adj.created_by || 'Sistema'} query={searchQuery} />
-                    </td>
+                    <td {...cpNotes.domProps} className={`py-1.5 px-2 text-slate-300 max-w-[220px] truncate ${cpNotes.className}`} title={adj.notes || ''}><HighlightText text={adj.notes || '—'} query={searchQuery} /></td>
+                    <td {...cpBy.domProps} className={`py-1.5 px-2 text-slate-400 text-[10.5px] truncate max-w-[140px] ${cpBy.className}`}><HighlightText text={adj.created_by || 'Sistema'} query={searchQuery} /></td>
                     <td className="py-1.5 px-2 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
                         {mat && (
                           <>
-                            <button
-                              type="button"
-                              onClick={() => onOpenKardexModal?.(mat)}
-                              className="w-6 h-6 rounded-lg bg-cyan-950/90 hover:bg-cyan-500 border border-cyan-500/50 text-cyan-300 hover:text-slate-950 flex items-center justify-center cursor-pointer"
-                              title="Ver Kárdex cronológico del material"
-                            >
-                              <History className="w-3 h-3" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onOpenStockAdjustModal?.(mat)}
-                              className="w-6 h-6 rounded-lg bg-emerald-950/90 hover:bg-emerald-500 border border-emerald-500/50 text-emerald-300 hover:text-slate-950 flex items-center justify-center cursor-pointer"
-                              title="Nuevo movimiento / recuento sobre este material"
-                            >
-                              <Scale className="w-3 h-3" />
-                            </button>
+                            <button type="button" onClick={() => onOpenKardexModal?.(mat)} className="w-6 h-6 rounded-lg bg-cyan-950/90 hover:bg-cyan-500 border border-cyan-500/50 text-cyan-300 hover:text-slate-950 flex items-center justify-center cursor-pointer" title="Ver Kárdex cronológico del material"><History className="w-3 h-3" /></button>
+                            <button type="button" onClick={() => onOpenStockAdjustModal?.(mat)} className="w-6 h-6 rounded-lg bg-emerald-950/90 hover:bg-emerald-500 border border-emerald-500/50 text-emerald-300 hover:text-slate-950 flex items-center justify-center cursor-pointer" title="Nuevo movimiento / recuento sobre este material"><Scale className="w-3 h-3" /></button>
                           </>
                         )}
                         {isAdmin && (
-                          <button
-                            type="button"
-                            disabled={deletingId === adj.id}
-                            onClick={() => handleDeleteAdjustment(adj)}
-                            className="w-6 h-6 rounded-lg bg-rose-950/80 hover:bg-rose-500 border border-rose-500/50 text-rose-300 hover:text-slate-950 flex items-center justify-center cursor-pointer disabled:opacity-40"
-                            title="Eliminar movimiento y recalcular Stock Físico (Solo Admin)"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          <button type="button" disabled={deletingId === adj.id} onClick={() => handleDeleteAdjustment(adj)} className="w-6 h-6 rounded-lg bg-rose-950/80 hover:bg-rose-500 border border-rose-500/50 text-rose-300 hover:text-slate-950 flex items-center justify-center cursor-pointer disabled:opacity-40" title="Eliminar movimiento y recalcular Stock Físico (Solo Admin)"><Trash2 className="w-3 h-3" /></button>
                         )}
                       </div>
                     </td>
@@ -225,21 +191,15 @@ export default function PanolEntradasPanel({
                 )
               })
             )}
-            <CanonicalProgressiveTableFooter
-              visibleCount={visibleCount} totalCount={filteredAdjustments.length} hasMore={hasMore}
-              remainingCount={remainingCount} loadMore={loadMore} showAll={showAll}
-              sentinelRef={sentinelRef} colSpan={10} entityLabel="movimientos"
-            />
+            <CanonicalProgressiveTableFooter visibleCount={visibleCount} totalCount={filteredAdjustments.length} hasMore={hasMore} remainingCount={remainingCount} loadMore={loadMore} showAll={showAll} sentinelRef={sentinelRef} colSpan={10} entityLabel="movimientos" />
           </tbody>
         </table>
       </div>
 
       <GridStatusBarBottom
-        filteredCount={filteredAdjustments.length}
-        totalCount={stockAdjustments.length}
-        entityName="movimientos"
-        hasActiveFilter={hasActiveFilters}
-        onClearFilters={onClearFilters}
+        filteredCount={filteredAdjustments.length} totalCount={stockAdjustments.length} entityName="movimientos"
+        hasActiveFilter={hasActiveFilters} onClearFilters={onClearFilters}
+        selectionStats={sheet.selectionStats} onClearSelection={sheet.clearSelection}
         globalAggregates={[
           { label: 'Σ Entradas (+)', value: `+${totals.totalIn}` },
           { label: 'Σ Salidas (−)', value: `−${totals.totalOut}` },
