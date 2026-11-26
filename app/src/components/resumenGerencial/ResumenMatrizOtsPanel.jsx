@@ -78,10 +78,10 @@ export default function ResumenMatrizOtsPanel({
           <button
             type="button"
             onClick={onBackToSummary}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-cyan-200 border border-slate-700 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-950/55 hover:bg-rose-900/70 text-rose-200 hover:text-white border-2 border-rose-500/85 hover:border-rose-400 cursor-pointer transition-all shadow-sm shadow-rose-950/30 whitespace-nowrap"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Volver a RESUMEN (Donuts)
+            Volver a Resumen GS-004
           </button>
           <div>
             <h3 className="text-sm font-bold text-slate-100">
