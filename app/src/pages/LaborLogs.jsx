@@ -9,6 +9,7 @@ import LaborKpiRadar from '../components/labor/LaborKpiRadar'
 import LaborCargaPanel from '../components/labor/LaborCargaPanel'
 import LaborControlDiarioPanel from '../components/labor/LaborControlDiarioPanel'
 import LaborSabanaPanel from '../components/labor/LaborSabanaPanel'
+import LaborResumenHorasPanel from '../components/labor/resumen/LaborResumenHorasPanel'
 import { LaborModalsContainer } from '../components/labor/LaborModals'
 import LaborSharedDatalists from '../components/labor/LaborSharedDatalists'
 import { buildQuincenaWorkersList } from '../lib/laborWorkerCatalog'
@@ -20,9 +21,10 @@ import { computeLaborPageKpis } from '../lib/laborPerformanceHelpers'
 const LABOR_REALTIME_TABLES = ['labor_logs', 'ships', 'ship_stays', 'work_orders', 'work_items', 'workers', 'rate_cards']
 
 export default function LaborLogs() {
-  const { user, profile } = useAuth()
+  const { user, profile, orgRole, capabilities } = useAuth()
   const { activeTab, setActiveTab, activeSubmodule, searchParams, setSearchParams } = useModuleTab('horas')
-  const [activeLoadModal, setActiveLoadModal] = useState(null) // null | 'texto' | 'reloj' | 'cuadrilla'
+  const isResumenHorasTab = activeTab === 'resumen_horas'
+  const [activeLoadModal, setActiveLoadModal] = useState(null)
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
   const [recentLogs, setRecentLogs] = useState([])
@@ -36,8 +38,7 @@ export default function LaborLogs() {
   const [activeKpiFilter, setActiveKpiFilter] = useState(() => {
     const kpiParam = searchParams.get('kpi')
     if (kpiParam) return kpiParam
-    const restored = resolveInitialModuleFilters(user, profile, 'labor_carga')
-    return restored.activeKpiFilter || 'todos'
+    return resolveInitialModuleFilters(user, profile, 'labor_carga').activeKpiFilter || 'todos'
   })
 
   useEffect(() => {
@@ -56,21 +57,15 @@ export default function LaborLogs() {
       return resolved
     })
   }, [searchParams, setSearchParams])
-  const initialControlFilters = useMemo(
-    () => resolveInitialModuleFilters(user, profile, 'labor_control_diario'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
-  const initialSabanaFilters = useMemo(
-    () => resolveInitialModuleFilters(user, profile, 'labor_sabana'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialControlFilters = useMemo(() => resolveInitialModuleFilters(user, profile, 'labor_control_diario'), [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialSabanaFilters = useMemo(() => resolveInitialModuleFilters(user, profile, 'labor_sabana'), [])
 
   const [dailyFilterType, setDailyFilterType] = useState('todos')
   const [selectedLogIds, setSelectedLogIds] = useState(new Set())
   const [auditDate, setAuditDate] = useState(() => initialControlFilters.auditDate || getTodayArIso())
-
   const [editingLog, setEditingLog] = useState(null)
   const [quickLogWorker, setQuickLogWorker] = useState(null)
   const [reviewReasonModal, setReviewReasonModal] = useState({ isOpen: false, logId: null, initialReason: '' })
@@ -78,7 +73,7 @@ export default function LaborLogs() {
   const [shipPickerModal, setShipPickerModal] = useState({ isOpen: false, logId: null, currentShipId: '', currentWorkOrderId: '', workerName: '' })
 
   const [todayY, todayM, todayD] = getTodayArIso().split('-').map(Number)
-  const [selectedYear, setSelectedYear] = useState(String(todayY))
+  const [selectedYear] = useState(String(todayY))
   const [selectedMonth, setSelectedMonth] = useState(() => initialSabanaFilters.selectedMonth || String(todayM))
   const [selectedQuincena, setSelectedQuincena] = useState(() => initialSabanaFilters.selectedQuincena || (todayD <= 15 ? '1' : '2'))
   const [sabanaSearch, setSabanaSearch] = useState(() => initialSabanaFilters.sabanaSearch || '')
@@ -126,12 +121,7 @@ export default function LaborLogs() {
     if (!window.confirm(`¿Eliminar imputación de ${name}?`)) return
     try {
       const target = recentLogs.find(l => l.id === id)
-      await deleteLaborLogService({
-        logId: id,
-        workerName: name,
-        shipName: target?.ships?.name || 'Buque',
-        changedBy: user?.email || 'Operador Web'
-      })
+      await deleteLaborLogService({ logId: id, workerName: name, shipName: target?.ships?.name || 'Buque', changedBy: user?.email || 'Operador Web' })
       setRecentLogs(prev => prev.filter(l => l.id !== id))
       setSelectedLogIds(prev => { const n = new Set(prev); n.delete(id); return n })
       showFeedbackMsg('success', 'Imputación eliminada.')
@@ -141,13 +131,7 @@ export default function LaborLogs() {
   const handleUpdateApprovalStatus = async (logId, status) => {
     try {
       const target = recentLogs.find(l => l.id === logId)
-      await updateLaborApprovalStatusService({
-        logId,
-        approvalStatus: status,
-        oldStatus: target?.approval_status || '',
-        workerName: target?.worker_name || 'Operario',
-        changedBy: user?.email || 'Operador Web'
-      })
+      await updateLaborApprovalStatusService({ logId, approvalStatus: status, oldStatus: target?.approval_status || '', workerName: target?.worker_name || 'Operario', changedBy: user?.email || 'Operador Web' })
       setRecentLogs(prev => prev.map(l => l.id === logId ? { ...l, approval_status: status } : l))
     } catch (err) { showFeedbackMsg('error', 'Error: ' + err.message) }
   }
@@ -165,32 +149,35 @@ export default function LaborLogs() {
     return allQuincenaWorkers.filter(w => (w.name || '').toLowerCase().includes(q) || (w.type || '').toLowerCase().includes(q))
   }, [allQuincenaWorkers, sabanaSearch])
 
-  // Si el usuario elige una fecha de Control Diario o Sábana anterior al corte actual, amplía el historial automáticamente
   useEffect(() => {
     if (historyRange === 'all') return
     const cutoff = resolveHistoryRangeCutoff(historyRange)
     if (!cutoff) return
     const sabanaStart = daysInQuincena[0]?.dateStr || ''
-    if ((auditDate && auditDate < cutoff) || (activeTab === 'sabana_quincenal' && sabanaStart && sabanaStart < cutoff)) {
+    if ((auditDate && auditDate < cutoff) || ((activeTab === 'sabana_quincenal' || activeTab === 'resumen_horas') && sabanaStart && sabanaStart < cutoff)) {
       setHistoryRange('all')
     }
   }, [auditDate, activeTab, daysInQuincena, historyRange])
 
-  const handleOpenLoadModal = useCallback((mode) => {
-    setActiveTab('carga')
-    setActiveLoadModal(mode)
-  }, [setActiveTab])
+  const handleOpenLoadModal = useCallback((mode) => { setActiveTab('carga'); setActiveLoadModal(mode) }, [setActiveTab])
+
+  const sabanaSharedProps = {
+    ships, workOrders, workItems, selectedYear, selectedMonth, setSelectedMonth, selectedQuincena, setSelectedQuincena,
+    sabanaSearch, setSabanaSearch, selectedQuincenaWorker, setSelectedQuincenaWorker, daysInQuincena,
+    filteredSabanaWorkers, allQuincenaWorkers, recentLogs, selectedLogIds, toggleSelectLog, toggleSelectAllLogs,
+    handleEditDayCell: (log) => setEditingLog(log),
+    handleQuickAddFromSabana: (name, date) => setQuickLogWorker({ worker_name: name, worker_type: 'Astillero', default_rubro: 'General', allowed_trades: ['General'], rubro: 'General', ship_id: '', work_order_id: '', work_type: 'HORA', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: `Imputación desde sábana ${date}` }),
+    handleEditFromDaily: (log) => setEditingLog(log),
+    handleDeleteLog, handleUpdateApprovalStatus, setReviewReasonModal, historyRange, setHistoryRange, loading,
+  }
+
+  const actor = orgRole?.holder_name || profile?.full_name || user?.email || 'LIQUIDACION_SUELDOS'
 
   return (
     <div className="space-y-4 pb-10">
       <LaborLogsHeader
-        activeTab={activeTab}
-        activeSubmodule={activeSubmodule}
-        dailyCount={dailyCount}
-        totalLogsCount={recentLogs.length}
-        onOpenTextModal={() => handleOpenLoadModal('texto')}
-        onOpenClockModal={() => handleOpenLoadModal('reloj')}
-        onOpenCrewModal={() => handleOpenLoadModal('cuadrilla')}
+        activeTab={activeTab} activeSubmodule={activeSubmodule} dailyCount={dailyCount} totalLogsCount={recentLogs.length}
+        onOpenTextModal={() => handleOpenLoadModal('texto')} onOpenClockModal={() => handleOpenLoadModal('reloj')} onOpenCrewModal={() => handleOpenLoadModal('cuadrilla')}
       />
 
       {statusMessage && (
@@ -200,60 +187,37 @@ export default function LaborLogs() {
         </div>
       )}
 
-      <LaborKpiRadar
-        countSinOt={countSinOt}
-        countR={countR}
-        countRR={countRR}
-        incompleteCount={incompleteCount}
-        countSinPrc={countSinPrc}
-        activeKpiFilter={activeKpiFilter}
-        onToggleKpiFilter={handleSetActiveKpiFilter}
-      />
+      {!isResumenHorasTab && (
+        <LaborKpiRadar countSinOt={countSinOt} countR={countR} countRR={countRR} incompleteCount={incompleteCount} countSinPrc={countSinPrc} activeKpiFilter={activeKpiFilter} onToggleKpiFilter={handleSetActiveKpiFilter} />
+      )}
 
       {loading && recentLogs.length === 0 && (
-        <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800 text-xs text-cyan-300 font-semibold">
-          Sincronizando planilla de horas y padrón...
-        </div>
+        <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800 text-xs text-cyan-300 font-semibold">Sincronizando planilla de horas y padrón...</div>
       )}
 
       {activeTab === 'carga' && (
         <LaborCargaPanel
-          ships={ships}
-          shipStays={shipStays}
-          workOrders={workOrders}
-          workItems={workItems}
-          dbWorkers={dbWorkers}
-          recentLogs={recentLogs}
-          setRecentLogs={setRecentLogs}
-          fetchData={fetchData}
-          selectedLogIds={selectedLogIds}
-          setSelectedLogIds={setSelectedLogIds}
-          toggleSelectLog={toggleSelectLog}
-          toggleSelectAllLogs={toggleSelectAllLogs}
-          activeKpiFilter={activeKpiFilter}
-          setActiveKpiFilter={handleSetActiveKpiFilter}
-          handleEditFromDaily={(log) => setEditingLog(log)}
-          handleDeleteLog={handleDeleteLog}
-          handleUpdateApprovalStatus={handleUpdateApprovalStatus}
-          setReviewReasonModal={setReviewReasonModal}
-          setShipPickerModal={setShipPickerModal}
-          setActiveTab={setActiveTab}
-          setDailyFilterType={setDailyFilterType}
-          statusMessage={statusMessage}
-          setStatusMessage={setStatusMessage}
-          activeLoadModal={activeLoadModal}
-          setActiveLoadModal={setActiveLoadModal}
-          historyRange={historyRange}
-          setHistoryRange={setHistoryRange}
-          loading={loading}
-          user={user}
+          ships={ships} shipStays={shipStays} workOrders={workOrders} workItems={workItems} dbWorkers={dbWorkers} recentLogs={recentLogs} setRecentLogs={setRecentLogs}
+          fetchData={fetchData} selectedLogIds={selectedLogIds} setSelectedLogIds={setSelectedLogIds} toggleSelectLog={toggleSelectLog} toggleSelectAllLogs={toggleSelectAllLogs}
+          activeKpiFilter={activeKpiFilter} setActiveKpiFilter={handleSetActiveKpiFilter} handleEditFromDaily={(log) => setEditingLog(log)} handleDeleteLog={handleDeleteLog}
+          handleUpdateApprovalStatus={handleUpdateApprovalStatus} setReviewReasonModal={setReviewReasonModal} setShipPickerModal={setShipPickerModal}
+          setActiveTab={setActiveTab} setDailyFilterType={setDailyFilterType} statusMessage={statusMessage} setStatusMessage={setStatusMessage}
+          activeLoadModal={activeLoadModal} setActiveLoadModal={setActiveLoadModal} historyRange={historyRange} setHistoryRange={setHistoryRange} loading={loading} user={user}
         />
       )}
       {activeTab === 'control_diario' && (
         <LaborControlDiarioPanel ships={ships} workOrders={workOrders} workItems={workItems} auditDate={auditDate} setAuditDate={setAuditDate} recentLogs={recentLogs} setRecentLogs={setRecentLogs} dbWorkers={dbWorkers} selectedLogIds={selectedLogIds} toggleSelectLog={toggleSelectLog} toggleSelectAllLogs={toggleSelectAllLogs} handleUpdateApprovalStatus={handleUpdateApprovalStatus} setShipPickerModal={setShipPickerModal} openQuickLogModal={(w) => setQuickLogWorker({ worker_name: w.name, worker_type: w.type, default_rubro: w.defaultRubro, allowed_trades: [w.defaultRubro], rubro: w.defaultRubro, ship_id: '', work_order_id: '', work_type: 'HORA', hours_normal: w.type === 'Astillero' ? 9 : 8, hours_extra_50: 0, hours_extra_100: 0, notes: '' })} handleEditFromDaily={(log) => setEditingLog(log)} handleDeleteLog={handleDeleteLog} historyRange={historyRange} setHistoryRange={setHistoryRange} loading={loading} />
       )}
-      {activeTab === 'sabana_quincenal' && (
-        <LaborSabanaPanel ships={ships} workOrders={workOrders} workItems={workItems} selectedYear={selectedYear} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} selectedQuincena={selectedQuincena} setSelectedQuincena={setSelectedQuincena} sabanaSearch={sabanaSearch} setSabanaSearch={setSabanaSearch} selectedQuincenaWorker={selectedQuincenaWorker} setSelectedQuincenaWorker={setSelectedQuincenaWorker} daysInQuincena={daysInQuincena} filteredSabanaWorkers={filteredSabanaWorkers} allQuincenaWorkers={allQuincenaWorkers} recentLogs={recentLogs} selectedLogIds={selectedLogIds} toggleSelectLog={toggleSelectLog} toggleSelectAllLogs={toggleSelectAllLogs} handleEditDayCell={(log) => setEditingLog(log)} handleQuickAddFromSabana={(name, date) => setQuickLogWorker({ worker_name: name, worker_type: 'Astillero', default_rubro: 'General', allowed_trades: ['General'], rubro: 'General', ship_id: '', work_order_id: '', work_type: 'HORA', hours_normal: 9, hours_extra_50: 0, hours_extra_100: 0, notes: `Imputación desde sábana ${date}` })} handleEditFromDaily={(log) => setEditingLog(log)} handleDeleteLog={handleDeleteLog} handleUpdateApprovalStatus={handleUpdateApprovalStatus} setReviewReasonModal={setReviewReasonModal} historyRange={historyRange} setHistoryRange={setHistoryRange} loading={loading} />
+      {activeTab === 'sabana_quincenal' && <LaborSabanaPanel {...sabanaSharedProps} />}
+      {isResumenHorasTab && (
+        <LaborResumenHorasPanel
+          selectedYear={selectedYear} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
+          selectedQuincena={selectedQuincena} setSelectedQuincena={setSelectedQuincena}
+          canManage={capabilities ? Boolean(capabilities.canManageResumenHoras) : true}
+          isMasterAdmin={Boolean(capabilities?.isMasterAdmin)}
+          actor={actor}
+          sabanaProps={sabanaSharedProps}
+        />
       )}
 
       <LaborSharedDatalists dbWorkers={dbWorkers} />

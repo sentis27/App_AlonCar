@@ -15,6 +15,14 @@ import { ShipSchema, ShipStaySchema, OwnerSchema, ShipDocumentSchema, ContactSch
 import { PurchaseOrderSchema, SupplierSchema, PurchaseDocumentSchema } from './purchases.schema.js'
 import { ThirdPartyServiceSchema, ThirdPartyVoucherHistorySchema } from './thirdParty.schema.js'
 import {
+  PRC_STATUSES, PRC_SOURCE_MODULES, PRC_MIN_NUMBER, PRC_BUSINESS_RULE_NOTICE, ContractorPrcRegistrySchema,
+} from './prcRegistry.schema.js'
+import {
+  CONTRACTOR_CC_SCOPES, CONTRACTOR_CC_DIRECTIONS, CONTRACTOR_CC_CATEGORIES, CONTRACTOR_CC_PAYMENT_METHODS,
+  CONTRACTOR_CC_INVOICE_STATUSES, CONTRACTOR_CC_SOURCES, CONTRACTOR_CLOSURE_STATUSES,
+  ContractorCcMovementSchema, ContractorSettlementClosureSchema,
+} from './contractorCc.schema.js'
+import {
   CC_PRICING_MODES, CC_CANCELLATION_MODES, CC_ENTRY_SOURCES, CC_PAYMENT_TYPES, CC_SOURCE_MODULES,
   ThirdPartyCcAccountSchema, ThirdPartyCcRateHistorySchema, ThirdPartyCcEntrySchema, ThirdPartyCcPaymentSchema,
 } from './thirdPartyCc.schema.js'
@@ -49,6 +57,9 @@ registerTrapKeys(OrganizationRoleSchema, ['id'], 'Usar PK "role_key" (GEMINI.md 
 registerTrapKeys(AuditLogSchema, ['entity', 'table_name'], 'Usar "entity_type" (GEMINI.md §3).')
 registerTrapKeys(PurchaseOrderSchema, ['notes'], 'Usar "observations" en purchase_orders (GEMINI.md §3).')
 registerTrapKeys(CostControlReviewSchema, ['notes', 'entity_id'], 'Usar "reason" e "inventory_transaction_id"/"review_key" en cost_control_reviews.')
+registerTrapKeys(ContractorPrcRegistrySchema, ['notes', 'numero_prc', 'prc_code'], 'Usar "observations" y "prc_number" en contractor_prc_registry.')
+registerTrapKeys(ContractorCcMovementSchema, ['notes', 'monto', 'importe'], 'Usar "observations" y "amount_ars" en contractor_cc_movements.')
+registerTrapKeys(ContractorSettlementClosureSchema, ['notes', 'monto'], 'Usar "observations" y "net_payable_ars" en contractor_settlement_closures.')
 
 /**
  * Detecta instancias de eventos React/DOM o cadenas `[object Object]` antes de persistir (SKL-015).
@@ -207,7 +218,11 @@ export {
   WorkerSchema, WorkerUpdateSchema, RateCardSchema, WorkOrderSchema, LaborLogSchema, SystemSettingSchema, OrganizationRoleSchema,
   MacroVariableSchema, OtTemplateSchema, SystemPromptSchema, AiProcessingLogSchema, ShipSchema, ShipStaySchema, OwnerSchema,
   ShipDocumentSchema, ContactSchema, PurchaseOrderSchema, SupplierSchema, PurchaseDocumentSchema, ThirdPartyServiceSchema,
-  ThirdPartyVoucherHistorySchema, CC_PRICING_MODES, CC_CANCELLATION_MODES, CC_ENTRY_SOURCES, CC_PAYMENT_TYPES, CC_SOURCE_MODULES,
+  ThirdPartyVoucherHistorySchema, PRC_STATUSES, PRC_SOURCE_MODULES, PRC_MIN_NUMBER, PRC_BUSINESS_RULE_NOTICE, ContractorPrcRegistrySchema,
+  CONTRACTOR_CC_SCOPES, CONTRACTOR_CC_DIRECTIONS, CONTRACTOR_CC_CATEGORIES, CONTRACTOR_CC_PAYMENT_METHODS,
+  CONTRACTOR_CC_INVOICE_STATUSES, CONTRACTOR_CC_SOURCES, CONTRACTOR_CLOSURE_STATUSES,
+  ContractorCcMovementSchema, ContractorSettlementClosureSchema,
+  CC_PRICING_MODES, CC_CANCELLATION_MODES, CC_ENTRY_SOURCES, CC_PAYMENT_TYPES, CC_SOURCE_MODULES,
   ThirdPartyCcAccountSchema, ThirdPartyCcRateHistorySchema, ThirdPartyCcEntrySchema, ThirdPartyCcPaymentSchema, WorkItemSchema,
   MaterialSchema, InventoryTransactionSchema, GasCylinderMovementSchema, MaterialRubroSchema, StockAdjustmentSchema, StockAuditSchema,
   STOCK_ADJUSTMENT_REASONS, MATERIAL_CONDITIONS, DataRequirementSchema, ComplianceAlertSchema, WorkerPermissionRequestSchema,

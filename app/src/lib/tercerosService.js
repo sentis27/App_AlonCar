@@ -20,11 +20,12 @@ import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { workItemsRepository } from '../repositories/workItemsRepository.js'
 import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
 import { materialsRepository } from '../repositories/materialsRepository.js'
+import { prcRegistryRepository } from '../repositories/prcRegistryRepository.js'
 import { buildDateRangeOption, DEFAULT_HISTORY_RANGE } from './gridPerformanceHelpers.js'
 
 export async function fetchTercerosData({ historyRange = DEFAULT_HISTORY_RANGE } = {}) {
   const dateRange = buildDateRangeOption('service_date', historyRange)
-  const [srvRes, shpRes, woRes, wiRes, wkrRes, mvRes, vhRes, panolRemitoRes, matRes] = await Promise.all([
+  const [srvRes, shpRes, woRes, wiRes, wkrRes, mvRes, vhRes, panolRemitoRes, matRes, prcRes] = await Promise.all([
     thirdPartyServicesRepository.listServices({ dateRange }),
     shipsRepository.listShips({ select: 'id, name, vessel_type, current_location' }),
     workOrdersRepository.listCanonicalWorkOrders(),
@@ -34,6 +35,7 @@ export async function fetchTercerosData({ historyRange = DEFAULT_HISTORY_RANGE }
     thirdPartyVoucherHistoryRepository.listHistory(),
     inventoryTransactionsRepository.listWithVoucherNumber(),
     materialsRepository.listMaterials({ select: 'id, name, unit_measure, weight_kg' }),
+    prcRegistryRepository.listCanonicalPrcs(),
   ])
 
   if (srvRes.error) console.warn('Aviso third_party_services:', srvRes.error)
@@ -44,6 +46,7 @@ export async function fetchTercerosData({ historyRange = DEFAULT_HISTORY_RANGE }
   if (vhRes.error) console.warn('Aviso third_party_voucher_history:', vhRes.error)
   if (panolRemitoRes.error) console.warn('Aviso inventory_transactions remitos:', panolRemitoRes.error)
   if (matRes.error) console.warn('Aviso materials:', matRes.error)
+  if (prcRes?.error) console.warn('Aviso contractor_prc_registry:', prcRes.error)
 
   if (wkrRes.data) setAllocationWorkersCache(wkrRes.data)
 
@@ -57,6 +60,7 @@ export async function fetchTercerosData({ historyRange = DEFAULT_HISTORY_RANGE }
     voucherHistory: vhRes.data || [],
     panolRemitoTx: panolRemitoRes.data || [],
     materials: matRes.data || [],
+    prcRegistry: prcRes?.data || [],
   }
 }
 

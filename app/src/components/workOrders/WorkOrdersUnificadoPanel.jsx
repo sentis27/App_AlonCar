@@ -4,9 +4,11 @@ import GridRibbon from '../GridRibbon'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import GridContextMenu from '../GridContextMenu'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import CanonicalPrcBadge from '../canonical/CanonicalPrcBadge'
 import HighlightText from '../HighlightText'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { getTodayArIso } from '../../lib/dateTimeCanonical'
+import { evaluateWorkItemPrcEligibility, resolvePrcForWorkItem } from '../../lib/prcRegistryRules'
 import {
   ESTADOS_TRABAJO, TIPOS_DE_TRABAJO, formatShortDate, formatSpecificBudgetLabel,
   isBudgetPendingAlert, isWorkItemEliminada, cleanWorkItemComment, evaluateWorkItemAlerts
@@ -20,7 +22,7 @@ export default function WorkOrdersUnificadoPanel({
   hasThirdPartyPermission: _hasThirdPartyPermission, inlineWoEdit, setInlineWoEdit, commitInlineWoEdit,
   onOpenNewWorkModal, onOpenEditWorkModal, onOpenSeparateModal, onOpenCloseTreeModal, onOpenReopenModal,
   onOpenUnifyModal, onDuplicateWorkItem, onDeleteWorkItem, setSelectedWoDetail, setEditingThirdParty,
-  menuTarget, openMenu, closeMenu, showWoGridFeedback
+  menuTarget, openMenu, closeMenu, showWoGridFeedback, prcMaps = null, workers = [], onRequestIssuePrc
 }) {
   const scrollRef = useRef(null)
   const { visibleItems: visibleRows, visibleCount, hasMore, remainingCount, loadMore, showAll, sentinelRef } = useProgressiveRows({
@@ -83,6 +85,10 @@ export default function WorkOrdersUnificadoPanel({
                 const visibleComment = cleanWorkItemComment(row.comments)
                 const rowIsEliminada = isWorkItemEliminada(row, row.wo)
                 const isLocked = isRowLockedDec011(row)
+                const prcInfo = resolvePrcForWorkItem(row, prcMaps)
+                const prcEligibility = !prcInfo.hasOfficialPrc && row.work_type === 'PRESUPUESTO'
+                  ? evaluateWorkItemPrcEligibility(row, workers)
+                  : null
 
                 const getWoCellClass = (colIdx, baseClass = '') => {
                   const active = woGrid.isCellActive(rowIndex, colIdx)
@@ -437,8 +443,21 @@ export default function WorkOrdersUnificadoPanel({
                         </select>
                       ) : (
                         <>
-                          <span className="font-mono font-bold text-cyan-300 text-[11px] block leading-tight">
+                          <span className="font-mono font-bold text-cyan-300 text-[11px] flex items-center gap-1.5 leading-tight flex-wrap">
                             <HighlightText text={row.work_type || 'HORA'} query={searchQuery} />
+                            {prcInfo.hasOfficialPrc && (
+                              <CanonicalPrcBadge prc={prcInfo.prc} additionals={prcInfo.additionals} variant="check" />
+                            )}
+                            {!prcInfo.hasOfficialPrc && row.work_type === 'PRESUPUESTO' && prcEligibility?.eligible && !isLocked && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onRequestIssuePrc?.(row) }}
+                                className="px-1.5 py-0.2 rounded bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-500/50 text-[9px] font-black cursor-pointer"
+                                title="Asignar número oficial de PRC con doble confirmación"
+                              >
+                                + PRC
+                              </button>
+                            )}
                           </span>
                           <span
                             className={`text-[10px] block leading-tight ${

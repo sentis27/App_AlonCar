@@ -4,6 +4,8 @@ import { ShieldCheck, Plus, ExternalLink, Pencil } from 'lucide-react'
 import HighlightText from '../HighlightText'
 import GridStatusBarBottom from '../GridStatusBarBottom'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import CanonicalPrcBadge from '../canonical/CanonicalPrcBadge'
+import { resolvePrcForThirdPartyService } from '../../lib/prcRegistryRules'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { useSheetSelection } from '../../hooks/grid/useSheetSelection'
 import { buildLookupMap, formatArsCached } from '../../lib/gridPerformanceHelpers'
@@ -12,7 +14,7 @@ import { formatShortDate } from '../../lib/workOrdersConstants'
 import { matchesUniversalSearch } from '../../lib/searchEngine'
 
 export default function WorkOrdersTercerosPanel({
-  thirdPartyServices = [], workOrders = [], searchQuery = '', onOpenTpCascadeModal, setEditingThirdParty
+  thirdPartyServices = [], workOrders = [], searchQuery = '', onOpenTpCascadeModal, setEditingThirdParty, prcMaps = null
 }) {
   const scrollRef = useRef(null)
   const workOrdersById = useMemo(() => buildLookupMap(workOrders), [workOrders])
@@ -94,7 +96,25 @@ export default function WorkOrdersTercerosPanel({
                       <span className="font-mono font-extrabold text-purple-300 px-2 py-0.5 rounded bg-purple-950 border border-purple-700"><HighlightText text={tp.contractor_name} query={searchQuery} /></span>
                     </td>
                     <td {...cpSt.domProps} className={`py-3 px-3 text-center ${cpSt.className}`}>
-                      <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-mono font-bold text-[10px]">{tp.status || 'PRC'} {tp.voucher_number ? `#${tp.voucher_number}` : ''}</span>
+                      {(() => {
+                        const prcInfo = resolvePrcForThirdPartyService(tp, prcMaps)
+                        if (prcInfo.hasOfficialPrc || tp.status === 'PRC' || tp.voucher_type === 'PRC') {
+                          return (
+                            <CanonicalPrcBadge
+                              prc={prcInfo.prc}
+                              additionals={prcInfo.additionals}
+                              legacyNumber={tp.budget_number || tp.voucher_number || 'S/N'}
+                              variant="pill"
+                              searchQuery={searchQuery}
+                            />
+                          )
+                        }
+                        return (
+                          <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700 font-mono font-bold text-[10px]">
+                            {tp.status || 'PRC'} {tp.voucher_number ? `#${tp.voucher_number}` : ''}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td {...cpArs.domProps} className={`py-3 px-3 text-right font-mono font-bold text-emerald-400 ${cpArs.className}`}>${formatArsCached(tp.amount_ars || 0)}</td>
                     <td {...cpDir.domProps} className={`py-3 px-3 ${cpDir.className}`}>

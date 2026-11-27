@@ -5,16 +5,7 @@
  */
 
 export const NAVIGATION_MODULES = [
-  {
-    id: 'dashboard',
-    name: 'Dashboard',
-    path: '/',
-    iconKey: 'LayoutDashboard',
-    archetype: 'METRICAS_ANALISIS',
-    permissionKey: 'dashboard',
-    defaultTab: null,
-    children: [],
-  },
+  { id: 'dashboard', name: 'Dashboard', path: '/', iconKey: 'LayoutDashboard', archetype: 'METRICAS_ANALISIS', permissionKey: 'dashboard', defaultTab: null, children: [] },
   {
     id: 'ots',
     name: 'Órdenes de Trabajo',
@@ -36,11 +27,12 @@ export const NAVIGATION_MODULES = [
     iconKey: 'Clock',
     archetype: 'CARGA_EDICION',
     permissionKey: 'horas',
-    defaultTab: 'carga',
+    defaultTab: 'carga', tabAliases: { resumen: 'resumen_horas', contratados: 'resumen_horas' },
     children: [
       { id: 'carga', label: '1. Planilla de Horas', shortLabel: 'Planilla de Horas', iconKey: 'Table2', permissionKey: 'horas.carga', theme: 'cyan' },
       { id: 'control_diario', label: '2. Control Diario', shortLabel: 'Control Diario', iconKey: 'ClipboardCheck', permissionKey: 'horas.control_diario', theme: 'sky' },
       { id: 'sabana_quincenal', label: '3. Sábana Quincenal', shortLabel: 'Sábana Quincenal', iconKey: 'CalendarDays', permissionKey: 'horas.sabana_quincenal', theme: 'amber' },
+      { id: 'resumen_horas', label: '4. Resumen Horas', shortLabel: 'Resumen Horas', iconKey: 'FileSpreadsheet', permissionKey: 'horas.resumen_horas', explicitGrantOnly: true, defaultAllowedRoleKeys: ['LIQUIDACION_SUELDOS'], theme: 'purple' },
     ],
   },
   {
@@ -69,10 +61,11 @@ export const NAVIGATION_MODULES = [
     archetype: 'CARGA_EDICION',
     permissionKey: 'terceros',
     defaultTab: 'servicios',
-    tabAliases: { filas: 'servicios', fichas: 'servicios', cc: 'cuentas-corrientes', pampa: 'cuentas-corrientes' },
+    tabAliases: { filas: 'servicios', fichas: 'servicios', cc: 'cuentas-corrientes', pampa: 'cuentas-corrientes', prc: 'base-prc' },
     children: [
       { id: 'servicios', label: '1. Servicios y Comprobantes', shortLabel: 'Servicios', iconKey: 'Wrench', permissionKey: 'terceros.servicios', theme: 'cyan' },
       { id: 'cuentas-corrientes', label: '2. Cuentas Corrientes', shortLabel: 'Cuentas Corrientes', iconKey: 'Wallet', permissionKey: 'terceros.cuentas_corrientes', theme: 'emerald' },
+      { id: 'base-prc', label: '3. Base de datos de PRC', shortLabel: 'Base de datos PRC', iconKey: 'FileSpreadsheet', permissionKey: 'terceros.base_prc', explicitGrantOnly: true, defaultAllowedRoleKeys: ['LIQUIDACION_SUELDOS', 'TESORERIA'], theme: 'amber' },
     ],
   },
   {
@@ -108,10 +101,14 @@ export const NAVIGATION_MODULES = [
     name: 'Tesorería (Graciela)',
     path: '/tesoreria',
     iconKey: 'Wallet',
-    archetype: 'METRICAS_ANALISIS',
+    archetype: 'CARGA_EDICION',
     permissionKey: 'tesoreria',
-    defaultTab: null,
-    children: [],
+    defaultTab: 'deducciones',
+    tabAliases: { panol: 'deducciones', cc: 'movimientos', pagos: 'movimientos' },
+    children: [
+      { id: 'deducciones', label: '1. Descuentos de Pañol', shortLabel: 'Desc. Pañol', iconKey: 'Package', permissionKey: 'tesoreria.deducciones', theme: 'sky' },
+      { id: 'movimientos', label: '2. Cuenta Corriente & Pagos', shortLabel: 'CC & Pagos', iconKey: 'DollarSign', permissionKey: 'tesoreria.movimientos', theme: 'emerald' },
+    ],
   },
   {
     id: 'barcos',
@@ -228,6 +225,13 @@ export function getVisibleNavigationModules({ profile = null, allowedSections = 
     const parentAllowed = !allowSet || allowSet.has(mod.permissionKey)
     const rawChildren = Array.isArray(mod.children) ? mod.children : []
     const visibleChildren = rawChildren.filter((child) => {
+      if (child.explicitGrantOnly) {
+        if (allowSet) return allowSet.has(child.permissionKey)
+        if (!profile) return true
+        const rk = String(profile?.role_key || profile?.org_role_key || '').trim().toUpperCase()
+        if (rk) return rk.includes('ADMIN') || (child.defaultAllowedRoleKeys || []).includes(rk)
+        return isSupervisorOrAdminRole(profile)
+      }
       if (!hasExplicitAllowList && child.requiresSupervisorOrAdmin && !canSeeSupervisorTabs) return false
       if (allowSet && !parentAllowed && !allowSet.has(child.permissionKey)) return false
       return true

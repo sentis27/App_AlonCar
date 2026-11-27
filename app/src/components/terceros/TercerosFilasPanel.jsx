@@ -6,7 +6,9 @@
 import React, { useMemo } from 'react'
 import HighlightText from '../HighlightText'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import CanonicalPrcBadge from '../canonical/CanonicalPrcBadge'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import { resolvePrcForThirdPartyService } from '../../lib/prcRegistryRules.js'
 import FormulaNumericInput, { FormulaCellCornerMark } from '../canonical/FormulaNumericInput'
 import { describeFormula, getStoredCellFormula, getEditableCellInitialValue } from '../../lib/formulaEngine'
 import GridRibbon from '../GridRibbon'
@@ -23,7 +25,7 @@ const VOUCHER_BY_CODE = new Map(VOUCHER_TYPES.map((v) => [v.code, v]))
 
 export default function TercerosFilasPanel({
   filteredServices = [], services = [], contractors = [], shipMap = new Map(), otMap = new Map(),
-  contractorMap = new Map(), workOrders = [], workItems = [], panolRemitoIndex = new Map(),
+  contractorMap = new Map(), workOrders = [], workItems = [], panolRemitoIndex = new Map(), prcMaps = null,
   filterResetKey = '', searchTerm = '', canEditAmounts = false, canMutateRows = true, activeRolePerspective = 'maria_jose',
   grid, spreadsheetColumns = [], menuTarget, openMenu, closeMenu, selectedIds = new Set(),
   handleSelectAll, handleCheckboxToggle, handleClearSelection, inlineEdit, setInlineEdit, saveInlineEdit,
@@ -516,16 +518,18 @@ export default function TercerosFilasPanel({
                                 </span>
                               </div>
                             )}
-                            {prcNumber && (
-                              <div className="flex items-center gap-1 text-[11px] font-bold text-amber-300 truncate" title={`Presupuesto: ${prcNumber}`}>
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800 shrink-0 font-sans">
-                                  PRC
-                                </span>
-                                <span className="truncate">
-                                  <HighlightText text={prcNumber} query={searchTerm} />
-                                </span>
-                              </div>
-                            )}
+                            {(prcNumber || resolvePrcForThirdPartyService(srv, prcMaps).hasOfficialPrc) && (() => {
+                              const prcInfo = resolvePrcForThirdPartyService(srv, prcMaps)
+                              return (
+                                <CanonicalPrcBadge
+                                  prc={prcInfo.prc}
+                                  additionals={prcInfo.additionals}
+                                  legacyNumber={prcNumber}
+                                  variant="pill"
+                                  searchQuery={searchTerm}
+                                />
+                              )
+                            })()}
                             {remitoAloncar && (
                               <RemitoAloncarHoverBadge
                                 remitoNumber={remitoAloncar}

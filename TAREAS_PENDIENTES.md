@@ -24,8 +24,8 @@ Lista de trabajo activa priorizada por fase y criticidad.
 - [ ] **Automatización de Pañol (Extracción de Materiales Cobrables a Contratistas):**
   - **Recordatorio n8n / Pañol:** Al diseñar las automatizaciones del módulo Pañol, reutilizar `app/src/lib/workCostRules.js` y `contractorDeductionsService.js` para extraer automáticamente materiales, consumibles (`%`) y EPP cobrables al contratista alimentando directamente a Tesorería (`/tesoreria`).
 - [ ] **Expansión del Módulo Tesorería (`/tesoreria` — Rol Graciela `TESORERIA`):**
-  - Primera herramienta ya implementada: Extracción quincenal filtrada de Consumibles y Elementos de Seguridad cobrables a contratistas (respetando zona gris).
-  - **Próximas herramientas a desarrollar para Graciela:** Tablero de liquidación y pagos quincenales, gestión de adelantos a personal/contratistas y conciliación financiera de Terceros.
+  - Implementado (`0058`): `1. Descuentos de Pañol` (extracción automática Consumibles/EPP con zona gris y TC quincenal) + `2. Cuenta Corriente & Pagos` (`contractor_cc_movements` · adelantos, pagos, gastos a cuenta, seguimiento `DEBE FACTURA`, PRCs `#2000+` y pase 1-clic Pañol → CC sin duplicados).
+  - **Pendiente futuro:** Importación bancaria/extractos y conciliación automática de cheques cobrados.
 - [ ] **0. Rediseño Visual y Experiencia de Usuario (UX) del Dashboard del Administrador (`/admin`):**
   - **Estado:** Pendiente de revisión por Dirección / Usuario.
   - **Detalle:** Revisar la presentación visual del Circuito Operativo Inter-Departamental y la Ficha de Puestos/Vinculaciones para mejorar ergonomía visual, reducir sobrecarga de datos y presentar funciones y vinculaciones de forma más ejecutiva e intuitiva.
@@ -68,11 +68,11 @@ Lista de trabajo activa priorizada por fase y criticidad.
 
 ## ✅ Últimos 5 Ítems Completados Recientemente
 
+- [x] **Base Única de PRC (`#2000+`), Cuenta Corriente de Contratistas (`/tesoreria?tab=movimientos`) y Submódulo Privado `4. Resumen Horas` (`/horas?tab=resumen_horas`, `2026-11-27`):** Migraciones `0056`–`0059` aplicadas en vivo; libreta digital inmutable `contractor_prc_registry` + doble confirmación y check `✓ PRC` en `/ots` y `/terceros` (solo María José, Graciela y Admin); CC de Contratistas con `DEBE FACTURA` y pase 1-clic de Pañol sin duplicados (`d662d98` + etapas 1–5); y hoja privada `Resumen Horas` (`Resumen`, `Horas Astillero` = Sábana, `Contratados` 14 col. con `% AVANCE PRC` automático y cierre inmutable, solo María José y Admin).
 - [x] **Menú Lateral Acordeón + Limpieza de Zona 1 (`FL-021`) y Motor Real de Permisos por Puesto (`FL-022`, `2026-11-24`):** Migrados los 30 submódulos al Sidebar Acordeón colapsable (`navigationCatalog.js` + `useModuleTab.js`), eliminados 37 botones redundantes de Zona 1 (incl. selectores manuales de Terminal/Rol), normalizados los 10 puestos de `organization_roles` en Supabase y conectado `AuthContext` + `ProtectedRoute` + Matriz de 11 módulos/30 submódulos en `/admin` + acceso por puesto en `Login.jsx`.
 - [x] **Migración SQL `0037` aplicada en vivo en Supabase (`2026-11-17`):** Agregadas columnas `workers.contract_type` y `workers.contract_start_date`, saneado `safety_items` y actualizado `REQ_PERSONAL_CONTRATO_POR_VENCER`. Eliminados los HTTP `400` en `/` Dashboard.
 - [x] **Validación QA Autenticada en Navegador (`2026-11-17`):** Verificados en vivo `/` Dashboard (`0` HTTP 400), `/panol` (4 pestañas), `/resumen-gerencial` (4 pestañas con cifras reales) y `/personal` (`w-full` confirmado; `Acciones` visible en `1920px` y accesible por scroll horizontal en `<=1440px`).
 - [x] **Fix `/barcos` (`ShipsBarcosPanel.jsx`) y `/ots` (`WorkOrdersHeader.jsx`) (`0d0debb`, `2026-11-16`):** Importado `X` faltante de `lucide-react` (corrige pantalla en blanco en `/barcos`) y ajustado wrap responsive en Zona 1 de `/ots`.
-- [x] **Unificación OTs, FKs relacionales, Horas Columna F y Estandarización Cromática Zona 3 (`cc7a908`..`1154d80`, `2026-11-16`):** Migraciones `0041`–`0047`, `workerIdentity.js`, reloj facial CSV y `filterThemeConstants.js`.
 
 ---
 
@@ -83,4 +83,4 @@ Lista de trabajo activa priorizada por fase y criticidad.
 
 📝 Cómo Actualizar Este Archivo
 Cuando cierres una tarea: `- [x] **HECHO** — Descripción` (conservar solo últimos 5 `[x]`).
-Responsable: Tú + Antigravity (colaborativo) · Última actualización: 2026-11-17
+Responsable: Tú + Antigravity (colaborativo) · Última actualización: 2026-11-27

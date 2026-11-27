@@ -649,10 +649,10 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
   })
 
   it('FL-021: blinda el Menú Lateral Acordeón 3 Capas y Zona 1 limpia (sin pestañas ni selectores manuales de Terminal/Rol)', () => {
-    // Capa 1: Catálogo maestro con 12 módulos y 36 submódulos con permissionKey único
+    // Capa 1: Catálogo maestro con 12 módulos y 40 submódulos con permissionKey único
     expect(NAVIGATION_MODULES.length).toBe(12)
     const allChildren = NAVIGATION_MODULES.flatMap((m) => m.children || [])
-    expect(allChildren.length).toBe(36)
+    expect(allChildren.length).toBe(40)
     const permKeys = [
       ...NAVIGATION_MODULES.map((m) => m.permissionKey),
       ...allChildren.map((c) => c.permissionKey),
@@ -666,6 +666,9 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(resolveModuleTab('ots', '')).toBe('unificado')
     expect(resolveModuleTab('resumen-gerencial', 'remito')).toBe('remito')
     expect(resolveModuleTab('admin', null)).toBe('matriz')
+    expect(resolveModuleTab('tesoreria', null)).toBe('deducciones')
+    expect(resolveModuleTab('tesoreria', 'cc')).toBe('movimientos')
+    expect(resolveModuleTab('horas', 'resumen')).toBe('resumen_horas')
     expect(buildSubmoduleUrl('/panol', 'catalogo')).toBe('/panol?tab=catalogo')
 
     // Filtrado por rol y soporte para allowedSections (Etapa 5)
@@ -700,6 +703,7 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
       'app/src/pages/Personal.jsx',
       'app/src/pages/Ships.jsx',
       'app/src/pages/Terceros.jsx',
+      'app/src/pages/Tesoreria.jsx',
       'app/src/pages/ResumenGerencial.jsx',
       'app/src/pages/ControlGastos.jsx',
       'app/src/pages/AdminDashboard.jsx',
@@ -717,6 +721,7 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
       'app/src/pages/Compras.jsx',
       'app/src/pages/Personal.jsx',
       'app/src/pages/Ships.jsx',
+      'app/src/pages/Tesoreria.jsx',
       'app/src/components/resumenGerencial/ResumenGerencialHeader.jsx',
       'app/src/components/costControl/CostControlHeaderAndRadar.jsx',
       'app/src/pages/AdminDashboard.jsx',
@@ -773,12 +778,14 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(mariaCaps.canEditTercerosAmounts).toBe(true)
     expect(mariaCaps.canMutateTercerosRows).toBe(true)
     expect(mariaCaps.canManageTercerosCc).toBe(true)
+    expect(mariaCaps.canManageContractorCc).toBe(true)
 
     const jefeCaps = resolveUserCapabilities(null, { role_key: 'JEFE_OBRA_PABLO_N', security_level: 'SUPERVISOR', allowed_sections: ['terceros', 'compras.compras'] })
     expect(jefeCaps.rolePerspective).toBe('jefe_obra')
     expect(jefeCaps.canEditTercerosAmounts).toBe(false)
     expect(jefeCaps.canMutateTercerosRows).toBe(true)
     expect(jefeCaps.canManageTercerosCc).toBe(false)
+    expect(jefeCaps.canManageContractorCc).toBe(false)
     expect(jefeCaps.canUseComprasCompleteMode).toBe(false)
 
     const gracielaCaps = resolveUserCapabilities(null, gracielaRole)
@@ -786,6 +793,38 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(gracielaCaps.canEditTercerosAmounts).toBe(false)
     expect(gracielaCaps.canMutateTercerosRows).toBe(false)
     expect(gracielaCaps.canManageTercerosCc).toBe(true)
+    expect(gracielaCaps.canManageContractorCc).toBe(true)
+
+    // 4b. Submódulo privado terceros.base_prc (explicitGrantOnly): oculto con 'terceros' genérico, visible solo con grant explícito
+    const jefePrcRole = {
+      role_key: 'JEFE_OBRA_PABLO_N',
+      security_level: 'SUPERVISOR',
+      allowed_sections: ['dashboard', 'terceros'],
+    }
+    expect(isRouteAllowed('/terceros', 'base-prc', { orgRole: jefePrcRole })).toMatchObject({
+      allowed: false,
+      redirectTo: '/terceros?tab=servicios',
+    })
+    expect(resolveUserCapabilities(null, jefePrcRole).canAccessPrcRegistry).toBe(false)
+
+    const mariaPrcRole = { role_key: 'LIQUIDACION_SUELDOS', security_level: 'SUPERVISOR', allowed_sections: ['terceros', 'terceros.base_prc'] }
+    const gracielaPrcRole = { role_key: 'TESORERIA', security_level: 'AUDITOR', allowed_sections: ['terceros', 'terceros.base_prc'] }
+    expect(isRouteAllowed('/terceros', 'base-prc', { orgRole: mariaPrcRole }).allowed).toBe(true)
+    expect(isRouteAllowed('/terceros', 'base-prc', { orgRole: gracielaPrcRole }).allowed).toBe(true)
+    expect(isRouteAllowed('/terceros', 'base-prc', { orgRole: { role_key: 'ADMIN_GENERAL', security_level: 'ADMINISTRADOR' } }).allowed).toBe(true)
+    expect(resolveUserCapabilities(null, mariaPrcRole).canManagePrcRegistry).toBe(true)
+    expect(resolveUserCapabilities(null, gracielaPrcRole).canManagePrcRegistry).toBe(true)
+
+    // 4c. Submódulo privado horas.resumen_horas (explicitGrantOnly): solo María José y Admin
+    const jefeHorasRole = { role_key: 'JEFE_OBRA_PABLO_N', security_level: 'SUPERVISOR', allowed_sections: ['horas'] }
+    const gracielaHorasRole = { role_key: 'TESORERIA', security_level: 'AUDITOR', allowed_sections: ['horas.sabana_quincenal'] }
+    const mariaHorasRole = { role_key: 'LIQUIDACION_SUELDOS', security_level: 'SUPERVISOR', allowed_sections: ['horas', 'horas.resumen_horas'] }
+    expect(isRouteAllowed('/horas', 'resumen_horas', { orgRole: jefeHorasRole })).toMatchObject({ allowed: false, redirectTo: '/horas?tab=carga' })
+    expect(isRouteAllowed('/horas', 'resumen_horas', { orgRole: gracielaHorasRole })).toMatchObject({ allowed: false, redirectTo: '/horas?tab=sabana_quincenal' })
+    expect(isRouteAllowed('/horas', 'resumen_horas', { orgRole: mariaHorasRole }).allowed).toBe(true)
+    expect(isRouteAllowed('/horas', 'resumen_horas', { orgRole: { role_key: 'ADMIN_GENERAL', security_level: 'ADMINISTRADOR' } }).allowed).toBe(true)
+    expect(resolveUserCapabilities(null, mariaHorasRole).canManageResumenHoras).toBe(true)
+    expect(resolveUserCapabilities(null, gracielaHorasRole).canAccessResumenHoras).toBe(false)
 
     // 5. Cableado en AuthContext, App, Sidebar, AdminRolesMatrixPanel y Login
     const authSrc = readRepoFile('app/src/context/AuthContext.jsx')
@@ -828,6 +867,7 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     const zone3Surfaces = [
       'app/src/components/labor/LaborLogsToolbar.jsx',
       'app/src/components/labor/LaborControlDiarioPanel.jsx',
+      'app/src/components/labor/resumen/LaborResumenContratadosTable.jsx',
       'app/src/components/compras/ComprasPedidosToolbar.jsx',
       'app/src/components/compras/ComprasProveedoresPanel.jsx',
       'app/src/components/compras/ComprasOcrPanel.jsx',
@@ -843,6 +883,7 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
       'app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx',
       'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
       'app/src/components/tesoreria/TesoreriaDeduccionesPanel.jsx',
+      'app/src/components/tesoreria/TesoreriaCcPanel.jsx',
       'app/src/components/admin/AdminRolesMatrixPanel.jsx',
     ]
     for (const rel of zone3Surfaces) {

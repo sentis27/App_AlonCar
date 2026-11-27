@@ -33,6 +33,8 @@ import { laborLogsRepository } from '../repositories/laborLogsRepository.js'
 import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
 import { purchaseOrdersRepository } from '../repositories/purchaseOrdersRepository.js'
 import { organizationRolesRepository } from '../repositories/organizationRolesRepository.js'
+import { prcRegistryRepository } from '../repositories/prcRegistryRepository.js'
+import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
 
 const BUDGET_REQUIREMENT_DEF = {
   code: 'REQ_OT_PRESUPUESTO_ADICIONAL_MARIA_JOSE',
@@ -182,7 +184,7 @@ export async function fetchPendingBudgetAlertsForMariaService() {
 }
 
 export async function fetchWorkOrdersData() {
-  const [shipsRes, wosRes, itemsRes, workersRes, tplRes, tpRes, logsRes, invRes, poRes] = await Promise.all([
+  const [shipsRes, wosRes, itemsRes, workersRes, tplRes, tpRes, logsRes, invRes, poRes, prcRes, mvRes] = await Promise.all([
     shipsRepository.listShips(),
     workOrdersRepository.listWorkOrders({ select: '*, ships(name, client_name)' }),
     workItemsRepository.listWorkItems(),
@@ -199,6 +201,8 @@ export async function fetchWorkOrdersData() {
       orderBy: [],
     }),
     purchaseOrdersRepository.listOrders({ select: 'id, ship_id, work_order_id, charge_type', orderBy: [] }),
+    prcRegistryRepository.listCanonicalPrcs(),
+    macroVariablesRepository.listMacroVariables(),
   ])
 
   return {
@@ -211,6 +215,8 @@ export async function fetchWorkOrdersData() {
     laborLogs: logsRes.data || [],
     inventoryTx: invRes.data || [],
     purchaseOrders: poRes.data || [],
+    prcRegistry: prcRes?.data || [],
+    macroVariables: mvRes?.data || [],
   }
 }
 

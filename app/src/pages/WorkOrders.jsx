@@ -16,7 +16,10 @@ import CloseWorkOrderTreeModal from '../components/workOrders/CloseWorkOrderTree
 import ReopenWorkOrderModal from '../components/workOrders/ReopenWorkOrderModal'
 import WorkOrderUnifyModal from '../components/workOrders/WorkOrderUnifyModal'
 import ForemanBillingExpansionModal from '../components/workOrders/ForemanBillingExpansionModal'
+import CanonicalPrcConfirmModal from '../components/canonical/CanonicalPrcConfirmModal'
 import { fetchWorkOrdersData, applyWoSinglePatchService, deleteWorkItemService, deleteWoService, closeEntireWorkOrderTreeService, reopenWorkOrderService } from '../lib/workOrdersService.js'
+import { issueAndLinkPrcFromWorkOrderRowService } from '../services/prcIntegrationService.js'
+import { buildPrcLookupMaps, evaluateWorkItemPrcEligibility, formatPrcNumberLabel, resolvePrcForWorkItem } from '../lib/prcRegistryRules.js'
 import { duplicateWorkItemWithSyncService } from '../lib/workOrderHeaderSync.js'
 import { WO_GRID_COLUMNS, filterUnifiedRows, calculateWorkOrderStats, computeOtMetricsAndDates, buildContractorCatalog, buildUnifiedRows, isRowLockedDec011, hasThirdPartyPermission } from '../lib/workOrdersConstants.js'
 import { isMergedWorkOrder } from '../lib/workOrderUnificationEngine.js'
@@ -35,6 +38,9 @@ export default function WorkOrders() {
   const [laborLogs, setLaborLogs] = useState([])
   const [inventoryTx, setInventoryTx] = useState([])
   const [purchaseOrders, setPurchaseOrders] = useState([])
+  const [prcRegistry, setPrcRegistry] = useState([])
+  const [macroVariables, setMacroVariables] = useState([])
+  const [pendingPrcConfirm, setPendingPrcConfirm] = useState(null)
   const [loading, setLoading] = useState(true)
   const [statusMessage, setStatusMessage] = useState(null)
 
@@ -83,6 +89,7 @@ export default function WorkOrders() {
       setShips(d.ships); setWorkOrders(d.workOrders); setWorkItems(d.workItems)
       setWorkers(d.workers); setTemplates(d.templates); setThirdPartyServices(d.thirdPartyServices)
       setLaborLogs(d.laborLogs); setInventoryTx(d.inventoryTx); setPurchaseOrders(d.purchaseOrders)
+      setPrcRegistry(d.prcRegistry || []); setMacroVariables(d.macroVariables || [])
     } catch (err) {
       showWoGridFeedback('error', 'Error al cargar datos de OTs: ' + err.message)
     } finally { if (!silent) setLoading(false) }
@@ -90,9 +97,9 @@ export default function WorkOrders() {
 
   useSupabaseRealtimeRefresh({
     channelName: 'work_orders_live',
-    tables: ['work_orders', 'work_items', 'ships', 'workers', 'ot_templates', 'third_party_services', 'labor_logs', 'inventory_transactions', 'purchase_orders'],
+    tables: ['work_orders', 'work_items', 'ships', 'workers', 'ot_templates', 'third_party_services', 'contractor_prc_registry', 'labor_logs', 'inventory_transactions', 'purchase_orders'],
     onSync: () => loadData({ silent: true }),
-    pauseWhen: Boolean(inlineWoEdit || isWorkModalOpen || separatingRow || isThirdPartyCascadeOpen || editingThirdParty || isTemplateModalOpen || closingTreeWo || reopeningWo || unifyingWo)
+    pauseWhen: Boolean(inlineWoEdit || isWorkModalOpen || separatingRow || isThirdPartyCascadeOpen || editingThirdParty || isTemplateModalOpen || closingTreeWo || reopeningWo || unifyingWo || pendingPrcConfirm)
   })
 
   useEffect(() => { loadData({ silent: false }) }, [loadData])
@@ -113,6 +120,7 @@ export default function WorkOrders() {
   }, [thirdPartyServices])
 
   const otMetricsAndDatesMap = useMemo(() => computeOtMetricsAndDates(workOrders, laborLogs, inventoryTx, thirdPartyServices), [workOrders, laborLogs, inventoryTx, thirdPartyServices])
+  const prcMaps = useMemo(() => buildPrcLookupMaps(prcRegistry), [prcRegistry])
   const visibleWorkOrders = useMemo(() => workOrders.filter((w) => !isMergedWorkOrder(w)), [workOrders])
   const unifiedRows = useMemo(() => buildUnifiedRows(workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList[0] || 'ALE CAMADELLI', otMetricsAndDatesMap), [workOrders, itemsByWoMap, thirdPartyByItemMap, foremenList, otMetricsAndDatesMap])
   const filteredRows = useMemo(() => filterUnifiedRows(unifiedRows, unificadoFilters), [unifiedRows, unificadoFilters])
@@ -167,11 +175,27 @@ export default function WorkOrders() {
     const nextVal = overrideValue !== undefined ? overrideValue : inlineWoEdit?.value
     setInlineWoEdit(null)
     if (!rowId || !colKey) return
+    if (colKey === 'work_type' && nextVal === 'PRESUPUESTO') {
+      const targetRow = unifiedRows.find((r) => r.id === rowId)
+      if (targetRow && !isRowLockedDec011(targetRow) && !resolvePrcForWorkItem(targetRow, prcMaps).hasOfficialPrc) {
+        const elig = evaluateWorkItemPrcEligibility(targetRow, workers)
+        if (elig.eligible) {
+          setPendingPrcConfirm({ targetRow, elig })
+          return
+        }
+      }
+    }
     try {
       await applyWoSinglePatch(rowId, colKey, nextVal)
       showWoGridFeedback('success', `Celda ${colKey} actualizada.`)
     } catch (err) { showWoGridFeedback('error', `Error al guardar celda: ${err.message}`) }
   }
+
+  const handleRequestIssuePrcFromRow = useCallback((row) => {
+    const elig = evaluateWorkItemPrcEligibility(row, workers)
+    if (!elig.eligible) { showWoGridFeedback('error', elig.reason); return }
+    setPendingPrcConfirm({ targetRow: row, elig })
+  }, [workers, showWoGridFeedback])
 
   const { menuTarget, openMenu, closeMenu } = useGridContextMenu()
   const woGrid = useSpreadsheetGrid({
@@ -260,7 +284,7 @@ export default function WorkOrders() {
             onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} onDuplicateWorkItem={handleDuplicateWorkItem}
             onDeleteWorkItem={handleDeleteWorkItem} setSelectedWoDetail={setSelectedWoDetail}
             setEditingThirdParty={setEditingThirdParty} menuTarget={menuTarget} openMenu={openMenu} closeMenu={closeMenu}
-            showWoGridFeedback={showWoGridFeedback}
+            showWoGridFeedback={showWoGridFeedback} prcMaps={prcMaps} workers={workers} onRequestIssuePrc={handleRequestIssuePrcFromRow}
           />
         )}
 
@@ -278,7 +302,7 @@ export default function WorkOrders() {
           <WorkOrdersTercerosPanel
             thirdPartyServices={thirdPartyServices} workOrders={workOrders} searchQuery={tercerosFilters.searchQuery}
             onOpenTpCascadeModal={() => setIsThirdPartyCascadeOpen(true)}
-            setEditingThirdParty={setEditingThirdParty}
+            setEditingThirdParty={setEditingThirdParty} prcMaps={prcMaps}
           />
         )}
       </div>
@@ -290,9 +314,32 @@ export default function WorkOrders() {
       {unifyingWo && (
         <WorkOrderUnifyModal key={unifyingWo.id} sourceWo={unifyingWo} ships={ships} workOrders={workOrders} workItems={workItems} user={user} onClose={() => setUnifyingWo(null)} onSuccess={() => loadData()} showFeedback={showWoGridFeedback} />
       )}
+      <CanonicalPrcConfirmModal
+        isOpen={Boolean(pendingPrcConfirm)}
+        allowSkipPrc={true}
+        context={pendingPrcConfirm ? {
+          contractorName: pendingPrcConfirm.elig.contractorName,
+          shipName: pendingPrcConfirm.targetRow.wo?.ships?.name || 'Buque',
+          otLabel: `${pendingPrcConfirm.targetRow.wo?.ot_number || ''} ${pendingPrcConfirm.targetRow.wo?.title || ''}`.trim(),
+          description: pendingPrcConfirm.targetRow.description,
+        } : null}
+        onCancel={() => setPendingPrcConfirm(null)}
+        onSkipPrc={async () => {
+          const row = pendingPrcConfirm.targetRow
+          setPendingPrcConfirm(null)
+          await applyWoSinglePatch(row.id, 'work_type', 'PRESUPUESTO')
+          showWoGridFeedback('success', 'Marcado como PRESUPUESTO sin emitir PRC (taller externo / RMO).')
+        }}
+        onConfirm={async () => {
+          const res = await issueAndLinkPrcFromWorkOrderRowService({ targetRow: pendingPrcConfirm.targetRow, workers, macroVariables, prcs: prcRegistry, user })
+          setPendingPrcConfirm(null)
+          await loadData()
+          showWoGridFeedback('success', `${formatPrcNumberLabel(res.prc.prc_number)} emitido y vinculado en Base de datos de PRC.`)
+        }}
+      />
 
       {/* CONTENEDOR INTEGRAL DE MODALES */}
-      <WorkOrdersModalsContainer isWorkModalOpen={isWorkModalOpen} setIsWorkModalOpen={setIsWorkModalOpen} editingWorkItem={editingWorkItem} preselectedWo={preselectedWo} separatingRow={separatingRow} setSeparatingRow={setSeparatingRow} isThirdPartyCascadeOpen={isThirdPartyCascadeOpen} setIsThirdPartyCascadeOpen={setIsThirdPartyCascadeOpen} editingThirdParty={editingThirdParty} setEditingThirdParty={setEditingThirdParty} selectedWoDetail={selectedWoDetail} setSelectedWoDetail={setSelectedWoDetail} isTemplateModalOpen={isTemplateModalOpen} setIsTemplateModalOpen={setIsTemplateModalOpen} templatePickerFromForm={templatePickerFromForm} setTemplatePickerFromForm={setTemplatePickerFromForm} ships={ships} workOrders={workOrders} workItems={workItems} templates={templates} workers={workers} foremenList={foremenList} contractorCatalog={contractorCatalog} activeExecutionRows={activeExecutionRows} itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap} thirdPartyByItemMap={thirdPartyByItemMap} user={user} loadData={loadData} showWoGridFeedback={showWoGridFeedback} onOpenNewWorkModal={handleOpenNewWorkModal} onOpenSeparateModal={handleOpenSeparateModal} onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} />
+      <WorkOrdersModalsContainer isWorkModalOpen={isWorkModalOpen} setIsWorkModalOpen={setIsWorkModalOpen} editingWorkItem={editingWorkItem} preselectedWo={preselectedWo} separatingRow={separatingRow} setSeparatingRow={setSeparatingRow} isThirdPartyCascadeOpen={isThirdPartyCascadeOpen} setIsThirdPartyCascadeOpen={setIsThirdPartyCascadeOpen} editingThirdParty={editingThirdParty} setEditingThirdParty={setEditingThirdParty} selectedWoDetail={selectedWoDetail} setSelectedWoDetail={setSelectedWoDetail} isTemplateModalOpen={isTemplateModalOpen} setIsTemplateModalOpen={setIsTemplateModalOpen} templatePickerFromForm={templatePickerFromForm} setTemplatePickerFromForm={setTemplatePickerFromForm} ships={ships} workOrders={workOrders} workItems={workItems} templates={templates} workers={workers} foremenList={foremenList} contractorCatalog={contractorCatalog} activeExecutionRows={activeExecutionRows} itemsByWoMap={itemsByWoMap} otMetricsAndDatesMap={otMetricsAndDatesMap} thirdPartyByItemMap={thirdPartyByItemMap} prcMaps={prcMaps} prcRegistry={prcRegistry} macroVariables={macroVariables} user={user} loadData={loadData} showWoGridFeedback={showWoGridFeedback} onOpenNewWorkModal={handleOpenNewWorkModal} onOpenSeparateModal={handleOpenSeparateModal} onOpenUnifyModal={(wo) => wo && setUnifyingWo(wo)} />
     </div>
   )
 }

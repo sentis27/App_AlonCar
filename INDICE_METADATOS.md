@@ -38,7 +38,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | GUIA_ANTIGRAVITY.md | instrucciones-agente | ninguno | ignorar | transversal | deprecado | 2026-11-13 | GEMINI.md |
 | INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | ninguno |
 | INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
-| TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
+| TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-11-27 | INDICE_CENTRAL.md |
 | PLAN_OPTIMIZACION_IA.md | roadmap | auditar-avances | cambios | transversal | activo | 2026-11-13 | GEMINI.md |
 | INDICE_PLANILLAS.md | indice | consultar-siempre | completo | fase-2 | activo | 2026-11-27 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md |
 | ROADMAP_NEGOCIO.md | roadmap | auditar-avances | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |

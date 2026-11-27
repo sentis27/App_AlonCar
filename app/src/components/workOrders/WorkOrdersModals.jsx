@@ -20,6 +20,11 @@ import {
 import { WORK_ORDER_STEP_HELP } from '../../lib/businessHelpRegistry.js'
 import { getTodayArIso, toArIsoDate } from '../../lib/dateTimeCanonical.js'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import CanonicalPrcBadge from '../canonical/CanonicalPrcBadge.jsx'
+import CanonicalPrcConfirmModal from '../canonical/CanonicalPrcConfirmModal.jsx'
+import { PRC_BUSINESS_RULE_NOTICE } from '../../schemas/prcRegistry.schema.js'
+import { buildPrcLookupMaps, formatPrcNumberLabel, resolvePrcForWorkItem } from '../../lib/prcRegistryRules.js'
+import { issueAndLinkPrcFromWorkOrderRowService, issueAndSaveTpCascadePrcService } from '../../services/prcIntegrationService.js'
 import WorkOrderSeparateModal from './WorkOrderSeparateModal.jsx'
 import OtCatalogModal from './OtCatalogModal.jsx'
 import {
@@ -95,6 +100,9 @@ export function WorkOrdersModalsContainer({
   itemsByWoMap = {},
   otMetricsAndDatesMap = {},
   thirdPartyByItemMap = {},
+  prcMaps = null,
+  prcRegistry = [],
+  macroVariables = [],
   user,
   loadData,
   showWoGridFeedback,
@@ -137,6 +145,13 @@ export function WorkOrdersModalsContainer({
   const [newForemanForm, setNewForemanForm] = useState({ name: '', trade: 'TECNICOS' })
   const [savingNewForeman, setSavingNewForeman] = useState(false)
   const [budgetOptionMode, setBudgetOptionMode] = useState('PENDIENTE')
+  const [pendingModalPrcConfirm, setPendingModalPrcConfirm] = useState(null)
+
+  const resolvedPrcMaps = useMemo(() => prcMaps || buildPrcLookupMaps(prcRegistry), [prcMaps, prcRegistry])
+  const existingWorkItemPrc = useMemo(
+    () => (editingWorkItem ? resolvePrcForWorkItem(editingWorkItem, resolvedPrcMaps) : { prc: null, additionals: [], hasOfficialPrc: false }),
+    [editingWorkItem, resolvedPrcMaps]
+  )
 
   // Sincronizar apertura de WorkModal
   useEffect(() => {
@@ -269,9 +284,19 @@ export function WorkOrdersModalsContainer({
         return
       }
     }
+    const wantsNewThirdPartyPrc =
+      Boolean(workForm.send_to_third_party_prc && thirdPartyPrcEvaluation.canEnable) && !existingWorkItemPrc.hasOfficialPrc
+    if (wantsNewThirdPartyPrc && (workForm.ot_mode !== 'new' || selectedBatchTemplates.length <= 1)) {
+      setPendingModalPrcConfirm({ kind: 'work_modal' })
+      return
+    }
+    await executeSaveWorkSubmit()
+  }
+
+  const executeSaveWorkSubmit = async (issueOfficialPrc = false) => {
     setSavingWork(true)
     try {
-      await saveWorkOrderService({
+      const saveRes = await saveWorkOrderService({
         workForm,
         editingWorkItem,
         selectedBatchTemplates,
@@ -279,11 +304,29 @@ export function WorkOrdersModalsContainer({
         user,
         getNextOtNumberForShip: (shipId, off) => getNextOtNumberForShip(workOrders, shipId, off)
       })
+      let prcNumMsg = ''
+      if (issueOfficialPrc && saveRes?.savedWorkItem) {
+        const targetWo = workOrders.find((w) => w.id === saveRes.savedWorkItem.work_order_id) || {
+          id: saveRes.savedWorkItem.work_order_id,
+          ship_id: workForm.ship_id,
+          ot_number: workForm.ot_number,
+          title: workForm.ot_title,
+        }
+        const prcRes = await issueAndLinkPrcFromWorkOrderRowService({
+          targetRow: { ...saveRes.savedWorkItem, contractors: workForm.contractors, wo: targetWo },
+          workers,
+          macroVariables,
+          prcs: prcRegistry,
+          user,
+        })
+        prcNumMsg = ` y emitido ${formatPrcNumberLabel(prcRes.prc.prc_number)}`
+      }
       setIsWorkModalOpen(false)
       await loadData()
-      showWoGridFeedback('success', 'Trabajo y Orden de Trabajo guardados correctamente.')
+      showWoGridFeedback('success', `Trabajo y Orden de Trabajo guardados correctamente${prcNumMsg}.`)
     } catch (err) {
       showWoGridFeedback('error', 'Error al guardar: ' + err.message)
+      throw err
     } finally {
       setSavingWork(false)
     }
@@ -353,6 +396,10 @@ export function WorkOrdersModalsContainer({
     e.preventDefault()
     if (!selectedTpCascadeWorkItem) {
       alert('Seleccioná un Barco, Contratista habilitado y Orden de Trabajo.')
+      return
+    }
+    if ((tpCascadeForm.status || 'PRC') === 'PRC') {
+      setPendingModalPrcConfirm({ kind: 'tp_cascade' })
       return
     }
     setSavingTpCascade(true)
@@ -765,9 +812,17 @@ export function WorkOrdersModalsContainer({
 
               <label className="p-1.5 rounded-xl bg-slate-950 border border-purple-900/50 flex items-start gap-2 text-xs text-slate-200 cursor-pointer">
                 <input type="checkbox" disabled={!thirdPartyPrcEvaluation.canEnable} checked={workForm.send_to_third_party_prc && thirdPartyPrcEvaluation.canEnable} onChange={(e) => setWorkForm((prev) => ({ ...prev, send_to_third_party_prc: e.target.checked }))} className="w-4 h-4 rounded accent-purple-500 mt-0.5" />
-                <div className="min-w-0">
-                  <span className="font-bold text-purple-300 text-[11px] block">Generar Comprobante PRC $0 en Terceros</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-purple-300 text-[11px]">Generar Comprobante PRC $0 en Terceros</span>
+                    {existingWorkItemPrc.hasOfficialPrc && (
+                      <CanonicalPrcBadge prc={existingWorkItemPrc.prc} additionals={existingWorkItemPrc.additionals} variant="pill" />
+                    )}
+                  </div>
                   <span className="text-[10px] text-slate-400 block truncate">{thirdPartyPrcEvaluation.reason}</span>
+                  {(workForm.send_to_third_party_prc || workForm.work_type === 'PRESUPUESTO') && (
+                    <span className="text-[10px] text-amber-300/90 block mt-0.5">{PRC_BUSINESS_RULE_NOTICE}</span>
+                  )}
                 </div>
               </label>
             </div>
@@ -847,6 +902,12 @@ export function WorkOrdersModalsContainer({
                 </div>
               </div>
 
+              {tpCascadeForm.status === 'PRC' && (
+                <div className="p-2.5 rounded-xl bg-amber-950/35 border border-amber-500/40 text-amber-200 text-[11px]">
+                  {PRC_BUSINESS_RULE_NOTICE} El número correlativo (#2000+) se asignará automáticamente tras la doble confirmación.
+                </div>
+              )}
+
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
                 <button type="button" onClick={() => setIsThirdPartyCascadeOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-semibold cursor-pointer">Cancelar</button>
                 <button type="submit" disabled={savingTpCascade || !selectedTpCascadeWorkItem} className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white font-black rounded-xl cursor-pointer">{savingTpCascade ? 'Guardando...' : 'Guardar'}</button>
@@ -873,6 +934,7 @@ export function WorkOrdersModalsContainer({
                 <label className="block text-[11px] font-bold text-purple-300 uppercase mb-1">Específicas (Terceros)</label>
                 <textarea rows={3} value={editingThirdParty.specific_observations || ''} onChange={(e) => setEditingThirdParty((p) => ({ ...p, specific_observations: e.target.value }))} className="w-full bg-slate-950 border border-purple-600/60 rounded-xl p-3 text-xs text-white" />
               </div>
+
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
                 <button type="button" onClick={() => setEditingThirdParty(null)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-semibold cursor-pointer">Cancelar</button>
                 <button type="submit" disabled={savingThirdParty} className="px-4 py-2 bg-purple-600 text-white font-black rounded-xl cursor-pointer">{savingThirdParty ? 'Guardando...' : 'Guardar'}</button>
@@ -1011,6 +1073,47 @@ export function WorkOrdersModalsContainer({
         onSaveTemplate={saveOtTemplateCompleteService}
         onUpdateCategory={updateOtTemplateCategoryService}
         onDeleteTemplate={deleteOtTemplateService}
+      />
+
+      {/* 8. DOBLE CONFIRMACIÓN PRC DESDE MODALES OT / TERCEROS CASCADA */}
+      <CanonicalPrcConfirmModal
+        isOpen={Boolean(pendingModalPrcConfirm)}
+        context={pendingModalPrcConfirm?.kind === 'tp_cascade' ? {
+          contractorName: tpCascadeForm.contractor_name,
+          shipName: ships.find((s) => s.id === tpCascadeForm.ship_id)?.name || 'Buque',
+          otLabel: selectedTpCascadeWorkItem ? `${selectedTpCascadeWorkItem.wo?.ot_number || ''} ${selectedTpCascadeWorkItem.wo?.title || ''}`.trim() : '',
+          description: selectedTpCascadeWorkItem?.description || '',
+          amountArs: Number(tpCascadeForm.amount_ars || 0),
+        } : pendingModalPrcConfirm ? {
+          contractorName: (workForm.contractors || [])[0] || '',
+          shipName: ships.find((s) => s.id === workForm.ship_id)?.name || 'Buque',
+          otLabel: workForm.ot_title || '',
+          description: workForm.description || '',
+        } : null}
+        onCancel={() => setPendingModalPrcConfirm(null)}
+        onConfirm={async () => {
+          if (pendingModalPrcConfirm?.kind === 'tp_cascade') {
+            setSavingTpCascade(true)
+            try {
+              const res = await issueAndSaveTpCascadePrcService({
+                tpCascadeForm,
+                selectedWorkItem: selectedTpCascadeWorkItem,
+                workers,
+                macroVariables,
+                user,
+              })
+              setPendingModalPrcConfirm(null)
+              setIsThirdPartyCascadeOpen(false)
+              await loadData()
+              showWoGridFeedback('success', `${formatPrcNumberLabel(res.prc.prc_number)} emitido y guardado en Terceros.`)
+            } finally {
+              setSavingTpCascade(false)
+            }
+          } else {
+            await executeSaveWorkSubmit(true)
+            setPendingModalPrcConfirm(null)
+          }
+        }}
       />
     </>
   )

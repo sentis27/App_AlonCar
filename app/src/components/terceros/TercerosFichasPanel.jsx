@@ -5,7 +5,9 @@
 
 import React from 'react'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge'
+import CanonicalPrcBadge from '../canonical/CanonicalPrcBadge'
 import CanonicalProgressiveTableFooter from '../canonical/CanonicalProgressiveTableFooter'
+import { resolvePrcForThirdPartyService } from '../../lib/prcRegistryRules.js'
 import { useProgressiveRows } from '../../hooks/useProgressiveRows'
 import { formatArsCached } from '../../lib/gridPerformanceHelpers'
 import { Ship, Sparkles, History, Edit3, Trash2 } from 'lucide-react'
@@ -16,7 +18,7 @@ const VOUCHER_BY_CODE = new Map(VOUCHER_TYPES.map((v) => [v.code, v]))
 
 export default function TercerosFichasPanel({
   filteredServices = [], shipMap = new Map(), otMap = new Map(), contractorMap = new Map(),
-  workOrders = [], workItems = [], panolRemitoIndex = new Map(), selectedIds = new Set(), filterResetKey = '',
+  workOrders = [], workItems = [], panolRemitoIndex = new Map(), prcMaps = null, selectedIds = new Set(), filterResetKey = '',
   handleRowClick, handleCheckboxToggle, handleClearSelection, canEditAmounts = false,
   activeRolePerspective = 'maria_jose', handleOpenEvolutionModal, setHistoryService,
   handleOpenEditModal, handleDeleteService, stats
@@ -94,12 +96,17 @@ export default function TercerosFichasPanel({
                   )}
 
                   {/* Presupuesto Interno PRC */}
-                  {(srv.budget_number || (srv.voucher_type === 'PRC' && srv.voucher_number)) && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-amber-400 font-bold">PRESUPUESTO:</span>
-                      <span className="text-amber-300 font-bold">{srv.budget_number || srv.voucher_number}</span>
-                    </div>
-                  )}
+                  {(() => {
+                    const prcInfo = resolvePrcForThirdPartyService(srv, prcMaps)
+                    const legacy = srv.budget_number || (srv.voucher_type === 'PRC' ? srv.voucher_number : '')
+                    if (!prcInfo.hasOfficialPrc && !legacy) return null
+                    return (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-amber-400 font-bold">PRESUPUESTO:</span>
+                        <CanonicalPrcBadge prc={prcInfo.prc} additionals={prcInfo.additionals} legacyNumber={legacy} variant="pill" />
+                      </div>
+                    )
+                  })()}
 
                   {/* Remito Aloncar */}
                   {srv.internal_remito_number && (

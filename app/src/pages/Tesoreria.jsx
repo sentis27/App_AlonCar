@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Wallet, RefreshCw, AlertTriangle } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { useModuleTab } from '../hooks/useModuleTab'
+import CanonicalActiveSubmoduleBadge from '../components/canonical/CanonicalActiveSubmoduleBadge'
 import TesoreriaDeduccionesPanel from '../components/tesoreria/TesoreriaDeduccionesPanel'
+import TesoreriaCcPanel from '../components/tesoreria/TesoreriaCcPanel'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import {
   fetchContractorDeductionsForPeriod,
@@ -19,13 +23,22 @@ const TESORERIA_REALTIME_TABLES = [
 
 /**
  * Módulo Tesorería (Graciela — TESORERIA)
- * Arquetipo: METRICAS_ANALISIS (Gallina)
+ * Submódulos:
+ *  1. `deducciones`: Descuentos de Pañol (Gallina · solo extracción/análisis)
+ *  2. `movimientos`: Cuenta Corriente & Pagos de Contratistas (Gallo · CARGA_EDICION)
  */
 export default function Tesoreria() {
+  const { user, profile, orgRole, capabilities } = useAuth()
+  const { activeTab, activeSubmodule } = useModuleTab('tesoreria')
+  const isCcTab = activeTab === 'movimientos'
+
   const [selectedPeriod, setSelectedPeriod] = useState(() => getCurrentQuincenaKey())
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState(null)
+
+  const actor = orgRole?.holder_name || profile?.full_name || user?.email || 'TESORERIA'
+  const canManageCc = capabilities ? Boolean(capabilities.canManageContractorCc) : true
 
   const loadPeriod = useCallback(async (periodKey, { silent = false } = {}) => {
     try {
@@ -43,10 +56,12 @@ export default function Tesoreria() {
   useSupabaseRealtimeRefresh({
     channelName: 'tesoreria_live',
     tables: TESORERIA_REALTIME_TABLES,
-    onSync: () => loadPeriod(selectedPeriod, { silent: true })
+    onSync: () => loadPeriod(selectedPeriod, { silent: true }),
+    pauseWhen: isCcTab,
   })
 
   useEffect(() => {
+    if (isCcTab) return undefined
     let active = true
     fetchContractorDeductionsForPeriod(selectedPeriod)
       .then((res) => {
@@ -62,7 +77,19 @@ export default function Tesoreria() {
         if (active) setLoading(false)
       })
     return () => { active = false }
-  }, [selectedPeriod])
+  }, [selectedPeriod, isCcTab])
+
+  if (isCcTab) {
+    return (
+      <TesoreriaCcPanel
+        selectedPeriod={selectedPeriod}
+        onPeriodChange={(nextPeriod) => setSelectedPeriod(nextPeriod)}
+        activeSubmodule={activeSubmodule}
+        canManageCc={canManageCc}
+        actor={actor}
+      />
+    )
+  }
 
   return (
     <div className="space-y-4 font-sans">
@@ -75,6 +102,10 @@ export default function Tesoreria() {
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
+                <CanonicalActiveSubmoduleBadge
+                  label={activeSubmodule?.label || '1. Descuentos de Pañol'}
+                  theme={activeSubmodule?.theme || 'sky'}
+                />
                 <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-700">
                   MÓDULO TESORERÍA · GALLINA (SOLO ANÁLISIS)
                 </span>

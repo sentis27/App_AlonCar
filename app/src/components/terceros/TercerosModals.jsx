@@ -43,7 +43,12 @@ import { getEnabledWorkersAndContractors } from '../../lib/allocationEngine.js'
 import { deduplicateWorkOrdersWithScope } from '../../lib/workOrdersConstants.js'
 import { WorkOrderSelectorWithHover } from '../workOrders/WorkOrderSelectorWithHover.jsx'
 import CanonicalOtBadge from '../canonical/CanonicalOtBadge.jsx'
+import CanonicalPrcBadge from '../canonical/CanonicalPrcBadge.jsx'
+import CanonicalPrcConfirmModal from '../canonical/CanonicalPrcConfirmModal.jsx'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
+import { PRC_BUSINESS_RULE_NOTICE } from '../../schemas/prcRegistry.schema.js'
+import { buildPrcLookupMaps, formatPrcNumberLabel, isEligibleContractorForPrc, resolvePrcForThirdPartyService } from '../../lib/prcRegistryRules.js'
+import { issueAndSaveServicePrcModalService } from '../../services/prcIntegrationService.js'
 import {
   TERCEROS_SERVICE_STEP_HELP,
   TERCEROS_EVOLUTION_STEP_HELP,
@@ -219,6 +224,8 @@ export function TercerosModalsContainer({
   shipMap = new Map(),
   otMap = new Map(),
   panolRemitoIndex = new Map(),
+  prcMaps = null,
+  prcRegistry = [],
   canEditAmounts = false,
   activeRolePerspective = 'maria_jose',
   user,
@@ -252,6 +259,13 @@ export function TercerosModalsContainer({
     audit_status: 'PENDIENTE'
   })
   const [savingService, setSavingService] = useState(false)
+  const [pendingPrcConfirm, setPendingPrcConfirm] = useState(false)
+
+  const resolvedPrcMaps = useMemo(() => prcMaps || buildPrcLookupMaps(prcRegistry), [prcMaps, prcRegistry])
+  const existingOfficialPrcMatch = useMemo(
+    () => (editingService ? resolvePrcForThirdPartyService(editingService, resolvedPrcMaps) : { prc: null, additionals: [], hasOfficialPrc: false }),
+    [editingService, resolvedPrcMaps]
+  )
 
   // Sincronizar formulario cuando se abre el modal para edición o alta
   useEffect(() => {
@@ -306,7 +320,7 @@ export function TercerosModalsContainer({
         contractor_name: '',
         trade: '',
         is_manual_trade: false,
-        voucher_type: 'PRC',
+        voucher_type: 'RMO',
         voucher_number: '',
         budget_number: '',
         invoice_number: '',
@@ -359,26 +373,46 @@ export function TercerosModalsContainer({
     }))
   }
 
-  const handleSubmitService = async (e) => {
-    e.preventDefault()
+  const executeSaveService = async (withOfficialPrc = false) => {
     setSavingService(true)
     try {
-      const res = await saveServiceService({
-        formData,
-        editingService,
-        canEditAmounts,
-        contractors,
-        macroVariables, workItems,
-        actor
-      })
+      const res = withOfficialPrc
+        ? await issueAndSaveServicePrcModalService({ formData, editingService, canEditAmounts, contractors, macroVariables, workItems, actor })
+        : await saveServiceService({ formData, editingService, canEditAmounts, contractors, macroVariables, workItems, actor })
+      setPendingPrcConfirm(false)
       setIsModalOpen(false)
       await loadData()
-      showFeedback('success', res.isNew ? `Comprobante de ${formData.contractor_name} (${formData.voucher_type}) cargado con éxito.` : `Comprobante de ${formData.contractor_name} actualizado.`)
+      const prcTag = res?.prc ? ` · ${formatPrcNumberLabel(res.prc.prc_number)}` : ''
+      showFeedback('success', res.isNew ? `Comprobante de ${formData.contractor_name} (${formData.voucher_type}${prcTag}) cargado con éxito.` : `Comprobante de ${formData.contractor_name}${prcTag} actualizado.`)
     } catch (err) {
       showFeedback('error', 'Error al guardar comprobante: ' + (err.message || err))
+      throw err
     } finally {
       setSavingService(false)
     }
+  }
+
+  const handleSubmitService = async (e) => {
+    e.preventDefault()
+    if (!formData.ship_id) { showFeedback('error', 'Debe seleccionar un buque/embarcación.'); return }
+    if (!formData.contractor_name) { showFeedback('error', 'Debe seleccionar un contratista o taller autorizado.'); return }
+    if (formData.is_manual_trade && !formData.trade) { showFeedback('error', 'Debe seleccionar el rubro aplicable de la lista oficial.'); return }
+
+    const needsOfficialPrcConfirmation =
+      formData.voucher_type === 'PRC' &&
+      !existingOfficialPrcMatch.hasOfficialPrc &&
+      !(editingService && String(editingService.budget_number || '').trim())
+
+    if (needsOfficialPrcConfirmation) {
+      const found = contractors.find((c) => c.name.toUpperCase().trim() === formData.contractor_name.toUpperCase().trim())
+      if (found) {
+        const chk = isEligibleContractorForPrc(found)
+        if (!chk.eligible) { showFeedback('error', chk.reason); return }
+      }
+      setPendingPrcConfirm(true)
+      return
+    }
+    await executeSaveService(false)
   }
 
   // 2. ESTADO INTERNO DEL FORMULARIO DE EVOLUCIÓN (DEC-017)
@@ -555,9 +589,24 @@ export function TercerosModalsContainer({
             <div>
               <label className="flex items-center justify-between font-semibold text-[11px] mb-1">
                 <span className={formData.voucher_type === 'PRC' ? 'text-amber-300 font-black' : 'text-slate-400'}>Nº Presup. {formData.voucher_type === 'PRC' && '*'}</span>
-                <span className="text-[9px] text-amber-500 font-mono">PRC</span>
+                {existingOfficialPrcMatch.hasOfficialPrc ? (
+                  <CanonicalPrcBadge prc={existingOfficialPrcMatch.prc} additionals={existingOfficialPrcMatch.additionals} variant="check" />
+                ) : (
+                  <span className="text-[9px] text-amber-500 font-mono">PRC</span>
+                )}
               </label>
-              <input type="text" placeholder="Ej: 104 / PRC-01" value={formData.budget_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, budget_number: e.target.value }))} className={`w-full bg-slate-950 border rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none ${formData.voucher_type === 'PRC' && !formData.budget_number?.trim() ? 'border-amber-500/80' : 'border-slate-700 focus:border-cyan-400'}`} />
+              {formData.voucher_type === 'PRC' && (existingOfficialPrcMatch.hasOfficialPrc || !(editingService && String(editingService.budget_number || '').trim())) ? (
+                <div className="w-full bg-slate-950/80 border border-amber-500/60 rounded-lg px-2.5 py-1.5 text-amber-300 font-mono text-xs font-bold flex items-center justify-between gap-1">
+                  <span className="truncate">
+                    {existingOfficialPrcMatch.hasOfficialPrc
+                      ? `${formatPrcNumberLabel(existingOfficialPrcMatch.prc.prc_number)} (Inmutable)`
+                      : 'Automático al confirmar (#2000+)'}
+                  </span>
+                  <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                </div>
+              ) : (
+                <input type="text" placeholder="Ej: 104 / PRC-01" value={formData.budget_number || ''} onChange={(e) => setFormData((prev) => ({ ...prev, budget_number: e.target.value }))} className={`w-full bg-slate-950 border rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none ${formData.voucher_type === 'PRC' && !formData.budget_number?.trim() ? 'border-amber-500/80' : 'border-slate-700 focus:border-cyan-400'}`} />
+              )}
             </div>
             <div>
               <label className="flex items-center justify-between font-semibold text-[11px] mb-1">
@@ -607,6 +656,12 @@ export function TercerosModalsContainer({
             </div>
           </div>
           <RemitoOtMismatchAlert match={modalRemitoMatch} />
+          {formData.voucher_type === 'PRC' && (
+            <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-amber-950/35 border border-amber-500/50 text-amber-200 text-[11px] flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>{PRC_BUSINESS_RULE_NOTICE}</span>
+            </div>
+          )}
         </CanonicalStepperStep>
 
         <CanonicalStepperStep step={3} helpEntry={TERCEROS_SERVICE_STEP_HELP[3]} title="FECHA DE CARGA, IMPORTE AR$ Y CONVERSIÓN US$">
@@ -982,6 +1037,20 @@ export function TercerosModalsContainer({
             }
           }
         }}
+      />
+
+      {/* MODAL CANÓNICO: DOBLE CONFIRMACIÓN PRC DESDE CARGA / EDICIÓN TERCEROS */}
+      <CanonicalPrcConfirmModal
+        isOpen={pendingPrcConfirm}
+        context={{
+          contractorName: formData.contractor_name,
+          shipName: shipMap.get(formData.ship_id)?.name || ships.find((s) => s.id === formData.ship_id)?.name || 'Buque',
+          otLabel: (() => { const w = otMap.get(formData.work_order_id); return w ? `${w.ot_number || ''} ${w.title || ''}`.trim() : 'Sin OT' })(),
+          description: formData.direct_observations || formData.specific_observations || '',
+          amountArs: Number(evaluateFormulaInput(formData.amount_ars, { allowNegative: false, maxDecimals: 2, emptyValue: 0 }).value || 0),
+        }}
+        onCancel={() => setPendingPrcConfirm(false)}
+        onConfirm={() => executeSaveService(true)}
       />
     </>
   )

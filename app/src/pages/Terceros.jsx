@@ -15,7 +15,11 @@ import TercerosFilasPanel from '../components/terceros/TercerosFilasPanel'
 import TercerosFichasPanel from '../components/terceros/TercerosFichasPanel'
 import { TercerosModalsContainer } from '../components/terceros/TercerosModals'
 import TercerosCuentasCorrientesPanel from '../components/terceros/cc/TercerosCuentasCorrientesPanel'
+import TercerosPrcRegistryPanel from '../components/terceros/prc/TercerosPrcRegistryPanel'
+import CanonicalPrcConfirmModal from '../components/canonical/CanonicalPrcConfirmModal'
 import { fetchTercerosData, insertBlankRowService, deleteServiceService, saveInlineEditService, saveSpreadsheetBatchService } from '../lib/tercerosService.js'
+import { issueAndLinkPrcFromTercerosInlineService } from '../services/prcIntegrationService.js'
+import { buildPrcLookupMaps, formatPrcNumberLabel, isEligibleContractorForPrc, resolvePrcForThirdPartyService } from '../lib/prcRegistryRules.js'
 import { getEditableCellInitialValue } from '../lib/formulaEngine.js'
 import { calculateTercerosKpis, calculateTercerosStats, filterTercerosServices, getSpreadsheetColumnsTerceros, buildTercerosMaps, TERCEROS_CLONE_FIELDS, TERCEROS_PASTE_BASE_FIELDS } from '../lib/tercerosConstants.js'
 import { buildPanolRemitoIndex } from '../lib/tercerosRemitoMatcher.js'
@@ -27,16 +31,20 @@ export default function Terceros() {
   const { user, profile, orgRole, capabilities } = useAuth()
   const { activeTab, activeSubmodule } = useModuleTab('terceros')
   const isCcTab = activeTab === 'cuentas-corrientes'
+  const isPrcTab = activeTab === 'base-prc'
   const activeRolePerspective = capabilities?.rolePerspective || resolveUserRolePerspective(profile)
   const canEditAmounts = capabilities ? capabilities.canEditTercerosAmounts : (activeRolePerspective === 'admin' || activeRolePerspective === 'maria_jose')
   const canMutateRows = capabilities ? capabilities.canMutateTercerosRows : activeRolePerspective !== 'direccion'
   const canManageCc = capabilities ? Boolean(capabilities.canManageTercerosCc) : (activeRolePerspective === 'admin' || activeRolePerspective === 'maria_jose')
+  const canManagePrc = capabilities ? Boolean(capabilities.canManagePrcRegistry) : (activeRolePerspective === 'admin' || activeRolePerspective === 'maria_jose')
   const actor = orgRole?.holder_name || profile?.full_name || user?.email || (activeRolePerspective === 'jefe_obra' ? 'JEFE DE OBRA' : 'ADMINISTRACIÓN')
 
   // Datos principales
   const [services, setServices] = useState([]); const [ships, setShips] = useState([]); const [workOrders, setWorkOrders] = useState([])
   const [workItems, setWorkItems] = useState([]); const [contractors, setContractors] = useState([]); const [macroVariables, setMacroVariables] = useState([])
   const [voucherHistory, setVoucherHistory] = useState([]); const [panolRemitoTx, setPanolRemitoTx] = useState([]); const [materials, setMaterials] = useState([])
+  const [prcRegistry, setPrcRegistry] = useState([])
+  const [pendingInlinePrc, setPendingInlinePrc] = useState(null)
   const [historyRange, setHistoryRange] = useState(DEFAULT_HISTORY_RANGE)
   const [loading, setLoading] = useState(true)
   const [feedbackMessage, setFeedbackMessage] = useState(null)
@@ -89,23 +97,24 @@ export default function Terceros() {
       const d = await fetchTercerosData({ historyRange })
       setServices(d.services); setShips(d.ships); setWorkOrders(d.workOrders)
       setWorkItems(d.workItems); setContractors(d.contractors); setMacroVariables(d.macroVariables)
-      setVoucherHistory(d.voucherHistory); setPanolRemitoTx(d.panolRemitoTx || []); setMaterials(d.materials || [])
+      setVoucherHistory(d.voucherHistory); setPanolRemitoTx(d.panolRemitoTx || []); setMaterials(d.materials || []); setPrcRegistry(d.prcRegistry || [])
     } catch (err) { showFeedback('error', 'Error al sincronizar datos: ' + err.message) }
     finally { if (!silent) setLoading(false) }
   }, [showFeedback, historyRange])
 
   useSupabaseRealtimeRefresh({
     channelName: 'terceros_live',
-    tables: ['third_party_services', 'third_party_voucher_history', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables', 'inventory_transactions', 'materials'],
+    tables: ['third_party_services', 'third_party_voucher_history', 'contractor_prc_registry', 'ships', 'work_orders', 'work_items', 'workers', 'macro_variables', 'inventory_transactions', 'materials'],
     onSync: () => loadData({ silent: true }),
-    pauseWhen: Boolean(isCcTab || inlineEdit.id || isModalOpen || evolvingService || auditingService || pickerModal.isOpen || contractorPickerModal.isOpen)
+    pauseWhen: Boolean(isCcTab || isPrcTab || inlineEdit.id || isModalOpen || evolvingService || auditingService || pickerModal.isOpen || contractorPickerModal.isOpen || pendingInlinePrc)
   })
 
-  useEffect(() => { if (!isCcTab) loadData({ silent: false }) }, [loadData, isCcTab])
+  useEffect(() => { if (!isCcTab && !isPrcTab) loadData({ silent: false }) }, [loadData, isCcTab, isPrcTab])
 
   // Mapas y derivados
   const { shipMap, otMap, contractorMap } = useMemo(() => buildTercerosMaps(ships, workOrders, contractors), [ships, workOrders, contractors])
   const panolRemitoIndex = useMemo(() => buildPanolRemitoIndex(panolRemitoTx, materials, workOrders, ships), [panolRemitoTx, materials, workOrders, ships])
+  const prcMaps = useMemo(() => buildPrcLookupMaps(prcRegistry), [prcRegistry])
   const kpiCounts = useMemo(() => calculateTercerosKpis(services), [services])
   const filteredServices = useMemo(() => filterTercerosServices(services, {
     kpiFilter, selectedShipFilter, selectedOtFilter, selectedContractorFilter, selectedTradeFilter, selectedVoucherFilter, searchTerm
@@ -159,6 +168,22 @@ export default function Terceros() {
     if (!target) return
     const currentComparable = field === 'amount_ars' ? getEditableCellInitialValue(target, 'amount_ars', target[field] ?? '') : target[field]
     if (String(currentComparable ?? '') === String(newValue ?? '')) return
+    const existingPrcMatch = resolvePrcForThirdPartyService(target, prcMaps)
+    if (field === 'voucher_number' && target.voucher_type === 'PRC' && existingPrcMatch.hasOfficialPrc) {
+      showFeedback('error', 'El Nº de PRC oficial es inmutable. Para cambios o aumentos creá un adicional desde Base de datos de PRC.')
+      return
+    }
+    if (field === 'voucher_type' && newValue === 'PRC' && !(existingPrcMatch.prc && existingPrcMatch.prc.status !== 'ANULADO')) {
+      const cName = String(target.contractor_name || '').trim()
+      if (!cName) { showFeedback('error', 'Seleccioná primero un contratista externo antes de elegir PRC.'); return }
+      const found = contractors.find((c) => c.name?.toUpperCase().trim() === cName.toUpperCase())
+      if (found) {
+        const chk = isEligibleContractorForPrc(found)
+        if (!chk.eligible) { showFeedback('error', chk.reason); return }
+      }
+      setPendingInlinePrc({ service: target })
+      return
+    }
     try {
       const res = await saveInlineEditService({ serviceId, field, newValue, services, macroVariables, contractors, actor })
       if (res) { setServices((prev) => prev.map((s) => (s.id === serviceId ? { ...s, [field]: res.cleanedValue, ...res.extraFields } : s))); showFeedback('success', 'Campo actualizado.') }
@@ -208,6 +233,7 @@ export default function Terceros() {
   }
 
   if (isCcTab) return <TercerosCuentasCorrientesPanel activeSubmodule={activeSubmodule} canManageCc={canManageCc} actor={actor} />
+  if (isPrcTab) return <TercerosPrcRegistryPanel activeSubmodule={activeSubmodule} canManagePrc={canManagePrc} actor={actor} />
 
   return (
     <div className="space-y-4 w-full pb-10">
@@ -251,7 +277,7 @@ export default function Terceros() {
           </div>
         ) : viewMode === 'filas' ? (
           <TercerosFilasPanel
-            filteredServices={filteredServices} services={services} contractors={contractors} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} panolRemitoIndex={panolRemitoIndex}
+            filteredServices={filteredServices} services={services} contractors={contractors} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} panolRemitoIndex={panolRemitoIndex} prcMaps={prcMaps}
             filterResetKey={`${searchTerm}|${kpiFilter}|${selectedShipFilter}|${selectedOtFilter}|${selectedContractorFilter}|${selectedTradeFilter}|${selectedVoucherFilter}|${historyRange}`}
             searchTerm={searchTerm} canEditAmounts={canEditAmounts} canMutateRows={canMutateRows} activeRolePerspective={activeRolePerspective}
             grid={grid} spreadsheetColumns={spreadsheetColumns} menuTarget={menuTarget} openMenu={openMenu} closeMenu={closeMenu}
@@ -265,7 +291,7 @@ export default function Terceros() {
           />
         ) : (
           <TercerosFichasPanel
-            filteredServices={filteredServices} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} panolRemitoIndex={panolRemitoIndex} selectedIds={selectedIds}
+            filteredServices={filteredServices} shipMap={shipMap} otMap={otMap} contractorMap={contractorMap} workOrders={workOrders} workItems={workItems} panolRemitoIndex={panolRemitoIndex} prcMaps={prcMaps} selectedIds={selectedIds}
             filterResetKey={`${searchTerm}|${kpiFilter}|${selectedShipFilter}|${selectedOtFilter}|${selectedContractorFilter}|${selectedTradeFilter}|${selectedVoucherFilter}|${historyRange}`}
             handleRowClick={(id, idx, e) => { if (!e.target.closest('button, a, input')) toggleRowSelection(id, idx, e.shiftKey) }}
             handleCheckboxToggle={(id, idx, e) => { e.stopPropagation(); toggleRowSelection(id, idx, e.shiftKey) }}
@@ -277,6 +303,25 @@ export default function Terceros() {
         )}
       </div>
 
+      <CanonicalPrcConfirmModal
+        isOpen={Boolean(pendingInlinePrc)}
+        context={pendingInlinePrc ? {
+          contractorName: pendingInlinePrc.service.contractor_name,
+          shipName: shipMap.get(pendingInlinePrc.service.ship_id)?.name || 'Buque',
+          otLabel: (() => { const w = otMap.get(pendingInlinePrc.service.work_order_id); return w ? `${w.ot_number || ''} ${w.title || ''}`.trim() : 'Sin OT' })(),
+          description: pendingInlinePrc.service.direct_observations || pendingInlinePrc.service.specific_observations || '',
+          amountArs: Number(pendingInlinePrc.service.amount_ars || 0),
+        } : null}
+        onCancel={() => setPendingInlinePrc(null)}
+        onConfirm={async () => {
+          const srv = pendingInlinePrc.service
+          const res = await issueAndLinkPrcFromTercerosInlineService({ service: srv, contractors, macroVariables, prcs: prcRegistry, actor })
+          setPendingInlinePrc(null)
+          await loadData()
+          showFeedback('success', `${formatPrcNumberLabel(res.prc.prc_number)} emitido y asignado a ${srv.contractor_name}.`)
+        }}
+      />
+
       {/* CONTENEDOR DE MODALES */}
       <TercerosModalsContainer
         isModalOpen={isModalOpen} setIsModalOpen={setIsModalOpen} editingService={editingService} setEditingService={setEditingService}
@@ -284,7 +329,7 @@ export default function Terceros() {
         historyService={historyService} setHistoryService={setHistoryService} pickerModal={pickerModal} setPickerModal={setPickerModal}
         contractorPickerModal={contractorPickerModal} setContractorPickerModal={setContractorPickerModal}
         ships={ships} workOrders={workOrders} workItems={workItems} contractors={contractors} macroVariables={macroVariables} voucherHistory={voucherHistory} services={services}
-        shipMap={shipMap} otMap={otMap} panolRemitoIndex={panolRemitoIndex} canEditAmounts={canEditAmounts} activeRolePerspective={activeRolePerspective} user={user} loadData={loadData} showFeedback={showFeedback}
+        shipMap={shipMap} otMap={otMap} panolRemitoIndex={panolRemitoIndex} prcMaps={prcMaps} prcRegistry={prcRegistry} canEditAmounts={canEditAmounts} activeRolePerspective={activeRolePerspective} user={user} loadData={loadData} showFeedback={showFeedback}
       />
     </div>
   )
