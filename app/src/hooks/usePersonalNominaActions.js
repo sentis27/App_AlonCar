@@ -4,7 +4,7 @@ import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import { auditService } from '../lib/auditService'
 import { resolveConsumablesDiscountPct } from '../lib/workCostRules'
 import { NOMINA_COLUMNS, WORKER_CLONE_FIELDS } from '../lib/personalNominaHelpers'
-import { buildWorkerPatchFromCell } from '../lib/personalNominaFormHelpers'
+import { buildWorkerPatchFromCell, shouldSyncWorkerGroupField } from '../lib/personalNominaFormHelpers'
 import {
   toggleWorkerStatusNominaService,
   toggleWorkerPermissionNominaService,
@@ -35,21 +35,16 @@ export function usePersonalNominaActions({ workers, setWorkers, reloadWorkers, d
     const dbPatch = buildWorkerPatchFromCell(targetWorker, colKey, rawValue, dollarRate)
     if (!dbPatch) return null
 
-    setWorkers((prev) => prev.map((w) => (w.id === rowId ? { ...w, ...dbPatch } : w)))
+    const syncGroup = shouldSyncWorkerGroupField(targetWorker, colKey)
+    setWorkers((prev) => prev.map((w) => (w.id === rowId || (syncGroup && w.work_group === targetWorker.work_group) ? { ...w, ...dbPatch } : w)))
 
     const colDef = NOMINA_COLUMNS.find((c) => c.key === colKey)
-    const oldValue = colKey === 'consumables_discount_pct'
-      ? resolveConsumablesDiscountPct(targetWorker)
-      : targetWorker[colKey]
+    const oldValue = colKey === 'consumables_discount_pct' ? resolveConsumablesDiscountPct(targetWorker) : targetWorker[colKey]
     await updateWorkerCellNominaService({
-      rowId,
-      colKey,
-      colLabel: colDef?.label || colKey,
-      oldValue,
-      dbPatch,
-      entityName: dbPatch.name || targetWorker.name || rowId
+      rowId, colKey, colLabel: colDef?.label || colKey, oldValue, dbPatch,
+      entityName: dbPatch.name || targetWorker.name || rowId,
+      workGroup: targetWorker.work_group, adminCenter: targetWorker.admin_center
     })
-
     return dbPatch[colKey]
   }, [dollarRate, setWorkers])
 
@@ -126,7 +121,10 @@ export function usePersonalNominaActions({ workers, setWorkers, reloadWorkers, d
           newValue: savedVal,
           timestamp: Date.now()
         })
-        showGridFeedback('success', `Celda actualizada en ${worker.name}. (Ctrl+Z para deshacer)`)
+        const syncMsg = shouldSyncWorkerGroupField(worker, colKey)
+          ? `Regla actualizada para todo el grupo ${worker.work_group}. (Ctrl+Z para deshacer)`
+          : `Celda actualizada en ${worker.name}. (Ctrl+Z para deshacer)`
+        showGridFeedback('success', syncMsg)
       }
     } catch (err) {
       console.error(err)

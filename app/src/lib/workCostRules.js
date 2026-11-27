@@ -6,6 +6,8 @@
  * 3. Vigencia de contratos de Personal del Astillero (alerta 7 días antes) y días de vacaciones futuros.
  */
 
+import { resolvePanolTxCost } from './panolCostHelpers.js'
+
 export const SAFETY_ITEMS_OPTIONS = [
   {
     value: 'CONTRATISTA',
@@ -64,6 +66,20 @@ export function resolveConsumablesDiscountPct(worker) {
 }
 
 /**
+ * Deduce el Centro de Costo por defecto de un retiro de Pañol (GS-002 / DEC-009):
+ * - MATERIALES -> 'CLIENTE'
+ * - ELEM.SEGURIDAD / ENTREGA_EPP -> 'CONTRATISTA' salvo Astillero o Zona Gris
+ * - CONSUMIBLES -> 'CONTRATISTA' si el contratista descuenta > 0%, si no 'CLIENTE'
+ */
+export function resolveDefaultWithdrawalCostCenter({ material, worker, movementType = '' } = {}) {
+  const cat = String(material?.category || '').trim().toUpperCase()
+  const isSafety = cat === 'ELEM.SEGURIDAD' || String(movementType || '').trim().toUpperCase() === 'ENTREGA_EPP'
+  if (isSafety) return resolveEffectiveSafetyCenter(worker) === 'CONTRATISTA' ? 'CONTRATISTA' : 'CLIENTE'
+  if (cat === 'CONSUMIBLES') return resolveConsumablesDiscountPct(worker) > 0 ? 'CONTRATISTA' : 'CLIENTE'
+  return 'CLIENTE'
+}
+
+/**
  * Determina el tratamiento contable de un retiro de Pañol (inventory_transactions + material + worker):
  * - MATERIALES -> Siempre computa al Barco/Obra (`shipDirectPct = 100`, `contractorDeductPct = 0`, `referenceOnly = false`).
  * - CONSUMIBLES -> Depende del contrato del contratista (`contractorDeductPct` vs resto a obra).
@@ -71,14 +87,37 @@ export function resolveConsumablesDiscountPct(worker) {
  *     * Si safety efectivo === 'ASTILLERO' -> `referenceOnly = true` (NO suma al total de la obra, NO se descuenta al contratista; figura solo como Costo de Referencia en Resumen Gerencial).
  *     * Si safety efectivo === 'CONTRATISTA' -> `contractorDeductPct = 100`, `shipDirectPct = 0` (paga el contratista).
  */
-export function classifyWithdrawalCost({ material, transaction, worker }) {
+export function classifyWithdrawalCost({
+  material,
+  transaction,
+  worker,
+  macroVariables = null,
+  pricingPolicy = null,
+  fortnightDollarRate = null
+}) {
   const category = String(material?.category || '').trim().toUpperCase()
   const movementType = String(transaction?.movement_type || '').trim().toUpperCase()
   const qty = Number(transaction?.quantity_withdrawn || 0)
-  const unitArs = Number(transaction?.unit_cost_ars_snapshot || material?.cost_ars || 0)
-  const unitUsd = Number(transaction?.unit_cost_usd_snapshot || material?.cost_usd || 0)
-  const totalArs = Number((qty * unitArs).toFixed(2))
-  const totalUsd = Number((qty * unitUsd).toFixed(2))
+  const fx = Number(fortnightDollarRate) > 0 ? Number(fortnightDollarRate) : 0
+  const hasMacro = Array.isArray(macroVariables) && macroVariables.length > 0
+  let totalArs = 0
+  let totalUsd = 0
+  if (hasMacro || fx > 0) {
+    const effectiveMacros = hasMacro
+      ? macroVariables
+      : [{ year: 2020, month: 1, dollar_rate: fx, dollar_rate_1q: fx, dollar_rate_2q: fx }]
+    const resolved = resolvePanolTxCost(transaction, material, {
+      macroVariables: effectiveMacros,
+      ...(pricingPolicy ? { policy: pricingPolicy } : {})
+    })
+    totalUsd = resolved.totalUsd
+    totalArs = fx > 0 ? Number((totalUsd * fx).toFixed(2)) : resolved.totalArs
+  } else {
+    const unitArs = Number(transaction?.unit_cost_ars_snapshot || material?.cost_ars || 0)
+    const unitUsd = Number(transaction?.unit_cost_usd_snapshot || material?.cost_usd || 0)
+    totalArs = Number((qty * unitArs).toFixed(2))
+    totalUsd = Number((qty * unitUsd).toFixed(2))
+  }
 
   const isSafety = category === 'ELEM.SEGURIDAD' || movementType === 'ENTREGA_EPP'
   if (isSafety) {
@@ -124,7 +163,7 @@ export function classifyWithdrawalCost({ material, transaction, worker }) {
   if (category === 'CONSUMIBLES') {
     const explicitCostCenter = String(transaction?.cost_center || '').trim().toUpperCase()
     let pct = resolveConsumablesDiscountPct(worker)
-    if (pct === 0 && explicitCostCenter === 'CONTRATISTA') {
+    if (pct === 0 && explicitCostCenter === 'CONTRATISTA' && String(worker?.admin_center || '').trim().toUpperCase() !== 'ASTILLERO') {
       pct = 100
     }
     const deductRatio = pct / 100

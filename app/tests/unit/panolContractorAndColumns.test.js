@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   buildPanolContractorSelectModel,
   evaluateInlineContractorChange,
-  isContractorEnabledForWorkOrder
+  evaluateInlineMaterialCostCenter,
+  isContractorEnabledForWorkOrder,
+  resolveWithdrawalCostCenterForSave,
+  resolveWithdrawalWorkerMeta
 } from '../../src/lib/panolContractorService.js'
 import { getPanolMovimientosColumns } from '../../src/lib/panolCostHelpers.js'
 
@@ -171,5 +174,65 @@ describe('Pañol Etapa 2 — Selector Unificado de Contratista, Borrado de OT y 
     expect(collapsedCols).toContain('cost_total_usd')
     expect(collapsedCols).not.toContain('cost_center')
     expect(expandedCols).toContain('cost_center')
+  })
+
+  it('recalcula cost_center al cambiar contratista o material inline y al guardar retiros', () => {
+    const matConsumible = { id: 'mat-cons', category: 'CONSUMIBLES' }
+    const matEpp = { id: 'mat-epp', category: 'ELEM.SEGURIDAD' }
+    const matObra = { id: 'mat-obra', category: 'MATERIALES' }
+    const workersFull = [
+      ...AST_WORKERS,
+      {
+        id: WORKER_TANO_ID,
+        name: 'TANO',
+        work_group: 'TANO',
+        admin_center: 'CONTRATISTA',
+        consumables_discount_pct: 100,
+        safety_items: 'CONTRATISTA',
+        status: 'ACTIVO'
+      }
+    ]
+
+    const inlineCnt = evaluateInlineContractorChange({
+      tx: { id: 'tx-c1', material_id: 'mat-cons', movement_type: 'CONSUMO_OBRA', ship_id: SHIP_ID },
+      newName: 'TANO',
+      astilleroWorkers: AST_WORKERS,
+      contractorGroups: CNT_GROUPS,
+      workOrders: WORK_ORDERS,
+      workItems: WORK_ITEMS,
+      workers: workersFull,
+      materials: [matConsumible, matEpp, matObra]
+    })
+    expect(inlineCnt.updates.cost_center).toBe('CONTRATISTA')
+
+    const inlineMat = evaluateInlineMaterialCostCenter({
+      tx: { worker_id: WORKER_TANO_ID, worker_name: 'TANO', contractor_name: 'TANO' },
+      targetMat: matObra,
+      workers: workersFull
+    })
+    expect(inlineMat).toEqual({ movement_type: 'CONSUMO_OBRA', cost_center: 'CLIENTE' })
+
+    const meta = resolveWithdrawalWorkerMeta({
+      contractorGroup: 'TANO',
+      astilleroWorkers: AST_WORKERS,
+      workers: workersFull
+    })
+    expect(meta.workerName).toBe('TANO')
+    expect(meta.workerId).toBe(WORKER_TANO_ID)
+
+    expect(resolveWithdrawalCostCenterForSave({
+      material: matConsumible,
+      worker: meta.resolvedWorker,
+      customCostCenter: '',
+      workerName: meta.workerName
+    })).toEqual({ movementType: 'CONSUMO_OBRA', costCenter: 'CONTRATISTA' })
+
+    expect(resolveWithdrawalCostCenterForSave({
+      material: matEpp,
+      worker: meta.resolvedWorker,
+      customCostCenter: 'CLIENTE',
+      originalTx: { material_id: matConsumible.id, worker_name: 'TANO', cost_center: 'CONTRATISTA' },
+      workerName: 'TANO'
+    })).toEqual({ movementType: 'ENTREGA_EPP', costCenter: 'CLIENTE' })
   })
 })

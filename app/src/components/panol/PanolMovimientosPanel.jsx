@@ -124,7 +124,7 @@ export default function PanolMovimientosPanel({
           timestamp: Date.now()
         })
       }
-      const { _matUpdates, ...rowUpdates } = await saveInlineTxService({ txId, field, value, tx, materials, user, isAdmin, macroVariables, pricingPolicy })
+      const { _matUpdates, ...rowUpdates } = await saveInlineTxService({ txId, field, value, tx, materials, workers, user, isAdmin, macroVariables, pricingPolicy })
       setInventoryTx((prev) => prev.map((t) => (t.id === txId ? { ...t, ...rowUpdates } : t)))
       if (_matUpdates?.length > 0) {
         setMaterials((prev) => prev.map((m) => { const u = _matUpdates.find((x) => x.id === m.id); return u ? { ...m, current_stock: u.newStock } : m }))
@@ -138,7 +138,7 @@ export default function PanolMovimientosPanel({
   const handleSaveInlineContractor = async (tx, newName, { skipUndo = false } = {}) => {
     try {
       const res = await saveInlineContractorService({
-        tx, newName, ships, workOrders, workItems, astilleroWorkers, contractorGroups, workers, user
+        tx, newName, ships, workOrders, workItems, astilleroWorkers, contractorGroups, workers, materials, user
       })
       if (!skipUndo && grid?.pushUndoAction) {
         const undoMutations = [

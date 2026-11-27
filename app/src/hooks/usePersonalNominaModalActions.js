@@ -1,6 +1,6 @@
 import { stampNewRecordWithFolio } from '../lib/monotonicFolioEngine'
 import { syncContractExpiryAlertsService } from '../lib/contractorDeductionsService'
-import { buildWorkerSavePayload } from '../lib/personalNominaFormHelpers'
+import { buildWorkerGroupSyncPatch, buildWorkerSavePayload } from '../lib/personalNominaFormHelpers'
 import {
   persistWorkerWithSchemaFallbackService,
   logWorkerModalSaveAuditService,
@@ -43,11 +43,10 @@ export function usePersonalNominaModalActions({
           syncGroup: finalGroup
         })
 
+        const groupPatch = finalGroup !== 'ASTILLERO' ? buildWorkerGroupSyncPatch(payload) : null
         const updatedWorkersList = workers.map((w) => {
           if (w.id === editingWorker.id) return { ...w, ...payload }
-          if (finalGroup !== 'ASTILLERO' && w.work_group === finalGroup) {
-            return { ...w, can_charge_third_party: payload.can_charge_third_party, trade: payload.trade }
-          }
+          if (groupPatch && w.work_group === finalGroup) return { ...w, ...groupPatch }
           return w
         })
         setWorkers(updatedWorkersList)
@@ -63,10 +62,14 @@ export function usePersonalNominaModalActions({
         )
         setEditingWorker(null)
       } else {
-        const { data, missingContractCols } = await persistWorkerWithSchemaFallbackService({ mode: 'insert', payload })
+        const { data, missingContractCols } = await persistWorkerWithSchemaFallbackService({ mode: 'insert', payload, syncGroup: finalGroup })
         const createdObj = data?.[0] || { ...payload, id: Date.now().toString() }
         const newRecord = stampNewRecordWithFolio(createdObj, workers)
-        const updatedWorkersList = [newRecord, ...workers]
+        const groupPatch = finalGroup !== 'ASTILLERO' ? buildWorkerGroupSyncPatch(payload) : null
+        const updatedWorkersList = [
+          newRecord,
+          ...(groupPatch ? workers.map((w) => (w.work_group === finalGroup ? { ...w, ...groupPatch } : w)) : workers)
+        ]
         setWorkers(updatedWorkersList)
         syncContractExpiryAlertsService(updatedWorkersList)
         await logWorkerModalSaveAuditService({ isEdit: false, workerId: newRecord.id, payload, rowData: payload })

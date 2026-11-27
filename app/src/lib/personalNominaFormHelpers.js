@@ -226,3 +226,21 @@ export function buildWorkerPatchFromCell(targetWorker, colKey, rawValue, dollarR
   }
   return { [colKey]: rawValue }
 }
+
+/** Indica si la columna editada debe propagarse a todo el `work_group` externo. */
+export function shouldSyncWorkerGroupField(worker, colKey) {
+  const center = String(worker?.admin_center || '').trim().toUpperCase()
+  const grp = String(worker?.work_group || '').trim().toUpperCase()
+  return Boolean(center !== 'ASTILLERO' && grp && grp !== 'ASTILLERO' && (colKey === 'consumables_discount_pct' || colKey === 'safety_items'))
+}
+
+/** Construye el parche de reglas compartidas por todo un grupo contratista/taller. */
+export function buildWorkerGroupSyncPatch(payload = {}) {
+  return {
+    can_charge_third_party: Boolean(payload.can_charge_third_party),
+    trade: payload.trade,
+    consumables: payload.consumables,
+    consumables_discount_pct: payload.consumables_discount_pct,
+    safety_items: payload.safety_items
+  }
+}

@@ -15,6 +15,7 @@ import { normalizeUnitMeasure } from './comprasConstants.js'
 import { computeFortnightFromDate } from './comprasPedidosHelpers.js'
 import { resolveSingleWorkItemId } from './workOrderUnificationEngine.js'
 import { getWorkersLookupCached, resolveWorkerIdFromCatalog } from './workerIdentity.js'
+import { evaluateInlineMaterialCostCenter, resolveWithdrawalCostCenterForSave, resolveWithdrawalWorkerMeta } from './panolContractorService.js'
 import { computeFortnightUnitSnapshot, getFortnightPeriodKey, compareFortnightKeys } from './materialPricingPolicy.js'
 import { fetchMaterialPricingPolicyService } from '../services/materialPricingService.js'
 import { materialsRepository, materialRubrosRepository } from '../repositories/materialsRepository.js'
@@ -254,7 +255,7 @@ export async function saveShipAndWorkOrderService({
   return { updates, deassigned }
 }
 
-export async function saveInlineTxService({ txId, field, value, tx, materials, user, isAdmin = true, macroVariables = [], pricingPolicy = null }) {
+export async function saveInlineTxService({ txId, field, value, tx, materials, workers = [], user, isAdmin = true, macroVariables = [], pricingPolicy = null }) {
   if (field === 'weight_total' && !isAdmin) {
     throw new Error('El peso es solo de referencia para el Pañolero (editable solo por Administrador).')
   }
@@ -281,8 +282,7 @@ export async function saveInlineTxService({ txId, field, value, tx, materials, u
       updates.weight_total = (Number(targetMat.weight_kg) || 0) * (field === 'quantity_withdrawn' ? Number(normalizedVal) : Number(tx?.quantity_withdrawn) || 1)
       if (field === 'material_id') {
         const snap = computeFortnightUnitSnapshot({ material: targetMat, transactionDate: tx?.transaction_date, macroVariables, policy: pricingPolicy })
-        updates.unit_cost_ars_snapshot = snap.unit_cost_ars_snapshot
-        updates.unit_cost_usd_snapshot = snap.unit_cost_usd_snapshot
+        Object.assign(updates, { unit_cost_ars_snapshot: snap.unit_cost_ars_snapshot, unit_cost_usd_snapshot: snap.unit_cost_usd_snapshot }, evaluateInlineMaterialCostCenter({ tx, targetMat, workers }))
       }
     }
   }
@@ -356,12 +356,11 @@ export async function saveInlineMaterialService({ matId, field, value, materials
 
 export async function saveMultiWithdrawalService({
   shipId, workOrderId, workItemId = null, workItems = [], contractorGroup, voucherNumber = '', notes, date, time = null, items, editId,
-  originalTx = null, linkedGasMovement = null, gasMovements = [], materials, suppliers = [], ships = [], astilleroWorkers, user,
+  originalTx = null, linkedGasMovement = null, gasMovements = [], materials, suppliers = [], ships = [], astilleroWorkers, workers = [], user,
   macroVariables = [], pricingPolicy = null, changeOrigin = 'MODAL_WITHDRAWAL'
 }) {
-  const matchedAst = astilleroWorkers.find((w) => w.name.toUpperCase() === String(contractorGroup || '').toUpperCase())
-  const workerName = matchedAst ? matchedAst.name : contractorGroup || 'Sin asignar'
-  const workerId = matchedAst && matchedAst.id !== matchedAst.name ? matchedAst.id : null
+  const effWorkers = workers.length > 0 || !contractorGroup ? workers : ((await workersRepository.listWorkers({ orderBy: { column: 'name', ascending: true } })).data || [])
+  const { workerName, workerId, resolvedWorker } = resolveWithdrawalWorkerMeta({ contractorGroup, astilleroWorkers, workers: effWorkers })
   const resolvedWiId = workOrderId ? (workItemId ?? resolveSingleWorkItemId(workOrderId, workItems)) : null
   const cleanVoucherNumber = voucherNumber ? String(voucherNumber).trim() || null : null
   const includeTxLink = await supportsGasTxLink()
@@ -408,6 +407,7 @@ export async function saveMultiWithdrawalService({
     const editSnap = shouldRefreshSnap
       ? computeFortnightUnitSnapshot({ material: mat, transactionDate: txIso, macroVariables, policy: pricingPolicy })
       : null
+    const { costCenter: editCc, movementType: editMv } = resolveWithdrawalCostCenterForSave({ material: mat, worker: resolvedWorker, customCostCenter: item.customCostCenter, originalTx, workerName })
     const updates = {
       material_id: item.material_id || null,
       quantity_withdrawn: qty,
@@ -418,9 +418,9 @@ export async function saveMultiWithdrawalService({
       contractor_name: workerName,
       worker_name: workerName,
       worker_id: workerId,
-      cost_center: item.customCostCenter || 'CLIENTE',
+      cost_center: editCc,
       weight_total: (Number(mat?.weight_kg) || 0) * qty,
-      movement_type: mat?.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
+      movement_type: editMv,
       voucher_number: cleanVoucherNumber,
       notes: finalNotes,
       transaction_date: txIso,
@@ -555,6 +555,7 @@ export async function saveMultiWithdrawalService({
 
     const rowTxIso = buildTransactionTimestampIso(date, time)
     const rowSnap = computeFortnightUnitSnapshot({ material: mat, transactionDate: rowTxIso, macroVariables, policy: pricingPolicy })
+    const { costCenter: rowCc, movementType: rowMv } = resolveWithdrawalCostCenterForSave({ material: mat, worker: resolvedWorker, customCostCenter: item.customCostCenter, workerName })
     txInserts.push({
       material_id: mat.id,
       quantity_withdrawn: qty,
@@ -565,11 +566,11 @@ export async function saveMultiWithdrawalService({
       contractor_name: workerName,
       worker_name: workerName,
       worker_id: workerId,
-      cost_center: item.customCostCenter || 'CLIENTE',
+      cost_center: rowCc,
       weight_total: (Number(mat.weight_kg) || 0) * qty,
       unit_cost_ars_snapshot: rowSnap.unit_cost_ars_snapshot,
       unit_cost_usd_snapshot: rowSnap.unit_cost_usd_snapshot,
-      movement_type: mat.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA',
+      movement_type: rowMv,
       voucher_number: cleanVoucherNumber,
       notes: itemNotes,
       transaction_date: rowTxIso

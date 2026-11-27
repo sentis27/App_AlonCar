@@ -557,7 +557,7 @@ export function PanolModalsContainer({
     try {
       const res = await saveMultiWithdrawalService({
         ...payload, originalTx: editingWithdrawalRow, gasMovements, materials, suppliers,
-        ships, workItems, astilleroWorkers, macroVariables, pricingPolicy, user
+        ships, workItems, astilleroWorkers, workers, macroVariables, pricingPolicy, user
       })
       if (res.isEdit) {
         setInventoryTx((prev) => prev.map((t) => (t.id === payload.editId ? { ...t, ...res.updates } : t)))

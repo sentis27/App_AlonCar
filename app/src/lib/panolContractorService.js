@@ -9,6 +9,8 @@
 import { getContractorEnabledWos, getShipEnabledContractors, normalizeText } from './allocationEngine.js'
 import { deduplicateWorkOrdersWithScope } from './workOrdersConstants.js'
 import { isValidUuid, resolveWorkerIdFromCatalog } from './workerIdentity.js'
+import { resolveDefaultWithdrawalCostCenter } from './workCostRules.js'
+import { matchTransactionWorker } from './contractorDeductionsService.js'
 import { logCellChange } from './auditService.js'
 import { ensurePanolRequirementId } from './panolService.js'
 import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
@@ -75,7 +77,7 @@ export function buildPanolContractorSelectModel({
 
 /** Regla pura de mutación: sincroniza contractor_name/worker_name/worker_id y limpia OT si no habilitado. */
 export function evaluateInlineContractorChange({
-  tx, newName, astilleroWorkers = [], contractorGroups = [], workOrders = [], workItems = [], workers = []
+  tx, newName, astilleroWorkers = [], contractorGroups = [], workOrders = [], workItems = [], workers = [], materials = null
 }) {
   const trimmed = String(newName || '').trim()
   const matchedAst = astilleroWorkers.find((w) => normalizeText(w.name) === normalizeText(trimmed))
@@ -89,23 +91,68 @@ export function evaluateInlineContractorChange({
       })
     : true
   const shouldClearOt = Boolean(hasExistingOt && resolvedName && !isEnabled)
+  let nextCostCenter
+  if (Array.isArray(materials) && materials.length > 0 && tx?.material_id) {
+    const mat = materials.find((m) => m.id === tx.material_id) || null
+    const resolvedWorker = matchedAst || matchTransactionWorker({ worker_id: resolvedWorkerId, worker_name: resolvedName, contractor_name: resolvedName }, workers)
+    if (mat) nextCostCenter = resolveDefaultWithdrawalCostCenter({ material: mat, worker: resolvedWorker, movementType: tx.movement_type })
+  }
   const updates = {
     contractor_name: resolvedName,
     worker_name: resolvedName,
     worker_id: resolvedWorkerId,
+    ...(nextCostCenter ? { cost_center: nextCostCenter } : {}),
     ...(shouldClearOt ? { work_order_id: null, work_item_id: null } : {})
   }
   return { resolvedName, resolvedWorkerId, shouldClearOt, updates }
 }
 
+/** Resuelve operario/contratista real y su UUID para retiros de Pañol (alta y edición). */
+export function resolveWithdrawalWorkerMeta({ contractorGroup, astilleroWorkers = [], workers = [] }) {
+  const cleanGroup = String(contractorGroup || '').trim()
+  const matchedAst = astilleroWorkers.find((w) => normalizeText(w.name) === normalizeText(cleanGroup)) || null
+  const matchedWorker =
+    (matchedAst && isValidUuid(matchedAst.id) ? workers.find((w) => w.id === matchedAst.id) : null) ||
+    matchTransactionWorker({ worker_id: matchedAst?.id || null, worker_name: cleanGroup, contractor_name: cleanGroup }, workers) ||
+    matchedAst
+  const workerName = matchedAst ? matchedAst.name : (cleanGroup || 'Sin asignar')
+  const workerId = matchedAst && isValidUuid(matchedAst.id)
+    ? matchedAst.id
+    : (isValidUuid(matchedWorker?.id) ? matchedWorker.id : null)
+  return { workerName, workerId, resolvedWorker: matchedWorker || null }
+}
+
+/** Resuelve movement_type y cost_center por defecto según GS-002 / DEC-009 respetando override manual de Admin. */
+export function resolveWithdrawalCostCenterForSave({ material, worker, customCostCenter = '', originalTx = null, workerName = '' }) {
+  const movementType = material?.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA'
+  const autoCenter = resolveDefaultWithdrawalCostCenter({ material, worker, movementType })
+  const cleanCustom = String(customCostCenter || '').trim().toUpperCase()
+  if (!originalTx) return { movementType, costCenter: cleanCustom || autoCenter }
+  const matChanged = originalTx.material_id !== material?.id
+  const workerChanged = normalizeText(originalTx.worker_name || originalTx.contractor_name) !== normalizeText(workerName)
+  const keptOriginalCustom = !cleanCustom || cleanCustom === String(originalTx.cost_center || '').trim().toUpperCase()
+  return { movementType, costCenter: (matChanged || workerChanged) && keptOriginalCustom ? autoCenter : (cleanCustom || autoCenter) }
+}
+
+/** Deriva movement_type y cost_center al cambiar el material inline en un retiro existente. */
+export function evaluateInlineMaterialCostCenter({ tx, targetMat, workers = [] }) {
+  const movementType = targetMat?.category === 'ELEM.SEGURIDAD' ? 'ENTREGA_EPP' : 'CONSUMO_OBRA'
+  if (!Array.isArray(workers) || workers.length === 0) return { movement_type: movementType }
+  const worker = matchTransactionWorker(tx, workers)
+  return {
+    movement_type: movementType,
+    cost_center: resolveDefaultWithdrawalCostCenter({ material: targetMat, worker, movementType })
+  }
+}
+
 /** Persiste cambio de Operario/Contratista inline, borra OT no habilitada, alerta y audita. */
 export async function saveInlineContractorService({
   tx, newName, ships = [], workOrders = [], workItems = [],
-  astilleroWorkers = [], contractorGroups = [], workers = [], user = null
+  astilleroWorkers = [], contractorGroups = [], workers = [], materials = [], user = null
 }) {
   if (!tx?.id) throw new Error('Movimiento inválido para actualizar contratista.')
   const { resolvedName, shouldClearOt, updates } = evaluateInlineContractorChange({
-    tx, newName, astilleroWorkers, contractorGroups, workOrders, workItems, workers
+    tx, newName, astilleroWorkers, contractorGroups, workOrders, workItems, workers, materials
   })
   const { error } = await inventoryTransactionsRepository.updateById(tx.id, updates, { select: null })
   if (error) throw new Error(error)

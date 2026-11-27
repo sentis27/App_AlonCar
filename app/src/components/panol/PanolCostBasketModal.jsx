@@ -80,7 +80,7 @@ export default function PanolCostBasketModal({
       await saveMultiWithdrawalService({
         shipId: basket.shipId, workOrderId: basket.isSinOt ? null : basket.workOrderId,
         workItems, contractorGroup: basket.contractorName, voucherNumber, notes, date, time, items,
-        gasMovements, materials, suppliers, ships, astilleroWorkers, macroVariables, pricingPolicy, user,
+        gasMovements, materials, suppliers, ships, astilleroWorkers, workers, macroVariables, pricingPolicy, user,
         changeOrigin: 'COST_BASKET_COUNTER'
       })
       const msg = `✔ Registrado en ${basket.contractorName} · ${basket.shipName} (${items.length} ítem/s a las ${time} hs).`

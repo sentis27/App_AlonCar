@@ -6,6 +6,7 @@
 
 import { auditService } from '../lib/auditService.js'
 import { assignMonotonicFolios } from '../lib/monotonicFolioEngine.js'
+import { buildWorkerGroupSyncPatch, shouldSyncWorkerGroupField } from '../lib/personalNominaFormHelpers.js'
 import { workersRepository } from '../repositories/workersRepository.js'
 import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
 import { systemSettingsRepository } from '../repositories/systemSettingsRepository.js'
@@ -92,11 +93,8 @@ export async function persistWorkerWithSchemaFallbackService({
   }
   if (res.error) throw new Error(res.error)
 
-  if (mode === 'update' && syncGroup && syncGroup !== 'ASTILLERO') {
-    const { error: groupErr } = await workersRepository.updateWorkersByWorkGroup(syncGroup, {
-      can_charge_third_party: payload.can_charge_third_party,
-      trade: payload.trade,
-    })
+  if (syncGroup && syncGroup !== 'ASTILLERO') {
+    const { error: groupErr } = await workersRepository.updateWorkersByWorkGroup(syncGroup, buildWorkerGroupSyncPatch(payload))
     if (groupErr) throw new Error(groupErr)
   }
 
@@ -247,20 +245,17 @@ export async function batchDeleteWorkersNominaService({ selectedIds = [], worker
 /**
  * Persiste una edición de celda individual en workers y registra audit_logs.
  */
-export async function updateWorkerCellNominaService({ rowId, colKey, colLabel, oldValue, dbPatch, entityName }) {
-  const { error } = await workersRepository.updateById(rowId, dbPatch, { select: null })
+export async function updateWorkerCellNominaService({ rowId, colKey, colLabel, oldValue, dbPatch, entityName, workGroup = null, adminCenter = null }) {
+  const syncGroup = shouldSyncWorkerGroupField({ admin_center: adminCenter, work_group: workGroup }, colKey)
+  const { error } = syncGroup
+    ? await workersRepository.updateWorkersByWorkGroup(workGroup, dbPatch)
+    : await workersRepository.updateById(rowId, dbPatch, { select: null })
   if (error) throw new Error(error)
-
   await auditService.logCellChange({
-    entityType: 'workers',
-    entityId: rowId,
-    entityName: entityName || rowId,
-    field: colKey,
-    fieldLabel: colLabel || colKey,
-    oldValue,
-    newValue: dbPatch[colKey],
-    sheetName: SHEET_NAME,
-    moduleRoute: MODULE_ROUTE,
+    entityType: 'workers', entityId: rowId,
+    entityName: syncGroup ? `${entityName || rowId} (Grupo ${workGroup})` : (entityName || rowId),
+    field: colKey, fieldLabel: colLabel || colKey, oldValue, newValue: dbPatch[colKey],
+    sheetName: SHEET_NAME, moduleRoute: MODULE_ROUTE,
   })
 }
 

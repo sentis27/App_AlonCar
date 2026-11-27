@@ -52,7 +52,8 @@ export default function TesoreriaDeduccionesPanel({
   const summaryRows = useMemo(() => data?.summaryByContractor || [], [data?.summaryByContractor])
   const detailRows = useMemo(() => data?.deductibleRows || [], [data?.deductibleRows])
   const exemptRows = useMemo(() => data?.exemptedGrayZoneRows || [], [data?.exemptedGrayZoneRows])
-  const totals = data?.totals || { contractorsCount: 0, deductibleItemsCount: 0, exemptedGrayZoneCount: 0, totalDeductArs: 0, totalDeductUsd: 0, totalReferenceExemptUsd: 0 }
+  const totals = data?.totals || { contractorsCount: 0, deductibleItemsCount: 0, exemptedGrayZoneCount: 0, nonDeductibleConsumablesCount: 0, totalDeductArs: 0, totalDeductUsd: 0, totalReferenceExemptUsd: 0 }
+  const fortnightDollarRate = Number(data?.fortnightDollarRate) || 1500
   const contractorOptions = useMemo(() => summaryRows.map((r) => r.contractorLabel), [summaryRows])
 
   const filteredSummary = useMemo(() => summaryRows.filter((row) => {
@@ -144,9 +145,12 @@ export default function TesoreriaDeduccionesPanel({
           <span className="text-[11px] font-black uppercase tracking-wider text-amber-300">
             📊 RADAR DE KPIS Y EXTRACCIÓN QUINCENAL • Clic para alternar vista
           </span>
-          <span className="text-[11px] font-mono text-slate-400">
-            Rango: {data?.range?.startDate || '—'} al {data?.range?.endDate || '—'}
-          </span>
+          <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
+            <span className="px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-700/60 text-cyan-300 font-bold">
+              TC Quincena: AR$ {fortnightDollarRate.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+            </span>
+            <span>Rango: {formatDateAr(data?.range?.startDate)} al {formatDateAr(data?.range?.endDate)}</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -321,7 +325,15 @@ export default function TesoreriaDeduccionesPanel({
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredSummary.length === 0 ? (
-                  <tr><td colSpan={8} className="py-10 text-center text-slate-500"><CheckCircle2 className="w-5 h-5 text-emerald-400 mx-auto mb-1" />Sin deducciones registradas en Pañol para {selectedPeriod}.</td></tr>
+                  <tr><td colSpan={8} className="py-10 text-center text-slate-500">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
+                    <div>Sin deducciones registradas en Pañol para {selectedPeriod}.</div>
+                    {totals.nonDeductibleConsumablesCount > 0 && (
+                      <div className="mt-1.5 text-[11px] text-amber-300/90">
+                        Nota: hay {totals.nonDeductibleConsumablesCount} retiro(s) de CONSUMIBLES de contratistas en la quincena configurados como 100% Obra (0%) en /personal.
+                      </div>
+                    )}
+                  </td></tr>
                 ) : (
                   <>
                     {visibleSummary.map((r, idx) => {

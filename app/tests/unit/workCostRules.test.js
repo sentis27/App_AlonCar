@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest'
 import {
   resolveEffectiveSafetyCenter,
   resolveConsumablesDiscountPct,
+  resolveDefaultWithdrawalCostCenter,
   classifyWithdrawalCost,
   computeManagerialCostSummary,
   computeContractExpiration,
 } from '../../src/lib/workCostRules.js'
+import { resolvePanolTxCost } from '../../src/lib/panolCostHelpers.js'
 
 describe('resolveEffectiveSafetyCenter', () => {
   it('nómina ASTILLERO siempre es ASTILLERO; default CONTRATISTA', () => {
@@ -68,9 +70,53 @@ describe('classifyWithdrawalCost', () => {
     expect(r.shipDirectArs).toBe(150)
   })
 
-  it('CONSUMIBLES con 0% pero cost_center CONTRATISTA explícito fuerzan 100%', () => {
-    const r = classifyWithdrawalCost({ material: { category: 'CONSUMIBLES' }, transaction: { ...tx, cost_center: 'contratista' }, worker: { admin_center: 'ASTILLERO' } })
+  it('CONSUMIBLES de contratista 0% con cost_center CONTRATISTA explícito fuerzan 100%, pero ASTILLERO nunca descuenta', () => {
+    const r = classifyWithdrawalCost({
+      material: { category: 'CONSUMIBLES' },
+      transaction: { ...tx, cost_center: 'contratista' },
+      worker: { admin_center: 'CONTRATISTA', consumables: 'CLIENTE', consumables_discount_pct: 0 }
+    })
     expect(r.contractorDeductPct).toBe(100)
+
+    const ast = classifyWithdrawalCost({
+      material: { category: 'CONSUMIBLES' },
+      transaction: { ...tx, cost_center: 'contratista' },
+      worker: { admin_center: 'ASTILLERO' }
+    })
+    expect(ast.contractorDeductPct).toBe(0)
+    expect(ast.deductibleToContractor).toBe(false)
+  })
+
+  it('alinea USD con resolvePanolTxCost (security_factor) y calcula deductArs con TC quincena', () => {
+    const macroVariables = [{ year: 2026, month: 11, dollar_rate: 1500, dollar_rate_1q: 1500, dollar_rate_2q: 1500 }]
+    const mat = { category: 'CONSUMIBLES', cost_ars: 6500, security_factor: 1.06 }
+    const txn = { quantity_withdrawn: 2, transaction_date: '2026-11-20T15:00:00Z' }
+    const panolCost = resolvePanolTxCost(txn, mat, { macroVariables })
+    const r = classifyWithdrawalCost({
+      material: mat,
+      transaction: txn,
+      worker: { admin_center: 'CONTRATISTA', consumables_discount_pct: 100 },
+      macroVariables,
+      fortnightDollarRate: 1500
+    })
+    expect(r.totalUsd).toBe(panolCost.totalUsd)
+    expect(r.deductUsd).toBe(9.18)
+    expect(r.deductArs).toBe(13770)
+  })
+})
+
+describe('resolveDefaultWithdrawalCostCenter', () => {
+  const tano = { admin_center: 'CONTRATISTA', consumables_discount_pct: 100, safety_items: 'CONTRATISTA' }
+  const own = { admin_center: 'ASTILLERO', consumables_discount_pct: 0, safety_items: 'ASTILLERO' }
+  const grayZone = { admin_center: 'CONTRATISTA', consumables_discount_pct: 100, safety_items: 'ASTILLERO' }
+
+  it('asigna CLIENTE a MATERIALES y CONTRATISTA a CONSUMIBLES/EPP según reglas GS-002', () => {
+    expect(resolveDefaultWithdrawalCostCenter({ material: { category: 'MATERIALES' }, worker: tano })).toBe('CLIENTE')
+    expect(resolveDefaultWithdrawalCostCenter({ material: { category: 'CONSUMIBLES' }, worker: tano })).toBe('CONTRATISTA')
+    expect(resolveDefaultWithdrawalCostCenter({ material: { category: 'CONSUMIBLES' }, worker: own })).toBe('CLIENTE')
+    expect(resolveDefaultWithdrawalCostCenter({ material: { category: 'ELEM.SEGURIDAD' }, worker: tano })).toBe('CONTRATISTA')
+    expect(resolveDefaultWithdrawalCostCenter({ material: { category: 'ELEM.SEGURIDAD' }, worker: grayZone })).toBe('CLIENTE')
+    expect(resolveDefaultWithdrawalCostCenter({ material: { category: 'ELEM.SEGURIDAD' }, worker: own })).toBe('CLIENTE')
   })
 })
 

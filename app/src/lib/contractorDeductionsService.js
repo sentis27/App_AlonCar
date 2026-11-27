@@ -5,7 +5,14 @@
  */
 
 import { classifyWithdrawalCost, computeContractExpiration } from './workCostRules.js'
-import { getTodayArIso } from './dateTimeCanonical.js'
+import { ARGENTINA_UTC_OFFSET, getTodayArIso, toArIsoDate } from './dateTimeCanonical.js'
+import {
+  MATERIAL_PRICING_POLICY_KEY,
+  normalizeMaterialPricingPolicy,
+  getFortnightPeriodKey,
+  compareFortnightKeys,
+  resolveDollarRateForFortnight
+} from './materialPricingPolicy.js'
 import { logRowAction } from './auditService.js'
 import { inventoryTransactionsRepository } from '../repositories/inventoryTransactionsRepository.js'
 import { materialsRepository } from '../repositories/materialsRepository.js'
@@ -13,56 +20,43 @@ import { workersRepository } from '../repositories/workersRepository.js'
 import { shipsRepository } from '../repositories/shipsRepository.js'
 import { workOrdersRepository } from '../repositories/workOrdersRepository.js'
 import { rateCardsRepository } from '../repositories/rateCardsRepository.js'
+import { macroVariablesRepository } from '../repositories/macroVariablesRepository.js'
+import { systemSettingsRepository } from '../repositories/systemSettingsRepository.js'
 import { dataRequirementsRepository, complianceAlertsRepository } from '../repositories/complianceAlertsRepository.js'
 
 /**
- * Convierte una clave de quincena ("YYYY-MM-1Q" | "YYYY-MM-2Q") en rango ISO [startIso, endIso].
+ * Convierte una clave de quincena ("YYYY-MM-1Q" | "YYYY-MM-2Q") en rango ISO [startIso, endIso] en hora Argentina (UTC-3).
  */
 export function getQuincenaDateRange(periodKey) {
   const m = String(periodKey || '').match(/^(\d{4})-(\d{2})-(1Q|2Q)$/i)
   if (!m) {
-    const now = new Date()
-    const y = now.getFullYear()
-    const mo = String(now.getMonth() + 1).padStart(2, '0')
-    const q = now.getDate() <= 15 ? '1Q' : '2Q'
-    return getQuincenaDateRange(`${y}-${mo}-${q}`)
+    return getQuincenaDateRange(getCurrentQuincenaKey())
   }
 
   const year = Number(m[1])
   const month = Number(m[2])
   const q = m[3].toUpperCase()
   const mm = String(month).padStart(2, '0')
+  const lastDay = q === '1Q' ? 15 : new Date(year, month, 0).getDate()
+  const startDate = `${year}-${mm}-${q === '1Q' ? '01' : '16'}`
+  const endDate = `${year}-${mm}-${String(lastDay).padStart(2, '0')}`
 
-  if (q === '1Q') {
-    return {
-      periodKey: `${year}-${mm}-1Q`,
-      year,
-      month,
-      quincena: 1,
-      startIso: `${year}-${mm}-01T00:00:00.000Z`,
-      endIso: `${year}-${mm}-15T23:59:59.999Z`,
-      startDate: `${year}-${mm}-01`,
-      endDate: `${year}-${mm}-15`
-    }
-  }
-
-  const lastDay = new Date(year, month, 0).getDate()
   return {
-    periodKey: `${year}-${mm}-2Q`,
+    periodKey: `${year}-${mm}-${q}`,
     year,
     month,
-    quincena: 2,
-    startIso: `${year}-${mm}-16T00:00:00.000Z`,
-    endIso: `${year}-${mm}-${String(lastDay).padStart(2, '0')}T23:59:59.999Z`,
-    startDate: `${year}-${mm}-16`,
-    endDate: `${year}-${mm}-${String(lastDay).padStart(2, '0')}`
+    quincena: q === '1Q' ? 1 : 2,
+    startIso: new Date(`${startDate}T00:00:00.000${ARGENTINA_UTC_OFFSET}`).toISOString(),
+    endIso: new Date(`${endDate}T23:59:59.999${ARGENTINA_UTC_OFFSET}`).toISOString(),
+    startDate,
+    endDate
   }
 }
 
 export function getCurrentQuincenaKey(date = new Date()) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const q = date.getDate() <= 15 ? '1Q' : '2Q'
+  const iso = getTodayArIso(date)
+  const [y, m, d] = iso ? iso.split('-') : ['2026', '01', '01']
+  const q = Number(d) <= 15 ? '1Q' : '2Q'
   return `${y}-${m}-${q}`
 }
 
@@ -71,7 +65,7 @@ function normalizeKey(str) {
 }
 
 /**
- * Busca el worker correspondiente a una transacción de Pañol (por worker_id o nombre/grupo).
+ * Busca el worker correspondiente a una transacción de Pañol (por worker_id o nombre/grupo, priorizando ACTIVO).
  */
 export function matchTransactionWorker(tx, workers = []) {
   if (tx?.worker_id) {
@@ -81,7 +75,10 @@ export function matchTransactionWorker(tx, workers = []) {
   const targetName = normalizeKey(tx?.worker_name || tx?.contractor_name)
   if (!targetName || targetName === 'SIN ASIGNAR') return null
 
+  const isActive = (w) => normalizeKey(w?.status || 'ACTIVO') === 'ACTIVO'
   return (
+    workers.find((w) => isActive(w) && normalizeKey(w.name) === targetName) ||
+    workers.find((w) => isActive(w) && normalizeKey(w.work_group) === targetName) ||
     workers.find((w) => normalizeKey(w.name) === targetName) ||
     workers.find((w) => normalizeKey(w.work_group) === targetName) ||
     null
@@ -99,7 +96,10 @@ export function evaluateContractorDeductions({
   materials = [],
   workers = [],
   ships = [],
-  workOrders = []
+  workOrders = [],
+  macroVariables = [],
+  pricingPolicy = null,
+  fortnightDollarRate = null
 }) {
   const matMap = new Map(materials.map((m) => [m.id, m]))
   const shipMap = new Map(ships.map((s) => [s.id, s]))
@@ -108,11 +108,21 @@ export function evaluateContractorDeductions({
   const deductibleRows = []
   const exemptedGrayZoneRows = []
   const summaryMap = new Map()
+  let nonDeductibleConsumablesCount = 0
 
   for (const tx of transactions) {
+    if (tx?.is_deletion_requested || !tx?.material_id || !(Number(tx?.quantity_withdrawn) > 0)) continue
+
     const mat = matMap.get(tx.material_id) || null
     const worker = matchTransactionWorker(tx, workers)
-    const classification = classifyWithdrawalCost({ material: mat, transaction: tx, worker })
+    const classification = classifyWithdrawalCost({
+      material: mat,
+      transaction: tx,
+      worker,
+      macroVariables,
+      pricingPolicy,
+      fortnightDollarRate
+    })
 
     const ship = shipMap.get(tx.ship_id)
     const wo = woMap.get(tx.work_order_id)
@@ -122,7 +132,7 @@ export function evaluateContractorDeductions({
 
     const baseRow = {
       id: tx.id,
-      date: tx.transaction_date ? String(tx.transaction_date).slice(0, 10) : '',
+      date: toArIsoDate(tx.transaction_date),
       contractorLabel,
       workerName: worker?.name || tx.worker_name || tx.contractor_name || 'Sin asignar',
       adminCenter: worker?.admin_center || 'CONTRATISTA',
@@ -143,6 +153,9 @@ export function evaluateContractorDeductions({
     }
 
     if (!classification.deductibleToContractor) {
+      if (mat?.category === 'CONSUMIBLES' && worker && normalizeKey(worker.admin_center) !== 'ASTILLERO') {
+        nonDeductibleConsumablesCount += 1
+      }
       continue
     }
 
@@ -193,6 +206,7 @@ export function evaluateContractorDeductions({
       contractorsCount: summaryByContractor.length,
       deductibleItemsCount: deductibleRows.length,
       exemptedGrayZoneCount: exemptedGrayZoneRows.length,
+      nonDeductibleConsumablesCount,
       totalDeductArs: Number(summaryByContractor.reduce((s, r) => s + r.totalDeductArs, 0).toFixed(2)),
       totalDeductUsd: Number(summaryByContractor.reduce((s, r) => s + r.totalDeductUsd, 0).toFixed(2)),
       totalReferenceExemptUsd: Number(exemptedGrayZoneRows.reduce((s, r) => s + r.classification.referenceUsd, 0).toFixed(2))
@@ -206,25 +220,41 @@ export function evaluateContractorDeductions({
 export async function fetchContractorDeductionsForPeriod(periodKey) {
   const range = getQuincenaDateRange(periodKey)
 
-  const [txRes, matRes, workersRes, shipsRes, woRes, periodsRes] = await Promise.all([
+  const [txRes, matRes, workersRes, shipsRes, woRes, periodsRes, macroRes, policyRes, allTxPeriodsRes] = await Promise.all([
     inventoryTransactionsRepository.listTransactions({
       gteFilters: { transaction_date: range.startIso },
       lteFilters: { transaction_date: range.endIso },
     }),
-    materialsRepository.listMaterials({ select: 'id, name, category, rubro, unit_measure, cost_ars, cost_usd', orderBy: [] }),
+    materialsRepository.listMaterials({ select: 'id, name, category, rubro, unit_measure, cost_ars, cost_usd, security_factor', orderBy: [] }),
     workersRepository.listWorkers({ select: 'id, name, admin_center, work_group, safety_items, consumables, consumables_discount_pct, status', orderBy: [] }),
     shipsRepository.listShips({ select: 'id, name', orderBy: [] }),
     workOrdersRepository.listWorkOrders({ select: 'id, ot_number, title', orderBy: [] }),
     rateCardsRepository.listRateCards({ select: 'period, year, month, quincena', limit: 200 }),
+    macroVariablesRepository.listMacroVariables(),
+    systemSettingsRepository.getByKey(MATERIAL_PRICING_POLICY_KEY, { select: 'value' }),
+    inventoryTransactionsRepository.listTransactions({ select: 'transaction_date', orderBy: [] }),
   ])
 
   if (txRes.error) throw new Error(txRes.error)
+
+  const macroVariables = macroRes?.data || []
+  const pricingPolicy = normalizeMaterialPricingPolicy(policyRes?.data?.value)
+  const fortnightDollarRate = resolveDollarRateForFortnight(range.endDate, macroVariables)
+
+  const macroPeriods = macroVariables.flatMap((v) => {
+    if (!v?.year || !v?.month) return []
+    const ym = `${v.year}-${String(v.month).padStart(2, '0')}`
+    return [`${ym}-1Q`, `${ym}-2Q`]
+  })
+  const txPeriods = (allTxPeriodsRes?.data || []).map((t) => getFortnightPeriodKey(t.transaction_date)).filter(Boolean)
 
   const uniquePeriods = Array.from(new Set([
     getCurrentQuincenaKey(),
     range.periodKey,
     ...(periodsRes.data || []).map((r) => r.period).filter(Boolean),
-  ])).sort((a, b) => b.localeCompare(a))
+    ...macroPeriods,
+    ...txPeriods,
+  ])).sort((a, b) => compareFortnightKeys(b, a))
 
   const evaluated = evaluateContractorDeductions({
     transactions: txRes.data || [],
@@ -232,11 +262,15 @@ export async function fetchContractorDeductionsForPeriod(periodKey) {
     workers: workersRes.data || [],
     ships: shipsRes.data || [],
     workOrders: woRes.data || [],
+    macroVariables,
+    pricingPolicy,
+    fortnightDollarRate,
   })
 
   return {
     range,
     availablePeriods: uniquePeriods,
+    fortnightDollarRate,
     ...evaluated,
   }
 }

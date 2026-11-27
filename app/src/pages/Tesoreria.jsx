@@ -13,7 +13,8 @@ const TESORERIA_REALTIME_TABLES = [
   'workers',
   'ships',
   'work_orders',
-  'rate_cards'
+  'rate_cards',
+  'macro_variables'
 ]
 
 /**
