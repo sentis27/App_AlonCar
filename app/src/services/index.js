@@ -16,6 +16,7 @@ export * from './comprasOcrSettingsService.js'
 export * from './adminGovernanceService.js'
 export * from './laborService.js'
 export * from './shipsService.js'
+export * from './costControlService.js'
 
 // Servicios Unificados desde lib/ (Retrocompatibilidad e Indexación Central)
 export * from '../lib/panolService.js'

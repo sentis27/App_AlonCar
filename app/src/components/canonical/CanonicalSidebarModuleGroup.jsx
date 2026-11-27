@@ -29,6 +29,7 @@ import {
   Brain,
   History,
   ArrowDownUp,
+  Scale,
 } from 'lucide-react'
 
 const NAV_ICONS = {
@@ -61,6 +62,7 @@ const NAV_ICONS = {
   Brain,
   History,
   ArrowDownUp,
+  Scale,
 }
 
 function NavIcon({ iconKey, className = 'w-4 h-4 shrink-0' }) {
@@ -134,6 +136,11 @@ export default function CanonicalSidebarModuleGroup({
         <span className="flex items-center gap-3 min-w-0">
           <NavIcon iconKey={moduleDef.iconKey} className="w-4 h-4 shrink-0" />
           {!collapsed && <span className="truncate">{moduleDef.name}</span>}
+          {!collapsed && moduleDef.adminOnlyByDefault && (
+            <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[9px] font-bold text-slate-300 shrink-0">
+              Admin
+            </span>
+          )}
         </span>
         {!collapsed && (
           <ChevronDown

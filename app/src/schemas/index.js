@@ -26,6 +26,7 @@ import {
 import { DataRequirementSchema, ComplianceAlertSchema, WorkerPermissionRequestSchema } from './complianceAlerts.schema.js'
 import { AuditLogSchema } from './auditLogs.schema.js'
 import { ProfileSchema, PROFILE_ROLES } from './profiles.schema.js'
+import { COST_CONTROL_REVIEW_TYPES, COST_CONTROL_EXCLUDED_OTS_KEY, DEFAULT_EXCLUDED_COST_CONTROL_OTS, CostControlReviewSchema, buildMaterialExceptionReviewKey, buildLaborOnlyApprovalReviewKey } from './costControl.schema.js'
 
 const TRAP_KEYS_REGISTRY = new WeakMap()
 
@@ -47,6 +48,7 @@ registerTrapKeys(SystemSettingSchema, ['id'], 'Usar PK "key" (GEMINI.md §3).')
 registerTrapKeys(OrganizationRoleSchema, ['id'], 'Usar PK "role_key" (GEMINI.md §3).')
 registerTrapKeys(AuditLogSchema, ['entity', 'table_name'], 'Usar "entity_type" (GEMINI.md §3).')
 registerTrapKeys(PurchaseOrderSchema, ['notes'], 'Usar "observations" en purchase_orders (GEMINI.md §3).')
+registerTrapKeys(CostControlReviewSchema, ['notes', 'entity_id'], 'Usar "reason" e "inventory_transaction_id"/"review_key" en cost_control_reviews.')
 
 /**
  * Detecta instancias de eventos React/DOM o cadenas `[object Object]` antes de persistir (SKL-015).
@@ -202,15 +204,13 @@ export function validatePartialPayload(schema, patch) {
 }
 
 export {
-  WorkerSchema, WorkerUpdateSchema, RateCardSchema, WorkOrderSchema, LaborLogSchema,
-  SystemSettingSchema, OrganizationRoleSchema, MacroVariableSchema, OtTemplateSchema,
-  SystemPromptSchema, AiProcessingLogSchema, ShipSchema, ShipStaySchema, OwnerSchema,
-  ShipDocumentSchema, ContactSchema, PurchaseOrderSchema, SupplierSchema, PurchaseDocumentSchema,
-  ThirdPartyServiceSchema, ThirdPartyVoucherHistorySchema,
-  CC_PRICING_MODES, CC_CANCELLATION_MODES, CC_ENTRY_SOURCES, CC_PAYMENT_TYPES, CC_SOURCE_MODULES,
-  ThirdPartyCcAccountSchema, ThirdPartyCcRateHistorySchema, ThirdPartyCcEntrySchema, ThirdPartyCcPaymentSchema,
-  WorkItemSchema, MaterialSchema, InventoryTransactionSchema, GasCylinderMovementSchema,
-  MaterialRubroSchema, StockAdjustmentSchema, StockAuditSchema, STOCK_ADJUSTMENT_REASONS, MATERIAL_CONDITIONS,
-  DataRequirementSchema, ComplianceAlertSchema, WorkerPermissionRequestSchema,
-  AuditLogSchema, ProfileSchema, PROFILE_ROLES,
+  WorkerSchema, WorkerUpdateSchema, RateCardSchema, WorkOrderSchema, LaborLogSchema, SystemSettingSchema, OrganizationRoleSchema,
+  MacroVariableSchema, OtTemplateSchema, SystemPromptSchema, AiProcessingLogSchema, ShipSchema, ShipStaySchema, OwnerSchema,
+  ShipDocumentSchema, ContactSchema, PurchaseOrderSchema, SupplierSchema, PurchaseDocumentSchema, ThirdPartyServiceSchema,
+  ThirdPartyVoucherHistorySchema, CC_PRICING_MODES, CC_CANCELLATION_MODES, CC_ENTRY_SOURCES, CC_PAYMENT_TYPES, CC_SOURCE_MODULES,
+  ThirdPartyCcAccountSchema, ThirdPartyCcRateHistorySchema, ThirdPartyCcEntrySchema, ThirdPartyCcPaymentSchema, WorkItemSchema,
+  MaterialSchema, InventoryTransactionSchema, GasCylinderMovementSchema, MaterialRubroSchema, StockAdjustmentSchema, StockAuditSchema,
+  STOCK_ADJUSTMENT_REASONS, MATERIAL_CONDITIONS, DataRequirementSchema, ComplianceAlertSchema, WorkerPermissionRequestSchema,
+  AuditLogSchema, ProfileSchema, PROFILE_ROLES, COST_CONTROL_REVIEW_TYPES, COST_CONTROL_EXCLUDED_OTS_KEY,
+  DEFAULT_EXCLUDED_COST_CONTROL_OTS, CostControlReviewSchema, buildMaterialExceptionReviewKey, buildLaborOnlyApprovalReviewKey,
 }

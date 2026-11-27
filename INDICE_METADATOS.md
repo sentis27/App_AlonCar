@@ -1,7 +1,7 @@
 # Índice de Metadatos — App_AlonCar
 
 > **schema-version:** 1.1
-> **Última actualización:** 2026-11-15
+> **Última actualización:** 2026-11-27
 > **Propósito:** Tabla máquina para consumo exclusivo del Agente IA. Para navegación humana, usar `INDICE_CENTRAL.md`.
 
 ## Vocabularios Controlados
@@ -40,7 +40,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
 | TAREAS_PENDIENTES.md | pendientes | auditar-tareas | cambios | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
 | PLAN_OPTIMIZACION_IA.md | roadmap | auditar-avances | cambios | transversal | activo | 2026-11-13 | GEMINI.md |
-| INDICE_PLANILLAS.md | indice | consultar-siempre | completo | fase-2 | activo | 2026-06-18 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md |
+| INDICE_PLANILLAS.md | indice | consultar-siempre | completo | fase-2 | activo | 2026-11-27 | INDICE_CENTRAL.md \| TAREAS_PENDIENTES.md |
 | ROADMAP_NEGOCIO.md | roadmap | auditar-avances | completo | transversal | activo | 2026-06-10 | INDICE_CENTRAL.md |
 | app/README.md | guia | ninguno | primera-vez | fase-2+ | activo | 2026-11-13 | README.md |
 | supabase/rollbacks/README.md | protocolo | auditar-reglas \| validar-integridad | primera-vez | transversal | activo | 2026-11-18 | app/scripts/lib/migrationsManifest.mjs |
@@ -55,7 +55,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/README.md | indice | ninguno | ignorar | transversal | activo | 2026-11-15 | INDICE_CENTRAL.md |
 | docs/02_producto/registro_paso_a_paso.md | registro | auditar-decisiones | cambios | transversal | activo | 2026-06-10 | ninguno |
 | docs/02_producto/ESTANDARES_MODULOS_UI_UX.md | documentacion-tecnica | ninguno | ignorar | transversal | deprecado | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
-| docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md | protocolo | consultar-siempre | completo | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
+| docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md | protocolo | consultar-siempre | completo | transversal | activo | 2026-11-27 | INDICE_CENTRAL.md |
 | docs/02_producto/estandares/01_CLASIFICACION_FUNCIONAL_GALLO_O_GALLINA.md | protocolo | auditar-reglas | completo | transversal | activo | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
 | docs/02_producto/estandares/02_ARQUITECTURA_VISUAL_4_ZONAS_Y_COLORES.md | protocolo | auditar-reglas | completo | transversal | activo | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
 | docs/02_producto/estandares/03_BUSCADOR_OMNICANAL_CRAWLER_PROFUNDO.md | protocolo | auditar-reglas | completo | transversal | activo | 2026-11-13 | docs/02_producto/estandares/00_INDICE_DE_MODULOS_Y_CLASIFICACION.md |
@@ -86,7 +86,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/02_producto/01_decisiones/DEC-022-resumen-gerencial-gs004-comparador-y-remito-alfa.md | decision | ninguno | cambios | fase-2+ | activo | 2026-11-13 | docs/02_producto/README.md \| docs/planillas/resumen-gerencial.md |
 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md | decision | ninguno | cambios | fase-2+ | activo | 2026-11-13 | docs/02_producto/README.md \| docs/MATRIZ_RESPONSABILIDAD_DATOS.md |
 | docs/02_producto/01_decisiones/DEC-024-imputacion-horas-materiales-dolar-quincenal.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-11-13 | docs/02_producto/README.md \| docs/planillas/bd-newsystemm.md |
-| docs/02_producto/01_decisiones/DEC-025-reconciliacion-horas-materiales-inbox.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-11-13 | docs/02_producto/README.md \| docs/planillas/reconciliacion-horas-materiales.md |
+| docs/02_producto/01_decisiones/DEC-025-reconciliacion-horas-materiales-inbox.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-11-27 | docs/02_producto/README.md \| docs/planillas/reconciliacion-horas-materiales.md |
 | docs/02_producto/01_decisiones/DEC-026-resumen-gerencial-horas-presupuestos-workspace.md | decision | ninguno | cambios | fase-2 | confirmado | 2026-11-13 | docs/02_producto/README.md \| docs/planillas/resumen-gerencial.md |
 | docs/02_producto/02_errores/ERR-003-service-account-permisos-sheets.md | error | ninguno | cambios | transversal | activo | 2026-06-14 | docs/02_producto/README.md |
 | docs/02_producto/02_errores/ERR-004-hooks-condicionales-pantalla-negra-picker-modal.md | error | ninguno | cambios | fase-2+ | borrador | 2026-11-12 | docs/02_producto/README.md |
@@ -125,7 +125,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | docs/planillas/resumen-gerencial.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-11-13 | .agents/skills/transversal/legacy-mapping/SKILL.md |
 | docs/planillas/terceros-planilla.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-07-23 | .agents/skills/transversal/legacy-mapping/SKILL.md |
 | docs/planillas/bd-newsystemm.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-11-13 | .agents/skills/transversal/legacy-mapping/SKILL.md |
-| docs/planillas/reconciliacion-horas-materiales.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-11-13 | .agents/skills/transversal/legacy-mapping/SKILL.md |
+| docs/planillas/reconciliacion-horas-materiales.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-11-27 | .agents/skills/transversal/legacy-mapping/SKILL.md |
 | docs/planillas/compras-planilla-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/transversal/legacy-mapping/SKILL.md |
 | docs/planillas/stock-planilla-registro.md | documentacion-negocio | ninguno | completo | fase-2 | confirmado | 2026-08-21 | .agents/skills/transversal/legacy-mapping/SKILL.md |
 | workflows/_meta/INDEX.md | indice | consultar-siempre \| auditar-dependencias | completo | transversal | activo | 2026-07-19 | GEMINI.md |
@@ -184,3 +184,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | app/src/lib/canonicalHelpers.js | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | app/src/lib/workOrdersConstants.js \| app/src/lib/allocationEngine.js |
 | app/src/components/canonical/CanonicalOtBadge.jsx | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | app/src/lib/canonicalHelpers.js |
 | app/src/components/canonical/CanonicalMaterialPicker.jsx | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | app/src/lib/canonicalHelpers.js |
+| app/src/pages/ControlGastos.jsx | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-27 | app/src/hooks/useCostControlState.js \| docs/02_producto/01_decisiones/DEC-025-reconciliacion-horas-materiales-inbox.md |
+| app/src/lib/costControlEngine.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-27 | app/src/lib/costControlPeriodHelpers.js \| app/src/schemas/costControl.schema.js |
+| app/src/services/costControlService.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-27 | app/src/lib/costControlEngine.js \| app/src/repositories/costControlReviewsRepository.js |
+| supabase/migrations/0055_cost_control_reviews.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-27 | supabase/rollbacks/0055_cost_control_reviews.down.sql |

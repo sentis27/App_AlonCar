@@ -81,6 +81,10 @@ const REQUIRED_CANONICAL_OT_SURFACES = [
   'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
   'app/src/components/resumenGerencial/BillingRightCostCard.jsx',
   'app/src/components/resumenGerencial/ComparadorNivel2OtTable.jsx',
+  'app/src/components/costControl/CostControlMaterialRow.jsx',
+  'app/src/components/costControl/CostControlHoursMirror.jsx',
+  'app/src/components/costControl/CostControlLaborOnlyPanel.jsx',
+  'app/src/components/costControl/CostControlThirdPartyTable.jsx',
 ]
 
 const REQUIRED_ACCORDION_TAB_PAGES = [
@@ -92,6 +96,7 @@ const REQUIRED_ACCORDION_TAB_PAGES = [
   'app/src/pages/Ships.jsx',
   'app/src/pages/Terceros.jsx',
   'app/src/pages/ResumenGerencial.jsx',
+  'app/src/pages/ControlGastos.jsx',
   'app/src/pages/AdminDashboard.jsx',
 ]
 
@@ -115,6 +120,8 @@ const REQUIRED_CANONICAL_ZONE3_SURFACES = [
   'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
   'app/src/components/tesoreria/TesoreriaDeduccionesPanel.jsx',
   'app/src/components/admin/AdminRolesMatrixPanel.jsx',
+  'app/src/components/costControl/CostControlMaterialsTable.jsx',
+  'app/src/components/costControl/CostControlLaborOnlyPanel.jsx',
 ]
 
 const REQUIRED_PROGRESSIVE_GRID_SURFACES = [
@@ -144,6 +151,9 @@ const REQUIRED_PROGRESSIVE_GRID_SURFACES = [
   'app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx',
   'app/src/components/resumenGerencial/ResumenHojaMaterialesPanel.jsx',
   'app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx',
+  'app/src/components/costControl/CostControlMaterialsTable.jsx',
+  'app/src/components/costControl/CostControlLaborOnlyPanel.jsx',
+  'app/src/components/costControl/CostControlThirdPartyTable.jsx',
 ]
 
 const REQUIRED_HISTORY_RANGE_SURFACES = [
@@ -187,6 +197,7 @@ const REQUIRED_BATCHED_REPOSITORIES = [
   'app/src/repositories/shipsRepository.js',
   'app/src/repositories/ownersRepository.js',
   'app/src/repositories/suppliersRepository.js',
+  'app/src/repositories/costControlReviewsRepository.js',
 ]
 
 const RAW_ZONE3_TOOLBAR_RE = /className\s*=\s*["'{`][^"'`}]*\balon-zone-toolbar\b/

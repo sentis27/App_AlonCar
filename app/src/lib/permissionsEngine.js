@@ -204,7 +204,7 @@ export function resolveUserCapabilities(profile = null, orgRole = null) {
 export const ROLE_PERMISSION_PRESETS = [
   {
     name: '👑 Director / Admin',
-    desc: 'Acceso total a los 11 módulos y configuración maestra del ERP',
+    desc: 'Acceso total a los 12 módulos y configuración maestra del ERP',
     security_level: 'ADMINISTRADOR',
     sections: NAVIGATION_MODULES.map((m) => m.permissionKey),
   },

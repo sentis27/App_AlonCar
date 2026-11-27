@@ -143,6 +143,14 @@ export const NAVIGATION_MODULES = [
     ],
   },
   {
+    id: 'control-gastos', name: 'Control de Gastos', path: '/control-gastos', iconKey: 'Scale',
+    archetype: 'CARGA_EDICION', permissionKey: 'control-gastos', defaultTab: 'conciliacion', adminOnlyByDefault: true,
+    children: [
+      { id: 'conciliacion', label: '1. Conciliación Horas vs Mat.', shortLabel: 'Conciliación', iconKey: 'ClipboardCheck', permissionKey: 'control-gastos.conciliacion', theme: 'cyan' },
+      { id: 'horas_sin_mat', label: '2. Horas sin Materiales', shortLabel: 'Horas sin Mat.', iconKey: 'Clock', permissionKey: 'control-gastos.horas_sin_mat', theme: 'amber' },
+    ],
+  },
+  {
     id: 'admin',
     name: 'Panel Administrador',
     path: '/admin',
@@ -216,6 +224,7 @@ export function getVisibleNavigationModules({ profile = null, allowedSections = 
   const allowSet = hasExplicitAllowList ? new Set(allowedSections) : null
 
   return NAVIGATION_MODULES.reduce((acc, mod) => {
+    if (!hasExplicitAllowList && mod.adminOnlyByDefault && profile && !isSupervisorOrAdminRole(profile)) return acc
     const parentAllowed = !allowSet || allowSet.has(mod.permissionKey)
     const rawChildren = Array.isArray(mod.children) ? mod.children : []
     const visibleChildren = rawChildren.filter((child) => {

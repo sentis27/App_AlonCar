@@ -83,6 +83,8 @@ Todos los módulos y submódulos listados a continuación son hojas de edición 
 | **8.2** | **`AdminDashboard.jsx`** | `/admin` | **2. Matriz de Puestos & Permisos** (`matriz`) | `user_roles`, `profiles` | `user_roles` | ✅ Estandarizado + Auditado |
 | **8.3** | **`AdminDashboard.jsx`** | `/admin` | **3. Variables Macroeconómicas** (`macro`) | `macro_variables` | `macro_variables` | ✅ Estandarizado + Auditado |
 | **9.1** | **`ResumenGerencial.jsx`** + **`RemitoComercialAlfaPanel.jsx`** | `/resumen-gerencial?tab=remito` | **3. Remito Comercial & Tarifario Nivel Alfa** (`remito` · Autoalimentado) | `system_settings` (`remito_comercial_por_buque`, `drydock_rate_card_alfa`) + lectura de `ot_templates`, `ship_stays`, `work_orders`, `inventory_transactions`, `labor_logs`, `third_party_services` | `remito_comercial` · `resumen_gerencial_config` | ✅ Estandarizado + Auditado |
+| **10.1** | **`ControlGastos.jsx`** | `/control-gastos` | **1. Conciliación Horas vs Mat.** (`conciliacion` · Solo Admin por defecto, configurable en Permisos · Espejo de Horas, Lote y Desdoble) | `inventory_transactions`, `labor_logs`, `cost_control_reviews`, `workers`, `ships`, `work_orders`, `work_items`, `materials`, `system_settings` | `inventory_transactions` · `daily_labor_logs` · `cost_control_reviews` | ✅ Estandarizado + Auditado |
+| **10.2** | **`ControlGastos.jsx`** + **`CostControlLaborOnlyPanel.jsx`** | `/control-gastos?tab=horas_sin_mat` | **2. Horas sin Materiales & Talleres Externos** (`horas_sin_mat` · Check rápido `✓ Aprobado` + Cruce Terceros) | `labor_logs`, `inventory_transactions`, `third_party_services`, `cost_control_reviews`, `workers`, `ships`, `work_orders`, `work_items` | `cost_control_reviews` | ✅ Estandarizado + Auditado |
 
 ---
 

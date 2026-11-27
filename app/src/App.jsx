@@ -14,6 +14,7 @@ import Compras from './pages/Compras'
 import Panol from './pages/Panol'
 import Tesoreria from './pages/Tesoreria'
 import ResumenGerencial from './pages/ResumenGerencial'
+import ControlGastos from './pages/ControlGastos'
 import { Loader2 } from 'lucide-react'
 
 // Guardián de rutas protegidas y control de permisos por puesto (Etapa 5 / FL-022)
@@ -113,6 +114,7 @@ export default function App() {
             <Route path="personal" element={<Personal />} />
             <Route path="tesoreria" element={<Tesoreria />} />
             <Route path="resumen-gerencial" element={<ResumenGerencial />} />
+            <Route path="control-gastos" element={<ControlGastos />} />
             <Route path="comparador" element={<Navigate to="/resumen-gerencial?tab=comparador" replace />} />
             <Route path="admin" element={<AdminDashboard />} />
           </Route>
