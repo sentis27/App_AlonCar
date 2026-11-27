@@ -4,6 +4,32 @@
 // ==============================================================================
 
 import { auditService } from './auditService.js'
+import { resolveConsumablesDiscountPct } from './workCostRules.js'
+
+export function parseConsumablesDiscountInput(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === '' || typeof rawValue === 'boolean') return null
+  if (typeof rawValue === 'number') {
+    return Number.isFinite(rawValue) ? Math.max(0, Math.min(100, Math.round(rawValue))) : null
+  }
+  const upper = String(rawValue).trim().toUpperCase()
+  if (!upper) return null
+  if (['CLIENTE', 'OBRA', '100% OBRA', '0% (OBRA)'].includes(upper)) return 0
+  if (['CONTRATISTA', '100% CONT.', '100% (CONT.)'].includes(upper)) return 100
+  const match = upper.match(/-?\d+(?:[.,]\d+)?/)
+  if (!match) return null
+  const num = parseFloat(match[0].replace(',', '.'))
+  return Number.isFinite(num) ? Math.max(0, Math.min(100, Math.round(num))) : null
+}
+
+export function buildConsumablesFields(rawValue, adminCenter = 'CONTRATISTA') {
+  if (String(adminCenter || '').trim().toUpperCase() === 'ASTILLERO') {
+    return { consumables_discount_pct: 0, consumables: 'CLIENTE' }
+  }
+  const pct = parseConsumablesDiscountInput(rawValue)
+  if (pct === null) return null
+  const consumables = pct === 0 ? 'CLIENTE' : (pct === 100 ? 'CONTRATISTA' : `DESC. ${pct}%`)
+  return { consumables_discount_pct: pct, consumables }
+}
 
 export function resolveCenterDefaults({
   adminCenter = 'ASTILLERO',
@@ -85,12 +111,7 @@ export function buildWorkerFormFromRecord(w, {
     isCustomGroup = true
   }
 
-  let discountPct = 100
-  if (w.consumables_discount_pct !== undefined && w.consumables_discount_pct !== null) {
-    discountPct = Number(w.consumables_discount_pct)
-  } else {
-    discountPct = (w.consumables || '').toUpperCase().includes('CLIENTE') ? 0 : 100
-  }
+  const discountPct = resolveConsumablesDiscountPct(w)
 
   const ars = parseFloat(w.hourly_rate_ars) || 0
   const usd = dollarRate > 0 ? Number((ars / dollarRate).toFixed(2)) : (parseFloat(w.hourly_rate_usd) || 0)
@@ -138,12 +159,9 @@ export function buildWorkerSavePayload(formData, {
     }
   }
 
-  const discountPct = Number(formData.consumables_discount_pct ?? 100)
-  let consumablesLabel = 'CLIENTE'
-  if (discountPct === 100) {
-    consumablesLabel = 'CONTRATISTA'
-  } else if (discountPct > 0) {
-    consumablesLabel = `DESC. ${discountPct}%`
+  const consumablesFields = buildConsumablesFields(formData.consumables_discount_pct ?? 100, formData.admin_center) || {
+    consumables_discount_pct: 100,
+    consumables: 'CONTRATISTA'
   }
 
   return {
@@ -153,8 +171,8 @@ export function buildWorkerSavePayload(formData, {
       work_group: finalGroup,
       trade: formData.trade.trim().toUpperCase(),
       admin_center: formData.admin_center,
-      consumables: consumablesLabel,
-      consumables_discount_pct: discountPct,
+      consumables: consumablesFields.consumables,
+      consumables_discount_pct: consumablesFields.consumables_discount_pct,
       safety_items: formData.admin_center === 'ASTILLERO' ? 'ASTILLERO' : (formData.safety_items || 'CONTRATISTA'),
       contract_type: formData.admin_center === 'ASTILLERO' ? (formData.contract_type || null) : null,
       contract_start_date: formData.admin_center === 'ASTILLERO' && formData.contract_start_date ? formData.contract_start_date : null,
@@ -184,8 +202,12 @@ export function buildWorkerPatchFromCell(targetWorker, colKey, rawValue, dollarR
     const valid = ['ASTILLERO', 'CONTRATISTA', 'TALLER'].includes(normalized) ? normalized : targetWorker.admin_center
     return {
       admin_center: valid,
-      safety_items: valid === 'ASTILLERO' ? 'ASTILLERO' : (targetWorker.safety_items || 'CONTRATISTA')
+      safety_items: valid === 'ASTILLERO' ? 'ASTILLERO' : (targetWorker.safety_items || 'CONTRATISTA'),
+      ...(valid === 'ASTILLERO' ? { consumables_discount_pct: 0, consumables: 'CLIENTE' } : {})
     }
+  }
+  if (colKey === 'consumables_discount_pct') {
+    return buildConsumablesFields(rawValue, targetWorker.admin_center)
   }
   if (colKey === 'safety_items') {
     const normalized = String(rawValue || '').trim().toUpperCase()

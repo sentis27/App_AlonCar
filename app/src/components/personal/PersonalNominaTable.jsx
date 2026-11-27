@@ -171,7 +171,7 @@ export default function PersonalNominaTable({
               <th {...nominaGrid.getColumnHeaderProps('admin_center', 'py-2.5 px-1.5')}>Centro Admin ✎</th>
               <th className="py-2.5 px-1.5">Contrato</th>
               <th className="py-2.5 px-1.5 text-center">Estado</th>
-              <th className="py-2.5 px-1.5">Consumibles</th>
+              <th {...nominaGrid.getColumnHeaderProps('consumables_discount_pct', 'py-2.5 px-1.5')}>Consumibles ✎</th>
               <th {...nominaGrid.getColumnHeaderProps('safety_items', 'py-2.5 px-1.5')}>
                 <div className="relative group inline-flex items-center gap-1 cursor-help">
                   <span>Elem. Seg. ✎</span>

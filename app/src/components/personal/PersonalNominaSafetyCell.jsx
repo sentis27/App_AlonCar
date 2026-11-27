@@ -3,6 +3,7 @@ import { SAFETY_ITEMS_OPTIONS, SAFETY_ITEMS_HELP_TEXT } from '../../lib/workCost
 export default function PersonalNominaSafetyCell({
   w,
   rowIndex,
+  colIndex = 7,
   cellClassName,
   isEditing,
   editingValue,
@@ -13,9 +14,9 @@ export default function PersonalNominaSafetyCell({
 }) {
   return (
     <td
-      onClick={(e) => gridActions?.onCellClick(rowIndex, 6, e)}
-      onMouseDown={(e) => gridActions?.onCellMouseDown(rowIndex, 6, e)}
-      onMouseEnter={() => gridActions?.onCellMouseEnter(rowIndex, 6)}
+      onClick={(e) => gridActions?.onCellClick(rowIndex, colIndex, e)}
+      onMouseDown={(e) => gridActions?.onCellMouseDown(rowIndex, colIndex, e)}
+      onMouseEnter={() => gridActions?.onCellMouseEnter(rowIndex, colIndex)}
       onDoubleClick={(e) => {
         e.stopPropagation()
         if (w.admin_center === 'ASTILLERO') return

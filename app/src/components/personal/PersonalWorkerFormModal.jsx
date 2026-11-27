@@ -3,6 +3,7 @@ import { ASTILLERO_BASE_CATEGORIES } from '../../lib/personalNominaHelpers'
 import { PERSONAL_WORKER_STEP_HELP } from '../../lib/businessHelpRegistry.js'
 import { CanonicalStepperModal, CanonicalStepperStep } from '../canonical/CanonicalStepperModal.jsx'
 import PersonalWorkerCenterFields from './PersonalWorkerCenterFields'
+import PersonalWorkerConsumablesField from './PersonalWorkerConsumablesField'
 
 export default function PersonalWorkerFormModal({
   isOpen,
@@ -84,7 +85,7 @@ export default function PersonalWorkerFormModal({
         </div>
       </CanonicalStepperStep>
 
-      <CanonicalStepperStep step={3} helpEntry={PERSONAL_WORKER_STEP_HELP[3]} title="ESPECIALIDAD, CATEGORÍA Y TARIFA">
+      <CanonicalStepperStep step={3} helpEntry={PERSONAL_WORKER_STEP_HELP[3]} title="ESPECIALIDAD, CATEGORÍA, TARIFA Y CONSUMIBLES">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 items-end">
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 mb-1">Rubro / Especialidad</label>
@@ -129,6 +130,11 @@ export default function PersonalWorkerFormModal({
             <strong className="font-mono text-emerald-300">US$ {dollarRate > 0 ? (formData.hourly_rate_ars / dollarRate).toFixed(2) : '0.00'}</strong>
           </div>
         </div>
+        <PersonalWorkerConsumablesField
+          adminCenter={formData.admin_center}
+          discountPct={formData.consumables_discount_pct}
+          onChange={(pct) => setFormData((prev) => ({ ...prev, consumables_discount_pct: pct }))}
+        />
       </CanonicalStepperStep>
 
       <CanonicalStepperStep step={4} helpEntry={PERSONAL_WORKER_STEP_HELP[4]} title="PERMISOS OPERATIVOS Y HABILITACIONES" isLast={true}>

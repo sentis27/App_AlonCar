@@ -3,6 +3,7 @@ import { Pencil, Trash2, Square, CheckSquare, CopyPlus } from 'lucide-react'
 import { computeContractExpiration } from '../../lib/workCostRules'
 import { formatDateAr, formatDayMonthAr } from '../../lib/dateTimeCanonical'
 import PersonalNominaRowCells from './PersonalNominaRowCells'
+import PersonalNominaConsumablesCell from './PersonalNominaConsumablesCell'
 import PersonalNominaSafetyCell from './PersonalNominaSafetyCell'
 
 const PERMISSION_DEFS = [
@@ -183,43 +184,28 @@ const PersonalNominaRow = memo(function PersonalNominaRow({
       </td>
 
       {/* Consumibles */}
-      <td className="py-2 px-1.5">
-        {w.consumables_discount_pct !== undefined && w.consumables_discount_pct !== null ? (
-          <span
-            title={`Descuento Contratista: ${w.consumables_discount_pct}% | Imputación Obra: ${100 - Number(w.consumables_discount_pct)}%`}
-            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-              Number(w.consumables_discount_pct) === 0
-                ? 'bg-purple-950 text-purple-300 border-purple-800'
-                : Number(w.consumables_discount_pct) === 100
-                ? 'bg-amber-950 text-amber-300 border-amber-800'
-                : 'bg-blue-950 text-blue-300 border-blue-800'
-            }`}
-          >
-            {Number(w.consumables_discount_pct) === 0
-              ? '0% (OBRA)'
-              : Number(w.consumables_discount_pct) === 100
-              ? '100% (CONT.)'
-              : `${w.consumables_discount_pct}% CONT.`}
-          </span>
-        ) : (
-          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
-            w.consumables === 'CLIENTE'
-              ? 'bg-purple-950 text-purple-300 border-purple-800'
-              : 'bg-amber-950 text-amber-300 border-amber-800'
-          }`}>
-            {w.consumables || 'CLIENTE'}
-          </span>
-        )}
-      </td>
+      <PersonalNominaConsumablesCell
+        w={w}
+        rowIndex={rowIndex}
+        colIndex={6}
+        cellClassName={getCellClass(6, 'py-2 px-1.5')}
+        isEditing={editingColKey === 'consumables_discount_pct'}
+        editingValue={editingColKey === 'consumables_discount_pct' ? editingValue : ''}
+        showFillHandle={fillHandleColIndex === 6}
+        gridActions={gridActions}
+        setInlineCellEdit={setInlineCellEdit}
+        commitInlineWorkerEdit={commitInlineWorkerEdit}
+      />
 
       {/* Elem. Seg. */}
       <PersonalNominaSafetyCell
         w={w}
         rowIndex={rowIndex}
-        cellClassName={getCellClass(6, 'py-2 px-1.5')}
+        colIndex={7}
+        cellClassName={getCellClass(7, 'py-2 px-1.5')}
         isEditing={editingColKey === 'safety_items'}
         editingValue={editingColKey === 'safety_items' ? editingValue : ''}
-        showFillHandle={fillHandleColIndex === 6}
+        showFillHandle={fillHandleColIndex === 7}
         gridActions={gridActions}
         setInlineCellEdit={setInlineCellEdit}
         commitInlineWorkerEdit={commitInlineWorkerEdit}

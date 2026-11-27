@@ -33,13 +33,14 @@ export const PERSONAL_WORKER_STEP_HELP = {
     id: 'personal_worker_step_3',
     module: 'personal_nomina',
     step: 3,
-    title: 'PASO 3 · ESPECIALIDAD, CATEGORÍA Y TARIFA',
+    title: 'PASO 3 · ESPECIALIDAD, CATEGORÍA, TARIFA Y CONSUMIBLES',
     uiBullets: [
       { label: 'Rubro y Categoría', text: 'Define el oficio por defecto al cargar partes de horas y la categoría base en el Tarifario Quincenal.' },
-      { label: 'Conversión US$', text: 'Se calcula en vivo contra el dólar de referencia vigente para análisis salarial.' }
+      { label: 'Conversión US$', text: 'Se calcula en vivo contra el dólar de referencia vigente para análisis salarial.' },
+      { label: 'Consumibles de Pañol (DEC-009)', text: 'Astillero propio imputa siempre 100% a la Obra (0% descuento). En Contratista/Taller definís el % de descuento al contratista y el resto imputa a Obra.' }
     ],
     aiRuleContext:
-      'Regla Salarial en Personal: trade, category, hourly_rate_ars y hourly_rate_usd alimentan el Tarifario Quincenal y Análisis de Variación.'
+      'Regla Salarial y Consumibles en Personal: trade, category, hourly_rate_ars y hourly_rate_usd alimentan el Tarifario Quincenal. Consumibles: ASTILLERO siempre 100% Obra (consumables_discount_pct=0, CLIENTE); CONTRATISTA/TALLER configurable 0..100% sincronizado entre consumables_discount_pct y consumables (DEC-009).'
   },
   4: {
     id: 'personal_worker_step_4',

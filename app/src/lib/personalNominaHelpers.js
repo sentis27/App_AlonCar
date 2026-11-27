@@ -4,7 +4,7 @@
 // ==============================================================================
 
 import { matchesUniversalSearch, buildUniversalSearchCorpus } from './searchEngine.js'
-import { computeContractExpiration } from './workCostRules.js'
+import { computeContractExpiration, resolveConsumablesDiscountPct } from './workCostRules.js'
 
 const ARS_RATE_FORMATTER = new Intl.NumberFormat('es-AR')
 
@@ -73,6 +73,7 @@ export const NOMINA_COLUMNS = [
   { key: 'hourly_rate_ars', label: 'AR$/Hora', isNumeric: true, formatType: 'ars' },
   { key: 'work_group', label: 'Grupo de Trabajo' },
   { key: 'admin_center', label: 'Centro Admin' },
+  { key: 'consumables_discount_pct', label: 'Consumibles (%)', isNumeric: true, getValue: (w) => resolveConsumablesDiscountPct(w) },
   { key: 'safety_items', label: 'Elem. Seg.' }
 ]
 

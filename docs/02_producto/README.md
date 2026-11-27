@@ -72,6 +72,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | 2026-08-21 | DEC-025 | Módulo de Reconciliación Automática Horas ↔ Materiales e In-Place Editing (renumerado desde DEC-013) | decision |
 | 2026-08-21 | DEC-026 | Resumen Gerencial, Tarifario Nivel Alfa, Remitos de Cobro y RBAC (renumerado desde DEC-014) | decision |
 | 2026-11-15 | ERR-006 | Auditoría SKL-017 eliminó `<datalist>` y lógica de selección de operarios en `/horas` | error |
+| 2026-11-27 | ERR-008 | Refactor be2614f omitió selector de % de consumibles en Personal y faltaba edición inline | error |
 
 ---
 
@@ -117,6 +118,7 @@ Captura decisiones, errores, conceptos y procesos del camino real de desarrollo.
 | ERR-005 | Contenedor max-w-7xl y nuevas columnas recortan visualmente la columna Acciones en Personal y Tarifas | 3 | borrador | 2026-11-13 | — |
 | ERR-006 | Auditoría SKL-017 eliminó `<datalist>` y lógica de selección de operarios en `/horas` | 3 | borrador | 2026-11-15 | `be2614f` / `7387729` |
 | ERR-007 | Disparidad de políticas RLS y feedback off-screen bloquearon guardado de horas en `/horas` | 3 | borrador | 2026-11-15 | — |
+| ERR-008 | Refactor be2614f omitió selector de % de consumibles en Personal y faltaba edición inline | 3 | borrador | 2026-11-27 | `be2614f` |
 
 ## Conceptos
 

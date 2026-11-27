@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useSpreadsheetGrid } from './useSpreadsheetGrid'
 import { duplicateRecord, buildPasteRowHandler } from '../lib/gridRowActions'
 import { auditService } from '../lib/auditService'
+import { resolveConsumablesDiscountPct } from '../lib/workCostRules'
 import { NOMINA_COLUMNS, WORKER_CLONE_FIELDS } from '../lib/personalNominaHelpers'
 import { buildWorkerPatchFromCell } from '../lib/personalNominaFormHelpers'
 import {
@@ -37,11 +38,14 @@ export function usePersonalNominaActions({ workers, setWorkers, reloadWorkers, d
     setWorkers((prev) => prev.map((w) => (w.id === rowId ? { ...w, ...dbPatch } : w)))
 
     const colDef = NOMINA_COLUMNS.find((c) => c.key === colKey)
+    const oldValue = colKey === 'consumables_discount_pct'
+      ? resolveConsumablesDiscountPct(targetWorker)
+      : targetWorker[colKey]
     await updateWorkerCellNominaService({
       rowId,
       colKey,
       colLabel: colDef?.label || colKey,
-      oldValue: targetWorker[colKey],
+      oldValue,
       dbPatch,
       entityName: dbPatch.name || targetWorker.name || rowId
     })
@@ -71,9 +75,14 @@ export function usePersonalNominaActions({ workers, setWorkers, reloadWorkers, d
     onBatchUpdate: handleNominaBatchUpdate,
     onPasteRow: (args) => nominaPasteRef.current?.(args),
     onFocusSearch: () => nominaSearchInputRef.current?.focus(),
+    canEditCell: (row, colKey) => !(row?.admin_center === 'ASTILLERO' && (colKey === 'consumables_discount_pct' || colKey === 'safety_items')),
     onCellActivate: (row, colDef) => {
       if (!row || !colDef) return
-      setInlineCellEdit({ rowId: row.id, colKey: colDef.key, value: row[colDef.key] ?? '' })
+      if (row.admin_center === 'ASTILLERO' && (colDef.key === 'consumables_discount_pct' || colDef.key === 'safety_items')) return
+      const initialVal = colDef.key === 'consumables_discount_pct'
+        ? resolveConsumablesDiscountPct(row)
+        : (row[colDef.key] ?? '')
+      setInlineCellEdit({ rowId: row.id, colKey: colDef.key, value: initialVal })
     },
     showFeedback: showGridFeedback
   })
@@ -102,7 +111,7 @@ export function usePersonalNominaActions({ workers, setWorkers, reloadWorkers, d
     setInlineCellEdit(null)
     if (!worker) return
 
-    const oldVal = worker[colKey]
+    const oldVal = colKey === 'consumables_discount_pct' ? resolveConsumablesDiscountPct(worker) : worker[colKey]
     if (String(oldVal ?? '') === String(nextVal ?? '')) return
 
     try {
