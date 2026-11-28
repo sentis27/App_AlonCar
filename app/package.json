@@ -14,7 +14,10 @@
     "check:hygiene:fast": "node scripts/repo-hygiene.mjs --fast --lint",
     "hooks:install": "node scripts/install-hooks.mjs",
     "sync:meta": "node scripts/sync-meta.mjs",
-    "where": "node scripts/where.mjs"
+    "where": "node scripts/where.mjs",
+    "test:e2e:self": "playwright test tests/e2e/core/smokeEngineSelfTest.spec.js",
+    "test:smoke": "playwright test tests/e2e/core/smokeCatalog.spec.js",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
@@ -27,6 +30,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",

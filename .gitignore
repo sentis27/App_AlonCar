@@ -1,7 +1,11 @@
 .env
 .env.*
+!.env.e2e.example
 service-account.json
 node_modules/
 dist/
 *.log
 scratch/
+playwright-report/
+test-results/
+blob-report/
