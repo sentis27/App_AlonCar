@@ -153,10 +153,12 @@ describe('Cuenta Corriente & Pagos de Contratistas (Etapa 3)', () => {
     }
     const nav = getVisibleNavigationModules({ allowedSections: gracielaRole.allowed_sections })
     const tesMod = nav.find((m) => m.id === 'tesoreria')
-    expect(tesMod.children.map((c) => c.id)).toEqual(['deducciones', 'movimientos'])
+    expect(tesMod.children.map((c) => c.id)).toEqual(['deducciones', 'movimientos', 'contratados'])
     expect(resolveModuleTab('tesoreria', null)).toBe('deducciones')
     expect(resolveModuleTab('tesoreria', 'pagos')).toBe('movimientos')
+    expect(resolveModuleTab('tesoreria', 'libro')).toBe('contratados')
     expect(isRouteAllowed('/tesoreria', 'movimientos', { orgRole: gracielaRole }).allowed).toBe(true)
+    expect(isRouteAllowed('/tesoreria', 'contratados', { orgRole: gracielaRole }).allowed).toBe(true)
     expect(resolveUserCapabilities(null, gracielaRole).canManageContractorCc).toBe(true)
   })
 })

@@ -10,6 +10,7 @@ export function buildInitialCcMovementForm({
   currentPeriod = '',
   fortnightDollarRate = 1500,
   presetInvoiceOnly = false,
+  presetDefaults = null,
 } = {}) {
   if (initialRow) {
     return {
@@ -37,16 +38,16 @@ export function buildInitialCcMovementForm({
   }
   return {
     movement_date: getTodayArIso(),
-    period_key: currentPeriod,
-    contractor_group: '',
-    contractor_worker_id: '',
-    settlement_scope: 'HORA',
-    prc_id: '',
-    ship_id: '',
-    work_order_id: '',
-    category: 'ADELANTO',
-    direction: 'DEBE',
-    payment_method: 'TRANSFERENCIA',
+    period_key: presetDefaults?.period_key || currentPeriod,
+    contractor_group: presetDefaults?.contractor_group || '',
+    contractor_worker_id: presetDefaults?.contractor_worker_id || '',
+    settlement_scope: presetDefaults?.settlement_scope || 'HORA',
+    prc_id: presetDefaults?.prc_id || '',
+    ship_id: presetDefaults?.ship_id || '',
+    work_order_id: presetDefaults?.work_order_id || '',
+    category: presetDefaults?.category || 'ADELANTO',
+    direction: presetDefaults?.direction || 'DEBE',
+    payment_method: presetDefaults?.payment_method || 'TRANSFERENCIA',
     payment_reference: '',
     invoice_status: 'DEBE_FACTURA',
     invoice_number: '',

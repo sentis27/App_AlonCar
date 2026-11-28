@@ -31,12 +31,12 @@ function Field({ label, children, className = '' }) {
 const INPUT_CLS = 'w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white'
 
 export default function TesoreriaCcModal({
-  isOpen = false, initialRow = null, presetInvoiceOnly = false, currentPeriod = '',
+  isOpen = false, initialRow = null, presetInvoiceOnly = false, presetDefaults = null, currentPeriod = '',
   availablePeriods = [], fortnightDollarRate = 1500, contractors = [], prcs = [], ships = [], workOrders = [],
   onClose, onSave,
 }) {
   const [form, setForm] = useState(() =>
-    buildInitialCcMovementForm({ initialRow, currentPeriod, fortnightDollarRate, presetInvoiceOnly })
+    buildInitialCcMovementForm({ initialRow, currentPeriod, fortnightDollarRate, presetInvoiceOnly, presetDefaults })
   )
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -44,10 +44,10 @@ export default function TesoreriaCcModal({
 
   useEffect(() => {
     if (!isOpen) return
-    setForm(buildInitialCcMovementForm({ initialRow, currentPeriod, fortnightDollarRate, presetInvoiceOnly }))
+    setForm(buildInitialCcMovementForm({ initialRow, currentPeriod, fortnightDollarRate, presetInvoiceOnly, presetDefaults }))
     setErrorMsg('')
     if (presetInvoiceOnly) setTimeout(() => invoiceInputRef.current?.focus(), 60)
-  }, [isOpen, initialRow, currentPeriod, fortnightDollarRate, presetInvoiceOnly])
+  }, [isOpen, initialRow, currentPeriod, fortnightDollarRate, presetInvoiceOnly, presetDefaults])
 
   const filteredWos = useMemo(
     () => (form.ship_id ? (workOrders || []).filter((wo) => wo.ship_id === form.ship_id) : workOrders),

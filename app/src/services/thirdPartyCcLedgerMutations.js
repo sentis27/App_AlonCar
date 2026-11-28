@@ -97,7 +97,7 @@ export async function deleteCcManualEntryService({ entry, actor = 'ADMIN' }) {
   })
 }
 
-export async function saveCcPaymentService({ account, formData, editingPayment = null, actor = 'ADMIN' }) {
+export async function saveCcPaymentService({ account, formData, editingPayment = null, actor = 'ADMIN', sourceModule = 'MANUAL' }) {
   if (!account?.id) throw new Error('Cuenta corriente no seleccionada.')
   const hasIva = Boolean(formData.has_iva)
   const ivaPct = Number(formData.iva_pct ?? 21)
@@ -114,7 +114,7 @@ export async function saveCcPaymentService({ account, formData, editingPayment =
     exchange_rate: isCashUsd ? null : (Number(formData.exchange_rate) || null),
     has_iva: isCashUsd ? false : hasIva, iva_pct: ivaPct, gross_usd_with_iva: grossUsdWithIva,
     has_invoice: Boolean(formData.has_invoice), invoice_number: formData.invoice_number?.trim() || null,
-    panol_remito_number: formData.panol_remito_number?.trim() || null, source_module: 'MANUAL',
+    panol_remito_number: formData.panol_remito_number?.trim() || null, source_module: formData.source_module || sourceModule || 'MANUAL',
     observations: formData.observations?.trim() || null, updated_at: new Date().toISOString(),
   }
 

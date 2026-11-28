@@ -104,10 +104,11 @@ export const NAVIGATION_MODULES = [
     archetype: 'CARGA_EDICION',
     permissionKey: 'tesoreria',
     defaultTab: 'deducciones',
-    tabAliases: { panol: 'deducciones', cc: 'movimientos', pagos: 'movimientos' },
+    tabAliases: { panol: 'deducciones', cc: 'movimientos', pagos: 'movimientos', libro: 'contratados', ficha: 'contratados' },
     children: [
       { id: 'deducciones', label: '1. Descuentos de Pañol', shortLabel: 'Desc. Pañol', iconKey: 'Package', permissionKey: 'tesoreria.deducciones', theme: 'sky' },
       { id: 'movimientos', label: '2. Cuenta Corriente & Pagos', shortLabel: 'CC & Pagos', iconKey: 'DollarSign', permissionKey: 'tesoreria.movimientos', theme: 'emerald' },
+      { id: 'contratados', label: '3. Contratados', shortLabel: 'Contratados', iconKey: 'FileSpreadsheet', permissionKey: 'tesoreria.contratados', theme: 'amber' },
     ],
   },
   {

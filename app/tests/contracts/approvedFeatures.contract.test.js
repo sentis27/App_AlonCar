@@ -649,10 +649,10 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
   })
 
   it('FL-021: blinda el Menú Lateral Acordeón 3 Capas y Zona 1 limpia (sin pestañas ni selectores manuales de Terminal/Rol)', () => {
-    // Capa 1: Catálogo maestro con 12 módulos y 40 submódulos con permissionKey único
+    // Capa 1: Catálogo maestro con 12 módulos y 41 submódulos con permissionKey único
     expect(NAVIGATION_MODULES.length).toBe(12)
     const allChildren = NAVIGATION_MODULES.flatMap((m) => m.children || [])
-    expect(allChildren.length).toBe(40)
+    expect(allChildren.length).toBe(41)
     const permKeys = [
       ...NAVIGATION_MODULES.map((m) => m.permissionKey),
       ...allChildren.map((c) => c.permissionKey),
@@ -668,6 +668,7 @@ describe('Candado #1 — Contratos Funcionales Blindados (08_FEATURES_LOCK)', ()
     expect(resolveModuleTab('admin', null)).toBe('matriz')
     expect(resolveModuleTab('tesoreria', null)).toBe('deducciones')
     expect(resolveModuleTab('tesoreria', 'cc')).toBe('movimientos')
+    expect(resolveModuleTab('tesoreria', 'libro')).toBe('contratados')
     expect(resolveModuleTab('horas', 'resumen')).toBe('resumen_horas')
     expect(buildSubmoduleUrl('/panol', 'catalogo')).toBe('/panol?tab=catalogo')
 

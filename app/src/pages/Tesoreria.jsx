@@ -5,6 +5,7 @@ import { useModuleTab } from '../hooks/useModuleTab'
 import CanonicalActiveSubmoduleBadge from '../components/canonical/CanonicalActiveSubmoduleBadge'
 import TesoreriaDeduccionesPanel from '../components/tesoreria/TesoreriaDeduccionesPanel'
 import TesoreriaCcPanel from '../components/tesoreria/TesoreriaCcPanel'
+import TesoreriaContratadosPanel from '../components/tesoreria/contratados/TesoreriaContratadosPanel'
 import { useSupabaseRealtimeRefresh } from '../hooks/useSupabaseRealtimeRefresh'
 import {
   fetchContractorDeductionsForPeriod,
@@ -26,11 +27,14 @@ const TESORERIA_REALTIME_TABLES = [
  * Submódulos:
  *  1. `deducciones`: Descuentos de Pañol (Gallina · solo extracción/análisis)
  *  2. `movimientos`: Cuenta Corriente & Pagos de Contratistas (Gallo · CARGA_EDICION)
+ *  3. `contratados`: Libro por Contratista & Barcos (Gallo · CARGA_EDICION)
  */
 export default function Tesoreria() {
   const { user, profile, orgRole, capabilities } = useAuth()
   const { activeTab, activeSubmodule } = useModuleTab('tesoreria')
   const isCcTab = activeTab === 'movimientos'
+  const isContratadosTab = activeTab === 'contratados'
+  const pauseDeductions = isCcTab || isContratadosTab
 
   const [selectedPeriod, setSelectedPeriod] = useState(() => getCurrentQuincenaKey())
   const [data, setData] = useState(null)
@@ -57,11 +61,11 @@ export default function Tesoreria() {
     channelName: 'tesoreria_live',
     tables: TESORERIA_REALTIME_TABLES,
     onSync: () => loadPeriod(selectedPeriod, { silent: true }),
-    pauseWhen: isCcTab,
+    pauseWhen: pauseDeductions,
   })
 
   useEffect(() => {
-    if (isCcTab) return undefined
+    if (pauseDeductions) return undefined
     let active = true
     fetchContractorDeductionsForPeriod(selectedPeriod)
       .then((res) => {
@@ -77,7 +81,19 @@ export default function Tesoreria() {
         if (active) setLoading(false)
       })
     return () => { active = false }
-  }, [selectedPeriod, isCcTab])
+  }, [selectedPeriod, pauseDeductions])
+
+  if (isContratadosTab) {
+    return (
+      <TesoreriaContratadosPanel
+        selectedPeriod={selectedPeriod}
+        onPeriodChange={(nextPeriod) => setSelectedPeriod(nextPeriod)}
+        activeSubmodule={activeSubmodule}
+        canManageCc={canManageCc}
+        actor={actor}
+      />
+    )
+  }
 
   if (isCcTab) {
     return (
