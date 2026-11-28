@@ -100,6 +100,7 @@ export default function CanonicalSidebarModuleGroup({
     return (
       <button
         type="button"
+        data-testid={`nav-module-${moduleDef.id}`}
         onClick={() => onNavigateDirect(moduleDef)}
         title={collapsed ? moduleDef.name : undefined}
         className={`w-full flex items-center ${
@@ -117,9 +118,10 @@ export default function CanonicalSidebarModuleGroup({
   }
 
   return (
-    <div className="space-y-0.5">
+    <div data-testid={`nav-group-${moduleDef.id}`} className="space-y-0.5">
       <button
         type="button"
+        data-testid={`nav-module-${moduleDef.id}`}
         onClick={() => onToggleExpand(moduleDef.id)}
         aria-expanded={!collapsed && isExpanded}
         title={collapsed ? `${moduleDef.name} (expandir submódulos)` : undefined}
@@ -167,6 +169,7 @@ export default function CanonicalSidebarModuleGroup({
                 )}
                 <button
                   type="button"
+                  data-testid={`nav-tab-${moduleDef.id}-${child.id}`}
                   onClick={() => onNavigateSubmodule(moduleDef, child)}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer text-left ${
                     isChildActive

@@ -82,7 +82,7 @@ export default function GridStatusBarBottom({
     : 'w-full bg-slate-900/98 border-2 border-cyan-400 shadow-2xl shadow-cyan-500/30 rounded-2xl px-4 py-2.5 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs font-mono select-none'
 
   return (
-    <div className={containerClasses}>
+    <div data-testid="grid-status-bar" className={containerClasses}>
       {/* IZQUIERDA: CONTADORES Y ALERTAS DE FILTRO */}
       <div className="flex flex-wrap items-center gap-2.5">
         <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 font-medium">
@@ -97,6 +97,7 @@ export default function GridStatusBarBottom({
             {onClearFilters && (
               <button
                 type="button"
+                data-testid="grid-status-clear-filters"
                 onClick={onClearFilters}
                 className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[10px] shadow transition-all cursor-pointer"
                 title="Restablecer todos los filtros y volver a la vista completa"
@@ -140,6 +141,7 @@ export default function GridStatusBarBottom({
 
             <button
               type="button"
+              data-testid="grid-status-metrics-toggle"
               onClick={() => setMenuOpen((v) => !v)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-950 border border-slate-600 text-slate-200 hover:border-cyan-300 cursor-pointer font-bold"
               title="Ver todas las métricas (Suma, Promedio, Mínimo, Máximo, Cantidad, Contar números, Únicos)"

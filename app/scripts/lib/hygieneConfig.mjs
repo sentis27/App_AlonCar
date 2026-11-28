@@ -87,6 +87,10 @@ export const DEFAULT_HYGIENE_CONFIG = {
     navigationCatalogPath: 'app/src/lib/navigationCatalog.js',
     moduleAliases: {},
   },
+  featureMap: {
+    configPath: '',
+    requiredTestIds: [],
+  },
 }
 
 function isPlainObject(v) {

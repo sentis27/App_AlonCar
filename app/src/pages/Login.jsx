@@ -78,7 +78,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-slate-950">
+    <div data-testid="login-page" className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-slate-950">
       {/* Luces de fondo decorativas */}
       <div className="absolute top-1/4 -left-20 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -97,7 +97,7 @@ export default function Login() {
 
         {/* Mensaje de Error */}
         {error && (
-          <div className="mb-6 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+          <div data-testid="login-error" className="mb-6 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -112,6 +112,7 @@ export default function Login() {
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
               <input
+                data-testid="login-email"
                 type="email"
                 required
                 value={email}
@@ -129,6 +130,7 @@ export default function Login() {
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
               <input
+                data-testid="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -139,6 +141,7 @@ export default function Login() {
           </div>
 
           <button
+            data-testid="login-submit"
             type="submit"
             disabled={loading}
             className="w-full mt-2 py-3 bg-gradient-to-r from-primary to-blue-500 text-slate-950 font-bold rounded-lg shadow-[0_0_20px_rgba(0,242,254,0.3)] hover:shadow-[0_0_30px_rgba(0,242,254,0.5)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
@@ -160,6 +163,7 @@ export default function Login() {
         {/* Botón de Acceso Rápido / Selector de Puesto Activo (Etapa 5) */}
         <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-2.5">
           <button
+            data-testid="login-quick-admin"
             type="button"
             onClick={handleQuickLogin}
             disabled={loading}
@@ -180,6 +184,7 @@ export default function Login() {
               </label>
               <div className="flex items-center gap-2">
                 <select
+                  data-testid="login-role-select"
                   id="login-role-selector"
                   value={selectedRoleKey}
                   onChange={(e) => setSelectedRoleKey(e.target.value)}
@@ -192,6 +197,7 @@ export default function Login() {
                   ))}
                 </select>
                 <button
+                  data-testid="login-role-submit"
                   type="button"
                   onClick={handleRoleLogin}
                   disabled={loading || !selectedRoleKey}

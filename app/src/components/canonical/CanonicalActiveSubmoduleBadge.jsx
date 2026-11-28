@@ -18,6 +18,7 @@ export default function CanonicalActiveSubmoduleBadge({ label, suffix = null, th
   const cls = THEME_CLASSES[theme] || THEME_CLASSES.cyan
   return (
     <span
+      data-testid="active-submodule-badge"
       className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border whitespace-nowrap ${cls}`}
       title={`Submódulo activo: ${label}`}
     >

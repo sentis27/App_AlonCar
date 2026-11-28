@@ -40,7 +40,7 @@ export default function CanonicalZone3Toolbar({
   const cardsValue = viewModeToggle?.cardsValue ?? 'fichas'
 
   return (
-    <div className={`alon-zone-toolbar space-y-2.5 text-xs font-sans ${className}`.trim()}>
+    <div data-testid="zone3-toolbar" className={`alon-zone-toolbar space-y-2.5 text-xs font-sans ${className}`.trim()}>
       <CrawlerSearchBar
         value={searchValue}
         onChange={onSearchChange}
@@ -68,6 +68,7 @@ export default function CanonicalZone3Toolbar({
               {showClearBtn && (
                 <button
                   type="button"
+                  data-testid="zone3-clear-filters"
                   onClick={onClearAllFilters}
                   className={CLEAR_FILTER_BTN_CLASS}
                   title="Limpiar todos los filtros (Esc)"
@@ -81,6 +82,7 @@ export default function CanonicalZone3Toolbar({
                 <div className={ZONE3_UNDO_GROUP_CLASS} role="group" aria-label="Historial de cambios">
                   <button
                     type="button"
+                    data-testid="zone3-undo"
                     disabled={!resolvedHistory.canUndo}
                     onClick={() => resolvedHistory.onUndo?.()}
                     className={getUndoButtonClass(resolvedHistory.canUndo)}
@@ -97,6 +99,7 @@ export default function CanonicalZone3Toolbar({
                   </button>
                   <button
                     type="button"
+                    data-testid="zone3-redo"
                     disabled={!resolvedHistory.canRedo}
                     onClick={() => resolvedHistory.onRedo?.()}
                     className={getRedoButtonClass(resolvedHistory.canRedo)}
@@ -118,6 +121,7 @@ export default function CanonicalZone3Toolbar({
                 <div className={ZONE3_VIEW_TOGGLE_GROUP_CLASS} role="group" aria-label="Modo de visualización">
                   <button
                     type="button"
+                    data-testid="zone3-view-rows"
                     onClick={() => viewModeToggle.onChange?.(rowsValue)}
                     className={getViewToggleButtonClass(viewModeToggle.value === rowsValue)}
                     title="Vista planilla editable"
@@ -127,6 +131,7 @@ export default function CanonicalZone3Toolbar({
                   </button>
                   <button
                     type="button"
+                    data-testid="zone3-view-cards"
                     onClick={() => viewModeToggle.onChange?.(cardsValue)}
                     className={getViewToggleButtonClass(viewModeToggle.value === cardsValue)}
                     title="Vista en fichas / tarjetas"

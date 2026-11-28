@@ -303,5 +303,22 @@
       "control-gastos": ["ControlGastos", "costControl"],
       "admin": ["AdminDashboard", "admin", "AdminAuditLedger", "auditLogs", "organizationRoles"]
     }
+  },
+  "featureMap": {
+    "configPath": "app/scripts/featureMap.config.json",
+    "requiredTestIds": [
+      { "file": "app/src/components/Layout.jsx", "ids": ["app-shell", "app-main-content"] },
+      { "file": "app/src/components/Sidebar.jsx", "ids": ["app-sidebar"] },
+      { "file": "app/src/components/canonical/RouteErrorBoundary.jsx", "ids": ["route-error-boundary", "route-error-retry"] },
+      { "file": "app/src/components/canonical/CanonicalSidebarModuleGroup.jsx", "ids": ["nav-module-", "nav-group-", "nav-tab-"] },
+      { "file": "app/src/components/canonical/CanonicalActiveSubmoduleBadge.jsx", "ids": ["active-submodule-badge"] },
+      { "file": "app/src/components/canonical/CanonicalZone3Toolbar.jsx", "ids": ["zone3-toolbar", "zone3-clear-filters", "zone3-undo", "zone3-redo", "zone3-view-rows", "zone3-view-cards"] },
+      { "file": "app/src/components/CrawlerSearchBar.jsx", "ids": ["zone3-search-input", "zone3-search-clear"] },
+      { "file": "app/src/components/canonical/CanonicalStepperModal.jsx", "ids": ["stepper-modal-backdrop", "stepper-modal", "stepper-modal-close", "stepper-step-"] },
+      { "file": "app/src/components/canonical/CanonicalProgressiveTableFooter.jsx", "ids": ["progressive-table-footer", "progressive-load-more", "progressive-show-all"] },
+      { "file": "app/src/components/canonical/CanonicalHistoryRangeSelect.jsx", "ids": ["history-range-select"] },
+      { "file": "app/src/components/GridStatusBarBottom.jsx", "ids": ["grid-status-bar", "grid-status-clear-filters", "grid-status-metrics-toggle"] },
+      { "file": "app/src/pages/Login.jsx", "ids": ["login-page", "login-error", "login-email", "login-password", "login-submit", "login-quick-admin", "login-role-select", "login-role-submit"] }
+    ]
   }
 }

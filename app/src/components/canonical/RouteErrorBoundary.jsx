@@ -53,6 +53,7 @@ export class RouteErrorBoundary extends Component {
     return (
       <div
         role="alert"
+        data-testid="route-error-boundary"
         className="w-full min-h-[60vh] flex items-center justify-center p-4 sm:p-6 font-sans"
       >
         <div className="max-w-lg w-full bg-slate-900/95 border border-rose-500/40 rounded-2xl p-6 shadow-2xl space-y-4">
@@ -80,6 +81,7 @@ export class RouteErrorBoundary extends Component {
           <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-800">
             <button
               type="button"
+              data-testid="route-error-retry"
               onClick={this.handleRetry}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-cyan-500/20"
             >

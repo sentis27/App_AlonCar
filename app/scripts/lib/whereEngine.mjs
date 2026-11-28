@@ -78,7 +78,7 @@ function groupFilesByLayer(mod, sourceFiles, aliases) {
   return { grouped, matchedSet }
 }
 
-function formatModuleBlock({ mod, matchedChildId, sourceFiles, lockRows, aliases }) {
+function formatModuleBlock({ mod, matchedChildId, sourceFiles, lockRows, aliases, featureMap }) {
   const children = Array.isArray(mod.children) ? mod.children : []
   const tabsText = children.length === 0
     ? '  (sin submódulos)'
@@ -102,16 +102,22 @@ function formatModuleBlock({ mod, matchedChildId, sourceFiles, lockRows, aliases
     ? `FL módulo: ${modLocks.map((r) => `${r.id}(${r.status})`).join(', ')} | Transversales: ${transversalCount}`
     : `FL módulo: ninguno específico | Transversales: ${transversalCount}`
 
+  const fm = featureMap?.modules?.[mod.id]
+  const fmLine = fm
+    ? `FeatureMap: owner=${fm.ownerPage} | ready=${fm.readySelector} | smokeRole=${fm.smokeRole || 'admin'}`
+    : null
+
   return [
     `[where] ${mod.name} (${mod.id})`,
     `Ruta: ${mod.path} | Arquetipo: ${mod.archetype || 'N/A'} | Permiso: ${mod.permissionKey || mod.id} | Default: ${mod.defaultTab || '-'}`,
     `Submódulos (?tab=):\n${tabsText}`,
     `Archivos (app/src/<capa>/):\n${layerLines.length ? layerLines.join('\n') : '  (sin coincidencias por alias)'}`,
     flLine,
-  ].join('\n')
+    fmLine,
+  ].filter(Boolean).join('\n')
 }
 
-export function buildWhereReport({ query, modules, sourceFiles = [], lockRows = [], config }) {
+export function buildWhereReport({ query, modules, sourceFiles = [], lockRows = [], featureMap = null, config }) {
   const cfg = config || loadHygieneConfig()
   const aliasesByMod = cfg.where?.moduleAliases || {}
   const qRaw = String(query || '').trim()
@@ -145,6 +151,7 @@ export function buildWhereReport({ query, modules, sourceFiles = [], lockRows = 
     sourceFiles,
     lockRows,
     aliases: aliasesByMod[s.mod.id] || [],
+    featureMap,
   }))
   return { found: true, text: blocks.join('\n---\n') }
 }
@@ -158,5 +165,8 @@ export async function runWhereQuery(rootDir, query, config) {
   const mod = await import(pathToFileURL(navFull).href)
   const lockFull = path.join(rootDir, cfg.docs?.featuresLockPath || 'docs/FEATURES_LOCK.md')
   const lockRows = fs.existsSync(lockFull) ? parseFeaturesLockRows(fs.readFileSync(lockFull, 'utf8')) : []
-  return buildWhereReport({ query, modules: mod.NAVIGATION_MODULES || [], sourceFiles: collectProjectSourceFiles(rootDir), lockRows, config: cfg })
+  const fmRel = cfg.featureMap?.configPath
+  const fmFull = fmRel ? path.join(rootDir, fmRel) : null
+  const featureMap = fmFull && fs.existsSync(fmFull) ? JSON.parse(fs.readFileSync(fmFull, 'utf8')) : null
+  return buildWhereReport({ query, modules: mod.NAVIGATION_MODULES || [], sourceFiles: collectProjectSourceFiles(rootDir), lockRows, featureMap, config: cfg })
 }

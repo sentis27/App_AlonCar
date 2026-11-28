@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadHygieneConfig } from './lib/hygieneConfig.mjs'
 import { checkArchitectureBoundaries } from './lib/architectureBoundaries.mjs'
+import { checkFeatureMapIntegrity } from './lib/featureMapCheck.mjs'
 import { checkMigrationsManifest } from './lib/migrationsManifest.mjs'
 import {
   getPathLineLimit,
@@ -314,7 +315,7 @@ function checkErrorDocsFormat(docsCfg) {
   return errors
 }
 
-function main() {
+async function main() {
   const t0 = performance.now()
   const config = loadHygieneConfig(ROOT_DIR)
   const docsCfg = config.docs || {}
@@ -327,6 +328,7 @@ function main() {
   const datalistErrors = checkDatalistIntegrity()
   const repoBoundaryErrors = checkRepositoryBoundary(config)
   const archBoundaryErrors = checkArchitectureBoundaries(ROOT_DIR, APP_DIR, config)
+  const featureMap = await checkFeatureMapIntegrity(ROOT_DIR, config)
   const migrations = checkMigrationsManifest(ROOT_DIR, { rollbackRequiredFrom: config.migrations?.rollbackRequiredFrom })
   const featuresLock = checkFeaturesLockManifest(ROOT_DIR, config)
   const canonicalUsage = checkCanonicalComponentsUsage(ROOT_DIR, APP_DIR, config)
@@ -340,6 +342,7 @@ function main() {
     ...datalistErrors,
     ...repoBoundaryErrors,
     ...archBoundaryErrors,
+    ...featureMap.errors,
     ...migrations.errors,
     ...featuresLock.errors,
     ...canonicalUsage.errors,
@@ -383,6 +386,7 @@ function main() {
     `[check:hygiene] .md activos: ${mdFiles.length} | docs/links: ${docErrors.length === 0 ? 'OK' : `FAIL (${docErrors.length})`} | ${indexLabel}: ${indexErrors.length === 0 ? 'OK' : `FAIL (${indexErrors.length})`} | IDs: ${idErrors.length === 0 ? 'OK' : `FAIL (${idErrors.length})`} | ERR formato: ${errFormatErrors.length === 0 ? 'OK' : `FAIL (${errFormatErrors.length})`} | datalists: ${datalistErrors.length === 0 ? 'OK' : `FAIL (${datalistErrors.length})`}`
   )
   console.log(`[check:hygiene] repo boundary: ${repoBoundaryErrors.length === 0 ? 'OK (0 bypass)' : `FAIL (${repoBoundaryErrors.length})`} | arch boundaries: ${archBoundaryErrors.length === 0 ? 'OK (0 violaciones)' : `FAIL (${archBoundaryErrors.length})`}`)
+  console.log(`[check:hygiene] feature map: ${featureMap.moduleCount} módulos / ${featureMap.submoduleCount} submódulos | testids: ${featureMap.testIdCount} (${featureMap.errors.length === 0 ? 'OK' : `FAIL (${featureMap.errors.length})`})`)
   console.log(
     `[check:hygiene] features lock: ${featuresLock.lockedCount} blindados / ${featuresLock.pendingCount} pendientes (${featuresLock.errors.length === 0 ? 'OK' : `FAIL (${featuresLock.errors.length})`}) | canónicos: ${canonicalUsage.errors.length === 0 ? `OK (${canonicalUsage.alerts.length} legacy)` : `FAIL (${canonicalUsage.errors.length})`} | diff guard: ${diffRegressionAlerts.length === 0 ? 'OK' : `ALERTA (${diffRegressionAlerts.length})`}`
   )
@@ -410,4 +414,4 @@ function main() {
   console.log(`[check:hygiene] OK (${elapsed}s)`)
 }
 
-main()
+await main()

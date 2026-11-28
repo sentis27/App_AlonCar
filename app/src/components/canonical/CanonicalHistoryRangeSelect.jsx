@@ -16,6 +16,7 @@ export default function CanonicalHistoryRangeSelect({
 
   return (
     <select
+      data-testid="history-range-select"
       aria-label="Ventana histórica de registros"
       title="Ventana histórica de carga (los reportes gerenciales y cierres siempre leen el 100% histórico)"
       value={value || DEFAULT_HISTORY_RANGE}

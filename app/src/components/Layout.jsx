@@ -10,7 +10,7 @@ export default function Layout() {
   const routeResetKey = `${location.pathname}${location.search}`
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
+    <div data-testid="app-shell" className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
       {/* Barra lateral fija en desktop / drawer ágil en móvil */}
       <Sidebar mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)} />
 
@@ -40,7 +40,7 @@ export default function Layout() {
         </header>
 
         {/* Área de contenido con scroll suave y aprovechamiento total del ancho */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5">
+        <main data-testid="app-main-content" className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5">
           <RouteErrorBoundary resetKey={routeResetKey}>
             <Outlet />
           </RouteErrorBoundary>

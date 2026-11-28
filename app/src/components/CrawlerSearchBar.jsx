@@ -70,6 +70,7 @@ export default function CrawlerSearchBar({
       {/* Input de texto */}
       <input
         ref={effectiveRef}
+        data-testid="zone3-search-input"
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -86,6 +87,7 @@ export default function CrawlerSearchBar({
         <div className="absolute inset-y-0 right-0 pr-2 flex items-center gap-1">
           <button
             type="button"
+            data-testid="zone3-search-clear"
             onClick={handleClearClick}
             className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
             title="Limpiar texto buscado"

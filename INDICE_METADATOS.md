@@ -176,7 +176,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | supabase/migrations/0038_panol_compliance_requirements.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/MATRIZ_RESPONSABILIDAD_DATOS.md |
 | supabase/migrations/0039_gas_tx_link_and_indexes.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md |
 | supabase/migrations/0040_gas_supplier_traceability.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-13 | docs/02_producto/01_decisiones/DEC-023-panol-gases-doble-imputacion-y-trazabilidad-gaseras.md |
-| app/scripts/repo-hygiene.mjs | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | INDICE_METADATOS.md \| app/scripts/lib/antiRegressionChecks.mjs |
+| app/scripts/repo-hygiene.mjs | codigo | ninguno | ignorar | transversal | activo | 2026-11-28 | INDICE_METADATOS.md \| app/scripts/lib/antiRegressionChecks.mjs |
 | app/scripts/lib/antiRegressionChecks.mjs | codigo | validar-integridad | ignorar | transversal | activo | 2026-11-20 | docs/02_producto/estandares/08_FEATURES_LOCK.md |
 | app/src/lib/canonicalHelpers.js | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | app/src/lib/workOrdersConstants.js \| app/src/lib/allocationEngine.js |
 | app/src/components/canonical/CanonicalOtBadge.jsx | codigo | ninguno | ignorar | transversal | activo | 2026-11-20 | app/src/lib/canonicalHelpers.js |

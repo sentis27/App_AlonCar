@@ -54,8 +54,8 @@ export function CanonicalStepperModal({
   )
 
   return (
-    <div className={`fixed inset-0 ${zIndexClass} bg-black/80 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 font-sans`}>
-      <div className={`alon-modal-card alon-modal-zeroscroll ${maxWidthClass} w-full`}>
+    <div data-testid="stepper-modal-backdrop" className={`fixed inset-0 ${zIndexClass} bg-black/80 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 font-sans`}>
+      <div data-testid="stepper-modal" className={`alon-modal-card alon-modal-zeroscroll ${maxWidthClass} w-full`}>
         <div className="alon-modal-header flex-wrap gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             {icon && <div className="shrink-0 flex items-center">{icon}</div>}
@@ -77,6 +77,7 @@ export function CanonicalStepperModal({
             {onClose && (
               <button
                 type="button"
+                data-testid="stepper-modal-close"
                 tabIndex={-1}
                 onClick={onClose}
                 aria-label="Cerrar menú"
@@ -120,7 +121,7 @@ export function CanonicalStepperStep({
   children
 }) {
   return (
-    <div className="flex gap-3">
+    <div data-testid={`stepper-step-${step}`} className="flex gap-3">
       <div className="flex flex-col items-center">
         <StepHelpBadge
           step={step}

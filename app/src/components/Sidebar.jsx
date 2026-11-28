@@ -101,6 +101,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         />
       )}
       <aside
+        data-testid="app-sidebar"
         className={`fixed inset-y-0 left-0 z-50 w-72 md:static ${
           isDesktopCollapsed ? 'md:w-16' : 'md:w-64'
         } bg-slate-900/95 border-r border-slate-800/80 backdrop-blur-xl flex flex-col h-screen select-none shrink-0 transform transition-all duration-200 ${

@@ -34,6 +34,7 @@ export default function CanonicalProgressiveTableFooter({
       <div className="flex items-center gap-2">
         <button
           type="button"
+          data-testid="progressive-load-more"
           onClick={loadMore}
           className="px-3 py-1 rounded-lg bg-cyan-950/90 hover:bg-cyan-900 text-cyan-300 border border-cyan-600/60 font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
         >
@@ -42,6 +43,7 @@ export default function CanonicalProgressiveTableFooter({
         </button>
         <button
           type="button"
+          data-testid="progressive-show-all"
           onClick={showAll}
           className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold cursor-pointer transition-colors"
         >
@@ -55,6 +57,7 @@ export default function CanonicalProgressiveTableFooter({
     return (
       <div
         ref={sentinelRef}
+        data-testid="progressive-table-footer"
         className={`mt-3 rounded-xl bg-slate-900/75 border border-slate-800 px-4 py-3 ${className}`.trim()}
       >
         {content}
@@ -63,7 +66,7 @@ export default function CanonicalProgressiveTableFooter({
   }
 
   return (
-    <tr ref={sentinelRef} className={`bg-slate-900/70 ${className}`.trim()}>
+    <tr ref={sentinelRef} data-testid="progressive-table-footer" className={`bg-slate-900/70 ${className}`.trim()}>
       <td colSpan={colSpan} className="py-3 px-4">
         {content}
       </td>

@@ -1,0 +1,143 @@
+{
+  "version": "1.0",
+  "defaultReadySelector": "[data-testid=\"app-main-content\"]",
+  "errorBoundarySelector": "[data-testid=\"route-error-boundary\"]",
+  "loginSelectors": {
+    "page": "[data-testid=\"login-page\"]",
+    "email": "[data-testid=\"login-email\"]",
+    "password": "[data-testid=\"login-password\"]",
+    "submit": "[data-testid=\"login-submit\"]",
+    "quickAdmin": "[data-testid=\"login-quick-admin\"]",
+    "roleSelect": "[data-testid=\"login-role-select\"]",
+    "roleSubmit": "[data-testid=\"login-role-submit\"]",
+    "error": "[data-testid=\"login-error\"]",
+    "shell": "[data-testid=\"app-shell\"]",
+    "sidebar": "[data-testid=\"app-sidebar\"]"
+  },
+  "modules": {
+    "dashboard": {
+      "ownerPage": "app/src/pages/Dashboard.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"app-main-content\"]",
+      "submodules": {}
+    },
+    "ots": {
+      "ownerPage": "app/src/pages/WorkOrders.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"app-main-content\"]",
+      "submodules": {
+        "unificado": { "smoke": true },
+        "ots": { "smoke": true },
+        "terceros": { "smoke": true }
+      }
+    },
+    "horas": {
+      "ownerPage": "app/src/pages/LaborLogs.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"app-main-content\"]",
+      "submodules": {
+        "carga": { "smoke": true },
+        "control_diario": { "smoke": true },
+        "sabana_quincenal": { "smoke": true },
+        "resumen_horas": { "smoke": true }
+      }
+    },
+    "panol": {
+      "ownerPage": "app/src/pages/Panol.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"app-main-content\"]",
+      "submodules": {
+        "planillas": { "smoke": true },
+        "control_stock": { "smoke": true },
+        "entradas": { "smoke": true },
+        "catalogo": { "smoke": true },
+        "gases": { "smoke": true },
+        "epp": { "smoke": true }
+      }
+    },
+    "terceros": {
+      "ownerPage": "app/src/pages/Terceros.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"app-main-content\"]",
+      "submodules": {
+        "servicios": { "smoke": true },
+        "cuentas-corrientes": { "smoke": true },
+        "base-prc": { "smoke": true }
+      }
+    },
+    "compras": {
+      "ownerPage": "app/src/pages/Compras.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"active-submodule-badge\"]",
+      "submodules": {
+        "compras": { "smoke": true },
+        "proveedores": { "smoke": true },
+        "documentos": { "smoke": true }
+      }
+    },
+    "personal": {
+      "ownerPage": "app/src/pages/Personal.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"active-submodule-badge\"]",
+      "submodules": {
+        "nomina": { "smoke": true },
+        "tarifario": { "smoke": true },
+        "analisis": { "smoke": true }
+      }
+    },
+    "tesoreria": {
+      "ownerPage": "app/src/pages/Tesoreria.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"active-submodule-badge\"]",
+      "submodules": {
+        "deducciones": { "smoke": true },
+        "movimientos": { "smoke": true },
+        "contratados": { "smoke": true }
+      }
+    },
+    "barcos": {
+      "ownerPage": "app/src/pages/Ships.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"active-submodule-badge\"]",
+      "submodules": {
+        "buques": { "smoke": true },
+        "movimientos": { "smoke": true },
+        "armadores": { "smoke": true }
+      }
+    },
+    "resumen-gerencial": {
+      "ownerPage": "app/src/pages/ResumenGerencial.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"app-main-content\"]",
+      "submodules": {
+        "resumen": { "smoke": true },
+        "matriz": { "smoke": true },
+        "remito": { "smoke": true },
+        "comparador": { "smoke": true }
+      }
+    },
+    "control-gastos": {
+      "ownerPage": "app/src/pages/ControlGastos.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"app-main-content\"]",
+      "submodules": {
+        "conciliacion": { "smoke": true },
+        "horas_sin_mat": { "smoke": true }
+      }
+    },
+    "admin": {
+      "ownerPage": "app/src/pages/AdminDashboard.jsx",
+      "smokeRole": "admin",
+      "readySelector": "[data-testid=\"active-submodule-badge\"]",
+      "submodules": {
+        "matriz": { "smoke": true },
+        "macro": { "smoke": true },
+        "alertas": { "smoke": true },
+        "ia": { "smoke": true },
+        "compras": { "smoke": true },
+        "rubros": { "smoke": true },
+        "auditoria": { "smoke": true }
+      }
+    }
+  }
+}
