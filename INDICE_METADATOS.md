@@ -1,7 +1,7 @@
 # Índice de Metadatos — App_AlonCar
 
 > **schema-version:** 1.1
-> **Última actualización:** 2026-11-27
+> **Última actualización:** 2026-11-28
 > **Propósito:** Tabla máquina para consumo exclusivo del Agente IA. Para navegación humana, usar `INDICE_CENTRAL.md`.
 
 ## Vocabularios Controlados
@@ -33,8 +33,8 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | Archivo | Tipo | Comportamiento-IA | Lectura | Fase | Estado | Última revisión | Depende de |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | README.md | portada | ninguno | primera-vez | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
-| GEMINI.md | instrucciones-agente | auditar-reglas \| consultar-siempre | completo | transversal | activo | 2026-11-20 | ninguno |
-| CLAUDE.md | instrucciones-agente | consultar-siempre | ignorar | transversal | activo | 2026-11-13 | GEMINI.md |
+| GEMINI.md | instrucciones-agente | auditar-reglas \| consultar-siempre | completo | transversal | activo | 2026-11-28 | ninguno |
+| CLAUDE.md | instrucciones-agente | consultar-siempre | ignorar | transversal | activo | 2026-11-28 | GEMINI.md |
 | GUIA_ANTIGRAVITY.md | instrucciones-agente | ninguno | ignorar | transversal | deprecado | 2026-11-13 | GEMINI.md |
 | INDICE_CENTRAL.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | ninguno |
 | INDICE_METADATOS.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
@@ -138,7 +138,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | workflows/operaciones/reporte-ordenes-trabajo/SDD.md | documentacion-tecnica | auditar-reglas | cambios | fase-2 | activo | 2026-07-19 | workflows/_meta/PLANTILLA.md |
 | workflows/legacy/Reporte_Retiros_diarioMateriales.json | codigo | ninguno | ignorar | transversal | archivado | 2026-07-23 | ninguno |
 | .agents/skills/README.md | guia | ninguno | primera-vez | transversal | activo | 2026-11-13 | SKILLS_REGISTRY.md |
-| .agents/skills/SKILLS_REGISTRY.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
+| .agents/skills/SKILLS_REGISTRY.md | indice | consultar-siempre | completo | transversal | activo | 2026-11-28 | INDICE_CENTRAL.md |
 | .agents/skills/M1-activos/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/M2-recursos/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/M3-operaciones/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
@@ -148,21 +148,17 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | .agents/skills/transversal/DIVISION.md | indice | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/automation-governance/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/caveman/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
-| .agents/skills/transversal/legacy-mapping/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
-| .agents/skills/transversal/legacy-mapping/recursos/template_mapeo.md | guia | ninguno | primera-vez | transversal | activo | 2026-06-18 | .agents/skills/transversal/legacy-mapping/SKILL.md |
 | .agents/skills/transversal/product-collector/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/rtk/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-07-23 | INDICE_CENTRAL.md |
-| .agents/skills/transversal/session-audit/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | INDICE_CENTRAL.md |
+| .agents/skills/transversal/session-audit/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-28 | INDICE_CENTRAL.md |
 | .agents/skills/transversal/control-calidad-entrega/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/planificacion-por-etapas/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/ingenieria-codigo-senior/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
-| .agents/skills/transversal/chasis-docker-multiapp/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
-| .agents/skills/transversal/motor-backend-capas/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/ergonomia-flujo-visual-senior/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/data-grid-poweruser/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/schema-gatekeeper/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/defensive-erp-contracts/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-13 | .agents/skills/SKILLS_REGISTRY.md |
-| .agents/skills/transversal/context-aware-skill-router/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | .agents/skills/SKILLS_REGISTRY.md |
+| .agents/skills/transversal/context-aware-skill-router/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-28 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/architectural-modularity-auditor/SKILL.md | skill | ninguno | primera-vez | transversal | activo | 2026-11-15 | .agents/skills/SKILLS_REGISTRY.md |
 | .agents/skills/transversal/behavior-preservation-guard/SKILL.md | skill | auditar-reglas | primera-vez | transversal | activo | 2026-11-20 | .agents/skills/SKILLS_REGISTRY.md \| docs/02_producto/estandares/08_FEATURES_LOCK.md |
 | .agents/skills/transversal/piezas-replicables-solucion/SKILL.md | skill | auditar-reglas | primera-vez | transversal | activo | 2026-11-20 | GEMINI.md \| .agents/skills/SKILLS_REGISTRY.md \| docs/02_producto/estandares/08_FEATURES_LOCK.md |
@@ -189,3 +185,7 @@ Rutas relativas al root, separadas por `|`. Usar `ninguno` si no tiene dependenc
 | app/src/lib/costControlEngine.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-27 | app/src/lib/costControlPeriodHelpers.js \| app/src/schemas/costControl.schema.js |
 | app/src/services/costControlService.js | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-27 | app/src/lib/costControlEngine.js \| app/src/repositories/costControlReviewsRepository.js |
 | supabase/migrations/0055_cost_control_reviews.sql | codigo | ninguno | ignorar | fase-2+ | activo | 2026-11-27 | supabase/rollbacks/0055_cost_control_reviews.down.sql |
+| docs/archivo/skills_referencia/chasis-docker-multiapp/SKILL.md | skill | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-28 | ninguno |
+| docs/archivo/skills_referencia/legacy-mapping/SKILL.md | skill | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-28 | ninguno |
+| docs/archivo/skills_referencia/legacy-mapping/recursos/template_mapeo.md | registro | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-28 | ninguno |
+| docs/archivo/skills_referencia/motor-backend-capas/SKILL.md | skill | ignorar-en-auditoria | ignorar | transversal | archivado | 2026-11-28 | ninguno |

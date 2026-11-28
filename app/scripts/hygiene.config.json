@@ -286,5 +286,22 @@
         "app/src/components/tesoreria/contratados/TesoreriaContratadosModals.jsx"
       ]
     }
+  },
+  "where": {
+    "navigationCatalogPath": "app/src/lib/navigationCatalog.js",
+    "moduleAliases": {
+      "dashboard": ["Dashboard", "dashboard"],
+      "ots": ["WorkOrders", "workOrders", "workItems", "otAbc"],
+      "horas": ["LaborLogs", "labor", "laborLogs"],
+      "panol": ["Panol", "panol", "materials", "inventoryTransactions", "gasMovements", "stockControl"],
+      "terceros": ["Terceros", "terceros", "thirdParty", "prcRegistry"],
+      "compras": ["Compras", "compras", "purchaseOrders", "suppliers"],
+      "personal": ["Personal", "personal", "workers", "rateCards"],
+      "tesoreria": ["Tesoreria", "tesoreria", "contractorCc", "contractorDeductions", "contractorLedger"],
+      "barcos": ["Ships", "ships", "shipStays", "owners"],
+      "resumen-gerencial": ["ResumenGerencial", "resumenGerencial", "managerialSummary", "billing"],
+      "control-gastos": ["ControlGastos", "costControl"],
+      "admin": ["AdminDashboard", "admin", "AdminAuditLedger", "auditLogs", "organizationRoles"]
+    }
   }
 }

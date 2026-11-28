@@ -83,6 +83,10 @@ export const DEFAULT_HYGIENE_CONFIG = {
       allowlist: [],
     },
   },
+  where: {
+    navigationCatalogPath: 'app/src/lib/navigationCatalog.js',
+    moduleAliases: {},
+  },
 }
 
 function isPlainObject(v) {

@@ -3,7 +3,7 @@
 > **Propósito**: Catálogo máquina-legible de todas las Skills, sus divisiones,
 > estados y dependencias. Análogo a `divisions.json` de agency-agents.
 >
-> **Última actualización**: 2026-11-20
+> **Última actualización**: 2026-11-27
 >
 > **Versión schema**: 1.2
 
@@ -11,6 +11,7 @@
 
 ### Estado
 - `active` — Skill en producción, usada por Antigravity
+- `standby` — Skill de referencia archivada fuera de `.agents/skills/` para ahorrar tokens diarios; reactivable bajo demanda
 - `draft` — Skill en desarrollo, aún no validada
 - `deprecated` — Skill obsoleta, no usar
 - `planned` — Skill planeada para futuro
@@ -38,15 +39,15 @@ Rutas relativas a `.agents/skills/`, separadas por `|`.
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | SKL-001 | automation-governance | governance | transversal | active | ninguno | Governa cambios a workflows n8n en producción, valida contra SDD y business rules | transversal/automation-governance/SKILL.md |
 | SKL-002 | caveman | architecture | transversal | active | ninguno | Modo de comunicación comprimida para sesiones largas (desactivar antes de editar archivos del repo) | transversal/caveman/SKILL.md |
-| SKL-003 | legacy-mapping | data-engineering | transversal | active | SKL-001 | Documenta Google Sheets legacy antes de migración a Supabase/n8n | transversal/legacy-mapping/SKILL.md |
+| SKL-003 | legacy-mapping | data-engineering | transversal | standby | SKL-001 | Documenta Google Sheets legacy antes de migración a Supabase/n8n | docs/archivo/skills_referencia/legacy-mapping/SKILL.md |
 | SKL-004 | product-collector | integration | transversal | active | SKL-003 | Captura, clasifica y registra experiencia de proyecto en `docs/02_producto/` | transversal/product-collector/SKILL.md |
 | SKL-005 | rtk | architecture | transversal | active | ninguno | Comprime salida de comandos Bash (`git log`, `git status`, tests, installs) antes de entrar al contexto | transversal/rtk/SKILL.md |
 | SKL-006 | session-audit | governance | transversal | active | SKL-001 | Audita estado del repo al cierre de sesión, asegura consistencia y trazabilidad | transversal/session-audit/SKILL.md |
 | SKL-007 | control-calidad-entrega | governance | transversal | active | ninguno | Compuerta obligatoria de control de calidad antes de declarar terminada una tarea: intención, trazabilidad, runtime y reporte | transversal/control-calidad-entrega/SKILL.md |
 | SKL-008 | planificacion-por-etapas | governance | transversal | active | SKL-007 | Clasifica pedidos múltiples por afinidad técnica y riesgo (Fast-Track o Quirúrgico) en etapas verificables | transversal/planificacion-por-etapas/SKILL.md |
 | SKL-009 | ingenieria-codigo-senior | architecture | transversal | active | SKL-007 | 10 principios de ingeniería senior (foco en 4 capas y diseño defensivo) y matriz de auditoría técnica | transversal/ingenieria-codigo-senior/SKILL.md |
-| SKL-010 | chasis-docker-multiapp | architecture | transversal | active | SKL-009 | Chasis Docker autohospedable (Vite/Nginx + Node/Express + Postgres) con aislamiento multi-app por `APP_SLUG`, proxy `/api` y env fail-fast | transversal/chasis-docker-multiapp/SKILL.md |
-| SKL-011 | motor-backend-capas | architecture | transversal | active | SKL-009\|SKL-010 | Motor lógico Backend en 4 capas (Routes, Controllers, Services, Repositories/Models), serializador `toDTO` y `errorHandler` centralizado | transversal/motor-backend-capas/SKILL.md |
+| SKL-010 | chasis-docker-multiapp | architecture | transversal | standby | SKL-009 | Chasis Docker autohospedable (Vite/Nginx + Node/Express + Postgres) con aislamiento multi-app por `APP_SLUG`, proxy `/api` y env fail-fast | docs/archivo/skills_referencia/chasis-docker-multiapp/SKILL.md |
+| SKL-011 | motor-backend-capas | architecture | transversal | standby | SKL-009\|SKL-010 | Motor lógico Backend en 4 capas (Routes, Controllers, Services, Repositories/Models), serializador `toDTO` y `errorHandler` centralizado | docs/archivo/skills_referencia/motor-backend-capas/SKILL.md |
 | SKL-012 | ergonomia-flujo-visual-senior | architecture | transversal | active | SKL-007 | Marco universal de ergonomía cognitiva y física para interfaces: cascada Top-Down, compresión de clics y Ley de Fitts | transversal/ergonomia-flujo-visual-senior/SKILL.md |
 | SKL-013 | data-grid-poweruser | architecture | transversal | active | SKL-012 | Gobernanza para interfaces de alta densidad tabular y carga intensiva: navegación por teclado, mutación in-situ y matriz 2D | transversal/data-grid-poweruser/SKILL.md |
 | SKL-014 | schema-gatekeeper | governance | transversal | active | ninguno | Candado cognitivo contra asunción de memoria: inspección empírica previa obligatoria de contratos, tablas y columnas | transversal/schema-gatekeeper/SKILL.md |

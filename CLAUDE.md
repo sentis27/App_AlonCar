@@ -1,7 +1,7 @@
 ---
-version: 1.6
+version: 2.0
 last_updated_by: antigravity
-last_updated: 2026-11-20
+last_updated: 2026-11-27
 source_of_truth: GEMINI.md
 ---
 

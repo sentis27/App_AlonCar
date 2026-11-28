@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "check:hygiene": "node scripts/repo-hygiene.mjs",
     "check:hygiene:fast": "node scripts/repo-hygiene.mjs --fast --lint",
-    "hooks:install": "node scripts/install-hooks.mjs"
+    "hooks:install": "node scripts/install-hooks.mjs",
+    "sync:meta": "node scripts/sync-meta.mjs",
+    "where": "node scripts/where.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
