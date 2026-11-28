@@ -3,6 +3,13 @@
   "plugins": ["react", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/jsx-no-undef": "error",
+    "react/jsx-no-duplicate-props": "error",
+    "react/no-direct-mutation-state": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "no-debugger": "error",
+    "no-const-assign": "error",
+    "no-dupe-keys": "error",
+    "no-duplicate-case": "error"
   }
 }

@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -e
+echo "[sgai-core:pre-commit] Ejecutando compuerta rapida (hygiene --fast --lint)..."
+node app/scripts/repo-hygiene.mjs --fast --lint

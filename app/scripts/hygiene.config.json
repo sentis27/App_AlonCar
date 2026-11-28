@@ -1,0 +1,290 @@
+{
+  "projectName": "App_AlonCar",
+  "engineBrand": "sgai-core",
+  "docs": {
+    "ignoreDirs": ["node_modules", "dist", "Presentacion", ".git"],
+    "ignoreRelPrefixes": ["app/dist", "docs/04_anexos_entendiemiento de planillas"],
+    "forbiddenPathPatterns": ["Users[\\\\/](?:senti|Vanoli)", "file:///"],
+    "proseOnlyFiles": ["PLAN_OPTIMIZACION_IA.md"],
+    "metadataIndexPath": "INDICE_METADATOS.md",
+    "duplicateIdDirs": [
+      { "dir": "docs/02_producto/01_decisiones", "prefix": "DEC" },
+      { "dir": "docs/02_producto/02_errores", "prefix": "ERR" }
+    ],
+    "errorDocsDir": "docs/02_producto/02_errores",
+    "errorDocsStrictFromId": 6,
+    "liveDocSizeLimits": {
+      "maxBytes": 15360,
+      "files": [
+        "TAREAS_PENDIENTES.md",
+        "docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md"
+      ]
+    },
+    "featuresLockPath": "docs/02_producto/estandares/08_FEATURES_LOCK.md"
+  },
+  "migrations": {
+    "rollbackRequiredFrom": 49
+  },
+  "lineLimits": {
+    "rules": [
+      { "pattern": "^app/src/(?:schemas|repositories)/", "limit": 200, "label": "schemas/repositories" },
+      { "pattern": "^app/src/(?:lib|hooks|services|pages)/", "limit": 250, "label": "lib/hooks/services/pages" },
+      { "pattern": "^app/src/components/", "limit": 300, "label": "components" }
+    ],
+    "default": { "limit": 300, "label": "app/src" }
+  },
+  "repositoryBoundary": {
+    "allowedDirPrefix": "app/src/repositories/"
+  },
+  "canonicalDirPrefix": "app/src/components/canonical/",
+  "dateTimePolicy": {
+    "enabled": true,
+    "canonicalModulePath": "app/src/lib/dateTimeCanonical.js",
+    "ruleId": "FL-024"
+  },
+  "prohibitedPatterns": [
+    {
+      "id": "FL-023",
+      "pattern": "className\\s*=\\s*[\"'{\u0060][^\"'\u0060}]*\\balon-zone-toolbar\\b",
+      "flags": "",
+      "message": "Prohibido escribir alon-zone-toolbar artesanal fuera de CanonicalZone3Toolbar (FL-023)",
+      "legacyAllowlist": []
+    },
+    {
+      "id": "CANONICAL-MATERIAL-PICKER",
+      "pattern": "(?:<datalist\\b[^>]*\\bid=[\"'][^\"']*material[^\"']*[\"']|\\blist=[\"'][^\"']*material[^\"']*[\"'])",
+      "flags": "i",
+      "message": "Prohibido crear datalist crudo de materiales fuera de CanonicalMaterialPicker",
+      "legacyMessage": "Datalist legacy de materiales pendiente de migrar a CanonicalMaterialPicker",
+      "legacyAllowlist": []
+    }
+  ],
+  "customSelectGuards": [
+    {
+      "label": "Consulta work_items incompleta",
+      "onlyPrefixes": ["app/src/services/", "app/src/lib/"],
+      "callPattern": "workItemsRepository\\.listWorkItems\\(\\s*\\{[\\s\\S]*?select:\\s*['\"]([^'\"]+)['\"]",
+      "ignoreSelectPattern": "^(?:\\*|id(?:\\s*,\\s*work_order_id)?)$",
+      "requiredColumns": ["status", "foreman_name"],
+      "recommendation": "usar workItemsRepository.listCanonicalWorkItems()"
+    }
+  ],
+  "spreadsheetTableRule": {
+    "enabled": true,
+    "ruleId": "FL-027",
+    "enginePattern": "(?:useSpreadsheetGrid|useSheetSelection|useReadOnlySheetSelection|getColumnHeaderProps)",
+    "headerPattern": "(?:getColumnHeaderProps|getHeaderProps)",
+    "statusBarToken": "GridStatusBarBottom",
+    "allowlist": [
+      "app/src/components/admin/AdminRolesMatrixPanel.jsx",
+      "app/src/components/admin/AdminAlertsCompliancePanel.jsx",
+      "app/src/components/AiGovernancePanel.jsx",
+      "app/src/components/TradesManagementPanel.jsx",
+      "app/src/components/labor/LaborModals.jsx",
+      "app/src/components/panol/MaterialRubrosManagerModal.jsx",
+      "app/src/components/panol/StockAuditBatchModal.jsx",
+      "app/src/components/workOrders/OtCatalogLineItemsTable.jsx"
+    ],
+    "parentOwnedStatusBar": [
+      "app/src/components/compras/ComprasPedidosTable.jsx",
+      "app/src/components/personal/PersonalNominaTable.jsx"
+    ]
+  },
+  "requiredSurfaces": {
+    "progressiveGrid": [
+      "app/src/components/personal/PersonalNominaTable.jsx",
+      "app/src/components/personal/PersonalTarifarioPanel.jsx",
+      "app/src/components/labor/LaborLogsTable.jsx",
+      "app/src/components/labor/LaborSabanaPanel.jsx",
+      "app/src/components/labor/LaborControlDiarioPanel.jsx",
+      "app/src/components/labor/resumen/LaborResumenNovedadesTable.jsx",
+      "app/src/components/labor/resumen/LaborResumenContratadosTable.jsx",
+      "app/src/components/compras/ComprasPedidosTable.jsx",
+      "app/src/components/compras/ComprasProveedoresPanel.jsx",
+      "app/src/components/compras/ComprasOcrPanel.jsx",
+      "app/src/components/terceros/TercerosFilasPanel.jsx",
+      "app/src/components/terceros/TercerosFichasPanel.jsx",
+      "app/src/components/terceros/cc/TercerosCcDebeTable.jsx",
+      "app/src/components/terceros/prc/TercerosPrcRegistryTable.jsx",
+      "app/src/components/terceros/cc/TercerosCcHaberTable.jsx",
+      "app/src/components/workOrders/WorkOrdersUnificadoPanel.jsx",
+      "app/src/components/workOrders/WorkOrdersOtsPanel.jsx",
+      "app/src/components/workOrders/WorkOrdersTercerosPanel.jsx",
+      "app/src/components/panol/PanolMovimientosPanel.jsx",
+      "app/src/components/panol/PanolCatalogGrid.jsx",
+      "app/src/components/panol/GasTraceabilityGrid.jsx",
+      "app/src/components/AdminAuditLedger.jsx",
+      "app/src/components/tesoreria/TesoreriaDeduccionesPanel.jsx",
+      "app/src/components/tesoreria/TesoreriaCcTable.jsx",
+      "app/src/components/ships/ShipsBarcosPanel.jsx",
+      "app/src/components/ships/ShipsEstadiasPanel.jsx",
+      "app/src/components/ships/ShipsArmadoresPanel.jsx",
+      "app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx",
+      "app/src/components/resumenGerencial/ResumenHojaMaterialesPanel.jsx",
+      "app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx",
+      "app/src/components/costControl/CostControlMaterialsTable.jsx",
+      "app/src/components/costControl/CostControlLaborOnlyPanel.jsx",
+      "app/src/components/costControl/CostControlThirdPartyTable.jsx"
+    ],
+    "historyRange": [
+      "app/src/components/labor/LaborLogsToolbar.jsx",
+      "app/src/components/compras/ComprasPedidosToolbar.jsx",
+      "app/src/components/terceros/TercerosToolbar.jsx",
+      "app/src/components/panol/PanolToolbar.jsx",
+      "app/src/components/AdminAuditLedger.jsx"
+    ],
+    "batchedRepositories": [
+      "app/src/repositories/laborLogsRepository.js",
+      "app/src/repositories/purchaseOrdersRepository.js",
+      "app/src/repositories/thirdPartyServicesRepository.js",
+      "app/src/repositories/thirdPartyCcRepository.js",
+      "app/src/repositories/prcRegistryRepository.js",
+      "app/src/repositories/contractorCcRepository.js",
+      "app/src/repositories/inventoryTransactionsRepository.js",
+      "app/src/repositories/gasMovementsRepository.js",
+      "app/src/repositories/materialsRepository.js",
+      "app/src/repositories/workOrdersRepository.js",
+      "app/src/repositories/workItemsRepository.js",
+      "app/src/repositories/auditLogsRepository.js",
+      "app/src/repositories/rateCardsRepository.js",
+      "app/src/repositories/workersRepository.js",
+      "app/src/repositories/shipStaysRepository.js",
+      "app/src/repositories/shipsRepository.js",
+      "app/src/repositories/ownersRepository.js",
+      "app/src/repositories/suppliersRepository.js",
+      "app/src/repositories/costControlReviewsRepository.js"
+    ],
+    "groups": [
+      {
+        "id": "canonical-ot",
+        "requiredTokens": ["CanonicalOtBadge"],
+        "message": "Superficie obligatoria sin CanonicalOtBadge (tooltip de OT)",
+        "paths": [
+          "app/src/components/panol/PanolMovimientosPanel.jsx",
+          "app/src/components/compras/ComprasPedidoRow.jsx",
+          "app/src/components/terceros/TercerosFilasPanel.jsx",
+          "app/src/components/terceros/TercerosFichasPanel.jsx",
+          "app/src/components/terceros/cc/TercerosCcDebeTable.jsx",
+          "app/src/components/terceros/prc/TercerosPrcRegistryTable.jsx",
+          "app/src/components/labor/LaborLogsTableRow.jsx",
+          "app/src/components/labor/LaborControlDiarioPanel.jsx",
+          "app/src/components/labor/LaborSabanaPanel.jsx",
+          "app/src/components/labor/resumen/LaborResumenContratadosTable.jsx",
+          "app/src/components/resumenGerencial/ResumenMatrizOtsPanel.jsx",
+          "app/src/components/resumenGerencial/ResumenOtDetailStrip.jsx",
+          "app/src/components/resumenGerencial/ResumenHojaMaterialesPanel.jsx",
+          "app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx",
+          "app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx",
+          "app/src/components/resumenGerencial/BillingRightCostCard.jsx",
+          "app/src/components/resumenGerencial/ComparadorNivel2OtTable.jsx",
+          "app/src/components/costControl/CostControlMaterialRow.jsx",
+          "app/src/components/costControl/CostControlHoursMirror.jsx",
+          "app/src/components/costControl/CostControlLaborOnlyPanel.jsx",
+          "app/src/components/costControl/CostControlThirdPartyTable.jsx",
+          "app/src/components/tesoreria/TesoreriaCcTable.jsx"
+        ]
+      },
+      {
+        "id": "sidebar-accordion",
+        "requiredTokens": ["navigationCatalog", "CanonicalSidebarModuleGroup"],
+        "message": "Sidebar.jsx debe consumir navigationCatalog y CanonicalSidebarModuleGroup (FL-021)",
+        "paths": [
+          "app/src/components/Sidebar.jsx"
+        ]
+      },
+      {
+        "id": "accordion-tab-pages",
+        "requiredTokens": ["useModuleTab"],
+        "message": "Módulo con submódulos sin useModuleTab (FL-021)",
+        "paths": [
+          "app/src/pages/WorkOrders.jsx",
+          "app/src/pages/LaborLogs.jsx",
+          "app/src/pages/Panol.jsx",
+          "app/src/pages/Compras.jsx",
+          "app/src/pages/Personal.jsx",
+          "app/src/pages/Ships.jsx",
+          "app/src/pages/Terceros.jsx",
+          "app/src/pages/Tesoreria.jsx",
+          "app/src/pages/ResumenGerencial.jsx",
+          "app/src/pages/ControlGastos.jsx",
+          "app/src/pages/AdminDashboard.jsx"
+        ]
+      },
+      {
+        "id": "canonical-zone3",
+        "requiredTokens": ["CanonicalZone3Toolbar"],
+        "message": "Superficie Zona 3 obligatoria sin CanonicalZone3Toolbar (FL-023)",
+        "paths": [
+          "app/src/components/labor/LaborLogsToolbar.jsx",
+          "app/src/components/labor/LaborControlDiarioPanel.jsx",
+          "app/src/components/labor/resumen/LaborResumenContratadosTable.jsx",
+          "app/src/components/compras/ComprasPedidosToolbar.jsx",
+          "app/src/components/compras/ComprasProveedoresPanel.jsx",
+          "app/src/components/compras/ComprasOcrPanel.jsx",
+          "app/src/components/terceros/TercerosToolbar.jsx",
+          "app/src/components/terceros/cc/TercerosCuentasCorrientesPanel.jsx",
+          "app/src/components/terceros/prc/TercerosPrcRegistryPanel.jsx",
+          "app/src/components/personal/PersonalNominaToolbar.jsx",
+          "app/src/components/personal/PersonalTarifarioPanel.jsx",
+          "app/src/components/panol/PanolToolbar.jsx",
+          "app/src/components/workOrders/WorkOrdersToolbar.jsx",
+          "app/src/components/ships/ShipsBarcosToolbar.jsx",
+          "app/src/components/ships/ShipsEstadiasPanel.jsx",
+          "app/src/components/ships/ShipsArmadoresPanel.jsx",
+          "app/src/components/resumenGerencial/ResumenHojaMaterialesToolbar.jsx",
+          "app/src/components/resumenGerencial/ResumenHojaHorasPanel.jsx",
+          "app/src/components/resumenGerencial/ResumenHojaTercerosPanel.jsx",
+          "app/src/components/tesoreria/TesoreriaDeduccionesPanel.jsx",
+          "app/src/components/tesoreria/TesoreriaCcPanel.jsx",
+          "app/src/components/admin/AdminRolesMatrixPanel.jsx",
+          "app/src/components/costControl/CostControlMaterialsTable.jsx",
+          "app/src/components/costControl/CostControlLaborOnlyPanel.jsx"
+        ]
+      }
+    ]
+  },
+  "diffGuardPatterns": [
+    { "label": "encabezado de columna (<th>)", "pattern": "<th\\b" },
+    { "label": "apertura de modal (isOpen: true)", "pattern": "\\bisOpen\\s*:\\s*true\\b" },
+    { "label": "tooltip flotante de OT", "pattern": "\\b(?:formatWorkOrderTooltip|formatWorkOrderTooltipCanonical|CanonicalOtBadge)\\b" },
+    { "label": "transición de estado (status:)", "pattern": "\\bstatus\\s*:\\s*['\"][A-Z_.\\s?]+['\"]" }
+  ],
+  "architectureBoundaries": {
+    "banLibUiImports": true,
+    "banDirectUiRepositoryImports": {
+      "enabled": true,
+      "allowlist": [
+        "app/src/components/compras/NewMaterialModal.jsx",
+        "app/src/pages/Login.jsx"
+      ]
+    },
+    "banReactClassComponents": {
+      "enabled": true,
+      "allowlist": [
+        "app/src/components/canonical/RouteErrorBoundary.jsx"
+      ]
+    },
+    "banUnsafeOnBlur": {
+      "enabled": true,
+      "allowlist": []
+    },
+    "requireAuditInMutatingServices": {
+      "enabled": true,
+      "allowlist": [
+        "app/src/services/adminGovernanceService.js",
+        "app/src/services/personalTarifarioService.js"
+      ]
+    },
+    "banCrossModuleComponentImports": {
+      "enabled": true,
+      "sharedComponentDirs": ["canonical"],
+      "allowedTargets": [
+        "app/src/components/workOrders/WorkOrderSelectorWithHover"
+      ],
+      "allowlist": [
+        "app/src/components/admin/AdminAlertsCompliancePanel.jsx",
+        "app/src/components/tesoreria/contratados/TesoreriaContratadosModals.jsx"
+      ]
+    }
+  }
+}

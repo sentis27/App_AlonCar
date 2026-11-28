@@ -2,6 +2,8 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadHygieneConfig } from './lib/hygieneConfig.mjs'
+import { checkArchitectureBoundaries } from './lib/architectureBoundaries.mjs'
 import { checkMigrationsManifest } from './lib/migrationsManifest.mjs'
 import {
   getPathLineLimit,
@@ -14,39 +16,43 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const APP_DIR = path.resolve(__dirname, '..')
 const ROOT_DIR = path.resolve(APP_DIR, '..')
 
-const IGNORE_DIRS = new Set(['node_modules', 'dist', 'Presentacion', '.git'])
-const IGNORE_REL_PREFIXES = ['app/dist', 'docs/04_anexos_entendiemiento de planillas']
-const USER_PATH_RE = /Users[\\/](?:senti|Vanoli)|file:\/\/\//i
 const CODE_EXT_RE = /\.(?:js|jsx|ts|tsx)$/
-const SIZE_ALERT_BYTES = 15 * 1024
+const DIRECT_DB_ACCESS_RE = /\bsupabase\s*\.\s*(?:from|rpc)\s*\(|\.storage\s*\.\s*from\s*\(/
+const ERR_VALID_STATES = new Set(['borrador', 'validado', 'superado'])
 
 const args = new Set(process.argv.slice(2))
 const FAST_MODE = args.has('--fast')
+const LINT_MODE = args.has('--lint')
 const STRICT_MODE = args.has('--strict')
 
 const toPosix = (p) => p.split(path.sep).join('/')
 const stripCode = (md) => md.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '')
 
-function walkMarkdown(dir, out = []) {
+function walkMarkdown(dir, docsCfg, out = []) {
+  const ignoreDirs = new Set(docsCfg.ignoreDirs || ['node_modules', 'dist', '.git'])
+  const ignorePrefixes = docsCfg.ignoreRelPrefixes || []
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (IGNORE_DIRS.has(ent.name)) continue
+    if (ignoreDirs.has(ent.name)) continue
     const full = path.join(dir, ent.name)
     const rel = toPosix(path.relative(ROOT_DIR, full))
-    if (IGNORE_REL_PREFIXES.some((p) => rel === p || rel.startsWith(`${p}/`))) continue
-    if (ent.isDirectory()) walkMarkdown(full, out)
+    if (ignorePrefixes.some((p) => rel === p || rel.startsWith(`${p}/`))) continue
+    if (ent.isDirectory()) walkMarkdown(full, docsCfg, out)
     else if (ent.name.endsWith('.md')) out.push(rel)
   }
   return out.sort()
 }
 
-function checkDocsAndLinks(mdFiles) {
+function checkDocsAndLinks(mdFiles, docsCfg) {
   const errors = []
+  const forbiddenRegexes = (docsCfg.forbiddenPathPatterns || []).map((p) => new RegExp(p, 'i'))
+  const proseOnly = new Set(docsCfg.proseOnlyFiles || [])
+
   for (const rel of mdFiles) {
     const full = path.join(ROOT_DIR, rel)
     const raw = fs.readFileSync(full, 'utf8')
-    const prose = rel === 'PLAN_OPTIMIZACION_IA.md' ? stripCode(raw) : raw
+    const prose = proseOnly.has(rel) ? stripCode(raw) : raw
 
-    if (USER_PATH_RE.test(prose)) {
+    if (forbiddenRegexes.some((re) => re.test(prose))) {
       errors.push(`Ruta absoluta de usuario o file:/// prohibida en ${rel}`)
     }
 
@@ -56,7 +62,7 @@ function checkDocsAndLinks(mdFiles) {
     while ((match = linkRe.exec(linkable)) !== null) {
       const target = match[1].trim()
       if (/^(?:https?:|mailto:|#)/i.test(target)) continue
-      if (USER_PATH_RE.test(target) || /^file:/i.test(target)) {
+      if (forbiddenRegexes.some((re) => re.test(target)) || /^file:/i.test(target)) {
         errors.push(`Link absoluto/file:/// prohibido en ${rel}: ${target}`)
         continue
       }
@@ -77,13 +83,14 @@ function checkDocsAndLinks(mdFiles) {
   return errors
 }
 
-function checkMetadataIndex(mdFiles) {
-  const errors = []
-  const indexPath = path.join(ROOT_DIR, 'INDICE_METADATOS.md')
+function checkMetadataIndex(mdFiles, docsCfg) {
+  const indexRel = docsCfg.metadataIndexPath || 'INDICE_METADATOS.md'
+  const indexPath = path.join(ROOT_DIR, indexRel)
   if (!fs.existsSync(indexPath)) {
-    return ['Falta INDICE_METADATOS.md en la raíz del repositorio']
+    return [`Falta ${indexRel} en la raíz del repositorio`]
   }
 
+  const errors = []
   const indexed = new Set()
   const lines = fs.readFileSync(indexPath, 'utf8').split(/\r?\n/)
   for (const line of lines) {
@@ -95,64 +102,51 @@ function checkMetadataIndex(mdFiles) {
   }
 
   for (const rel of mdFiles) {
-    if (!indexed.has(rel)) {
-      errors.push(`Archivo .md activo fuera de INDICE_METADATOS.md: ${rel}`)
-    }
+    if (!indexed.has(rel)) errors.push(`Archivo .md activo fuera de ${indexRel}: ${rel}`)
   }
   for (const rel of indexed) {
     if (!fs.existsSync(path.join(ROOT_DIR, rel))) {
-      errors.push(`Entrada huérfana en INDICE_METADATOS.md (no existe en disco): ${rel}`)
+      errors.push(`Entrada huérfana en ${indexRel} (no existe en disco): ${rel}`)
     }
   }
   return errors
 }
 
-function checkDuplicateIds() {
+function checkDuplicateIds(docsCfg) {
   const errors = []
-  const checks = [
-    { dir: 'docs/02_producto/01_decisiones', re: /^(DEC-\d+)/i },
-    { dir: 'docs/02_producto/02_errores', re: /^(ERR-\d+)/i },
-  ]
-  for (const { dir, re } of checks) {
+  for (const { dir, prefix } of docsCfg.duplicateIdDirs || []) {
     const fullDir = path.join(ROOT_DIR, dir)
     if (!fs.existsSync(fullDir)) continue
+    const re = new RegExp(`^(${prefix}-\\d+)`, 'i')
     const seen = new Map()
     for (const name of fs.readdirSync(fullDir)) {
       const m = name.match(re)
       if (!m) continue
       const id = m[1].toUpperCase()
-      if (seen.has(id)) {
-        errors.push(`ID duplicado ${id} en ${dir}: ${seen.get(id)} y ${name}`)
-      } else {
-        seen.set(id, name)
-      }
+      if (seen.has(id)) errors.push(`ID duplicado ${id} en ${dir}: ${seen.get(id)} y ${name}`)
+      else seen.set(id, name)
     }
   }
   return errors
 }
 
-function checkLiveDocSizes() {
+function checkLiveDocSizes(docsCfg) {
   const alerts = []
-  const docs = [
-    'TAREAS_PENDIENTES.md',
-    'docs/02_producto/05_auditorias/BITACORA_DELTAS_SESION.md',
-  ]
-  for (const rel of docs) {
+  const limits = docsCfg.liveDocSizeLimits || {}
+  const maxBytes = limits.maxBytes || 15 * 1024
+  for (const rel of limits.files || []) {
     const full = path.join(ROOT_DIR, rel)
     if (!fs.existsSync(full)) continue
     const bytes = fs.statSync(full).size
-    if (bytes > SIZE_ALERT_BYTES) {
-      alerts.push(
-        `${rel} pesa ${(bytes / 1024).toFixed(1)} KB (> 15.0 KB) -> disparar rotación histórica`
-      )
+    if (bytes > maxBytes) {
+      alerts.push(`${rel} pesa ${(bytes / 1024).toFixed(1)} KB (> ${(maxBytes / 1024).toFixed(1)} KB) -> disparar rotación histórica`)
     }
   }
   return alerts
 }
 
 function countLines(text) {
-  if (!text) return 0
-  return text.split(/\r?\n/).length
+  return text ? text.split(/\r?\n/).length : 0
 }
 
 function getHeadLineCount(rel) {
@@ -168,7 +162,7 @@ function getHeadLineCount(rel) {
   }
 }
 
-function checkGitDiffLineLimits() {
+function checkGitDiffLineLimits(config) {
   const alerts = []
   let statusOut = ''
   try {
@@ -193,7 +187,7 @@ function checkGitDiffLineLimits() {
     if (!fs.existsSync(full)) continue
     const currentLines = countLines(fs.readFileSync(full, 'utf8'))
     const headLines = getHeadLineCount(rel)
-    const { limit: pathLimit, label: scope } = getPathLineLimit(rel)
+    const { limit: pathLimit, label: scope } = getPathLineLimit(rel, config)
 
     if (headLines === null && currentLines > pathLimit) {
       alerts.push(`Archivo nuevo (${scope}) supera ${pathLimit} L: ${rel} (${currentLines} L)`)
@@ -215,17 +209,16 @@ function runLocalBin(binName, binArgs) {
   })
 }
 
-const DIRECT_DB_ACCESS_RE = /\bsupabase\s*\.\s*(?:from|rpc)\s*\(|\.storage\s*\.\s*from\s*\(/
-
 function stripCommentsForScan(code) {
   return code
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '')
 }
 
-function checkRepositoryBoundary() {
+function checkRepositoryBoundary(config) {
   const srcRoot = path.join(APP_DIR, 'src')
   if (!fs.existsSync(srcRoot)) return []
+  const allowedPrefix = config.repositoryBoundary?.allowedDirPrefix || 'app/src/repositories/'
   const errors = []
   const stack = [srcRoot]
   while (stack.length > 0) {
@@ -235,10 +228,10 @@ function checkRepositoryBoundary() {
       if (ent.isDirectory()) { stack.push(full); continue }
       if (!CODE_EXT_RE.test(ent.name)) continue
       const rel = toPosix(path.relative(ROOT_DIR, full))
-      if (rel.startsWith('app/src/repositories/')) continue
+      if (rel.startsWith(allowedPrefix)) continue
       const content = stripCommentsForScan(fs.readFileSync(full, 'utf8'))
       if (DIRECT_DB_ACCESS_RE.test(content)) {
-        errors.push(`Acceso directo a Supabase fuera de app/src/repositories/: ${rel}`)
+        errors.push(`Acceso directo a Supabase fuera de ${allowedPrefix}: ${rel}`)
       }
     }
   }
@@ -274,8 +267,6 @@ function checkDatalistIntegrity() {
   return errors
 }
 
-const ERR_VALID_STATES = new Set(['borrador', 'validado', 'superado'])
-
 function parseFrontmatter(content) {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!m) return null
@@ -289,10 +280,12 @@ function parseFrontmatter(content) {
   return fields
 }
 
-function checkErrorDocsFormat() {
-  const relDir = 'docs/02_producto/02_errores'
+function checkErrorDocsFormat(docsCfg) {
+  const relDir = docsCfg.errorDocsDir
+  if (!relDir) return []
   const fullDir = path.join(ROOT_DIR, relDir)
   if (!fs.existsSync(fullDir)) return []
+  const strictFromId = docsCfg.errorDocsStrictFromId ?? 1
   const errors = []
 
   for (const name of fs.readdirSync(fullDir).sort()) {
@@ -304,17 +297,14 @@ function checkErrorDocsFormat() {
     const content = fs.readFileSync(path.join(fullDir, name), 'utf8')
     const fm = parseFrontmatter(content)
 
-    if (!fm) {
-      errors.push(`${rel}: falta bloque YAML frontmatter (--- ... ---)`)
-      continue
-    }
+    if (!fm) { errors.push(`${rel}: falta bloque YAML frontmatter (--- ... ---)`); continue }
     if ((fm.id || '').toUpperCase() !== expectedId) errors.push(`${rel}: frontmatter id="${fm.id || ''}" debe ser "${expectedId}"`)
     if (fm.tipo !== 'error') errors.push(`${rel}: frontmatter tipo="${fm.tipo || ''}" debe ser "error"`)
     if (!ERR_VALID_STATES.has(fm.estado)) errors.push(`${rel}: estado="${fm.estado || ''}" inválido (usar borrador|validado|superado)`)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fm.fecha || '')) errors.push(`${rel}: fecha="${fm.fecha || ''}" debe tener formato YYYY-MM-DD`)
     if (!/^#\s+\S/m.test(content)) errors.push(`${rel}: falta título H1 (# ...)`)
 
-    const requiredSections = idNum >= 6
+    const requiredSections = idNum >= strictFromId
       ? [/^## Qué pasó \/ Dónde \/ Por qué(?:\s|$)/m, /^## Solución aplicada(?:\s|$)/m, /^## Regla anti-regresión(?:\s|\(|$)/m]
       : [/^## Qué pasó(?:\s|$)/m, /^## Por qué falló(?:\s|$)/m, /^## Solución (?:validada|aplicada)(?:\s|$)/m]
     for (const re of requiredSections) {
@@ -326,18 +316,22 @@ function checkErrorDocsFormat() {
 
 function main() {
   const t0 = performance.now()
-  const mdFiles = walkMarkdown(ROOT_DIR)
+  const config = loadHygieneConfig(ROOT_DIR)
+  const docsCfg = config.docs || {}
+  const mdFiles = walkMarkdown(ROOT_DIR, docsCfg)
 
-  const docErrors = checkDocsAndLinks(mdFiles)
-  const indexErrors = checkMetadataIndex(mdFiles)
-  const idErrors = checkDuplicateIds()
-  const errFormatErrors = checkErrorDocsFormat()
+  const docErrors = checkDocsAndLinks(mdFiles, docsCfg)
+  const indexErrors = checkMetadataIndex(mdFiles, docsCfg)
+  const idErrors = checkDuplicateIds(docsCfg)
+  const errFormatErrors = checkErrorDocsFormat(docsCfg)
   const datalistErrors = checkDatalistIntegrity()
-  const repoBoundaryErrors = checkRepositoryBoundary()
-  const migrations = checkMigrationsManifest(ROOT_DIR)
-  const featuresLock = checkFeaturesLockManifest(ROOT_DIR)
-  const canonicalUsage = checkCanonicalComponentsUsage(ROOT_DIR, APP_DIR)
-  const diffRegressionAlerts = checkGitDiffDroppedFeatures(ROOT_DIR)
+  const repoBoundaryErrors = checkRepositoryBoundary(config)
+  const archBoundaryErrors = checkArchitectureBoundaries(ROOT_DIR, APP_DIR, config)
+  const migrations = checkMigrationsManifest(ROOT_DIR, { rollbackRequiredFrom: config.migrations?.rollbackRequiredFrom })
+  const featuresLock = checkFeaturesLockManifest(ROOT_DIR, config)
+  const canonicalUsage = checkCanonicalComponentsUsage(ROOT_DIR, APP_DIR, config)
+  const diffRegressionAlerts = checkGitDiffDroppedFeatures(ROOT_DIR, config)
+
   const errors = [
     ...docErrors,
     ...indexErrors,
@@ -345,13 +339,14 @@ function main() {
     ...errFormatErrors,
     ...datalistErrors,
     ...repoBoundaryErrors,
+    ...archBoundaryErrors,
     ...migrations.errors,
     ...featuresLock.errors,
     ...canonicalUsage.errors,
   ]
   const alerts = [
-    ...checkLiveDocSizes(),
-    ...checkGitDiffLineLimits(),
+    ...checkLiveDocSizes(docsCfg),
+    ...checkGitDiffLineLimits(config),
     ...canonicalUsage.alerts,
     ...diffRegressionAlerts,
   ]
@@ -360,37 +355,34 @@ function main() {
   let buildSummary = 'omitido (--fast)'
   let testSummary = 'omitido (--fast)'
 
-  if (!FAST_MODE) {
+  if (!FAST_MODE || LINT_MODE) {
     const lintRes = runLocalBin('oxlint', ['--quiet'])
     const lintOut = `${lintRes.stdout || ''}\n${lintRes.stderr || ''}`.trim()
     const summaryLine = lintOut.split(/\r?\n/).find((l) => /Found\s+\d+\s+warnings?\s+and\s+\d+\s+errors?/i.test(l))
     lintSummary = summaryLine ? summaryLine.trim() : `exit ${lintRes.status ?? 1}`
-    if (lintRes.status !== 0) {
-      errors.push(`oxlint falló (${lintSummary}):\n${lintOut}`)
-    }
+    if (lintRes.status !== 0) errors.push(`oxlint falló (${lintSummary}):\n${lintOut}`)
+  }
 
+  if (!FAST_MODE) {
     const buildRes = runLocalBin('vite', ['build'])
     const buildOut = `${buildRes.stdout || ''}\n${buildRes.stderr || ''}`.trim()
     const builtLine = buildOut.split(/\r?\n/).find((l) => /built in/i.test(l))
     buildSummary = builtLine ? builtLine.trim() : `exit ${buildRes.status ?? 1}`
-    if (buildRes.status !== 0) {
-      errors.push(`vite build falló:\n${buildOut}`)
-    }
+    if (buildRes.status !== 0) errors.push(`vite build falló:\n${buildOut}`)
 
     const testRes = runLocalBin('vitest', ['run'])
     const testOut = `${testRes.stdout || ''}\n${testRes.stderr || ''}`.replace(/\x1b\[[0-9;]*m/g, '').trim()
     const testLine = testOut.split(/\r?\n/).find((l) => /Tests\s+\d+\s+passed/i.test(l))
     testSummary = testLine ? testLine.trim() : `exit ${testRes.status ?? 1}`
-    if (testRes.status !== 0) {
-      errors.push(`vitest falló (${testSummary}):\n${testOut}`)
-    }
+    if (testRes.status !== 0) errors.push(`vitest falló (${testSummary}):\n${testOut}`)
   }
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+  const indexLabel = docsCfg.metadataIndexPath || 'INDICE_METADATOS.md'
   console.log(
-    `[check:hygiene] .md activos: ${mdFiles.length} | docs/links: ${docErrors.length === 0 ? 'OK' : `FAIL (${docErrors.length})`} | INDICE_METADATOS: ${indexErrors.length === 0 ? 'OK' : `FAIL (${indexErrors.length})`} | IDs DEC/ERR: ${idErrors.length === 0 ? 'OK' : `FAIL (${idErrors.length})`} | ERR formato: ${errFormatErrors.length === 0 ? 'OK' : `FAIL (${errFormatErrors.length})`} | datalists: ${datalistErrors.length === 0 ? 'OK' : `FAIL (${datalistErrors.length})`}`
+    `[check:hygiene] .md activos: ${mdFiles.length} | docs/links: ${docErrors.length === 0 ? 'OK' : `FAIL (${docErrors.length})`} | ${indexLabel}: ${indexErrors.length === 0 ? 'OK' : `FAIL (${indexErrors.length})`} | IDs: ${idErrors.length === 0 ? 'OK' : `FAIL (${idErrors.length})`} | ERR formato: ${errFormatErrors.length === 0 ? 'OK' : `FAIL (${errFormatErrors.length})`} | datalists: ${datalistErrors.length === 0 ? 'OK' : `FAIL (${datalistErrors.length})`}`
   )
-  console.log(`[check:hygiene] repo boundary: ${repoBoundaryErrors.length === 0 ? 'OK (0 bypass)' : `FAIL (${repoBoundaryErrors.length})`}`)
+  console.log(`[check:hygiene] repo boundary: ${repoBoundaryErrors.length === 0 ? 'OK (0 bypass)' : `FAIL (${repoBoundaryErrors.length})`} | arch boundaries: ${archBoundaryErrors.length === 0 ? 'OK (0 violaciones)' : `FAIL (${archBoundaryErrors.length})`}`)
   console.log(
     `[check:hygiene] features lock: ${featuresLock.lockedCount} blindados / ${featuresLock.pendingCount} pendientes (${featuresLock.errors.length === 0 ? 'OK' : `FAIL (${featuresLock.errors.length})`}) | canónicos: ${canonicalUsage.errors.length === 0 ? `OK (${canonicalUsage.alerts.length} legacy)` : `FAIL (${canonicalUsage.errors.length})`} | diff guard: ${diffRegressionAlerts.length === 0 ? 'OK' : `ALERTA (${diffRegressionAlerts.length})`}`
   )

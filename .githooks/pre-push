@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -e
+echo "[sgai-core:pre-push] Ejecutando compuerta estricta completa (hygiene --strict)..."
+node app/scripts/repo-hygiene.mjs --strict
